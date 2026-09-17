@@ -1,5 +1,6 @@
 {
-    "StartUp": {
+    "TaskStartUp": {
+        "desc": "启动游戏任务",
         "post_wait_freezes": 300,
         "timeout": 60000,
         "next": [
