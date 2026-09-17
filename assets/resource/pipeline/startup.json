@@ -1,0 +1,109 @@
+{
+    "GameStart": {
+        "post_wait_freezes": 300,
+        "timeout": 60000,
+        "next": [
+            "HomeFlagFirst",
+            "StartGame",
+            "[JumpBack]GameLodingFlag",
+            "[JumpBack]TouchSignIn",
+            "[JumpBack]SignInReward",
+            "[JumpBack]NoticePage"
+        ]
+    },
+    "ReturnMain": {
+        "desc": "返回主界面",
+        "max_hit": 2,
+        "next": [
+            "HomeFlagFirst",
+            "[JumpBack]HomeButton"
+        ]
+    },
+    "HomeButton": {
+        "recognition": "TemplateMatch",
+        "template": [
+            "StartUp/HomeButton.png"
+        ],
+        "action": "Click",
+        "post_wait_freezes": 3000
+    },
+    "HomeFlagFirst": {
+        "recognition": "TemplateMatch",
+        "template": [
+            "StartUp/HomeFlag/"
+        ]
+    },
+    "StartGame": {
+        "desc": "点击游戏图标",
+        "recognition": "TemplateMatch",
+        "template": [
+            "StartUp/GameIcoBiliBili.png"
+        ],
+        "action": "Click",
+        "next": [
+            "HomeFlagFirst",
+            "StartGame",
+            "[JumpBack]TouchSignIn",
+            "[JumpBack]SignInReward",
+            "[JumpBack]NoticePage"
+        ],
+        "post_wait_freezes": 3000
+    },
+    "GameLodingFlag": {
+        "desc": "正在加载游戏",
+        "recognition": "TemplateMatch",
+        "template": [
+            "StartUp/SignInLoadingFlag/"
+        ],
+        "post_wait_freezes": 3000
+    },
+    "TouchSignIn": {
+        "desc": "点击进入游戏界面",
+        "recognition": "TemplateMatch",
+        "template": [
+            "StartUp/TouchSignInPage.png"
+        ],
+        "action": "Click",
+        "target": [
+            630,
+            540
+        ],
+        "post_wait_freezes": 3000
+    },
+    "SignInReward": {
+        "desc": "领取登录奖励",
+        "recognition": "OCR",
+        "expected": "获得一览",
+        "action": "Click",
+        "target": [
+            0,
+            -1
+        ]
+    },
+    "ActivityPage": {
+        "desc": "关闭活动页面",
+        "recognition": "OCR",
+        "expected": "活动选择",
+        "action": "Click",
+        "target": [
+            -10,
+            -10
+        ]
+    },
+    "NoticePage": {
+        "desc": "关闭公告界面",
+        "recognition": "OCR",
+        "expected": "今日不再提示",
+        "action": "Click",
+        "next": [
+            "NoticePage2"
+        ]
+    },
+    "NoticePage2": {
+        "action": "Click",
+        "target": [
+            0,
+            -1
+        ]
+    }
+}
