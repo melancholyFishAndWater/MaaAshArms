@@ -175,7 +175,7 @@
         ],
         "next": [
             "FlagTrainReward",
-            "[JumpBack]TrainMainMoveDown",
+            "[JumpBack]TrainMainMoveDown"
         ],
         "post_wait_freezes": 1000
     },
