@@ -1,0 +1,248 @@
+{
+    "TaskTraining": {
+        "desc": "武装押运任务",
+        "next": [
+            "[JumpBack]ReturnMain",
+            "EnterTraining"
+        ],
+        "post_wait_freezes": 3000
+    },
+    "EnterTraining": {
+        "desc": "进入武装押运页面",
+        "action": "Click",
+        "target": [
+            54,
+            184
+        ],
+        "next": [
+            "FlagInTrainMainPage",
+            "MaxTrainFlagFromMainPage",
+            "[JumpBack]EnterTraining2"
+        ],
+        "post_wait_freezes": 1000
+    },
+    "EnterTraining2": {
+        "desc": "点击押运第一行",
+        "recognition": "OCR",
+        "expected": "武装押运一览",
+        "action": "Click",
+        "target_offset": [
+            0,
+            75,
+            0,
+            0
+        ],
+        "roi": [
+            0,
+            90,
+            250,
+            137
+        ]
+    },
+    "FlagInTrainMainPage": {
+        "desc": "在路线一览",
+        "recognition": "OCR",
+        "expected": "路线一览",
+        "roi": [
+            74,
+            0,
+            246,
+            106
+        ],
+        "next": [
+            "[JumpBack]GetTrainReward",
+            "MaxTrainFlagFromTraining",
+            "[JumpBack]Arrow"
+        ]
+    },
+    "MaxTrainFlagFromMainPage": {
+        "desc": "在主页中满列车标志",
+        "recognition": "Custom",
+        "custom_recognition": "MaxTrainFlagFromMainPageReco"
+    },
+    "MaxTrainFlagFromTraining": {
+        "desc": "在押运页面中满列车标志",
+        "recognition": "TemplateMatch",
+        "template": "Training/MaxTrain.png",
+        "roi": [
+            698,
+            0,
+            384,
+            115
+        ]
+    },
+    "Arrow": {
+        "desc": "点击暗箭头发车",
+        "recognition": "TemplateMatch",
+        "template": "Training/ArrowDart.png",
+        "action": "Click",
+        "post_wait_freezes": 1000,
+        "next": [
+            "DoTrain"
+        ],
+        "roi": [
+            130,
+            60,
+            171,
+            631
+        ]
+    },
+    "DoTrain": {
+        "desc": "发车",
+        "recognition": "Custom",
+        "custom_recognition": "DoTrainReco",
+        "action": "Click",
+        "next": [
+            "FlagInTrainFormation"
+        ],
+        "post_wait_freezes": 1000
+    },
+    "FlagInTrainFormation": {
+        "desc": "出发页面",
+        "recognition": "OCR",
+        "expected": "出发",
+        "action": "Click",
+        "roi": [
+            951,
+            603,
+            262,
+            99
+        ],
+        "next": [
+            "TrainPushButton"
+        ],
+        "post_wait_freezes": 1000
+    },
+    "TrainPushButton": {
+        "desc": "二次确认",
+        "recognition": "OCR",
+        "expected": "确认",
+        "action": "Click",
+        "roi": [
+            697,
+            450,
+            192,
+            68
+        ],
+        "next": [
+            "TrainConfirm"
+        ]
+    },
+    "TrainConfirm": {
+        "desc": "点击任意处以跳过动画",
+        "pre_delay": 1000,
+        "action": "Click",
+        "post_wait_freezes": 1000
+    },
+    "GetTrainReward": {
+        "desc": "下滑路线并领取奖励",
+        "recognition": "DirectHit",
+        "begin": [
+            100,
+            300
+        ],
+        "end": [
+            100,
+            200
+        ],
+        "end_hold": 300,
+        "action": "Swipe",
+        "next": [
+            "[JumpBack]FlagTrainHasBlueMark"
+        ],
+        "repeat": 5,
+        "repeat_delay": 500
+    },
+    "FlagTrainHasBlueMark": {
+        "desc": "有蓝色标识",
+        "recognition": "TemplateMatch",
+        "template": [
+            "Base/BlueMarkGreen.png"
+        ],
+        "green_mask": true,
+        "roi": [
+            178,
+            71,
+            138,
+            616
+        ],
+        "action": "Click",
+        "target_offset": [
+            34,
+            44,
+            0,
+            0
+        ],
+        "next": [
+            "FlagTrainReward",
+            "[JumpBack]TrainMainMoveDown",
+        ],
+        "post_wait_freezes": 1000
+    },
+    "TrainMainMoveDown": {
+        "desc": "进行主内容下滑",
+        "begin": [
+            600,
+            300
+        ],
+        "end": [
+            600,
+            200
+        ],
+        "end_hold": 200,
+        "action": "Swipe",
+        "max_hit": 10,
+        "post_wait_freezes": 1000
+    },
+    "FlagTrainReward": {
+        "desc": "领取按钮",
+        "recognition": "TemplateMatch",
+        "template": [
+            "Training/RewardButton.png"
+        ],
+        "roi": [
+            832,
+            52,
+            237,
+            601
+        ],
+        "action": "Click",
+        "next": [
+            "FlagInTap1"
+        ],
+        "post_wait_freezes": 1000,
+        "anchor": {}
+    },
+    "FlagInTap1": {
+        "desc": "在tap页面",
+        "recognition": "OCR",
+        "expected": "TAP",
+        "roi": [
+            496,
+            603,
+            290,
+            117
+        ],
+        "action": "Click",
+        "next": [
+            "FlagInTap2"
+        ],
+        "post_wait_freezes": 1000
+    },
+    "FlagInTap2": {
+        "desc": "在第二个tap页面",
+        "recognition": "OCR",
+        "expected": "TAP",
+        "roi": [
+            508,
+            543,
+            265,
+            153
+        ],
+        "action": "Click",
+        "post_wait_freezes": 1000,
+        "next": [
+            "DoTrain"
+        ]
+    }
+}
