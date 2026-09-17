@@ -1,0 +1,230 @@
+{
+    "ReturnFeiDuMain": {
+        "desc": "返回废都主页",
+        "max_hit": 2,
+        "next": [
+            "FeiDuHomeFlag",
+            "[JumpBack]EnterFeiDu",
+            "[JumpBack]ReturnMain"
+        ]
+    },
+    "FeiDuHomeFlag": {
+        "desc": "在废都标志",
+        "recognition": "TemplateMatch",
+        "template": [
+            "FeiDu/FeiDuFlag/"
+        ]
+    },
+    "EnterFeiDu": {
+        "desc": "从主页进入废都",
+        "recognition": "TemplateMatch",
+        "template": [
+            "FeiDu/FeiDuButtonGreen.png"
+        ],
+        "green_mask": true,
+        "action": "Click",
+        "roi": [
+            1131,
+            583,
+            126,
+            131
+        ],
+        "post_wait_freezes": 2000
+    },
+    "TaskReward": {
+        "desc": "领取资源任务",
+        "next": [
+            "[JumpBack]ReturnFeiDuMain",
+            "RewardOne"
+        ]
+    },
+    "RewardOne": {
+        "desc": "领取资源",
+        "next": [
+            "[JumpBack]GetMoney",
+            "[JumpBack]GetPart",
+            "[JumpBack]GetMetal",
+            "FeiDuHomeFlag"
+        ]
+    },
+    "GetMoney": {
+        "desc": "领取废都钱",
+        "recognition": "TemplateMatch",
+        "template": [
+            "FeiDu/Money.png"
+        ],
+        "action": "Click"
+    },
+    "GetPart": {
+        "desc": "领取改造件",
+        "recognition": "TemplateMatch",
+        "template": [
+            "FeiDu/Part.png"
+        ],
+        "green_mask": true,
+        "action": "Click"
+    },
+    "GetMetal": {
+        "desc": "领取金属",
+        "recognition": "TemplateMatch",
+        "template": [
+            "FeiDu/Metal.png"
+        ],
+        "action": "Click"
+    },
+    "TaskGiveGift": {
+        "desc": "赠礼任务",
+        "recognition": "OCR",
+        "expected": "酒馆夜话",
+        "action": "Click",
+        "next": [
+            "[JumpBack]ReturnFeiDuMain",
+            "Tavern1"
+        ],
+        "post_wait_freezes": 3000
+    },
+    "Tavern1": {
+        "desc": "点击深入交流",
+        "recognition": "TemplateMatch",
+        "template": [
+            "FeiDu/TavernButton1.png"
+        ],
+        "action": "Click",
+        "next": [
+            "SortRule"
+        ],
+        "post_wait_freezes": 2000
+    },
+    "SortRule": {
+        "desc": "点击排序按钮",
+        "recognition": "OCR",
+        "expected": "排序",
+        "action": "Click",
+        "next": [
+            "SortRule2"
+        ],
+        "post_wait_freezes": 2000
+    },
+    "SortRule2": {
+        "desc": "点击好感度按钮",
+        "recognition": "OCR",
+        "expected": "好感度",
+        "action": "Click",
+        "next": [
+            "SortRuleOk"
+        ],
+        "post_wait_freezes": 2000
+    },
+    "SortRuleOk": {
+        "desc": "点击确认按钮",
+        "recognition": "OCR",
+        "expected": "确认",
+        "action": "Click",
+        "next": [
+            "Sort"
+        ],
+        "post_wait_freezes": 2000
+    },
+    "Sort": {
+        "desc": "点击以排序",
+        "recognition": "TemplateMatch",
+        "template": [
+            "FeiDu/SortButton.png"
+        ],
+        "action": "Click",
+        "next": [
+            "ChooseFrist"
+        ],
+        "roi": [
+            1055,
+            10,
+            61,
+            60
+        ],
+        "post_wait_freezes": 2000
+    },
+    "ChooseFrist": {
+        "desc": "点击第一个角色",
+        "recognition": "DirectHit",
+        "action": "Click",
+        "target": [
+            216,
+            230,
+            43,
+            48
+        ],
+        "next": [
+            "ShowGift"
+        ],
+        "post_wait_freezes": 2000
+    },
+    "ShowGift": {
+        "desc": "点击赠礼按钮",
+        "recognition": "TemplateMatch",
+        "template": [
+            "FeiDu/ShowGiftButton.png"
+        ],
+        "action": "Click",
+        "next": [
+            "ChooseFirstGift"
+        ],
+        "roi": [
+            1163,
+            581,
+            95,
+            115
+        ],
+        "post_wait_freezes": 2000
+    },
+    "ChooseFirstGift": {
+        "desc": "点击第一个礼物",
+        "recognition": "DirectHit",
+        "action": "Click",
+        "target": [
+            136,
+            610,
+            25,
+            25
+        ],
+        "next": [
+            "GiveThree"
+        ],
+        "post_wait_freezes": 2000
+    },
+    "GiveThree": {
+        "desc": "给三次礼物",
+        "recognition": "TemplateMatch",
+        "template": [
+            "FeiDu/GiveGiftButton.png"
+        ],
+        "roi": [
+            1078,
+            428,
+            99,
+            102
+        ],
+        "action": "Click",
+        "repeat": 3,
+        "repeat_delay": 2000
+    }
+    // 测试中
+    // "找非满好感角色": {
+    //     "enabled": false,
+    //     "recognition": "TemplateMatch",
+    //     "template": [
+    //         "haogan_0.png",
+    //         "haogan_1.png",
+    //         "haogan_2.png",
+    //         "haogan_3.png",
+    //         "haogan_4.png"
+    //     ],
+    //     "roi": [
+    //         161,
+    //         141,
+    //         952,
+    //         518
+    //     ],
+    //     "green_mask": true,
+    //     "action": "Click"
+    // }
+}
