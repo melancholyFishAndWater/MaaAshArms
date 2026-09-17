@@ -47,10 +47,10 @@
             "StartUp/BackButton.png"
         ],
         "roi": [
-            18,
-            5,
-            84,
-            78
+            0,
+            0,
+            154,
+            130
         ],
         "action": "Click",
         "post_wait_freezes": 1000
@@ -64,10 +64,10 @@
         "action": "Click",
         "post_wait_freezes": 1000,
         "roi": [
-            1190,
-            12,
-            71,
-            68
+            1140,
+            0,
+            140,
+            130
         ]
     },
     "HomeFlagFirst": {
