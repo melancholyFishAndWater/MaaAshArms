@@ -450,5 +450,10 @@ install
 # Tools
 tools/ImageCropper/**/*.png
 
+# obsidian
+.obsidian
+白板
+
+scripts
 config
 debug
