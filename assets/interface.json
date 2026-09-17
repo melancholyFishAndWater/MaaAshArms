@@ -64,6 +64,10 @@
         {
             "name": "武装押运",
             "entry": "TaskTraining"
+        },
+        {
+            "name": "防卫局",
+            "entry": "TaskEscort"
         }
     ]
 }
