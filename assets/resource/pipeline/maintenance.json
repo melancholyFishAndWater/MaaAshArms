@@ -1,0 +1,113 @@
+{
+    "TaskMaintenance": {
+        "desc": "维修会任务",
+        "next": [
+            "[JumpBack]ReturnMain",
+            "EnterMaintenance"
+        ]
+    },
+    "EnterMaintenance": {
+        "desc": "进入维修会",
+        "recognition": "OCR",
+        "expected": [
+            "维修会"
+        ],
+        "action": "Click",
+        "roi": [
+            782,
+            405,
+            125,
+            53
+        ],
+        "next": [
+            "FlagInMaintenance",
+            "EnterMaintenance",
+            "[JumpBack]BackButton"
+        ]
+    },
+    "FlagInMaintenance": {
+        "desc": "维修会标志",
+        "recognition": "OCR",
+        "expected": [
+            "维修会"
+        ],
+        "roi": [
+            122,
+            13,
+            122,
+            43
+        ],
+        "next": [
+            "[JumpBack]RecycleOk",
+            "[JumpBack]GetCharacter",
+            "[JumpBack]GetCharacterOk",
+            "[JumpBack]CanRecycle",
+            "[JumpBack]ChooseRecycle",
+            "ReturnMain"
+            // TODO 退出机制
+        ]
+    },
+    "RecycleOk": {
+        "desc": "点击回收完成按钮",
+        "recognition": "TemplateMatch",
+        "template": [
+            "Maintenance/RecycleOkButton.png"
+        ],
+        "action": "Click",
+        "post_delay": 1000
+    },
+    "GetCharacter": {
+        "desc": "获得角色则点空白处",
+        "recognition": "OCR",
+        "expected": "ARMS Type",
+        "roi": [
+            953,
+            553,
+            136,
+            63
+        ],
+        "action": "Click",
+        "post_delay": 1000
+    },
+    "GetCharacterOk": {
+        "desc": "点击确认零件转换",
+        "recognition": "OCR",
+        "expected": "确认",
+        "roi": [
+            657,
+            486,
+            235,
+            105
+        ],
+        "action": "Click",
+        "post_delay": 1000
+    },
+    "CanRecycle": {
+        "desc": "点击进入选择回收页面",
+        "recognition": "TemplateMatch",
+        "template": [
+            "Maintenance/CanRecycle.png"
+        ],
+        "action": "Click",
+        "roi": [
+            1036,
+            182,
+            112,
+            268
+        ],
+        "post_delay": 1000
+    },
+    "ChooseRecycle": {
+        "desc": "点击开始行动",
+        "recognition": "OCR",
+        "expected": "开始行动",
+        "action": "Click",
+        "roi": [
+            939,
+            591,
+            242,
+            93
+        ],
+        "post_delay": 1000
+    }
+}

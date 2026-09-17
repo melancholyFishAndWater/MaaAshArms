@@ -62,6 +62,18 @@
         {
             "name": "启动游戏",
             "entry": "TaskStartUp"
+        },
+        {
+            "name": "收取资源",
+            "entry": "TaskReward"
+        },
+        {
+            "name": "每日赠礼",
+            "entry": "TaskGiveGift"
+        },
+        {
+            "name": "维修会",
+            "entry": "TaskMaintenance"
         }
     ]
 }
