@@ -1,0 +1,46 @@
+{
+    "MoveDown": {
+        "desc": "通用下滑",
+        "action": "Swipe",
+        "begin": [
+            600,
+            300
+        ],
+        "end": [
+            600,
+            400
+        ],
+        "end_hold": 200,
+        "post_wait_freezes": 200
+    },
+    "MoveUp": {
+        "desc": "通用上滑",
+        "action": "Swipe",
+        "begin": [
+            600,
+            400
+        ],
+        "end": [
+            600,
+            300
+        ],
+        "end_hold": 200,
+        "post_wait_freezes": 200
+    },
+    "GetReward": {
+        "desc": "领取奖励",
+        "recognition": "OCR",
+        "expected": "获得一览",
+        "action": "Click",
+        "target": [
+            600,
+            650
+        ],
+        "roi": [
+            511,
+            147,
+            221,
+            70
+        ]
+    },
+}

@@ -1,0 +1,80 @@
+{
+    "TaskTrainingCenter": {
+        "desc": "训练所任务",
+        "next": [
+            "EnterTrainingCenter",
+            "[JumpBack]ReturnBattleMainPage"
+        ]
+    },
+    "EnterTrainingCenter": {
+        "desc": "进入训练所",
+        "recognition": "OCR",
+        "expected": "训练所",
+        "roi": [
+            369,
+            658,
+            137,
+            65
+        ],
+        "action": "Click",
+        "next": [
+            "EnterTrainingCenter",
+            "[JumpBack]EnterTrainingOne",
+            "[JumpBack]BackButton",
+            "FlagNoTraining"
+        ],
+        "pre_wait_freezes": 500
+    },
+    "FlagNoTraining": {
+        "desc": "无战斗次数",
+        "recognition": "TemplateMatch",
+        "template": "Battle/BattleTraining/01.png",
+        "roi": [
+            192,
+            524,
+            900,
+            68
+        ],
+        "action": "Click",
+        "target_offset": [
+            0,
+            -225,
+            0,
+            0
+        ],
+        "index": 3
+    },
+    "EnterTrainingOne": {
+        "desc": "进入其中一个训练所关卡",
+        "recognition": "TemplateMatch",
+        "template": "Battle/BattleTraining/11.png",
+        "max_hit": 4,
+        "roi": [
+            192,
+            524,
+            900,
+            68
+        ],
+        "action": "Click",
+        "target_offset": [
+            0,
+            -225,
+            0,
+            0
+        ],
+        "next": [
+            "EnterTrainingTeam",
+            "[JumpBack]MoveUp"
+        ],
+        "post_wait_freezes": 500
+    },
+    "EnterTrainingTeam": {
+        "desc": "进入编队页面",
+        "recognition": "Custom",
+        "custom_recognition": "EnterTrainingTeamRepo",
+        "action": "Click",
+        "next": [
+            "FlagInBattleFormation"
+        ]
+    }
+}

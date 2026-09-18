@@ -5,6 +5,7 @@ from maa.toolkit import Toolkit
 
 import train
 import factory
+import battle_training
 
 
 def main():

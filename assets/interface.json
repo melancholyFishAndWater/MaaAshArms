@@ -63,7 +63,7 @@
         },
         {
             "name": "武装押运",
-            "entry": "TaskTraining"
+            "entry": "TaskTrain"
         },
         {
             "name": "防卫局",
@@ -76,6 +76,10 @@
         {
             "name": "订单工厂",
             "entry": "TaskFactory"
+        },
+        {
+            "name": "训练所",
+            "entry": "TaskTrainingCenter"
         }
     ]
 }

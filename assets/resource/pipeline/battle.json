@@ -1,0 +1,164 @@
+{
+    "ReturnBattleMainPage": {
+        "desc": "回到战斗页面主页",
+        "next": [
+            "FlagInBattleMainPage",
+            "[JumpBack]ReturnMain",
+            "EnterBattleFromMain"
+        ],
+        "post_wait_freezes": 200
+    },
+    "FlagInBattleMainPage": {
+        "desc": "在战斗页面标志",
+        "recognition": "TemplateMatch",
+        "template": "Battle/MainPageFlag/"
+    },
+    "EnterBattleFromMain": {
+        "desc": "从主页进入战斗主页",
+        "recognition": "TemplateMatch",
+        "template": "Battle/MainBattleButton.png",
+        "action": "Click",
+        "next": [
+            "FlagInBattleMainPage",
+            "EnterBattleFromMain"
+        ],
+        "post_wait_freezes": 1000
+    },
+    "FlagInBattleFormation": {
+        "desc": "在战斗编队页面",
+        "recognition": "And",
+        "all_of": [
+            {
+                "recognition": "TemplateMatch",
+                "template": "Battle/BattleButton.png",
+                "roi": [
+                    854,
+                    563,
+                    296,
+                    157
+                ]
+            },
+            {
+                "recognition": "OCR",
+                "expected": "编队",
+                "roi": [
+                    102,
+                    10,
+                    254,
+                    48
+                ]
+            }
+        ],
+        "next": [
+            "FlagAutoButtonLocked",
+            "ClickAutoButton"
+        ],
+        "pre_wait_freezes": 200,
+        "post_wait_freezes": 200
+    },
+    "FlagAutoButtonLocked": {
+        "desc": "自动战斗则强行结束任务链",
+        "recognition": "TemplateMatch",
+        "template": "Battle/AutoBattleLocked.png",
+        "action": "StopTask",
+        "threshold": 0.85,
+        "roi": [
+            890,
+            522,
+            220,
+            70
+        ]
+    },
+    "ClickAutoButton": {
+        "desc": "点击暗淡的自动战斗按钮",
+        "recognition": "TemplateMatch",
+        "template": "Battle/AutoButtonDart.png",
+        "action": "Click",
+        "roi": [
+            887,
+            488,
+            306,
+            141
+        ],
+        "next": [
+            "FlagAutoButtonLight",
+            "ClickAutoButton"
+        ],
+        "post_wait_freezes": 1000
+    },
+    "FlagAutoButtonLight": {
+        "desc": "自动战斗已开启",
+        "recognition": "TemplateMatch",
+        "template": "Battle/AutoButtonLight.png",
+        "roi": [
+            890,
+            522,
+            299,
+            70
+        ],
+        "next": [
+            "ClickBattleButton"
+        ]
+    },
+    "ClickBattleButton": {
+        "desc": "点击出击按钮",
+        "recognition": "TemplateMatch",
+        "template": "Battle/BattleButton.png",
+        "action": "Click",
+        "timeout": 60, // 渣机
+        "next": [
+            "[JumpBack]FlagInLoadingBattle",
+            "[JumpBack]FlagInBattle",
+            "FlagBattleWin"
+        ],
+        "post_wait_freezes": 1000
+    },
+    "FlagInLoadingBattle": {
+        "desc": "在加载战斗界面",
+        "recognition": "OCR",
+        "expected": "Tips",
+        "repeat_wait_freezes": 3000
+    },
+    // TODO 战斗异常
+    "FlagInBattle": {
+        "desc": "正在战斗",
+        "recognition": "OCR",
+        "expected": "接管作战",
+        "post_wait_freezes": 2000,
+        "roi": [
+            664,
+            638,
+            217,
+            65
+        ]
+    },
+    // TODO 战败
+    "FlagBattleWin": {
+        "desc": "战斗胜利",
+        "recognition": "OCR",
+        "expected": "战斗胜利",
+        "action": "Click",
+        "target": [
+            600,
+            650
+        ],
+        "roi": [
+            1030,
+            464,
+            240,
+            78
+        ],
+        "next": [
+            "[JumpBack]GetReward",
+            "FlagBattleWin",
+            "FlagBattleWinNext"
+        ],
+        "post_wait_freezes": 1000
+    },
+    "FlagBattleWinNext": {
+        "desc": "战斗结束后的出口节点",
+        "recognition": "OCR",
+        "expected": "战斗胜利",
+        "inverse": true
+    }
+}
