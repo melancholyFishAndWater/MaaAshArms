@@ -53,7 +53,7 @@
     },
     "FactoryTaskEndFlag": {
         "desc": "任务结束标志",
-        "recognition": "DirectHit",
+        "recognition": "DirectHit"
         // "custom_recognition": "FactoryTaskEndFlagRepo"
     },
     "FactoryTimeEndFlag": {
