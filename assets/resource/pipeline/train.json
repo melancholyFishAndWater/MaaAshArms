@@ -1,13 +1,13 @@
 {
-    "TaskTraining": {
+    "TaskTrain": {
         "desc": "武装押运任务",
         "next": [
             "[JumpBack]ReturnMain",
-            "EnterTraining"
+            "EnterTrain"
         ],
         "post_wait_freezes": 3000
     },
-    "EnterTraining": {
+    "EnterTrain": {
         "desc": "进入武装押运页面",
         "action": "Click",
         "target": [
@@ -17,11 +17,11 @@
         "next": [
             "FlagInTrainMainPage",
             "MaxTrainFlagFromMainPage",
-            "[JumpBack]EnterTraining2"
+            "[JumpBack]EnterTrain2"
         ],
         "post_wait_freezes": 1000
     },
-    "EnterTraining2": {
+    "EnterTrain2": {
         "desc": "点击押运第一行",
         "recognition": "OCR",
         "expected": "武装押运一览",
@@ -51,7 +51,7 @@
         ],
         "next": [
             "[JumpBack]GetTrainReward",
-            "MaxTrainFlagFromTraining",
+            "MaxTrainFlagFromTrain",
             "[JumpBack]Arrow"
         ]
     },
@@ -60,7 +60,7 @@
         "recognition": "Custom",
         "custom_recognition": "MaxTrainFlagFromMainPageReco"
     },
-    "MaxTrainFlagFromTraining": {
+    "MaxTrainFlagFromTrain": {
         "desc": "在押运页面中满列车标志",
         "recognition": "TemplateMatch",
         "template": "Train/MaxTrain.png",
