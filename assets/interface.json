@@ -68,6 +68,10 @@
         {
             "name": "防卫局",
             "entry": "TaskEscort"
+        },
+        {
+            "name": "联络人",
+            "entry": "TaskFriend"
         }
     ]
 }
