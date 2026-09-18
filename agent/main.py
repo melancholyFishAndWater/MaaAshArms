@@ -4,6 +4,7 @@ from maa.agent.agent_server import AgentServer
 from maa.toolkit import Toolkit
 
 import training
+import factory
 
 
 def main():
