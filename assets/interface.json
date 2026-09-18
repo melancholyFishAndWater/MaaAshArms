@@ -72,6 +72,10 @@
         {
             "name": "联络人",
             "entry": "TaskFriend"
+        },
+        {
+            "name": "订单工厂",
+            "entry": "TaskFactory"
         }
     ]
 }
