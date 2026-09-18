@@ -63,7 +63,7 @@
     "MaxTrainFlagFromTraining": {
         "desc": "在押运页面中满列车标志",
         "recognition": "TemplateMatch",
-        "template": "Training/MaxTrain.png",
+        "template": "Train/MaxTrain.png",
         "roi": [
             698,
             0,
@@ -74,7 +74,7 @@
     "Arrow": {
         "desc": "点击暗箭头发车",
         "recognition": "TemplateMatch",
-        "template": "Training/ArrowDart.png",
+        "template": "Train/ArrowDart.png",
         "action": "Click",
         "post_wait_freezes": 1000,
         "next": [
@@ -198,7 +198,7 @@
         "desc": "领取按钮",
         "recognition": "TemplateMatch",
         "template": [
-            "Training/RewardButton.png"
+            "Train/RewardButton.png"
         ],
         "roi": [
             832,

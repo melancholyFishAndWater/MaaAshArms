@@ -3,7 +3,7 @@ import sys
 from maa.agent.agent_server import AgentServer
 from maa.toolkit import Toolkit
 
-import training
+import train
 import factory
 
 
