@@ -3,6 +3,7 @@ docs/node_modules
 docs/.vuepress/.temp
 # Prerequisites
 *.d
+gui_debug.md
 
 # Compiled Object files
 build
@@ -454,6 +455,8 @@ tools/ImageCropper/**/*.png
 .obsidian
 白板
 
+assets/agent
+temp
 scripts
 config
 debug
