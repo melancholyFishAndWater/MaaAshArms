@@ -2,42 +2,43 @@
     "TaskTrain": {
         "desc": "武装押运任务",
         "next": [
-            "[JumpBack]ReturnMain",
-            "EnterTrain"
-        ],
-        "post_wait_freezes": 3000
+            "ClickTrainFromMain",
+            "[JumpBack]ReturnMain"
+        ]
     },
-    "EnterTrain": {
-        "desc": "进入武装押运页面",
+    "ClickTrainFromMain": {
+        "desc": "从主页打卡武装押运页面",
+        "recognition": "TemplateMatch",
+        "template": "Train/TrainButton.png",
         "action": "Click",
-        "target": [
-            54,
-            184
+        "roi": [
+            0,
+            122,
+            126,
+            138
         ],
         "next": [
-            "FlagInTrainMainPage",
-            "MaxTrainFlagFromMainPage",
-            "[JumpBack]EnterTrain2"
+            "ClickTrainFromMain",
+            "GetTrainStatus"
         ],
         "post_wait_freezes": 1000
     },
-    "EnterTrain2": {
-        "desc": "点击押运第一行",
-        "recognition": "OCR",
-        "expected": "武装押运一览",
+    "GetTrainStatus": {
+        "desc": "获取火车状态",
+        "recognition": "Custom",
+        "custom_recognition": "GetTrainStatusReco",
         "action": "Click",
-        "target_offset": [
-            0,
-            75,
-            0,
-            0
+        "next": [
+            "CheckTrainEnd",
+            "FlagInTrainMainPage",
+            "GetTrainStatus"
         ],
-        "roi": [
-            0,
-            90,
-            250,
-            137
-        ]
+        "post_wait_freezes": 1000
+    },
+    "CheckTrainEnd": {
+        "desc": "检测火车任务是否结束",
+        "recognition": "Custom",
+        "custom_recognition": "CheckTrainEndReco"
     },
     "FlagInTrainMainPage": {
         "desc": "在路线一览",
@@ -50,199 +51,155 @@
             106
         ],
         "next": [
-            "[JumpBack]GetTrainReward",
-            "MaxTrainFlagFromTrain",
-            "[JumpBack]Arrow"
+            "CheckTrainEnd",
+            "CheckTrainReward",
+            "NextTrain"
         ]
     },
-    "MaxTrainFlagFromMainPage": {
-        "desc": "在主页中满列车标志",
-        "recognition": "Custom",
-        "custom_recognition": "MaxTrainFlagFromMainPageReco"
-    },
-    "MaxTrainFlagFromTrain": {
-        "desc": "在押运页面中满列车标志",
-        "recognition": "TemplateMatch",
-        "template": "Train/MaxTrain.png",
-        "roi": [
-            698,
-            0,
-            384,
-            115
-        ]
-    },
-    "Arrow": {
-        "desc": "点击暗箭头发车",
+    "NextTrain": {
+        "desc": "发第二列车",
         "recognition": "TemplateMatch",
         "template": "Train/ArrowDart.png",
         "action": "Click",
-        "post_wait_freezes": 1000,
+        "pre_wait_freezes": 500,
         "next": [
+            "[JumpBack]TrainMoveToBottom",
             "DoTrain"
+        ]
+    },
+    "TrainMoveToBottom": {
+        // NOICE 起点是物品的话无法滑动
+        "desc": "移动到列车底部",
+        "action": "Swipe",
+        "repeat": 10,
+        "repeat_delay": 200,
+        "begin": [
+            350,
+            500
         ],
+        "end": [
+            350,
+            400
+        ],
+        "end_hold": 200
+    },
+    "CheckTrainReward": {
+        "desc": "判断是否可以领取列车奖励",
+        "recognition": "Custom",
+        "custom_recognition": "CheckTrainRewardReco",
+        "action": "Click",
+        "next": [
+            "ClickTrainReward",
+            "MoveUp"
+        ]
+    },
+    "ClickTrainReward": {
+        "desc": "领取列车奖励",
+        "recognition": "TemplateMatch",
+        "template": "Train/RewardButton.png",
+        "action": "Click",
         "roi": [
-            130,
-            60,
-            171,
-            631
+            886,
+            128,
+            119,
+            533
+        ],
+        "next": [
+            "ClickTrainReward",
+            "[JumpBack]ClickTap",
+            "DoTrain"
         ]
     },
     "DoTrain": {
         "desc": "发车",
-        "recognition": "Custom",
-        "custom_recognition": "DoTrainReco",
+        "recognition": "TemplateMatch",
+        "template": "Train/CanTrainButton.png",
         "action": "Click",
+        "order_by": "Vertical",
+        "index": -1,
+        "roi": [
+            886,
+            128,
+            119,
+            533
+        ],
         "next": [
-            "FlagInTrainFormation"
+            "DoTrain",
+            "TrainFormation"
         ],
         "post_wait_freezes": 1000
     },
-    "FlagInTrainFormation": {
-        "desc": "出发页面",
+    "TrainFormation": {
+        "desc": "火车出发编队页面",
         "recognition": "OCR",
-        "expected": "出发",
-        "action": "Click",
+        "expected": "列车编队",
+        "roi": [
+            113,
+            4,
+            162,
+            63
+        ],
+        "next": [
+            "GoTrainDart",
+            "GoTrainLight"
+        ]
+    },
+    "GoTrainDart": {
+        "desc": "出发按钮暗淡",
+        "recognition": "TemplateMatch",
+        "template": "Train/GoTrainDart.png",
+        "next": [
+            "ClickAutoTrain"
+        ],
         "roi": [
             951,
             603,
             262,
             99
-        ],
-        "next": [
-            "TrainPushButton"
-        ],
-        "post_wait_freezes": 1000
-    },
-    "TrainPushButton": {
-        "desc": "二次确认",
-        "recognition": "OCR",
-        "expected": "确认",
-        "action": "Click",
-        "roi": [
-            697,
-            450,
-            192,
-            68
-        ],
-        "next": [
-            "TrainConfirm"
         ]
     },
-    "TrainConfirm": {
-        "desc": "点击任意处以跳过动画",
-        "pre_delay": 1000,
-        "action": "Click",
-        "post_wait_freezes": 1000
-    },
-    "GetTrainReward": {
-        "desc": "下滑路线并领取奖励",
-        "recognition": "DirectHit",
-        "begin": [
-            100,
-            300
-        ],
-        "end": [
-            100,
-            200
-        ],
-        "end_hold": 300,
-        "action": "Swipe",
-        "next": [
-            "[JumpBack]FlagTrainHasBlueMark"
-        ],
-        "repeat": 5,
-        "repeat_delay": 500
-    },
-    "FlagTrainHasBlueMark": {
-        "desc": "有蓝色标识",
+    "ClickAutoTrain": {
+        "desc": "点击推荐搭乘",
         "recognition": "TemplateMatch",
-        "template": [
-            "Base/BlueMarkGreen.png"
-        ],
-        "green_mask": true,
-        "roi": [
-            178,
-            71,
-            138,
-            616
-        ],
+        "template": "Train/Auto.png",
         "action": "Click",
-        "target_offset": [
-            34,
-            44,
-            0,
-            0
+        "roi": [
+            976,
+            499,
+            120,
+            116
         ],
         "next": [
-            "FlagTrainReward",
-            "[JumpBack]TrainMainMoveDown"
-        ],
-        "post_wait_freezes": 1000
+            "GoTrainLight"
+        ]
     },
-    "TrainMainMoveDown": {
-        "desc": "进行主内容下滑",
-        "begin": [
-            600,
-            300
-        ],
-        "end": [
-            600,
-            200
-        ],
-        "end_hold": 200,
-        "action": "Swipe",
-        "max_hit": 10,
-        "post_wait_freezes": 1000
-    },
-    "FlagTrainReward": {
-        "desc": "领取按钮",
+    "GoTrainLight": {
+        "desc": "出发按钮亮",
         "recognition": "TemplateMatch",
-        "template": [
-            "Train/RewardButton.png"
-        ],
-        "roi": [
-            832,
-            52,
-            237,
-            601
-        ],
+        "template": "Train/GoTrainLight.png",
         "action": "Click",
         "next": [
-            "FlagInTap1"
-        ],
-        "post_wait_freezes": 1000,
-        "anchor": {}
+            "TrainBusy",
+            "[JumpBack]TrainConfirmation"
+        ]
     },
-    "FlagInTap1": {
-        "desc": "在tap页面",
-        "recognition": "OCR",
-        "expected": "TAP",
-        "roi": [
-            496,
-            603,
-            290,
-            117
-        ],
-        "action": "Click",
+    "TrainConfirmation": {
+        "desc": "火车出发确认",
         "next": [
-            "FlagInTap2"
-        ],
-        "post_wait_freezes": 1000
+            "TrainBusy",
+            "Confirmation",
+            "Click"
+        ]
     },
-    "FlagInTap2": {
-        "desc": "在第二个tap页面",
-        "recognition": "OCR",
-        "expected": "TAP",
+    "TrainBusy": {
+        "desc": "发车成功",
+        "recognition": "Custom",
+        "custom_recognition": "TrainBusyReco",
         "roi": [
-            508,
-            543,
-            265,
-            153
-        ],
-        "action": "Click",
-        "post_wait_freezes": 1000,
-        "next": [
-            "DoTrain"
+            886,
+            128,
+            119,
+            533
         ]
     }
 }
