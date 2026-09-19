@@ -7,6 +7,7 @@
             "HomeFlagFirst",
             "StartGame",
             "[JumpBack]GameLodingFlag",
+            "[JumpBack]StartAshArms",
             "[JumpBack]TouchSignIn",
             "[JumpBack]SignInReward",
             "[JumpBack]NoticePage",
@@ -20,6 +21,8 @@
         "template": [
             "StartUp/GameIcoBiliBili.png"
         ],
+        "threshold": 0.8,
+        "green_mask": true,
         "action": "Click",
         "next": [
             "HomeFlagFirst",
@@ -31,6 +34,11 @@
             "[JumpBack]BackButton"
         ],
         "post_wait_freezes": 3000
+    },
+    "StartAshArms": {
+        "desc": "使用安装包启动",
+        "action": "StartApp",
+        "package": "com.asharmdolls.bilibili"
     },
     "ReturnMain": {
         "desc": "返回主界面",
