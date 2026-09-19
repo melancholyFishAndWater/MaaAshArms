@@ -40,12 +40,11 @@
         ],
         "next": [
             "[JumpBack]RecycleOk",
-            "[JumpBack]GetCharacter",
             "[JumpBack]GetCharacterOk",
+            "[JumpBack]GetCharacter",
             "[JumpBack]CanRecycle",
             "[JumpBack]ChooseRecycle",
-            "ReturnMain"
-            // TODO 退出机制
+            "FlagAllBusy"
         ]
     },
     "RecycleOk": {
@@ -110,5 +109,17 @@
             93
         ],
         "post_delay": 1000
+    },
+    "FlagAllBusy": {
+        "desc": "全部都在行动",
+        "recognition": "TemplateMatch",
+        "template": "Maintenance/BusyButton.png",
+        "index": 1,
+        "roi": [
+            1021,
+            162,
+            134,
+            287
+        ]
     }
 }
