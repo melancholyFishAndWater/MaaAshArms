@@ -105,7 +105,7 @@
         "recognition": "TemplateMatch",
         "template": "Battle/BattleButton.png",
         "action": "Click",
-        "timeout": 60, // 渣机
+        "timeout": 300000,
         "next": [
             "[JumpBack]FlagInLoadingBattle",
             "[JumpBack]FlagInBattle",
