@@ -24,12 +24,12 @@
         }
     ],
     "resource": [
-        {
-            "name": "官服",
-            "path": [
-                "./resource"
-            ]
-        },
+        // {
+        //     "name": "官服",
+        //     "path": [
+        //         "./resource"
+        //     ]
+        // },
         {
             "name": "B 服",
             "path": [
@@ -41,8 +41,8 @@
     "agent": {
         "child_exec": "python",
         "child_args": [
-            // "../agent/main.py"
-            "./agent/main.py"
+            "../agent/main.py"
+            // "./agent/main.py"
         ]
     },
     "task": [
