@@ -23,7 +23,8 @@
             "FlagInMaintenance",
             "EnterMaintenance",
             "[JumpBack]BackButton"
-        ]
+        ],
+        "post_wait_freezes": 3000
     },
     "FlagInMaintenance": {
         "desc": "维修会标志",
