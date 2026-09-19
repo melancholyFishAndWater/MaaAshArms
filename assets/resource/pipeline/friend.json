@@ -1,4 +1,5 @@
 {
+    // BUG 退出机制
     "TaskFriend": {
         "desc": "联络人任务",
         "next": [
