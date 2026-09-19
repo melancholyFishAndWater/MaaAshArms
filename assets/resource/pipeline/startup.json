@@ -1,4 +1,5 @@
 {
+    // TODO 重构逻辑
     "TaskStartUp": {
         "desc": "启动游戏任务",
         "post_wait_freezes": 300,
@@ -17,6 +18,8 @@
     },
     "StartGame": {
         "desc": "点击游戏图标",
+        "post_wait_freezes": 3000,
+        "timeout": 60000,
         "recognition": "TemplateMatch",
         "template": [
             "StartUp/GameIcoBiliBili.png"
@@ -32,8 +35,7 @@
             "[JumpBack]SignInReward",
             "[JumpBack]NoticePage",
             "[JumpBack]BackButton"
-        ],
-        "post_wait_freezes": 3000
+        ]
     },
     "StartAshArms": {
         "desc": "使用安装包启动",
