@@ -1,4 +1,5 @@
 {
+    // NOICE 起点是物品的话无法滑动，详见 TrainMoveToBottom
     "MoveDown": {
         "desc": "通用下滑",
         "action": "Swipe",
@@ -8,9 +9,9 @@
         ],
         "end": [
             600,
-            400
+            500
         ],
-        "end_hold": 200,
+        "end_hold": 300,
         "post_wait_freezes": 200
     },
     "MoveUp": {
@@ -18,13 +19,13 @@
         "action": "Swipe",
         "begin": [
             600,
-            400
+            500
         ],
         "end": [
             600,
             300
         ],
-        "end_hold": 200,
+        "end_hold": 300,
         "post_wait_freezes": 200
     },
     "GetReward": {
@@ -41,6 +42,45 @@
             147,
             221,
             70
+        ]
+    },
+    "Confirmation": {
+        "desc": "通用点击确认",
+        "recognition": "OCR",
+        "expected": "确认",
+        "roi": [
+            340,
+            168,
+            596,
+            383
+        ],
+        "action": "Click",
+        "post_wait_freezes": 500
+    },
+    "Click": {
+        "desc": "点击屏幕中心",
+        "action": "Click",
+        "target": [
+            640,
+            360
+        ],
+        "post_wait_freezes": 200
+    },
+    "ClickTap": {
+        "desc": "点击tap",
+        "recognition": "OCR",
+        "expected": [
+            "T",
+            "A",
+            "P"
+        ],
+        "action": "Click",
+        "post_wait_freezes": 200,
+        "roi": [
+            530,
+            591,
+            218,
+            68
         ]
     }
     // "Noice": {
