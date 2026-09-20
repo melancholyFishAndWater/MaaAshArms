@@ -1,11 +1,28 @@
 {
-    // TODO 重构 优化退出逻辑
     "TaskFactory": {
-        "desc": "订单工厂任务",
+        "desc": "开始订单工厂任务",
         "next": [
-            "[JumpBack]ReturnMain",
-            "EnterFactoryFromMain",
-            "FlagInFactory"
+            "TaskFactoryNext",
+            "[JumpBack]ReturnFactory"
+        ]
+    },
+    "ReturnFactory": {
+        "desc": "返回订单工厂页面",
+        "next": [
+            "InFactoryPage",
+            "[JumpBack]EnterFactoryFromMain",
+            "[JumpBack]ReturnMain"
+        ]
+    },
+    "InFactoryPage": {
+        "desc": "在订单工厂",
+        "recognition": "OCR",
+        "expected": "订单工厂",
+        "roi": [
+            109,
+            5,
+            184,
+            57
         ]
     },
     "EnterFactoryFromMain": {
@@ -20,55 +37,65 @@
         ],
         "action": "Click",
         "next": [
-            "FlagInFactory",
+            "InFactoryPage",
             "EnterFactoryFromMain"
         ],
         "post_wait_freezes": 1000
     },
-    "FlagInFactory": {
-        "desc": "在订单工厂",
-        "recognition": "Custom",
-        "custom_recognition": "FlagInFactoryRepo",
+    "TaskFactoryNext": {
+        "desc": "订单厂任务",
+        "recognition": "OCR",
+        "expected": "订单工厂",
+        "roi": [
+            112,
+            8,
+            198,
+            51
+        ],
         "next": [
-            "[JumpBack]FactoryTimeEndFlag",
+            "CheckFactoryEnd",
+            "[JumpBack]InitFactoryItemGetter",
+            "[JumpBack]GetFactoryItemStatus",
+            "[JumpBack]FactoryTimeEnd",
             "[JumpBack]FactoryCreateOrder",
-            "[JumpBack]FactoryChooseStart",
-            "[JumpBack]FactoryMove",
-            "FactoryTaskEndFlag"
+            "[JumpBack]FactoryMover"
         ]
     },
-    "FactoryMove": {
-        "desc": "下滑",
-        "action": "Swipe",
-        "begin": [
-            600,
-            400
-        ],
-        "end": [
-            600,
-            320
-        ],
-        "end_hold": 200,
-        "post_wait_freezes": 500,
-        "max_hit": 7
-    },
-    "FactoryTaskEndFlag": {
-        "desc": "任务结束标志",
-        "recognition": "DirectHit"
-        // "custom_recognition": "FactoryTaskEndFlagRepo"
-    },
-    "FactoryTimeEndFlag": {
-        "desc": "耗时归零可领取",
+    "CheckFactoryEnd": {
+        "desc": "判断订单工厂任务是否结束",
         "recognition": "Custom",
-        "custom_recognition": "FactoryTimeEndFlagRepo",
-        "action": "Click",
-        "target_offset": [
-            -911,
-            146,
-            0,
-            0
+        "custom_recognition": "CheckFactoryEndReco",
+        "custom_recognition_param": "99" // 最大次数，用于调控每日任务的订单工厂
+    },
+    "InitFactoryItemGetter": {
+        "desc": "初始化获得器",
+        "max_hit": 1,
+        "action": "Custom",
+        "custom_action": "InitFactoryItemGetterAct"
+    },
+    "GetFactoryItemStatus": {
+        "desc": "获取工厂订单对象状态",
+        "recognition": "Custom",
+        "custom_recognition": "GetFactoryItemStatusRepo",
+        "action": "StopTask"
+    },
+    "FactoryMover": {
+        "desc": "移动器",
+        "action": "Custom",
+        "custom_action": "FactoryMoverAct",
+        "max_hit": 20
+    },
+    "FactoryTimeEnd": {
+        "desc": "耗时归零则领取",
+        "recognition": "Custom",
+        "custom_recognition": "FactoryTimeEndRepo",
+        "action": "Custom",
+        "custom_action": "FactoryTimeEndAct",
+        "next": [
+            "FactoryCreateOrder",
+            "FactoryTimeEnd"
         ],
-        "post_wait_freezes": 1000
+        "post_wait_freezes": 200
     },
     "FactoryCreateOrder": {
         "desc": "创建新订单",
@@ -85,7 +112,7 @@
             "FactoryChooseCharater",
             "FactoryCreateOrder"
         ],
-        "post_wait_freezes": 1000
+        "post_wait_freezes": 3000 // 太短容易点到中间角色
     },
     "FactoryChooseCharater": {
         "desc": "选择角色",
@@ -120,6 +147,18 @@
             504
         ],
         "action": "Click",
-        "post_wait_freezes": 1000
+        "post_wait_freezes": 200,
+        "next": [
+            "FactoryChooseStart",
+            "FactoryChooseStartEnd"
+        ]
+    },
+    "FactoryChooseStartEnd": {
+        "desc": "无开始建造按钮",
+        "recognition": "And",
+        "all_of": [
+            "FactoryChooseStart"
+        ],
+        "inverse": true
     }
 }

@@ -1,7 +1,10 @@
+import time, json
+from re import search
 from typing import Any
 
 from maa.agent.agent_server import AgentServer
 from maa.custom_recognition import CustomRecognition
+from maa.custom_action import CustomAction
 from maa.context import (
     Context,
     JRecognitionType,
@@ -10,24 +13,30 @@ from maa.context import (
     RecognitionDetail,
     OCRResult,
 )
-from maa.pipeline import JTemplateMatch, JOCR, JColorMatch
+from maa.pipeline import JActionType, JClick, JTemplateMatch, JOCR, JColorMatch
 from numpy import imag, ndarray, dtype
-from base import addListToTuple
+from base import addListToTuple, toTuple
+
+# 新增订单次数
+_count = 0
+# 角色名称: 建造结束时间戳
+_timestamp_by_build_end_names: dict[str, float] = {}
 
 # 相对红×的坐标
-# LAST = [-224, 142, 0, 0]  # 最后一个槽位
-# INVERVAL = [-75.6, 0, 0, 0]  # 槽位间隔
-factory_times = 0  # 执行任务次数 结束标志
+_NAME_WH = (120, 25)
+_NAME_OFFSET = (-1037, 188, 0, 0)
+_TIME_WH = (117, 59)
+_TIME_OFFSET = (-628, 210, 0, 0)
 
 
-# 获取红×位置
-def getCancelButton(
-    context: Context, argv: CustomRecognition.AnalyzeArg
+# 获取红叉位置
+def _getCancelButton(
+    context: Context, image: ndarray
 ) -> list[tuple[int, int, int, int]] | None:
     result = context.run_recognition_direct(
         JRecognitionType.TemplateMatch,
         JTemplateMatch(["Factory/CancelButtonGreen.png"], roi=(1125, 90, 111, 370)),
-        argv.image,
+        image,
     )
     if result and result.hit:
         l = result.filtered_results
@@ -39,33 +48,38 @@ def getCancelButton(
         return final
 
 
-@AgentServer.custom_recognition("FlagInFactoryRepo")
-class FlagInFactoryRepo(CustomRecognition):
-    def analyze(
-        self, context: Context, argv: CustomRecognition.AnalyzeArg
-    ) -> Rect | None:
-        result = context.run_recognition_direct(
-            JRecognitionType.OCR, JOCR(["订单工厂"], roi=(81, 10, 242, 53)), argv.image
-        )
-        if result is None or not result.hit:
-            return
-        factory_times = 0
-        return result.box
+# 基于红叉位置获取角色名字
+def _getName(context: Context, image: ndarray, cancel_box):
+    return context.run_recognition_direct(
+        JRecognitionType.OCR,
+        JOCR(
+            [".+"],
+            roi=(cancel_box[0], cancel_box[1]) + _NAME_WH,
+            roi_offset=_NAME_OFFSET,
+        ),
+        image,
+    )
 
 
-# 如果任务结束，返回非None
-@AgentServer.custom_recognition("FactoryTaskEndFlagRepo")
-class FactoryTaskEndFlagRepo(CustomRecognition):
+# 如果满足任务结束条件，返回非None
+@AgentServer.custom_recognition("CheckFactoryEndReco")
+class CheckFactoryEndReco(CustomRecognition):
     def analyze(
         self, context: Context, argv: CustomRecognition.AnalyzeArg
     ) -> list[int] | None:
-        if factory_times >= 3:
+        global _timestamp_by_build_end_names, _count
+        max = argv.custom_recognition_param
+        if _count >= int(max):
+            return []
+        if (len(_timestamp_by_build_end_names) == 3) and all(
+            v > time.time() for v in _timestamp_by_build_end_names.values()
+        ):
             return []
 
 
-# 返回None或红×位置
-@AgentServer.custom_recognition("FactoryTimeEndFlagRepo")
-class FactoryTimeEndFlagRepo(CustomRecognition):
+# 若时间归零，返回红叉位置
+@AgentServer.custom_recognition("FactoryTimeEndRepo")
+class FactoryTimeEndRepo(CustomRecognition):
     def analyze(
         self, context: Context, argv: CustomRecognition.AnalyzeArg
     ) -> (
@@ -77,20 +91,44 @@ class FactoryTimeEndFlagRepo(CustomRecognition):
         | None
     ):
         TIME = (-628, 210, 60, 0)  # 时间坐标的偏移量
-        l = getCancelButton(context, argv)
-        if not l:
+        boxes = _getCancelButton(context, argv.image)
+        if not boxes:
             return
-        for i in l:
-            result2 = context.run_recognition_direct(
+        for i in boxes:
+            time_result = context.run_recognition_direct(
                 JRecognitionType.OCR,
                 JOCR(expected=["00:00"], roi=i, roi_offset=TIME),
                 argv.image,
             )
-            if result2 and result2.hit:
+            if time_result and time_result.hit:
                 return i
 
 
-# 返回None或第一个可建造角色位置
+# WARN 没有识别到名字就强制结束任务链 不过一般情况下不会发生，比较红叉+时间已经足以框住名字
+# 收取完成的订单直到目标位置出现 创建新的订单
+@AgentServer.custom_action("FactoryTimeEndAct")
+class FactoryTimeEndAct(CustomAction):
+    def run(
+        self, context: Context, argv: CustomAction.RunArg
+    ) -> CustomAction.RunResult | bool:
+        OFFSET = (-890, 156, -30, -30)
+        name_result = _getName(context, argv.reco_detail.raw_image, argv.box)
+        if not name_result or not name_result.hit:
+            return False
+        b_name = name_result.best_result
+        assert type(b_name) == OCRResult
+        run_result = context.run_action_direct(
+            JActionType.Click, JClick(toTuple(argv.box), target_offset=OFFSET)
+        )
+        if run_result and run_result.success:
+            global _timestamp_by_build_end_names
+            if b_name.text in _timestamp_by_build_end_names.keys():
+                del _timestamp_by_build_end_names[b_name.text]
+            return True
+        return False
+
+
+# 返回None或第一个可建造角色的选择区域
 @AgentServer.custom_recognition("FactoryChooseCharaterRepo")
 class FactoryChooseCharaterRepo(CustomRecognition):
     def analyze(
@@ -115,12 +153,16 @@ class FactoryChooseCharaterRepo(CustomRecognition):
                     PAGE[3],
                 )
                 result2 = context.run_recognition_direct(
-                    JRecognitionType.OCR, JOCR(["生产中"], roi=roi), argv.image
+                    JRecognitionType.TemplateMatch,
+                    JTemplateMatch(["Factory/Busy.png"], roi=roi),
+                    argv.image,
                 )
                 if not result2 or not result2.hit:
                     return roi
 
 
+# TODO 扩展成自定义数量
+# 根据建造数返回位置
 @AgentServer.custom_recognition("FactoryChooseNumberRepo")
 class FactoryChooseNumberRepo(CustomRecognition):
     def analyze(
@@ -133,24 +175,103 @@ class FactoryChooseNumberRepo(CustomRecognition):
         | tuple[int, int, int, int]
         | None
     ):
-        btns = getCancelButton(context, argv)
-        assert btns
-        for i in btns:
+        boxes = _getCancelButton(context, argv.image)
+        assert boxes
+        for i in boxes:
             result = context.run_recognition_direct(
+                JRecognitionType.OCR,
+                JOCR(["请添加订单数"], roi=toTuple(i), roi_offset=(-125, 160, 60, 0)),
+                argv.image,
+            )
+            if not result or not result.hit:
+                continue
+            build_result = context.run_recognition_direct(
                 JRecognitionType.OCR,
                 JOCR(
                     ["建造"], roi=(i[0], i[1], 772, 102), roi_offset=(-920, 102, 0, 0)
                 ),
                 argv.image,
             )
-            if not result or not result.hit:
+            if not build_result or not build_result.hit:
                 continue
-            chooses = result.filtered_results
+            chooses = build_result.filtered_results
 
             def func(i):
                 return i.box[0]
 
             final = min(chooses, key=func)
             assert type(final) == OCRResult
-            print(final.box)
             return final.box
+
+
+# 初始化全局变量 请确保节点 max_hit = 1
+@AgentServer.custom_action("InitFactoryItemGetterAct")
+class InitFactoryItemGetterAct(CustomAction):
+    def run(
+        self, context: Context, argv: CustomAction.RunArg
+    ) -> CustomAction.RunResult | bool:
+        global _timestamp_by_build_end_names, _count
+        _timestamp_by_build_end_names = {}
+        _count = 0
+        return True
+
+
+# 获取订单工厂对象状态 始终返回None
+@AgentServer.custom_recognition("GetFactoryItemStatusRepo")
+class GetFactoryItemStatusRepo(CustomRecognition):
+    def analyze(
+        self, context: Context, argv: CustomRecognition.AnalyzeArg
+    ) -> (
+        CustomRecognition.AnalyzeResult
+        | Rect
+        | list[int]
+        | ndarray[tuple[Any, ...], dtype[Any]]
+        | tuple[int, int, int, int]
+        | None
+    ):
+        boxes = _getCancelButton(context, argv.image)
+        if not boxes:
+            return
+        global _timestamp_by_build_end_names
+        for i in boxes:
+            time_result = context.run_recognition_direct(
+                JRecognitionType.OCR,
+                JOCR(
+                    [r"\d\d:\d\d"], roi=(i[0], i[1]) + _TIME_WH, roi_offset=_TIME_OFFSET
+                ),
+                argv.image,
+            )
+            if not time_result or not time_result.hit:
+                continue
+            name_result = _getName(context, argv.image, i)
+            if not name_result or not name_result.hit:
+                continue
+            b_time = time_result.best_result
+            b_name = name_result.best_result
+            assert type(b_time) == OCRResult
+            assert type(b_name) == OCRResult
+            m = search(r"(\d\d):(\d\d)", b_time.text)
+            if not m:
+                continue
+            offset_sec = int(m.group(1)) * 60 + int(m.group(2))
+            _timestamp_by_build_end_names[b_name.text] = time.time() + offset_sec
+        return None
+
+
+# 订单工厂专用移动器 记得设置 max_hit
+@AgentServer.custom_action("FactoryMoverAct")
+class FactoryMoverAct(CustomAction):
+    def run(
+        self, context: Context, argv: CustomAction.RunArg
+    ) -> CustomAction.RunResult | bool:
+        global _timestamp_by_build_end_names
+        n = len(_timestamp_by_build_end_names)
+        if n == 3:
+            last_ts = next(reversed(_timestamp_by_build_end_names.values()))
+            action = "MoveUp" if last_ts < time.time() else "MoveDown"
+        else:
+            action = "MoveUp" if n < 3 else "MoveDown"
+        result = context.run_action(action)
+        if not result:
+            return False
+        return result.success
