@@ -106,5 +106,5 @@
             "GetReward"
         ],
         "post_wait_freezes": 1000
-    },
+    }
 }
