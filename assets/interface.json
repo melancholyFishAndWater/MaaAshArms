@@ -51,7 +51,7 @@
         },
         {
             "name": "收取资源",
-            "entry": "TaskReward"
+            "entry": "TaskFeiduReward"
         },
         {
             "name": "每日赠礼",
