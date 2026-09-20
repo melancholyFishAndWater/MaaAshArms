@@ -32,7 +32,7 @@ class EnterTrainingTeamRepo(CustomRecognition):
     ):
         result = context.run_recognition_direct(
             JRecognitionType.OCR,
-            JOCR([r".{0,}难度.+"], roi=(470, 509, 93, 37)),
+            JOCR([r".{0,}难度.+"], roi=(470, 125, 158, 434)),
             argv.image,
         )
         if not result or not result.hit:
@@ -44,5 +44,4 @@ class EnterTrainingTeamRepo(CustomRecognition):
             if not m:
                 continue
             if m.group(1) == "六":
-                box = i.box
-                return addListToTuple(box, [490, 0, 0, 70])
+                return (960, i.box[1], 93, 97)

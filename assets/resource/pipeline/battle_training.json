@@ -2,11 +2,11 @@
     "TaskTrainingCenter": {
         "desc": "训练所任务",
         "next": [
-            "EnterTrainingCenter",
+            "EnterTraining",
             "[JumpBack]ReturnBattleMainPage"
         ]
     },
-    "EnterTrainingCenter": {
+    "EnterTraining": {
         "desc": "进入训练所",
         "recognition": "OCR",
         "expected": "训练所",
@@ -18,10 +18,9 @@
         ],
         "action": "Click",
         "next": [
-            "EnterTrainingCenter",
-            "[JumpBack]EnterTrainingOne",
-            "[JumpBack]BackButton",
-            "FlagNoTraining"
+            "EnterTraining",
+            "FlagNoTraining",
+            "[JumpBack]EnterTrainingOne"
         ],
         "pre_wait_freezes": 500
     },
@@ -63,12 +62,11 @@
             0
         ],
         "next": [
-            "EnterTrainingTeam",
+            "EnterTrainingFormation",
             "[JumpBack]MoveUp"
-        ],
-        "post_wait_freezes": 500
+        ]
     },
-    "EnterTrainingTeam": {
+    "EnterTrainingFormation": {
         "desc": "进入编队页面",
         "recognition": "Custom",
         "custom_recognition": "EnterTrainingTeamRepo",

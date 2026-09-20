@@ -71,7 +71,7 @@
     "ClickAutoButton": {
         "desc": "点击暗淡的自动战斗按钮",
         "recognition": "TemplateMatch",
-        "template": "Battle/AutoButtonDart.png",
+        "template": "Battle/AutoBattleDart.png",
         "action": "Click",
         "roi": [
             887,
@@ -88,7 +88,9 @@
     "FlagAutoButtonLight": {
         "desc": "自动战斗已开启",
         "recognition": "TemplateMatch",
-        "template": "Battle/AutoButtonLight.png",
+        "template": "Battle/AutoBattleLightGreen.png",
+        "green_mask": true,
+        "method": 10001,
         "roi": [
             890,
             522,
@@ -104,19 +106,18 @@
         "recognition": "TemplateMatch",
         "template": "Battle/BattleButton.png",
         "action": "Click",
-        "timeout": 300000,
+        "timeout": 60000,
         "next": [
             "[JumpBack]FlagInLoadingBattle",
             "[JumpBack]FlagInBattle",
             "FlagBattleWin"
-        ],
-        "post_wait_freezes": 1000
+        ]
     },
     "FlagInLoadingBattle": {
         "desc": "在加载战斗界面",
         "recognition": "OCR",
         "expected": "Tips",
-        "repeat_wait_freezes": 3000
+        "post_wait_freezes": 3000
     },
     // TODO 战斗异常
     "FlagInBattle": {
