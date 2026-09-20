@@ -80,6 +80,10 @@
         {
             "name": "训练所",
             "entry": "TaskTrainingCenter"
+        },
+        {
+            "name": "领取奖励",
+            "entry": "TaskMission"
         }
     ]
 }

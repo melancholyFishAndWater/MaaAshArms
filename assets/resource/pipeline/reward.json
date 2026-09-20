@@ -1,0 +1,110 @@
+{
+    "TaskMission": {
+        "desc": "领取奖励的任务",
+        "next": [
+            "CheckMissionStatus",
+            "[JumpBack]ReturnMain"
+        ]
+    },
+    // TODO
+    "TaskEmail": {
+        "desc": "领取邮箱奖励"
+    },
+    "CheckMissionStatus": {
+        "desc": "获得任务状态",
+        "recognition": "OCR",
+        "expected": "任务",
+        "roi": [
+            849,
+            676,
+            63,
+            36
+        ],
+        "next": [
+            "MissionNoBlueMark",
+            "MissionBlueMark"
+        ]
+    },
+    "MissionNoBlueMark": {
+        "desc": "任务没有蓝色标志",
+        "recognition": "TemplateMatch",
+        "template": "Base/BlueMarkGreen.png",
+        "green_mask": true,
+        "inverse": true,
+        "roi": [
+            885,
+            602,
+            63,
+            60
+        ]
+    },
+    "MissionBlueMark": {
+        "desc": "任务有蓝色标志",
+        "recognition": "TemplateMatch",
+        "template": "Base/BlueMarkGreen.png",
+        "green_mask": true,
+        "roi": [
+            885,
+            602,
+            63,
+            60
+        ],
+        "action": "Click",
+        "target_offset": [
+            -25,
+            25,
+            0,
+            0
+        ],
+        "next": [
+            "InMissionPage"
+        ],
+        "post_wait_freezes": 1000
+    },
+    "InMissionPage": {
+        "desc": "在任务界面",
+        "recognition": "OCR",
+        "expected": "任务",
+        "roi": [
+            108,
+            15,
+            189,
+            44
+        ],
+        "next": [
+            "MissionEnd",
+            "MissionGetReward"
+        ]
+    },
+    "MissionEnd": {
+        "desc": "领取资源结束标志",
+        "recognition": "TemplateMatch",
+        "template": "Reward/Mission/RewardDart.png",
+        "method": 10001,
+        "threshold": 0.8,
+        "roi": [
+            992,
+            69,
+            215,
+            84
+        ]
+    },
+    "MissionGetReward": {
+        "desc": "点击一键领取",
+        "recognition": "TemplateMatch",
+        "template": "Reward/Mission/RewardLight.png",
+        "action": "Click",
+        "roi": [
+            992,
+            69,
+            215,
+            84
+        ],
+        "next": [
+            "MissionEnd",
+            "MissionGetReward",
+            "GetReward"
+        ],
+        "post_wait_freezes": 1000
+    },
+}
