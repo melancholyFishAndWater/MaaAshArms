@@ -1,4 +1,5 @@
 {
+    // TODO 重构 优化退出逻辑
     "TaskFactory": {
         "desc": "订单工厂任务",
         "next": [
