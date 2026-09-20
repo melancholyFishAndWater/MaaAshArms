@@ -94,23 +94,7 @@ class CheckTrainEndReco(CustomRecognition):
             return []
 
 
-# 上滑列车路线
-def TrainInfoMoveUp(context: Context):
-    context.run_action_direct(
-        JActionType.Swipe,
-        JSwipe(begin=(120, 400, 0, 0), end=[(120, 300, 0, 0)], end_hold=[200]),
-    )
-
-
-# 下滑列车路线
-def TrainInfoMoveDown(context: Context):
-    context.run_action_direct(
-        JActionType.Swipe,
-        JSwipe(begin=(120, 300, 0, 0), end=[(120, 400, 0, 0)], end_hold=[200]),
-    )
-
-
-# 若有可领取资源，找到领取页面
+# 若有可领取资源，返回非None
 @AgentServer.custom_recognition("CheckTrainRewardReco")
 class CheckTrainRewardReco(CustomRecognition):
     def analyze(
@@ -124,20 +108,8 @@ class CheckTrainRewardReco(CustomRecognition):
         | None
     ):
         global _train_completed_count
-        if _train_completed_count == 0:
-            return
-        for i in range(10):
-            result = context.run_recognition_direct(
-                JRecognitionType.TemplateMatch,
-                JTemplateMatch(["Base/BlueMarkGreen.png"], roi=(201, 122, 89, 501)),
-                argv.image,
-            )
-            if not result or not result.hit:
-                TrainInfoMoveUp(context)
-                continue
-            return addListToTuple(result.box, [-33, -41, 0, 0])
-        # 防止识别失败
-        _train_completed_count = 0
+        if _train_completed_count != 0:
+            return []
 
 
 # 火车出发 出发数加一

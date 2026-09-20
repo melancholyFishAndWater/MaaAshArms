@@ -53,18 +53,21 @@
         "next": [
             "CheckTrainEnd",
             "CheckTrainReward",
-            "NextTrain"
+            "[JumpBack]NextTrain"
         ]
     },
     "NextTrain": {
         "desc": "发第二列车",
         "recognition": "TemplateMatch",
         "template": "Train/ArrowDart.png",
+        "threshold": 0.85,
+        "method": 10001,
+        "order_by": "Vertical",
+        "index": -1,
         "action": "Click",
         "pre_wait_freezes": 500,
         "next": [
-            "[JumpBack]TrainMoveToBottom",
-            "DoTrain"
+            "TrainMoveToBottom"
         ]
     },
     "TrainMoveToBottom": {
@@ -81,18 +84,70 @@
             350,
             400
         ],
-        "end_hold": 200
-    },
-    "CheckTrainReward": {
-        "desc": "判断是否可以领取列车奖励",
-        "recognition": "Custom",
-        "custom_recognition": "CheckTrainRewardReco",
-        "action": "Click",
+        "end_hold": 200,
         "next": [
-            "ClickTrainReward",
-            "MoveUp"
+            "DoTrain"
         ]
     },
+    "CheckTrainReward": {
+        "desc": "判断是否可以领取火车奖励",
+        "recognition": "Custom",
+        "custom_recognition": "CheckTrainRewardReco",
+        "next": [
+            "TrainInfoMoveUp",
+            "TrainInfoBlueMark"
+        ]
+    },
+    "TrainInfoMoveUp": {
+        "desc": "上滑列车路线",
+        "action": "Swipe",
+        "begin": [
+            120,
+            400
+        ],
+        "end": [
+            120,
+            300
+        ],
+        "end_hold": 200
+    },
+    "TrainInfoBlueMark": {
+        "desc": "火车蓝标记",
+        "recognition": "TemplateMatch",
+        "template": "Base/BlueMarkGreen.png",
+        "green_mask": true,
+        "target_offset": [
+            -33,
+            41,
+            0,
+            0
+        ],
+        "action": "Click",
+        "roi": [
+            201,
+            122,
+            89,
+            501
+        ],
+        "next": [
+            "ClickTrainReward",
+            "[JumpBack]TrainMoveUp"
+        ]
+    },
+    "TrainMoveUp": {
+        "desc": "火车专用主页面下滑",
+        "action": "Swipe",
+        "begin": [
+            375,
+            400
+        ],
+        "end": [
+            375,
+            300
+        ],
+        "end_hold": 200
+    },
+    // TEST
     "ClickTrainReward": {
         "desc": "领取列车奖励",
         "recognition": "TemplateMatch",
@@ -117,6 +172,7 @@
         "action": "Click",
         "order_by": "Vertical",
         "index": -1,
+        "threshold": 0.85,
         "roi": [
             886,
             128,
@@ -180,15 +236,8 @@
         "action": "Click",
         "next": [
             "TrainBusy",
-            "[JumpBack]TrainConfirmation"
-        ]
-    },
-    "TrainConfirmation": {
-        "desc": "火车出发确认",
-        "next": [
-            "TrainBusy",
-            "Confirmation",
-            "Click"
+            "[JumpBack]Confirmation",
+            "[JumpBack]Click"
         ]
     },
     "TrainBusy": {
