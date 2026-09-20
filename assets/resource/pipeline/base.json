@@ -32,16 +32,8 @@
         "desc": "领取奖励",
         "recognition": "OCR",
         "expected": "获得一览",
-        "action": "Click",
-        "target": [
-            600,
-            650
-        ],
-        "roi": [
-            511,
-            147,
-            221,
-            70
+        "next": [
+            "ClickTap"
         ]
     },
     "Confirmation": {
