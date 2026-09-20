@@ -1,26 +1,25 @@
 {
     "ReturnBattleMainPage": {
-        "desc": "回到战斗页面主页",
+        "desc": "回到出击作页面主页",
         "next": [
-            "FlagInBattleMainPage",
-            "[JumpBack]ReturnMain",
-            "EnterBattleFromMain"
-        ],
-        "post_wait_freezes": 200
+            "InBattleMainPage",
+            "ClickMainBattleButton",
+            "[JumpBack]ReturnMain"
+        ]
     },
-    "FlagInBattleMainPage": {
-        "desc": "在战斗页面标志",
+    "InBattleMainPage": {
+        "desc": "在出击作页面标志",
         "recognition": "TemplateMatch",
         "template": "Battle/MainPageFlag/"
     },
-    "EnterBattleFromMain": {
-        "desc": "从主页进入战斗主页",
+    "ClickMainBattleButton": {
+        "desc": "从主页进入出击作主页",
         "recognition": "TemplateMatch",
         "template": "Battle/MainBattleButton.png",
         "action": "Click",
         "next": [
-            "FlagInBattleMainPage",
-            "EnterBattleFromMain"
+            "InBattleMainPage",
+            "ClickMainBattleButton"
         ],
         "post_wait_freezes": 1000
     },
