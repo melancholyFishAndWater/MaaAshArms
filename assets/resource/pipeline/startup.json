@@ -102,6 +102,7 @@
             "StartUp/TouchSignInPage.png"
         ],
         "action": "Click",
+        "green_mask": true,
         "target": [
             630,
             540
