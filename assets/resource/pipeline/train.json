@@ -2,12 +2,12 @@
     "TaskTrain": {
         "desc": "武装押运任务",
         "next": [
-            "ClickTrainFromMain",
+            "ClickTrainArrow",
             "[JumpBack]ReturnMain"
         ]
     },
-    "ClickTrainFromMain": {
-        "desc": "从主页打卡武装押运页面",
+    "ClickTrainArrow": {
+        "desc": "点击火车押运的蓝色箭头",
         "recognition": "TemplateMatch",
         "template": "Train/TrainButton.png",
         "action": "Click",
@@ -18,46 +18,104 @@
             138
         ],
         "next": [
-            "ClickTrainFromMain",
-            "GetTrainStatus"
+            "GetTrainStatus",
+            "ClickTrainArrow"
         ],
         "post_wait_freezes": 1000
+    },
+    "CheckTrainEnd": {
+        "desc": "检测武装押运任务是否结束",
+        "recognition": "Custom",
+        "custom_recognition": "CheckTrainEndReco",
+        "action": "StopTask"
     },
     "GetTrainStatus": {
         "desc": "获取火车状态",
         "recognition": "Custom",
         "custom_recognition": "GetTrainStatusReco",
-        "action": "Click",
         "next": [
             "CheckTrainEnd",
-            "FlagInTrainMainPage",
-            "GetTrainStatus"
+            "EnterTrainMainPage"
         ],
         "post_wait_freezes": 1000
     },
-    "CheckTrainEnd": {
-        "desc": "检测火车任务是否结束",
-        "recognition": "Custom",
-        "custom_recognition": "CheckTrainEndReco"
-    },
-    "FlagInTrainMainPage": {
-        "desc": "在路线一览",
-        "recognition": "OCR",
-        "expected": "路线一览",
-        "roi": [
-            74,
-            0,
-            246,
-            106
-        ],
+    "EnterTrainMainPage": {
+        "desc": "进入武装押运界面",
+        "action": "Click",
+        "target": "GetTrainStatus",
         "next": [
             "CheckTrainEnd",
-            "CheckTrainReward",
-            "[JumpBack]NextTrain"
+            "[JumpBack]TrainInfoMover"
         ]
     },
+    // TODO 目标地方
+    "TrainInfoMover": {
+        "desc": "武装押运专用路线移动器 移动到有奖励的地方 或 发车列表最下边并发车",
+        "recognition": "Custom",
+        "custom_recognition": "TrainInfoMoverReco",
+        "next": [
+            "CheckTrainReward",
+            "NextTrain"
+        ]
+    },
+    "CheckTrainReward": {
+        "desc": "判断是否可以领取火车奖励",
+        "recognition": "TemplateMatch",
+        "template": "Base/BlueMarkGreen.png",
+        "green_mask": true,
+        "target_offset": [
+            -33,
+            41,
+            0,
+            0
+        ],
+        "action": "Click",
+        "roi": [
+            201,
+            122,
+            89,
+            501
+        ],
+        "next": [
+            "CheckTrainRewardNext",
+            "CheckTrainReward"
+        ]
+    },
+    "CheckTrainRewardNext": {
+        "desc": "检测是否进入有奖励的页面",
+        "recognition": "TemplateMatch",
+        "template": "Train/Locked.png",
+        "roi": [
+            886,
+            128,
+            119,
+            533
+        ],
+        "next": [
+            "GetTrainReward",
+            "[JumpBack]MoveUp"
+        ]
+    },
+    "GetTrainReward": {
+        "desc": "领取列车奖励",
+        "recognition": "TemplateMatch",
+        "template": "Train/RewardButton.png",
+        "action": "Click",
+        "roi": [
+            886,
+            128,
+            119,
+            533
+        ],
+        "next": [
+            "DoTrain",
+            // "GetTrainRewardEnd",
+            "[JumpBack]ClickTap"
+        ],
+        "post_wait_freezes": 500
+    },
     "NextTrain": {
-        "desc": "发第二列车",
+        "desc": "在当前页面找到最下面路线并发车",
         "recognition": "TemplateMatch",
         "template": "Train/ArrowDart.png",
         "threshold": 0.85,
@@ -89,82 +147,6 @@
             "DoTrain"
         ]
     },
-    "CheckTrainReward": {
-        "desc": "判断是否可以领取火车奖励",
-        "recognition": "Custom",
-        "custom_recognition": "CheckTrainRewardReco",
-        "next": [
-            "TrainInfoMoveUp",
-            "TrainInfoBlueMark"
-        ]
-    },
-    "TrainInfoMoveUp": {
-        "desc": "上滑列车路线",
-        "action": "Swipe",
-        "begin": [
-            120,
-            400
-        ],
-        "end": [
-            120,
-            300
-        ],
-        "end_hold": 200
-    },
-    "TrainInfoBlueMark": {
-        "desc": "火车蓝标记",
-        "recognition": "TemplateMatch",
-        "template": "Base/BlueMarkGreen.png",
-        "green_mask": true,
-        "target_offset": [
-            -33,
-            41,
-            0,
-            0
-        ],
-        "action": "Click",
-        "roi": [
-            201,
-            122,
-            89,
-            501
-        ],
-        "next": [
-            "ClickTrainReward",
-            "[JumpBack]TrainMoveUp"
-        ]
-    },
-    "TrainMoveUp": {
-        "desc": "火车专用主页面下滑",
-        "action": "Swipe",
-        "begin": [
-            375,
-            400
-        ],
-        "end": [
-            375,
-            300
-        ],
-        "end_hold": 200
-    },
-    // TEST
-    "ClickTrainReward": {
-        "desc": "领取列车奖励",
-        "recognition": "TemplateMatch",
-        "template": "Train/RewardButton.png",
-        "action": "Click",
-        "roi": [
-            886,
-            128,
-            119,
-            533
-        ],
-        "next": [
-            "ClickTrainReward",
-            "[JumpBack]GetReward",
-            "DoTrain"
-        ]
-    },
     "DoTrain": {
         "desc": "发车",
         "recognition": "TemplateMatch",
@@ -172,7 +154,7 @@
         "action": "Click",
         "order_by": "Vertical",
         "index": -1,
-        "threshold": 0.85,
+        "method": 10001,
         "roi": [
             886,
             128,
@@ -180,8 +162,8 @@
             533
         ],
         "next": [
-            "DoTrain",
-            "TrainFormation"
+            "TrainFormation",
+            "DoTrain"
         ],
         "post_wait_freezes": 1000
     },
