@@ -102,6 +102,20 @@
             218,
             68
         ]
+    },
+    "NetworkError": {
+        "desc": "关闭网络错误",
+        "recognition": "OCR",
+        "expected": "通信异常",
+        "roi": [
+            373,
+            227,
+            192,
+            70
+        ],
+        "next": [
+            "Confirmation"
+        ]
     }
     // "Noice": {
     //     "desc": "给python端提供的自定义通知处理",
