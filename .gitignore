@@ -455,6 +455,7 @@ tools/ImageCropper/**/*.png
 .obsidian
 白板
 
+*.lnk
 assets/agent
 temp
 scripts
