@@ -1,4 +1,5 @@
 {
+    // TODO 资源不足时
     "TaskFactory": {
         "desc": "开始订单工厂任务",
         "next": [
@@ -6,23 +7,20 @@
             "[JumpBack]ReturnFactory"
         ]
     },
-    "ReturnFactory": {
-        "desc": "返回订单工厂页面",
+    "TaskFastFactory": {
+        "desc": " 代码中一定要覆写启用FactorySkip!!! CheckFactoryEnd 设置建造前几个角色; FactoryChooseNumber 调控建造数",
         "next": [
-            "InFactoryPage",
-            "[JumpBack]EnterFactoryFromMain",
-            "[JumpBack]ReturnMain"
+            "FastFactoryInit",
+            "[JumpBack]ReturnFactory"
         ]
     },
-    "InFactoryPage": {
-        "desc": "在订单工厂",
-        "recognition": "OCR",
-        "expected": "订单工厂",
-        "roi": [
-            109,
-            5,
-            184,
-            57
+    "ReturnFactory": {
+        "desc": "返回订单工厂页面",
+        "max_hit": 2,
+        "timeout": 600000,
+        "next": [
+            "EnterFactoryFromMain",
+            "[JumpBack]ReturnMain"
         ]
     },
     "EnterFactoryFromMain": {
@@ -37,10 +35,45 @@
         ],
         "action": "Click",
         "next": [
+            "[JumpBack]NetworkError",
             "InFactoryPage",
-            "EnterFactoryFromMain"
+            "EnterFactoryFromMain",
+            "[JumpBack]ReturnMain"
+        ]
+    },
+    "InFactoryPage": {
+        "desc": "在订单工厂页面",
+        "recognition": "OCR",
+        "expected": "订单工厂",
+        "roi": [
+            112,
+            8,
+            198,
+            51
+        ]
+    },
+    "FastFactoryInit": {
+        "desc": "处理干扰项以准备快速建造缺失的角色",
+        "recognition": "And",
+        "all_of": [
+            "InFactoryPage"
         ],
-        "post_wait_freezes": 1000
+        "next": [
+            "[JumpBack]FactorySkip",
+            "[JumpBack]FactoryTimeEnd",
+            "FastFactoryNext"
+        ]
+    },
+    "FastFactoryNext": {
+        "desc": "快速建造前x个缺失的角色",
+        "action": "Custom",
+        "custom_action": "InitFactoryItemGetterAct",
+        "next": [
+            "[JumpBack]FactorySkip",
+            "[JumpBack]FactoryTimeEnd",
+            "CheckFactoryEnd",
+            "[JumpBack]FactoryCreateOrder"
+        ]
     },
     "TaskFactoryNext": {
         "desc": "订单厂任务",
@@ -52,51 +85,88 @@
             198,
             51
         ],
+        "action": "Custom",
+        "custom_action": "InitFactoryItemGetterAct", // 初始化获得器
         "next": [
-            "CheckFactoryEnd",
-            "[JumpBack]InitFactoryItemGetter",
             "[JumpBack]GetFactoryItemStatus",
+            "CheckFactoryEnd",
+            "[JumpBack]FactorySkip",
             "[JumpBack]FactoryTimeEnd",
             "[JumpBack]FactoryCreateOrder",
             "[JumpBack]FactoryMover"
         ]
     },
-    "CheckFactoryEnd": {
-        "desc": "判断订单工厂任务是否结束",
-        "recognition": "Custom",
-        "custom_recognition": "CheckFactoryEndReco",
-        "custom_recognition_param": "99" // 最大次数，用于调控每日任务的订单工厂
-    },
-    "InitFactoryItemGetter": {
-        "desc": "初始化获得器",
-        "max_hit": 1,
-        "action": "Custom",
-        "custom_action": "InitFactoryItemGetterAct"
-    },
     "GetFactoryItemStatus": {
-        "desc": "获取工厂订单对象状态",
+        "desc": "获取工厂订单对象状态 始终不会命中",
         "recognition": "Custom",
-        "custom_recognition": "GetFactoryItemStatusRepo",
-        "action": "StopTask"
+        "custom_recognition": "GetFactoryItemStatusRepo"
     },
     "FactoryMover": {
-        "desc": "移动器",
+        "desc": "移动器 控制页面上下移动找到未识别位置或完成位置",
         "action": "Custom",
         "custom_action": "FactoryMoverAct",
         "max_hit": 20
     },
+    "CheckFactoryEnd": {
+        "desc": "判断订单工厂任务是否结束",
+        "recognition": "Custom",
+        "custom_recognition": "CheckFactoryEndReco",
+        "custom_recognition_param": "4" // 最大收获次数
+    },
+    "FactorySkip": {
+        "desc": "跳过建造等待 默认关闭",
+        "recognition": "OCR",
+        "expected": "加速建造",
+        "enabled": false,
+        "roi": [
+            1030,
+            127,
+            182,
+            504
+        ],
+        "action": "Click",
+        "post_wait_freezes": 500,
+        "next": [
+            "FactoryClickSkipOk"
+        ]
+    },
+    // TODO 验证是否有多余生产许可
+    "FactoryClickSkipOk": {
+        "desc": "点击确认跳过按钮",
+        "recognition": "OCR",
+        "expected": "确认",
+        "roi": [
+            683,
+            422,
+            196,
+            66
+        ]
+    },
     "FactoryTimeEnd": {
         "desc": "耗时归零则领取",
         "recognition": "Custom",
-        "custom_recognition": "FactoryTimeEndRepo",
+        "custom_recognition": "FactoryTimeEndRepo", // 返回红叉位置
         "action": "Custom",
         "custom_action": "FactoryTimeEndAct",
         "next": [
-            "FactoryCreateOrder",
+            "FactoryTimeEndSuccess",
             "FactoryTimeEnd"
         ],
-        "post_wait_freezes": 200
+        "post_wait_freezes": 1000
     },
+    "FactoryTimeEndSuccess": {
+        "desc": "判断FactoryTimeEnd成功的标志",
+        "recognition": "OCR",
+        "expected": "创建新的订单",
+        "roi": "FactoryTimeEnd",
+        "roi_offset": [
+            -620,
+            110,
+            200,
+            50
+        ]
+    },
+    // 创建新订单系列动作
     "FactoryCreateOrder": {
         "desc": "创建新订单",
         "recognition": "OCR",
@@ -129,6 +199,7 @@
         "desc": "选择建造数",
         "recognition": "Custom",
         "custom_recognition": "FactoryChooseNumberRepo",
+        "custom_recognition_param": "1", // 建造数
         "action": "Click",
         "next": [
             "FactoryChooseStart",

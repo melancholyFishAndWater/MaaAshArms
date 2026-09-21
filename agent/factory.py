@@ -17,7 +17,7 @@ from maa.pipeline import JActionType, JClick, JTemplateMatch, JOCR, JColorMatch
 from numpy import imag, ndarray, dtype
 from base import addListToTuple, toTuple
 
-# 新增订单次数
+# 收获次数
 _count = 0
 # 角色名称: 建造结束时间戳
 _timestamp_by_build_end_names: dict[str, float] = {}
@@ -61,6 +61,9 @@ def _getName(context: Context, image: ndarray, cancel_box):
     )
 
 
+# ---------- reco ----------
+
+
 # 如果满足任务结束条件，返回非None
 @AgentServer.custom_recognition("CheckFactoryEndReco")
 class CheckFactoryEndReco(CustomRecognition):
@@ -68,8 +71,7 @@ class CheckFactoryEndReco(CustomRecognition):
         self, context: Context, argv: CustomRecognition.AnalyzeArg
     ) -> list[int] | None:
         global _timestamp_by_build_end_names, _count
-        max = argv.custom_recognition_param
-        if _count >= int(max):
+        if _count >= int(argv.custom_recognition_param):
             return []
         if (len(_timestamp_by_build_end_names) == 3) and all(
             v > time.time() for v in _timestamp_by_build_end_names.values()
@@ -102,30 +104,6 @@ class FactoryTimeEndRepo(CustomRecognition):
             )
             if time_result and time_result.hit:
                 return i
-
-
-# WARN 没有识别到名字就强制结束任务链 不过一般情况下不会发生，比较红叉+时间已经足以框住名字
-# 收取完成的订单直到目标位置出现 创建新的订单
-@AgentServer.custom_action("FactoryTimeEndAct")
-class FactoryTimeEndAct(CustomAction):
-    def run(
-        self, context: Context, argv: CustomAction.RunArg
-    ) -> CustomAction.RunResult | bool:
-        OFFSET = (-890, 156, -30, -30)
-        name_result = _getName(context, argv.reco_detail.raw_image, argv.box)
-        if not name_result or not name_result.hit:
-            return False
-        b_name = name_result.best_result
-        assert type(b_name) == OCRResult
-        run_result = context.run_action_direct(
-            JActionType.Click, JClick(toTuple(argv.box), target_offset=OFFSET)
-        )
-        if run_result and run_result.success:
-            global _timestamp_by_build_end_names
-            if b_name.text in _timestamp_by_build_end_names.keys():
-                del _timestamp_by_build_end_names[b_name.text]
-            return True
-        return False
 
 
 # 返回None或第一个可建造角色的选择区域
@@ -161,8 +139,7 @@ class FactoryChooseCharaterRepo(CustomRecognition):
                     return roi
 
 
-# TODO 扩展成自定义数量
-# 根据建造数返回位置
+# 根据建造数返回选择位置
 @AgentServer.custom_recognition("FactoryChooseNumberRepo")
 class FactoryChooseNumberRepo(CustomRecognition):
     def analyze(
@@ -176,7 +153,8 @@ class FactoryChooseNumberRepo(CustomRecognition):
         | None
     ):
         boxes = _getCancelButton(context, argv.image)
-        assert boxes
+        if not boxes:
+            return
         for i in boxes:
             result = context.run_recognition_direct(
                 JRecognitionType.OCR,
@@ -195,25 +173,10 @@ class FactoryChooseNumberRepo(CustomRecognition):
             if not build_result or not build_result.hit:
                 continue
             chooses = build_result.filtered_results
-
-            def func(i):
-                return i.box[0]
-
-            final = min(chooses, key=func)
+            number = int(argv.custom_recognition_param)
+            final = len(chooses) >= number and chooses[number - 1] or chooses[-1]
             assert type(final) == OCRResult
             return final.box
-
-
-# 初始化全局变量 请确保节点 max_hit = 1
-@AgentServer.custom_action("InitFactoryItemGetterAct")
-class InitFactoryItemGetterAct(CustomAction):
-    def run(
-        self, context: Context, argv: CustomAction.RunArg
-    ) -> CustomAction.RunResult | bool:
-        global _timestamp_by_build_end_names, _count
-        _timestamp_by_build_end_names = {}
-        _count = 0
-        return True
 
 
 # 获取订单工厂对象状态 始终返回None
@@ -258,6 +221,45 @@ class GetFactoryItemStatusRepo(CustomRecognition):
         return None
 
 
+# ---------- action ----------
+
+
+# 初始化全局变量
+@AgentServer.custom_action("InitFactoryItemGetterAct")
+class InitFactoryItemGetterAct(CustomAction):
+    def run(
+        self, context: Context, argv: CustomAction.RunArg
+    ) -> CustomAction.RunResult | bool:
+        global _timestamp_by_build_end_names, _count
+        _timestamp_by_build_end_names = {}
+        _count = 0
+        return True
+
+
+# WARN 没有识别到名字就强制结束任务链 不过一般情况下不会发生，毕竟红叉+时间已经足以框住名字
+# 收取完成的订单直到目标位置出现 创建新的订单
+@AgentServer.custom_action("FactoryTimeEndAct")
+class FactoryTimeEndAct(CustomAction):
+    def run(
+        self, context: Context, argv: CustomAction.RunArg
+    ) -> CustomAction.RunResult | bool:
+        OFFSET = (-890, 156, -30, -30)
+        name_result = _getName(context, argv.reco_detail.raw_image, argv.box)
+        if not name_result or not name_result.hit:
+            return False
+        b_name = name_result.best_result
+        assert type(b_name) == OCRResult
+        run_result = context.run_action_direct(
+            JActionType.Click, JClick(toTuple(argv.box), target_offset=OFFSET)
+        )
+        if run_result and run_result.success:
+            global _timestamp_by_build_end_names
+            if b_name.text in _timestamp_by_build_end_names.keys():
+                del _timestamp_by_build_end_names[b_name.text]
+            return True
+        return False
+
+
 # 订单工厂专用移动器 记得设置 max_hit
 @AgentServer.custom_action("FactoryMoverAct")
 class FactoryMoverAct(CustomAction):
@@ -275,3 +277,14 @@ class FactoryMoverAct(CustomAction):
         if not result:
             return False
         return result.success
+
+
+# 判断收获成功 收获次数+1
+@AgentServer.custom_action("")
+class FactoryChooseStartEndAct(CustomAction):
+    def run(
+        self, context: Context, argv: CustomAction.RunArg
+    ) -> CustomAction.RunResult | bool:
+        global _count
+        _count += 1
+        return True
