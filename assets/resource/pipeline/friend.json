@@ -1,5 +1,4 @@
 {
-    // BUG 退出机制
     "TaskFriend": {
         "desc": "联络人任务",
         "next": [
@@ -26,8 +25,8 @@
     },
     "FlagFriendLight": {
         "desc": "按钮可按",
-        "max_hit": 5,
-        "threshold": 0.985,
+        "max_hit": 4,
+        "method": 10001,
         "recognition": "TemplateMatch",
         "template": "Friend/LightButton.png",
         "action": "Click",
@@ -43,7 +42,7 @@
     },
     "FlagFriendDart": {
         "desc": "按钮不可按",
-        "threshold": 0.985,
+        "method": 10001,
         "recognition": "TemplateMatch",
         "template": "Friend/DartButton.png",
         "roi": [
