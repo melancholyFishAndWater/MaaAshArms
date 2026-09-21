@@ -28,6 +28,34 @@
         "end_hold": 300,
         "post_wait_freezes": 200
     },
+    "MoveLeft": {
+        "desc": "通用左滑",
+        "action": "Swipe",
+        "begin": [
+            640,
+            360
+        ],
+        "end": [
+            440,
+            360
+        ],
+        "end_hold": 200,
+        "post_wait_freezes": 200
+    },
+    "MoveRight": {
+        "desc": "通用右滑",
+        "action": "Swipe",
+        "begin": [
+            640,
+            360
+        ],
+        "end": [
+            840,
+            360
+        ],
+        "end_hold": 200,
+        "post_wait_freezes": 200
+    },
     "GetReward": {
         "desc": "领取奖励",
         "recognition": "OCR",

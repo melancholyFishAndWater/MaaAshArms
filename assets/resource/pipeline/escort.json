@@ -1,18 +1,12 @@
 {
+    // TODO 重构
+    // TODO 判断物品价值
+    // TODO 优化判断逻辑
     "TaskEscort": {
         "desc": "防卫局任务",
         "next": [
-            "EscortDelivery",
-            "[JumpBack]ReturnEscort"
-        ]
-    },
-    "ReturnEscort": {
-        "desc": "返回防卫局界面",
-        "max_hit": 2,
-        "next": [
-            "FlagInEscort",
             "EnterEscort",
-            "[JumpBack]BackButton"
+            "[JumpBack]ReturnMain"
         ]
     },
     "EnterEscort": {
@@ -26,14 +20,12 @@
             150
         ],
         "action": "Click",
-        "post_wait_freezes": 1000,
         "next": [
-            "FlagInEscort",
-            "EnterEscort",
-            "[JumpBack]BackButton"
+            "InEscort",
+            "EnterEscort"
         ]
     },
-    "FlagInEscort": {
+    "InEscort": {
         "desc": "在防卫局界面",
         "recognition": "TemplateMatch",
         "template": "Escort/EscortFlag/",
@@ -42,41 +34,42 @@
             0,
             401,
             106
+        ],
+        "next": [
+            "EscortDelivery",
+            "FindAnyEscort"
         ]
     },
     "EscortDelivery": {
         "desc": "一键交付",
         "recognition": "TemplateMatch",
         "template": "Escort/EscortDelivery.png",
+        "method": 10001,
         "action": "Click",
-        "next": [
-            "FindAnyEscort"
-        ],
         "roi": [
             280,
             599,
             309,
             121
         ],
-        "post_wait_freezes": 1000
+        "next": [
+            "[JumpBack]ClickTap",
+            "FindAnyEscort"
+        ]
     },
     "FindAnyEscort": {
         "desc": "左滑直到接取所有任务",
-        "max_hit": 10,
-        "post_wait_freezes": 500,
-        "action": "Swipe",
-        "begin": [
-            400,
-            300
-        ],
-        "end": [
-            600,
-            300
-        ],
-        "end_hold": 200,
         "next": [
-            "FindEscort"
+            "CheckEscortEnd",
+            "[JumpBack]FindEscort",
+            "[JumpBack]MoveRight"
         ]
+    },
+    "CheckEscortEnd": {
+        "desc": "检测防卫局任务是否结束 目前效果是检测10次后触发",
+        "recognition": "Custom",
+        "custom_recognition": "CheckEscortEndReco",
+        "action": "StopTask"
     },
     "FindEscort": {
         "desc": "接取任务",
@@ -92,7 +85,7 @@
         "next": [
             "ChooseToEscort"
         ],
-        "post_wait_freezes": 1000
+        "post_wait_freezes": 200
     },
     "ChooseToEscort": {
         "desc": "选择角色执行任务",
@@ -106,11 +99,11 @@
         ],
         "action": "Click",
         "next": [
-            "PushOkToEscort"
+            "ClickOkEscort"
         ],
-        "post_wait_freezes": 1000
+        "post_wait_freezes": 200
     },
-    "PushOkToEscort": {
+    "ClickOkEscort": {
         "desc": "点击确认按钮执行任务",
         "recognition": "OCR",
         "expected": "确认",
@@ -121,6 +114,6 @@
             73
         ],
         "action": "Click",
-        "post_wait_freezes": 1000
+        "post_wait_freezes": 200
     }
 }
