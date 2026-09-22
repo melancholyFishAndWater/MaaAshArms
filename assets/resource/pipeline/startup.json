@@ -2,18 +2,10 @@
     // TODO 重构逻辑
     "TaskStartUp": {
         "desc": "启动游戏任务",
-        "post_wait_freezes": 300,
-        "timeout": 60000,
         "next": [
             "HomeFlagFirst",
             "StartGame",
-            "[JumpBack]GameLodingFlag",
-            "[JumpBack]StartAshArms",
-            "[JumpBack]TouchSignIn",
-            "[JumpBack]SignInReward",
-            "[JumpBack]NoticePage",
-            "[JumpBack]BackButton",
-            "[JumpBack]HomeButton"
+            "StartAshArms"
         ]
     },
     "StartGame": {
@@ -24,7 +16,7 @@
         "template": [
             "StartUp/GameIcoBiliBili.png"
         ],
-        "threshold": 0.8,
+        "method": 10001,
         "green_mask": true,
         "action": "Click",
         "next": [
@@ -40,7 +32,16 @@
     "StartAshArms": {
         "desc": "使用安装包启动",
         "action": "StartApp",
-        "package": "com.asharmdolls.bilibili"
+        "package": "com.asharmdolls.bilibili",
+        "next": [
+            "HomeFlagFirst",
+            "[JumpBack]GameLodingFlag",
+            "[JumpBack]TouchSignIn",
+            "[JumpBack]SignInReward",
+            "[JumpBack]NoticePage",
+            "[JumpBack]BackButton",
+            "[JumpBack]HomeButton"
+        ]
     },
     "ReturnMain": {
         "desc": "返回主界面",
