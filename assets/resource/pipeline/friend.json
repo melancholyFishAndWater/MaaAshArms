@@ -2,8 +2,8 @@
     "TaskFriend": {
         "desc": "联络人任务",
         "next": [
-            "[JumpBack]ReturnMain",
-            "EnterFriend"
+            "EnterFriend",
+            "[JumpBack]ReturnMain"
         ]
     },
     "EnterFriend": {
