@@ -230,6 +230,8 @@
         "all_of": [
             "FactoryChooseStart"
         ],
-        "inverse": true
+        "inverse": true,
+        "action": "Custom",
+        "custom_action": "FactoryChooseStartEndAct"
     }
 }

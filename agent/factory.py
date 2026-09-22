@@ -280,7 +280,7 @@ class FactoryMoverAct(CustomAction):
 
 
 # 判断收获成功 收获次数+1
-@AgentServer.custom_action("")
+@AgentServer.custom_action("FactoryChooseStartEndAct")
 class FactoryChooseStartEndAct(CustomAction):
     def run(
         self, context: Context, argv: CustomAction.RunArg
