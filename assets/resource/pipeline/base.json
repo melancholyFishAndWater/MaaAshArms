@@ -116,6 +116,52 @@
         "next": [
             "Confirmation"
         ]
+    },
+    "BackButton": {
+        "desc": "点击返回按钮",
+        "recognition": "TemplateMatch",
+        "template": [
+            "StartUp/BackButton.png"
+        ],
+        "roi": [
+            0,
+            0,
+            154,
+            130
+        ],
+        "action": "Click",
+        "post_wait_freezes": 1000
+    },
+    "HomeButton": {
+        "desc": "点击回主页按钮",
+        "recognition": "TemplateMatch",
+        "template": [
+            "StartUp/HomeButton.png"
+        ],
+        "action": "Click",
+        "post_wait_freezes": 1000,
+        "roi": [
+            1140,
+            0,
+            140,
+            130
+        ]
+    },
+    "HomeFlagFirst": {
+        "desc": "在游戏主页",
+        "recognition": "TemplateMatch",
+        "template": [
+            "StartUp/HomeFlag/"
+        ]
+    },
+    "ReturnMain": {
+        "desc": "返回主界面",
+        "max_hit": 2,
+        "next": [
+            "HomeFlagFirst",
+            "[JumpBack]HomeButton",
+            "[JumpBack]BackButton"
+        ]
     }
     // "Noice": {
     //     "desc": "给python端提供的自定义通知处理",

@@ -4,14 +4,12 @@
         "desc": "启动游戏任务",
         "next": [
             "HomeFlagFirst",
-            "StartGame",
+            "ClickGameIco",
             "StartAshArms"
         ]
     },
-    "StartGame": {
+    "ClickGameIco": {
         "desc": "点击游戏图标",
-        "post_wait_freezes": 3000,
-        "timeout": 60000,
         "recognition": "TemplateMatch",
         "template": [
             "StartUp/GameIcoBiliBili.png"
@@ -21,13 +19,14 @@
         "action": "Click",
         "next": [
             "HomeFlagFirst",
-            "StartGame",
+            "ClickGameIco",
             "[JumpBack]GameLodingFlag",
             "[JumpBack]TouchSignIn",
-            "[JumpBack]SignInReward",
-            "[JumpBack]NoticePage",
-            "[JumpBack]BackButton"
-        ]
+            "[JumpBack]GetReward",
+            "[JumpBack]NoticeClickDisable"
+        ],
+        "post_wait_freezes": 5000,
+        "timeout": 300000
     },
     "StartAshArms": {
         "desc": "使用安装包启动",
@@ -37,56 +36,11 @@
             "HomeFlagFirst",
             "[JumpBack]GameLodingFlag",
             "[JumpBack]TouchSignIn",
-            "[JumpBack]SignInReward",
-            "[JumpBack]NoticePage",
-            "[JumpBack]BackButton",
-            "[JumpBack]HomeButton"
-        ]
-    },
-    "ReturnMain": {
-        "desc": "返回主界面",
-        "max_hit": 2,
-        "next": [
-            "HomeFlagFirst",
-            "[JumpBack]HomeButton",
-            "[JumpBack]BackButton"
-        ]
-    },
-    "BackButton": {
-        "desc": "点击返回按钮",
-        "recognition": "TemplateMatch",
-        "template": [
-            "StartUp/BackButton.png"
+            "[JumpBack]GetReward",
+            "[JumpBack]NoticeClickDisable"
         ],
-        "roi": [
-            0,
-            0,
-            154,
-            130
-        ],
-        "action": "Click",
-        "post_wait_freezes": 1000
-    },
-    "HomeButton": {
-        "desc": "点击回主页按钮",
-        "recognition": "TemplateMatch",
-        "template": [
-            "StartUp/HomeButton.png"
-        ],
-        "action": "Click",
-        "post_wait_freezes": 1000,
-        "roi": [
-            1140,
-            0,
-            140,
-            130
-        ]
-    },
-    "HomeFlagFirst": {
-        "recognition": "TemplateMatch",
-        "template": [
-            "StartUp/HomeFlag/"
-        ]
+        "post_wait_freezes": 5000,
+        "timeout": 300000
     },
     "GameLodingFlag": {
         "desc": "正在加载游戏",
@@ -110,37 +64,23 @@
         ],
         "post_wait_freezes": 3000
     },
-    "SignInReward": {
-        "desc": "领取登录奖励",
-        "recognition": "OCR",
-        "expected": "获得一览",
-        "action": "Click",
-        "target": [
-            0,
-            -1
-        ],
-        "roi": [
-            511,
-            147,
-            221,
-            70
-        ]
-    },
-    "NoticePage": {
-        "desc": "关闭公告界面",
+    "NoticeClickDisable": {
+        "desc": "点击公告不再提示",
         "recognition": "OCR",
         "expected": "今日不再提示",
         "action": "Click",
         "next": [
-            "NoticePage2"
-        ]
+            "NoticeClose"
+        ],
+        "post_wait_freezes": 1000
     },
-    "NoticePage2": {
+    "NoticeClose": {
+        "desc": "关闭公告页面",
         "action": "Click",
         "target": [
             0,
             -1
         ],
-        "post_wait_freezes": 2000
+        "post_wait_freezes": 1000
     }
 }
