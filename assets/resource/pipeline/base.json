@@ -162,6 +162,24 @@
             "[JumpBack]HomeButton",
             "[JumpBack]BackButton"
         ]
+    },
+    "InServerMaintenance": {
+        "desc": "游戏维护中",
+        "recognition": "OCR",
+        "expected": ".+维护中.+",
+        "roi": [
+            395,
+            162,
+            473,
+            211
+        ],
+        "action": "StopTask",
+        "focus": {
+            "Node.Action.Starting": {
+                "content": "服务器维护，任务结束",
+                "display": "modal"
+            }
+        }
     }
     // "Noice": {
     //     "desc": "给python端提供的自定义通知处理",
