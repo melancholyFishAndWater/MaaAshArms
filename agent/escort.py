@@ -37,4 +37,4 @@ class CheckEscortEndReco(CustomRecognition):
             _count += 1
         else:
             _count = 0
-            return []
+            return [0] * 4

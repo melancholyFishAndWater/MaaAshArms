@@ -114,7 +114,7 @@ class CheckTrainEndReco(CustomRecognition):
     ):
         global _train_pending_count
         if _train_pending_count == 2:
-            return []
+            return [0] * 4
 
 
 # 火车出发 出发数加一
@@ -153,7 +153,7 @@ class TrainInfoMoverReco(CustomRecognition):
             # 是否有奖励
             blue = context.run_recognition("CheckTrainReward", argv.image)
             if blue and blue.hit:
-                return []
+                return [0] * 4
 
             # 是否有未解锁路线
             locked_result = context.run_recognition_direct(
@@ -162,7 +162,7 @@ class TrainInfoMoverReco(CustomRecognition):
                 argv.image,
             )
             if locked_result and locked_result.hit:
-                return []
+                return [0] * 4
 
             # 是否为最终路线
             last_result = context.run_recognition_direct(
@@ -171,7 +171,7 @@ class TrainInfoMoverReco(CustomRecognition):
                 argv.image,
             )
             if last_result and last_result.hit:
-                return []
+                return [0] * 4
 
 
 # TODO 发车Reco

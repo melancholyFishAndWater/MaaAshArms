@@ -45,4 +45,4 @@ class CheckFreezesRepo(CustomRecognition):
         if not last_freezes_image:
             last_freezes_image = argv.image
             return
-        return []
+        return [0] * 4
