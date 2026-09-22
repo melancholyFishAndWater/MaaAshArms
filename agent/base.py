@@ -28,21 +28,22 @@ def toTuple(arr) -> tuple[int, int, int, int]:
     return (arr[0], arr[1], arr[2], arr[3])
 
 
+# TEST
 # 返回是否冻结
-@AgentServer.custom_recognition("CheckFreezesRepo")
-class CheckFreezesRepo(CustomRecognition):
-    def analyze(
-        self, context: Context, argv: CustomRecognition.AnalyzeArg
-    ) -> (
-        CustomRecognition.AnalyzeResult
-        | Rect
-        | list[int]
-        | ndarray[tuple[Any, ...], dtype[Any]]
-        | tuple[int, int, int, int]
-        | None
-    ):
-        global last_freezes_image
-        if not last_freezes_image:
-            last_freezes_image = argv.image
-            return
-        return [0] * 4
+# @AgentServer.custom_recognition("CheckFreezesRepo")
+# class CheckFreezesRepo(CustomRecognition):
+#     def analyze(
+#         self, context: Context, argv: CustomRecognition.AnalyzeArg
+#     ) -> (
+#         CustomRecognition.AnalyzeResult
+#         | Rect
+#         | list[int]
+#         | ndarray[tuple[Any, ...], dtype[Any]]
+#         | tuple[int, int, int, int]
+#         | None
+#     ):
+#         global last_freezes_image
+#         if not last_freezes_image:
+#             last_freezes_image = argv.image
+#             return
+#         return [0] * 4
