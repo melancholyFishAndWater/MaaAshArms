@@ -1,5 +1,4 @@
 {
-    // TODO 重构逻辑
     "TaskStartUp": {
         "desc": "启动游戏任务",
         "next": [
@@ -21,6 +20,10 @@
             "HomeFlagFirst",
             "ClickGameIco",
             "[JumpBack]GameLodingFlag",
+            "InServerMaintenance",
+            "[JumpBack]GameUpdate",
+            "[JumpBack]GameUpdateError",
+            "[JumpBack]GameUpdateNow",
             "[JumpBack]TouchSignIn",
             "[JumpBack]GetReward",
             "[JumpBack]NoticeClickDisable"
@@ -35,6 +38,10 @@
         "next": [
             "HomeFlagFirst",
             "[JumpBack]GameLodingFlag",
+            "InServerMaintenance",
+            "[JumpBack]GameUpdate",
+            "[JumpBack]GameUpdateError",
+            "[JumpBack]GameUpdateNow",
             "[JumpBack]TouchSignIn",
             "[JumpBack]GetReward",
             "[JumpBack]NoticeClickDisable"
@@ -82,5 +89,51 @@
             -1
         ],
         "post_wait_freezes": 1000
+    },
+    "GameUpdate": {
+        "desc": "提示更新",
+        "recognition": "OCR",
+        "expected": "下载更新",
+        "roi": [
+            406,
+            238,
+            120,
+            45
+        ],
+        "next": [
+            "ClickConfirm"
+        ],
+        "focus": {
+            "Node.Recognition.Succeeded": "检测到游戏更新"
+        }
+    },
+    "GameUpdateError": {
+        "desc": "更新失败",
+        "recognition": "OCR",
+        "expected": ".+失败",
+        "roi": [
+            984,
+            431,
+            796,
+            72
+        ],
+        "next": [
+            "ClickConfirm"
+        ],
+        "focus": {
+            "Node.Recognition.Succeeded": "更新失败，尝试重新更新"
+        }
+    },
+    "GameUpdateNow": {
+        "desc": "正在更新",
+        "recognition": "OCR",
+        "expected": "下载更新",
+        "roi": [
+            852,
+            614,
+            89,
+            22
+        ],
+        "post_wait_freezes": 3000
     }
 }
