@@ -1,4 +1,5 @@
 {
+    // TODO 改进
     "ReturnBattleMainPage": {
         "desc": "回到出击作页面主页",
         "next": [
@@ -6,11 +7,6 @@
             "ClickMainBattleButton",
             "[JumpBack]ReturnMain"
         ]
-    },
-    "InBattleMainPage": {
-        "desc": "在出击作页面标志",
-        "recognition": "TemplateMatch",
-        "template": "Battle/MainPageFlag/"
     },
     "ClickMainBattleButton": {
         "desc": "从主页进入出击作主页",
@@ -23,7 +19,13 @@
         ],
         "post_wait_freezes": 1000
     },
-    "FlagInBattleFormation": {
+    // 判断节点
+    "InBattleMainPage": {
+        "desc": "在出击作页面标志",
+        "recognition": "TemplateMatch",
+        "template": "Battle/MainPageFlag/"
+    },
+    "InBattleFormation": {
         "desc": "在战斗编队页面",
         "recognition": "And",
         "all_of": [
@@ -47,18 +49,38 @@
                     48
                 ]
             }
+        ]
+    },
+    // 两个战斗入口
+    "AutoBattle": {
+        "desc": "代理战斗 否则使用自律作战战斗",
+        "recognition": "And",
+        "all_of": [
+            "InBattleFormation"
         ],
         "next": [
-            "FlagAutoButtonLocked",
+            "ReplayButtonLight",
+            "ClickReplayButton",
             "ClickAutoButton"
-        ],
-        "pre_wait_freezes": 200,
-        "post_wait_freezes": 200
+        ]
     },
-    "FlagAutoButtonLocked": {
-        "desc": "自动战斗则强行结束任务链",
+    "ReplayBattle": {
+        "desc": "使用代理作战战斗",
+        "recognition": "And",
+        "all_of": [
+            "InBattleFormation"
+        ],
+        "next": [
+            "ReplayButtonLight",
+            "ClickReplayButton",
+            "ReplayButtonLocked"
+        ]
+    },
+    // 终止节点
+    "ReplayButtonLocked": {
+        "desc": "代理作战锁定则结束任务链",
         "recognition": "TemplateMatch",
-        "template": "Battle/AutoBattleLocked.png",
+        "template": "Battle/ReplayBattleLocked.png",
         "action": "StopTask",
         "threshold": 0.85,
         "roi": [
@@ -68,10 +90,40 @@
             70
         ]
     },
+    // 自动作战流程
     "ClickAutoButton": {
-        "desc": "点击暗淡的自动战斗按钮",
+        "desc": "点击自律作战按钮",
         "recognition": "TemplateMatch",
-        "template": "Battle/AutoBattleDart.png",
+        "template": "Battle/AutoButtonDart.png",
+        "next": [
+            "ClickAutoButtonLight"
+        ],
+        "roi": [
+            1085,
+            572,
+            195,
+            143
+        ]
+    },
+    "ClickAutoButtonLight": {
+        "desc": "自律作战已开启",
+        "recognition": "TemplateMatch",
+        "template": "Battle/AutoButtonLight.png",
+        "next": [
+            "ClickBattleButton"
+        ],
+        "roi": [
+            1085,
+            572,
+            195,
+            143
+        ]
+    },
+    // 代理作战流程
+    "ClickReplayButton": {
+        "desc": "点击暗淡的代理作战按钮",
+        "recognition": "TemplateMatch",
+        "template": "Battle/ReplayBattleDart.png",
         "action": "Click",
         "roi": [
             887,
@@ -80,15 +132,15 @@
             141
         ],
         "next": [
-            "FlagAutoButtonLight",
-            "ClickAutoButton"
+            "ReplayButtonLight",
+            "ClickReplayButton"
         ],
         "post_wait_freezes": 1000
     },
-    "FlagAutoButtonLight": {
-        "desc": "自动战斗已开启",
+    "ReplayButtonLight": {
+        "desc": "代理作战已开启",
         "recognition": "TemplateMatch",
-        "template": "Battle/AutoBattleLightGreen.png",
+        "template": "Battle/ReplayBattleLightGreen.png",
         "green_mask": true,
         "method": 10001,
         "roi": [
@@ -101,6 +153,7 @@
             "ClickBattleButton"
         ]
     },
+    // 战斗流程
     "ClickBattleButton": {
         "desc": "点击出击按钮",
         "recognition": "TemplateMatch",

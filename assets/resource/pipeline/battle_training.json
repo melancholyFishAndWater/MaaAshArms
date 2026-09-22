@@ -72,7 +72,7 @@
         "custom_recognition": "EnterTrainingTeamRepo",
         "action": "Click",
         "next": [
-            "FlagInBattleFormation"
+            "ReplayBattle"
         ]
     }
 }
