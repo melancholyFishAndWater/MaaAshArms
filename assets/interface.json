@@ -78,7 +78,7 @@
             "entry": "TaskFactory",
             "pipeline_override": {
                 "CheckFactoryEnd": {
-                    "custom_recognition_param": "3"
+                    "custom_recognition_param": 3
                 }
             }
         },

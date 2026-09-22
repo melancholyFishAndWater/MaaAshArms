@@ -111,7 +111,7 @@
         "desc": "判断订单工厂任务是否结束",
         "recognition": "Custom",
         "custom_recognition": "CheckFactoryEndReco",
-        "custom_recognition_param": "4" // 最大收获次数
+        "custom_recognition_param": 4 // 最大收获次数
     },
     "FactorySkip": {
         "desc": "跳过建造等待 默认关闭",
@@ -199,7 +199,7 @@
         "desc": "选择建造数",
         "recognition": "Custom",
         "custom_recognition": "FactoryChooseNumberRepo",
-        "custom_recognition_param": "1", // 建造数
+        "custom_recognition_param": 1, // 建造数
         "action": "Click",
         "next": [
             "FactoryChooseStart",

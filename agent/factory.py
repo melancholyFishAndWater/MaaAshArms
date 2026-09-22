@@ -72,11 +72,11 @@ class CheckFactoryEndReco(CustomRecognition):
     ) -> list[int] | None:
         global _timestamp_by_build_end_names, _count
         if _count >= int(argv.custom_recognition_param):
-            return []
+            return [0] * 4
         if (len(_timestamp_by_build_end_names) == 3) and all(
             v > time.time() for v in _timestamp_by_build_end_names.values()
         ):
-            return []
+            return [0] * 4
 
 
 # 若时间归零，返回红叉位置
