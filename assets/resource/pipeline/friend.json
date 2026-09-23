@@ -25,14 +25,11 @@
     },
     "FlagFriendLight": {
         "desc": "按钮可按",
-        "max_hit": 4,
+        "max_hit": 2,
         "method": 10001,
         "recognition": "TemplateMatch",
         "template": "Friend/LightButton.png",
         "action": "Click",
-        "next": [
-            "FlagFriendLight"
-        ],
         "roi": [
             921,
             582,
