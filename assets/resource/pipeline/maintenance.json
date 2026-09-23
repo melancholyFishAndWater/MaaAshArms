@@ -2,8 +2,9 @@
     "TaskMaintenance": {
         "desc": "维修会任务",
         "next": [
-            "[JumpBack]ReturnMain",
-            "EnterMaintenance"
+            "FlagInMaintenance",
+            "EnterMaintenance",
+            "[JumpBack]ReturnMain"
         ]
     },
     "EnterMaintenance": {
@@ -119,7 +120,7 @@
             1021,
             162,
             134,
-            287
+            311
         ]
     }
 }
