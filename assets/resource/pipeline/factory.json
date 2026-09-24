@@ -152,7 +152,7 @@
             "FactoryTimeEndSuccess",
             "FactoryTimeEnd"
         ],
-        "post_wait_freezes": 1000
+        "pre_wait_freezes": 2000
     },
     "FactoryTimeEndSuccess": {
         "desc": "判断FactoryTimeEnd成功的标志",

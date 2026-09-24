@@ -244,14 +244,18 @@ class FactoryTimeEndAct(CustomAction):
         self, context: Context, argv: CustomAction.RunArg
     ) -> CustomAction.RunResult | bool:
         OFFSET = (-890, 156, -30, -30)
+
         name_result = _getName(context, argv.reco_detail.raw_image, argv.box)
         if not name_result or not name_result.hit:
             return False
+
         b_name = name_result.best_result
         assert type(b_name) == OCRResult
+
         run_result = context.run_action_direct(
             JActionType.Click, JClick(toTuple(argv.box), target_offset=OFFSET)
         )
+
         if run_result and run_result.success:
             global _timestamp_by_build_end_names
             if b_name.text in _timestamp_by_build_end_names.keys():
