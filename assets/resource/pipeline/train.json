@@ -2,11 +2,11 @@
     "TaskTrain": {
         "desc": "武装押运任务",
         "next": [
-            "ClickTrainArrow",
+            "TrainClickArrow",
             "[JumpBack]ReturnMain"
         ]
     },
-    "ClickTrainArrow": {
+    "TrainClickArrow": {
         "desc": "点击火车押运的蓝色箭头",
         "recognition": "TemplateMatch",
         "template": "Train/TrainButton.png",
@@ -18,51 +18,67 @@
             138
         ],
         "next": [
-            "GetTrainStatus",
-            "ClickTrainArrow"
+            "TrainGetStatus",
+            "TrainClickArrow"
         ],
         "post_wait_freezes": 1000
     },
-    "CheckTrainEnd": {
-        "desc": "检测武装押运任务是否结束",
-        "recognition": "Custom",
-        "custom_recognition": "CheckTrainEndReco",
-        "action": "StopTask"
-    },
-    "GetTrainStatus": {
+    "TrainGetStatus": {
         "desc": "获取火车状态",
         "recognition": "Custom",
-        "custom_recognition": "GetTrainStatusReco",
+        "custom_recognition": "TrainGetStatusReco",
         "next": [
-            "CheckTrainEnd",
-            "EnterTrainMainPage"
+            "TrainEnterMainPage"
         ],
         "post_wait_freezes": 1000
     },
-    "EnterTrainMainPage": {
+    "TrainEnterMainPage": {
         "desc": "进入武装押运界面",
         "action": "Click",
-        "target": "GetTrainStatus",
+        "target": "TrainGetStatus",
         "next": [
-            "CheckTrainEnd",
+            "TrainCheckEnd",
+            "[JumpBack]TrainIsRewardable",
+            "[JumpBack]TrainIsAcceptable"
+            // TODO TrainIsAcceptable 发第二列车的时候
+        ],
+        "post_wait_freezes": 3000
+    },
+    // 特殊节点
+    "TrainCheckEnd": {
+        "desc": "检测武装押运任务是否结束",
+        "recognition": "Custom",
+        "custom_recognition": "TrainCheckEndReco",
+        "action": "StopTask"
+    },
+    "TrainInfoMover": {
+        "desc": "尝试移动路线",
+        "action": "Custom",
+        "custom_action": "TrainInfoMoverAct",
+        "post_wait_freezes": 1000
+    },
+    // 领取奖励流程
+    "TrainIsRewardable": {
+        "desc": "判断是否可以领取火车奖励",
+        "recognition": "Custom",
+        "custom_recognition": "TrainIsRewardableReco",
+        "max_hit": 2,
+        "next": [
+            "TrainClickRewardInfo",
             "[JumpBack]TrainInfoMover"
         ]
     },
-    // TODO 目标地方
-    "TrainInfoMover": {
-        "desc": "武装押运专用路线移动器 移动到有奖励的地方 或 发车列表最下边并发车",
-        "recognition": "Custom",
-        "custom_recognition": "TrainInfoMoverReco",
-        "next": [
-            "CheckTrainReward",
-            "NextTrain"
-        ]
-    },
-    "CheckTrainReward": {
-        "desc": "判断是否可以领取火车奖励",
+    "TrainClickRewardInfo": {
+        "desc": "点击可以领取奖励的路线",
         "recognition": "TemplateMatch",
         "template": "Base/BlueMarkGreen.png",
         "green_mask": true,
+        "roi": [
+            201,
+            122,
+            89,
+            501
+        ],
         "target_offset": [
             -33,
             41,
@@ -70,19 +86,13 @@
             0
         ],
         "action": "Click",
-        "roi": [
-            201,
-            122,
-            89,
-            501
-        ],
         "next": [
-            "CheckTrainRewardNext",
-            "CheckTrainReward"
+            "TrainInRewardPage",
+            "TrainClickRewardInfo"
         ]
     },
-    "CheckTrainRewardNext": {
-        "desc": "检测是否进入有奖励的页面",
+    "TrainInRewardPage": {
+        "desc": "在有奖励的页面",
         "recognition": "TemplateMatch",
         "template": "Train/Locked.png",
         "roi": [
@@ -92,11 +102,26 @@
             533
         ],
         "next": [
-            "GetTrainReward",
-            "[JumpBack]MoveUp"
+            "TrainGetReward",
+            "[JumpBack]TrainMoveUp"
         ]
     },
-    "GetTrainReward": {
+    "TrainMoveUp": {
+        // NOICE 起点是物品的话无法滑动
+        "desc": "列车页面上滑",
+        "action": "Swipe",
+        "begin": [
+            350,
+            500
+        ],
+        "end": [
+            350,
+            400
+        ],
+        "end_hold": 300,
+        "post_wait_freezes": 200
+    },
+    "TrainGetReward": {
         "desc": "领取列车奖励",
         "recognition": "TemplateMatch",
         "template": "Train/RewardButton.png",
@@ -108,32 +133,72 @@
             533
         ],
         "next": [
-            "DoTrain",
-            // "GetTrainRewardEnd",
+            "TrainGetRewardEnd",
             "[JumpBack]ClickTap"
         ],
         "post_wait_freezes": 500
     },
-    "NextTrain": {
-        "desc": "在当前页面找到最下面路线并发车",
+    "TrainGetRewardEnd": {
+        "desc": "领取列车奖励结束",
         "recognition": "TemplateMatch",
-        "template": "Train/ArrowDart.png",
-        "threshold": 0.85,
+        "template": "Train/CanTrainButton.png",
         "method": 10001,
-        "order_by": "Vertical",
-        "index": -1,
-        "action": "Click",
-        "pre_wait_freezes": 500,
+        "roi": [
+            886,
+            128,
+            119,
+            533
+        ],
+        "action": "Custom",
+        "custom_action": "TrainGetRewardEndAct"
+    },
+    // 发车流程
+    "TrainIsAcceptable": {
+        "desc": "判断是否可以发车",
+        "recognition": "Custom",
+        "custom_recognition": "TrainIsAcceptableReco",
         "next": [
-            "TrainMoveToBottom"
+            "TrainClickAcceptInfo",
+            "[JumpBack]TrainInfoMover"
+        ],
+        "post_wait_freezes": 3000
+    },
+    // 指定 custom_recognition_param 以设置目标路线 list[str]
+    "TrainClickAcceptInfo": {
+        "desc": "点击目标路线",
+        "recognition": "Custom",
+        "custom_recognition": "TrainClickAcceptInfoReco",
+        "action": "Click",
+        "next": [
+            "TrainInAcceptPage",
+            "TrainClickAcceptInfo"
         ]
     },
+    "TrainInAcceptPage": {
+        "desc": "在目标接取页面",
+        "recognition": "TemplateMatch",
+        "template": "Train/ArrowLight.png",
+        "method": 10001,
+        "roi": "TrainClickAcceptInfo",
+        "roi_offset": [
+            118,
+            -10,
+            -18,
+            47
+        ],
+        "next": [
+            "[JumpBack]TrainMoveToBottom",
+            "TrainAcceptable"
+            // "[JumpBack]TrainMoveDown" // TODO
+        ],
+        "post_wait_freezes": 2500
+    },
     "TrainMoveToBottom": {
-        // NOICE 起点是物品的话无法滑动
-        "desc": "移动到列车底部",
-        "action": "Swipe",
+        "desc": "移动到STATION底部",
+        "max_hit": 1,
         "repeat": 10,
         "repeat_delay": 200,
+        "action": "Swipe",
         "begin": [
             350,
             500
@@ -142,19 +207,20 @@
             350,
             400
         ],
-        "end_hold": 200,
-        "next": [
-            "DoTrain"
-        ]
+        "end_hold": 200
     },
-    "DoTrain": {
-        "desc": "发车",
+    // TODO 目标STATION list[str]
+    "TrainAcceptable": {
+        "desc": "当前路线可以发车",
+        // "recognition": "Custom",
+        // "custom_recognition": "TrainAcceptReco",
         "recognition": "TemplateMatch",
         "template": "Train/CanTrainButton.png",
         "action": "Click",
         "order_by": "Vertical",
         "index": -1,
         "method": 10001,
+        "threshold": 0.85,
         "roi": [
             886,
             128,
@@ -163,9 +229,9 @@
         ],
         "next": [
             "TrainFormation",
-            "DoTrain"
+            "TrainAcceptable"
         ],
-        "post_wait_freezes": 1000
+        "post_wait_freezes": 5000 //防止点太快点到其他按钮
     },
     "TrainFormation": {
         "desc": "火车出发编队页面",
@@ -178,25 +244,27 @@
             63
         ],
         "next": [
-            "GoTrainDart",
-            "GoTrainLight"
+            "TrainGoButtonDart",
+            "TrainGoButtonLight"
         ]
     },
-    "GoTrainDart": {
+    "TrainGoButtonDart": {
         "desc": "出发按钮暗淡",
         "recognition": "TemplateMatch",
         "template": "Train/GoTrainDart.png",
         "next": [
-            "ClickAutoTrain"
+            "TrainClickAutoButton",
+            "TrainGoButtonDart"
         ],
         "roi": [
             951,
             603,
             262,
             99
-        ]
+        ],
+        "post_wait_freezes": 1500
     },
-    "ClickAutoTrain": {
+    "TrainClickAutoButton": {
         "desc": "点击推荐搭乘",
         "recognition": "TemplateMatch",
         "template": "Train/Auto.png",
@@ -208,29 +276,35 @@
             116
         ],
         "next": [
-            "GoTrainLight"
+            "TrainGoButtonLight"
         ]
     },
-    "GoTrainLight": {
+    "TrainGoButtonLight": {
         "desc": "出发按钮亮",
         "recognition": "TemplateMatch",
         "template": "Train/GoTrainLight.png",
         "action": "Click",
         "next": [
             "TrainBusy",
+            "TrainGoButtonLight",
             "[JumpBack]ClickConfirm",
             "[JumpBack]Click"
         ]
     },
     "TrainBusy": {
         "desc": "发车成功",
-        "recognition": "Custom",
-        "custom_recognition": "TrainBusyReco",
+        "recognition": "TemplateMatch",
+        "template": [
+            "Train/CancelTrain.png",
+            "Train/Locked.png"
+        ],
         "roi": [
             886,
             128,
             119,
             533
-        ]
+        ],
+        "action": "Custom",
+        "custom_action": "TrainBusyAct"
     }
 }
