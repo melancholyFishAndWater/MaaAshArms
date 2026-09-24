@@ -28,6 +28,10 @@ def toTuple(arr) -> tuple[int, int, int, int]:
     return (arr[0], arr[1], arr[2], arr[3])
 
 
+def is_hit(detail: RecognitionDetail | None) -> bool:
+    return detail is not None and detail.hit
+
+
 # TEST
 # 返回是否冻结
 # @AgentServer.custom_recognition("CheckFreezesRepo")
