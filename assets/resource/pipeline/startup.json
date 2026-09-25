@@ -19,11 +19,13 @@
         "next": [
             "HomeFlagFirst",
             "ClickGameIco",
+            "[JumpBack]Disclaimer",
             "[JumpBack]GameLodingFlag",
             "InServerMaintenance",
             "[JumpBack]GameUpdate",
             "[JumpBack]GameUpdateError",
             "[JumpBack]GameUpdateNow",
+            "[JumpBack]GameClickLogin",
             "[JumpBack]TouchSignIn",
             "[JumpBack]GetReward",
             "[JumpBack]NoticeClickDisable"
@@ -37,11 +39,13 @@
         "package": "com.asharmdolls.bilibili",
         "next": [
             "HomeFlagFirst",
+            "[JumpBack]Disclaimer",
             "[JumpBack]GameLodingFlag",
             "InServerMaintenance",
             "[JumpBack]GameUpdate",
             "[JumpBack]GameUpdateError",
             "[JumpBack]GameUpdateNow",
+            "[JumpBack]GameClickLogin",
             "[JumpBack]TouchSignIn",
             "[JumpBack]GetReward",
             "[JumpBack]NoticeClickDisable"
@@ -49,12 +53,38 @@
         "post_wait_freezes": 5000,
         "timeout": 300000
     },
+    "Disclaimer": {
+        "desc": "隐私策略",
+        "recognition": "OCR",
+        "expected": "同意",
+        "roi": [
+            680,
+            531,
+            103,
+            49
+        ],
+        "action": "Click",
+        "post_wait_freezes": 3000
+    },
     "GameLodingFlag": {
         "desc": "正在加载游戏",
         "recognition": "TemplateMatch",
         "template": [
             "StartUp/SignInLoadingFlag/"
         ],
+        "post_wait_freezes": 3000
+    },
+    "GameClickLogin": {
+        "desc": "点击登录按钮",
+        "recognition": "OCR",
+        "expected": "登录",
+        "roi": [
+            512,
+            382,
+            250,
+            46
+        ],
+        "action": "Click",
         "post_wait_freezes": 3000
     },
     "TouchSignIn": {
