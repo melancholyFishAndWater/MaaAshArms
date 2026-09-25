@@ -79,11 +79,10 @@
         {
             "name": "订单工厂",
             "entry": "TaskFactory",
-            "pipeline_override": {
-                "CheckFactoryEnd": {
-                    "custom_recognition_param": 3
-                }
-            }
+            "option": [
+                "建造数量",
+                "跳过"
+            ]
         },
         {
             "name": "训练所",
@@ -102,5 +101,41 @@
         //     ]
         // }
     ],
-    "option": {}
+    "option": {
+        "建造数量": {
+            "type": "input",
+            "description": "单次建造数量，超过3个时，要开启跳过才生效",
+            "inputs": [
+                {
+                    "name": "number",
+                    "default": "3",
+                    "pipeline_type": "int",
+                    "verify": "^\\d$",
+                    "pattern_msg": "请输入数字"
+                }
+            ],
+            "pipeline_override": {
+                "FactoryCheckTaskEnd": {
+                    "custom_recognition_param": "{number}"
+                }
+            }
+        },
+        "跳过": {
+            "type": "switch",
+            "description": "跳过建造等待",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "pipeline_override": {
+                        "FactorySkip": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "No"
+                }
+            ]
+        }
+    }
 }
