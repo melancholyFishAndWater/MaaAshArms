@@ -20,7 +20,7 @@ from numpy import ndarray, dtype
 
 # last_freezes_image: ndarray | None = None
 
-# 默认hit box
+# 默认hit box 仅用于不需要坐标的节点
 DEFAULT_HIT_BOX = [0] * 4
 
 
@@ -79,7 +79,8 @@ class MoveUpDownReco(CustomRecognition):
         | None
     ):
         # 提取变量
-        param: dict[str, str] = json.loads(argv.custom_recognition_param) or {}
+        s = argv.custom_recognition_param
+        param: dict[str, str] = s and json.loads(s) or {}
         from_ = param.get("from_", "unknow")
         x = int(param.get("x", 10))
 
