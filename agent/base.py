@@ -18,8 +18,6 @@ from maa.pipeline import JTemplateMatch, JOCR, JSwipe
 from re import search
 from numpy import ndarray, dtype
 
-# last_freezes_image: ndarray | None = None
-
 # 默认hit box 仅用于不需要坐标的节点
 DEFAULT_HIT_BOX = [0] * 4
 
@@ -38,26 +36,60 @@ def is_hit(detail: RecognitionDetail | None) -> bool:
 
 # ---------- Reco ----------
 
-# TEST
-# 返回是否冻结
-# @AgentServer.custom_recognition("CheckFreezesRepo")
-# class CheckFreezesRepo(CustomRecognition):
-#     def analyze(
-#         self, context: Context, argv: CustomRecognition.AnalyzeArg
-#     ) -> (
-#         CustomRecognition.AnalyzeResult
-#         | Rect
-#         | list[int]
-#         | ndarray[tuple[Any, ...], dtype[Any]]
-#         | tuple[int, int, int, int]
-#         | None
-#     ):
-#         global last_freezes_image
-#         if not last_freezes_image:
-#             last_freezes_image = argv.image
-#             return
-#         return [0] * 4
 
+# TODO 更详细的log 画面不同 第一次匹配
+# 如果连续k次画面不变 则返回roi box 一般和move系列搭配判断移动前后是否有明显变化
+@AgentServer.custom_recognition("IsFreezesReco")
+class IsFreezesReco(CustomRecognition):
+    __freezes_dict: dict[tuple[int, str], int] = {}
+
+    def analyze(self, context: Context, argv: CustomRecognition.AnalyzeArg):
+
+        # 提取变量
+        p = (
+            json.loads(argv.custom_recognition_param)
+            if argv.custom_recognition_param
+            else {}
+        )
+        from_ = p.get("from_", "unknow")  # 父节点
+        thr = float(p.get("threshold", 0.99))  # 识别阈值
+        k = p.get("k", 3)  # 连续不变次数
+        name = f"probe_{from_}"  # 图片名字
+        key = (argv.task_detail.task_id, from_)
+        x, y, w, h = argv.roi
+
+        # 保证画面处于静止
+        context.wait_freezes(2000, box=(x, y, w, h))
+
+        # 有上一张图像，则识别
+        r = None
+        if key in self.__freezes_dict.keys():
+            r = context.run_recognition_direct(
+                JRecognitionType.TemplateMatch,
+                JTemplateMatch(
+                    template=[name], roi=(x, y, w, h), threshold=[thr], method=5
+                ),
+                argv.image,
+            )
+
+        # 判断是否命中
+        same = bool(r and r.hit)
+
+        # 存储本帧识别
+        if not context.override_image(name, argv.image[y : y + h, x : x + w]):
+            print(f"override_image failed: {name}")
+            same = False
+
+        # 存储连续识别成功次数
+        self.__freezes_dict[key] = (self.__freezes_dict.get(key, 0) + 1) if same else 0
+
+        # 条件返回识别成功
+        if self.__freezes_dict[key] >= k:
+            del self.__freezes_dict[key]
+            return (x, y, w, h)
+
+
+# ---------- Action ----------
 
 # ---------- MoveUpDown ----------
 
