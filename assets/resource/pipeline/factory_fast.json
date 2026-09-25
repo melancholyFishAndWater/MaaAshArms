@@ -12,7 +12,7 @@
         "desc": "处理干扰项以准备快速建造缺失的角色",
         "recognition": "And",
         "all_of": [
-            "FactoryInMainPage"
+            "FactoryInHome"
         ],
         "action": "Custom",
         "custom_action": "FastFactoryInitAct",
