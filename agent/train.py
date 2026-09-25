@@ -297,7 +297,8 @@ class TrainClickAcceptInfoReco(CustomRecognition):
             return
 
         # 候选列表
-        param: list[str] = json.loads(argv.custom_recognition_param) or []
+        s = argv.custom_recognition_param
+        param: list[str] = s and json.loads(s) or []
 
         # 识别并记录当前画面路线解锁状态 若满足候选列表则返回box
         for i in r.filtered_results:
@@ -386,9 +387,9 @@ class TrainInfoMoverAct(CustomAction):
     ) -> CustomAction.RunResult | bool:
 
         # 是否修改移动方向
-        if _in_info_bottom(context, argv.reco_detail.raw_image):
+        if _in_info_bottom(context, argv.reco_detail.raw_image):  # BUG
             self._move_up = False
-        elif _in_info_top(context, argv.reco_detail.raw_image):
+        elif _in_info_top(context, argv.reco_detail.raw_image):  # BUG
             self._move_up = True
 
         # 移动方向
