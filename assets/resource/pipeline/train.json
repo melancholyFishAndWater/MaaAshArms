@@ -193,6 +193,7 @@
         ],
         "post_wait_freezes": 2500
     },
+    // BUG 不稳定，游戏卡就可能滑不到底部
     "TrainMoveToBottom": {
         "desc": "移动到STATION底部",
         "max_hit": 1,
