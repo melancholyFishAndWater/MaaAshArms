@@ -3,9 +3,12 @@ import sys
 from maa.agent.agent_server import AgentServer
 from maa.toolkit import Toolkit
 
-import train
-import factory
+import base
 import battle_training
+import escort
+import factory_fast
+import factory
+import train
 
 
 def main():
