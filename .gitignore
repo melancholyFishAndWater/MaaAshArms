@@ -462,3 +462,4 @@ scripts
 config
 debug
 AGENTS.md
+.agents/
