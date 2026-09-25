@@ -1,12 +1,12 @@
 {
-    "TaskTrainingCenter": {
+    "TaskTraining": {
         "desc": "训练所任务",
         "next": [
-            "EnterTraining",
+            "TrainingEnterHome",
             "[JumpBack]ReturnBattleMainPage"
         ]
     },
-    "EnterTraining": {
+    "TrainingEnterHome": {
         "desc": "进入训练所",
         "recognition": "OCR",
         "expected": "训练所",
@@ -18,13 +18,13 @@
         ],
         "action": "Click",
         "next": [
-            "EnterTraining",
-            "FlagNoTraining",
-            "[JumpBack]EnterTrainingOne"
+            "TrainingEnterHome",
+            "TrainingEnd",
+            "[JumpBack]TrainingEnterOne"
         ],
         "pre_wait_freezes": 500
     },
-    "FlagNoTraining": {
+    "TrainingEnd": {
         "desc": "无战斗次数",
         "recognition": "TemplateMatch",
         "template": "Battle/BattleTraining/01.png",
@@ -43,7 +43,7 @@
         ],
         "index": 3
     },
-    "EnterTrainingOne": {
+    "TrainingEnterOne": {
         "desc": "进入其中一个训练所关卡",
         "recognition": "TemplateMatch",
         "template": "Battle/BattleTraining/11.png",
@@ -62,17 +62,17 @@
             0
         ],
         "next": [
-            "EnterTrainingFormation",
+            "TrainingEnterFormation",
             "[JumpBack]MoveUp"
         ]
     },
-    "EnterTrainingFormation": {
+    "TrainingEnterFormation": {
         "desc": "进入编队页面",
         "recognition": "Custom",
         "custom_recognition": "EnterTrainingTeamRepo",
         "action": "Click",
         "next": [
-            "ReplayBattle"
+            "BattleReplay"
         ]
     }
 }

@@ -3,29 +3,29 @@
     "ReturnBattleMainPage": {
         "desc": "回到出击作页面主页",
         "next": [
-            "InBattleMainPage",
-            "ClickMainBattleButton",
+            "BattleInHome",
+            "BattleEnterHome",
             "[JumpBack]ReturnMain"
         ]
     },
-    "ClickMainBattleButton": {
-        "desc": "从主页进入出击作主页",
+    "BattleEnterHome": {
+        "desc": "从主页进入出击页面",
         "recognition": "TemplateMatch",
         "template": "Battle/MainBattleButton.png",
         "action": "Click",
         "next": [
-            "InBattleMainPage",
-            "ClickMainBattleButton"
+            "BattleInHome",
+            "BattleEnterHome"
         ],
         "post_wait_freezes": 1000
     },
     // 判断节点
-    "InBattleMainPage": {
+    "BattleInHome": {
         "desc": "在出击作页面标志",
         "recognition": "TemplateMatch",
         "template": "Battle/MainPageFlag/"
     },
-    "InBattleFormation": {
+    "BattleInFormation": {
         "desc": "在战斗编队页面",
         "recognition": "And",
         "all_of": [
@@ -52,32 +52,32 @@
         ]
     },
     // 两个战斗入口
-    "AutoBattle": {
+    "BattleAuto": {
         "desc": "代理战斗 否则使用自律作战战斗",
         "recognition": "And",
         "all_of": [
-            "InBattleFormation"
+            "BattleInFormation"
         ],
         "next": [
-            "ReplayButtonLight",
-            "ClickReplayButton",
-            "ClickAutoButton"
+            "BattleReplayLight",
+            "BattleClickReplay",
+            "BattleClickAuto"
         ]
     },
-    "ReplayBattle": {
+    "BattleReplay": {
         "desc": "使用代理作战战斗",
         "recognition": "And",
         "all_of": [
-            "InBattleFormation"
+            "BattleInFormation"
         ],
         "next": [
-            "ReplayButtonLight",
-            "ClickReplayButton",
-            "ReplayButtonLocked"
+            "BattleReplayLight",
+            "BattleClickReplay",
+            "BattleIsReplayLocked"
         ]
     },
     // 终止节点
-    "ReplayButtonLocked": {
+    "BattleIsReplayLocked": {
         "desc": "代理作战锁定则结束任务链",
         "recognition": "TemplateMatch",
         "template": "Battle/ReplayBattleLocked.png",
@@ -91,12 +91,12 @@
         ]
     },
     // 自动作战流程
-    "ClickAutoButton": {
+    "BattleClickAuto": {
         "desc": "点击自律作战按钮",
         "recognition": "TemplateMatch",
         "template": "Battle/AutoButtonDart.png",
         "next": [
-            "ClickAutoButtonLight"
+            "BattleIsAutoLight"
         ],
         "roi": [
             1085,
@@ -105,12 +105,12 @@
             143
         ]
     },
-    "ClickAutoButtonLight": {
+    "BattleIsAutoLight": {
         "desc": "自律作战已开启",
         "recognition": "TemplateMatch",
         "template": "Battle/AutoButtonLight.png",
         "next": [
-            "ClickBattleButton"
+            "BattleClickAttack"
         ],
         "roi": [
             1085,
@@ -120,7 +120,7 @@
         ]
     },
     // 代理作战流程
-    "ClickReplayButton": {
+    "BattleClickReplay": {
         "desc": "点击暗淡的代理作战按钮",
         "recognition": "TemplateMatch",
         "template": "Battle/ReplayBattleDart.png",
@@ -132,12 +132,12 @@
             141
         ],
         "next": [
-            "ReplayButtonLight",
-            "ClickReplayButton"
+            "BattleReplayLight",
+            "BattleClickReplay"
         ],
-        "post_wait_freezes": 1000
+        "post_wait_freezes": 3000
     },
-    "ReplayButtonLight": {
+    "BattleReplayLight": {
         "desc": "代理作战已开启",
         "recognition": "TemplateMatch",
         "template": "Battle/ReplayBattleLightGreen.png",
@@ -150,30 +150,30 @@
             70
         ],
         "next": [
-            "ClickBattleButton"
+            "BattleClickAttack"
         ]
     },
     // 战斗流程
-    "ClickBattleButton": {
+    "BattleClickAttack": {
         "desc": "点击出击按钮",
         "recognition": "TemplateMatch",
         "template": "Battle/BattleButton.png",
         "action": "Click",
         "timeout": 60000,
         "next": [
-            "[JumpBack]FlagInLoadingBattle",
-            "[JumpBack]FlagInBattle",
-            "FlagBattleWin"
+            "[JumpBack]BattleIsLoading",
+            "[JumpBack]BattleNow",
+            "BattleWin"
         ]
     },
-    "FlagInLoadingBattle": {
+    "BattleIsLoading": {
         "desc": "在加载战斗界面",
         "recognition": "OCR",
         "expected": "Tips",
         "post_wait_freezes": 3000
     },
     // TODO 战斗异常
-    "FlagInBattle": {
+    "BattleNow": {
         "desc": "正在战斗",
         "recognition": "OCR",
         "expected": "接管作战",
@@ -186,7 +186,7 @@
         ]
     },
     // TODO 战败
-    "FlagBattleWin": {
+    "BattleWin": {
         "desc": "战斗胜利",
         "recognition": "OCR",
         "expected": "战斗胜利",
@@ -203,12 +203,12 @@
         ],
         "next": [
             "[JumpBack]GetReward",
-            "FlagBattleWin",
-            "FlagBattleWinNext"
+            "BattleWin",
+            "BattleEnd"
         ],
         "post_wait_freezes": 1000
     },
-    "FlagBattleWinNext": {
+    "BattleEnd": {
         "desc": "战斗结束后的出口节点",
         "recognition": "OCR",
         "expected": "战斗胜利",
