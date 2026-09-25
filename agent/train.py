@@ -40,7 +40,7 @@ def _info_move(context: Context, start: int, end: int):
         JActionType.Swipe,
         JSwipe(begin=(120, start, 10, 10), end=[(120, end, 10, 10)]),
     )
-    context.wait_freezes(200)
+    context.wait_freezes(200, box=(18, 103, 247, 595))
     return r
 
 
