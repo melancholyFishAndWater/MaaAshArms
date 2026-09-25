@@ -194,8 +194,9 @@
             }
         }
     },
-    "TaskEnd": {
-        "desc": "无条件结束任务"
+    "TaskStop": {
+        "desc": "无条件结束任务",
+        "action": "StopTask"
     }
     // "Noice": {
     //     "desc": "给python端提供的自定义通知处理",
