@@ -1,5 +1,6 @@
 {
     // NOICE 起点是物品的话无法滑动，详见 TrainMoveToBottom
+    // 移动系列
     "MoveDown": {
         "desc": "通用下滑",
         "action": "Swipe",
@@ -56,6 +57,17 @@
         "end_hold": 200,
         "post_wait_freezes": 200
     },
+    "MoveUpDown": {
+        "desc": "上滑动x次 下滑动x次",
+        "recognition": "Custom",
+        "custom_recognition": "MoveUpDownReco",
+        "custom_recognition_param": {
+            "from_": "unknow", // 一个任务链存在不同节点调用时需要修改 父节点 可以为空
+            "x": "10"
+        },
+        "action": "Custom",
+        "custom_action": "MoveUpDownAct"
+    },
     "GetReward": {
         "desc": "领取奖励",
         "recognition": "OCR",
@@ -64,6 +76,7 @@
             "ClickTap"
         ]
     },
+    // 点击系列
     "ClickConfirm": {
         "desc": "通用点击确认",
         "recognition": "OCR",
@@ -180,6 +193,9 @@
                 "display": "modal"
             }
         }
+    },
+    "TaskEnd": {
+        "desc": "无条件结束任务"
     }
     // "Noice": {
     //     "desc": "给python端提供的自定义通知处理",
