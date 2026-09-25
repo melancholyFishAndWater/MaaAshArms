@@ -1,0 +1,40 @@
+{
+    // 快速建造任务入口 此节点给其他任务使用而非直接写入任务面板
+    "TaskFastFactory": {
+        "desc": " FastFactoryStopOnMaxCount 建造第x次第一个角色; FactoryChooseNumber 一次建造多少个",
+        "next": [
+            "FastFactoryInit",
+            "[JumpBack]ReturnFactory"
+        ]
+    },
+    // 快速建造流程
+    "FastFactoryInit": {
+        "desc": "处理干扰项以准备快速建造缺失的角色",
+        "recognition": "And",
+        "all_of": [
+            "FactoryInMainPage"
+        ],
+        "action": "Custom",
+        "custom_action": "FastFactoryInitAct",
+        "next": [
+            "[JumpBack]FactorySkip",
+            "FastFactoryNext"
+        ]
+    },
+    "FastFactoryNext": {
+        "desc": "快速建造前x个缺失的角色",
+        "next": [
+            "[JumpBack]FactorySkip",
+            "[JumpBack]FactoryGetReward",
+            "FastFactoryStopOnMaxCount",
+            "[JumpBack]FactoryCreateOrder"
+        ]
+    },
+    "FastFactoryStopOnMaxCount": {
+        "desc": "达到大于建造次数则停止",
+        "recognition": "Custom",
+        "custom_recognition": "FastFactoryStopOnMaxCountReco",
+        "custom_recognition_param": 3, // 建造x次第一个角色
+        "action": "StopTask"
+    }
+}

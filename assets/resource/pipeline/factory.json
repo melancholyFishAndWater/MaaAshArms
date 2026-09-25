@@ -1,5 +1,6 @@
 {
     // TODO 资源不足时
+    // 工厂任务入口
     "TaskFactory": {
         "desc": "开始订单工厂任务",
         "next": [
@@ -7,23 +8,17 @@
             "[JumpBack]ReturnFactory"
         ]
     },
-    "TaskFastFactory": {
-        "desc": " 代码中一定要覆写启用FactorySkip!!! CheckFactoryEnd 设置建造前几个角色; FactoryChooseNumber 调控建造数",
-        "next": [
-            "FastFactoryInit",
-            "[JumpBack]ReturnFactory"
-        ]
-    },
+    // 返回工厂页面
     "ReturnFactory": {
         "desc": "返回订单工厂页面",
         "max_hit": 2,
         "timeout": 600000,
         "next": [
-            "EnterFactoryFromMain",
+            "FactoryEnterMainPage",
             "[JumpBack]ReturnMain"
         ]
     },
-    "EnterFactoryFromMain": {
+    "FactoryEnterMainPage": {
         "desc": "从主页进入订单工厂",
         "recognition": "OCR",
         "expected": "订单工厂",
@@ -35,13 +30,13 @@
         ],
         "action": "Click",
         "next": [
-            "[JumpBack]NetworkError",
-            "InFactoryPage",
-            "EnterFactoryFromMain",
+            "FactoryInMainPage",
+            "FactoryEnterMainPage",
             "[JumpBack]ReturnMain"
-        ]
+        ],
+        "post_wait_freezes": 3000
     },
-    "InFactoryPage": {
+    "FactoryInMainPage": {
         "desc": "在订单工厂页面",
         "recognition": "OCR",
         "expected": "订单工厂",
@@ -52,29 +47,7 @@
             51
         ]
     },
-    "FastFactoryInit": {
-        "desc": "处理干扰项以准备快速建造缺失的角色",
-        "recognition": "And",
-        "all_of": [
-            "InFactoryPage"
-        ],
-        "next": [
-            "[JumpBack]FactorySkip",
-            "[JumpBack]FactoryTimeEnd",
-            "FastFactoryNext"
-        ]
-    },
-    "FastFactoryNext": {
-        "desc": "快速建造前x个缺失的角色",
-        "action": "Custom",
-        "custom_action": "InitFactoryItemGetterAct",
-        "next": [
-            "[JumpBack]FactorySkip",
-            "[JumpBack]FactoryTimeEnd",
-            "CheckFactoryEnd",
-            "[JumpBack]FactoryCreateOrder"
-        ]
-    },
+    // 工厂任务
     "TaskFactoryNext": {
         "desc": "订单厂任务",
         "recognition": "OCR",
@@ -86,33 +59,26 @@
             51
         ],
         "action": "Custom",
-        "custom_action": "InitFactoryItemGetterAct", // 初始化获得器
+        "custom_action": "TaskFactoryNextAct",
         "next": [
-            "[JumpBack]GetFactoryItemStatus",
-            "CheckFactoryEnd",
+            "FactoryCheckTaskEnd",
             "[JumpBack]FactorySkip",
-            "[JumpBack]FactoryTimeEnd",
+            "[JumpBack]FactoryGetReward",
             "[JumpBack]FactoryCreateOrder",
-            "[JumpBack]FactoryMover"
+            // TODO 子节点卡住
+            "[JumpBack]MoveUpDown",
+            "TaskStop"
         ]
     },
-    "GetFactoryItemStatus": {
-        "desc": "获取工厂订单对象状态 始终不会命中",
+    // 特殊节点
+    "FactoryCheckTaskEnd": {
+        "desc": "检测任务是否满足其他结束条件",
         "recognition": "Custom",
-        "custom_recognition": "GetFactoryItemStatusRepo"
+        "custom_recognition": "FactoryCheckTaskEndRepo",
+        "custom_recognition_param": 3, // 建造次数 超过3最好开启skip
+        "action": "StopTask"
     },
-    "FactoryMover": {
-        "desc": "移动器 控制页面上下移动找到未识别位置或完成位置",
-        "action": "Custom",
-        "custom_action": "FactoryMoverAct",
-        "max_hit": 20
-    },
-    "CheckFactoryEnd": {
-        "desc": "判断订单工厂任务是否结束",
-        "recognition": "Custom",
-        "custom_recognition": "CheckFactoryEndReco",
-        "custom_recognition_param": 4 // 最大收获次数
-    },
+    // 跳过系列
     "FactorySkip": {
         "desc": "跳过建造等待 默认关闭",
         "recognition": "OCR",
@@ -142,31 +108,42 @@
             66
         ]
     },
-    "FactoryTimeEnd": {
-        "desc": "耗时归零则领取",
+    // 分节点 领取奖励
+    "FactoryGetReward": {
+        "desc": "领取奖励",
         "recognition": "Custom",
-        "custom_recognition": "FactoryTimeEndRepo", // 返回红叉位置
-        "action": "Custom",
-        "custom_action": "FactoryTimeEndAct",
-        "next": [
-            "FactoryTimeEndSuccess",
-            "FactoryTimeEnd"
+        "custom_recognition": "FactoryGetRewardReco",
+        "action": "Click",
+        "target_offset": [
+            -892,
+            154,
+            -31,
+            -31
         ],
-        "pre_wait_freezes": 2000
+        "next": [
+            "FactoryGetRewardSuccess",
+            "FactoryGetReward"
+        ],
+        "post_wait_freezes": 1000
     },
-    "FactoryTimeEndSuccess": {
-        "desc": "判断FactoryTimeEnd成功的标志",
-        "recognition": "OCR",
-        "expected": "创建新的订单",
-        "roi": "FactoryTimeEnd",
+    "FactoryGetRewardSuccess": {
+        "desc": "领取奖励成功",
+        "recognition": "TemplateMatch",
+        "template": "Factory/CancelButtonGreen.png",
+        "green_mask": true,
+        "inverse": true,
+        "roi": "FactoryGetReward",
         "roi_offset": [
-            -620,
-            110,
-            200,
-            50
-        ]
+            -50,
+            -50,
+            100,
+            100
+        ],
+        "action": "Custom",
+        "custom_action": "FactoryGetRewardSuccessAct"
     },
-    // 创建新订单系列动作
+    // max_hit 限制创建次数
+    // 分节点 创建新订单 及其系列
     "FactoryCreateOrder": {
         "desc": "创建新订单",
         "recognition": "OCR",
@@ -180,9 +157,10 @@
         "action": "Click",
         "next": [
             "FactoryChooseCharater",
+            "FactoryChooseNumber", // 还是点到那就这样吧
             "FactoryCreateOrder"
         ],
-        "post_wait_freezes": 3000 // 太短容易点到中间角色
+        "post_wait_freezes": 4000 // 太短容易点到中间角色
     },
     "FactoryChooseCharater": {
         "desc": "选择角色",
@@ -221,17 +199,18 @@
         "post_wait_freezes": 200,
         "next": [
             "FactoryChooseStart",
-            "FactoryChooseStartEnd"
+            "FactorySkip",
+            "FactoryChooseStartSuccess"
         ]
     },
-    "FactoryChooseStartEnd": {
-        "desc": "无开始建造按钮",
+    "FactoryChooseStartSuccess": {
+        "desc": "建造成功",
         "recognition": "And",
         "all_of": [
             "FactoryChooseStart"
         ],
         "inverse": true,
         "action": "Custom",
-        "custom_action": "FactoryChooseStartEndAct"
+        "custom_action": "FactoryChooseStartSuccessAct"
     }
 }
