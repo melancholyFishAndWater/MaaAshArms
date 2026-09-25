@@ -1,0 +1,163 @@
+{
+    "TaskGift": {
+        "desc": "赠礼任务",
+        "next": [
+            "GiftEnterTavern",
+            "[JumpBack]ReturnFeidu"
+        ]
+    },
+    // 礼物任务流程
+    "GiftEnterTavern": {
+        "recognition": "OCR",
+        "expected": "酒馆夜话",
+        "action": "Click",
+        "next": [
+            "GiftEnterHome"
+        ],
+        "post_wait_freezes": 500
+    },
+    "GiftEnterHome": {
+        "desc": "点击深入交流",
+        "recognition": "TemplateMatch",
+        "template": [
+            "Feidu/TavernButton1.png"
+        ],
+        "action": "Click",
+        "next": [
+            "GiftClikSortRule"
+        ],
+        "post_wait_freezes": 500
+    },
+    "GiftClikSortRule": {
+        "desc": "点击排序按钮",
+        "recognition": "OCR",
+        "expected": "排序",
+        "action": "Click",
+        "next": [
+            "GiftClickFavorability"
+        ],
+        "post_wait_freezes": 2000
+    },
+    "GiftClickFavorability": {
+        "desc": "点击好感度按钮",
+        "recognition": "OCR",
+        "expected": "好感度",
+        "action": "Click",
+        "next": [
+            "GiftClickSortConfirm"
+        ],
+        "post_wait_freezes": 2000
+    },
+    "GiftClickSortConfirm": {
+        "desc": "点击确认按钮",
+        "recognition": "OCR",
+        "expected": "确认",
+        "action": "Click",
+        "next": [
+            "GiftClickReverse"
+        ],
+        "post_wait_freezes": 2000
+    },
+    "GiftClickReverse": {
+        "desc": "点击反转排序",
+        "recognition": "TemplateMatch",
+        "template": [
+            "Feidu/SortButton.png"
+        ],
+        "action": "Click",
+        "next": [
+            "GiftChooseFrist"
+        ],
+        "roi": [
+            1055,
+            10,
+            61,
+            60
+        ],
+        "post_wait_freezes": 2000
+    },
+    "GiftChooseFrist": {
+        "desc": "点击第一个角色",
+        "recognition": "DirectHit",
+        "action": "Click",
+        "target": [
+            216,
+            230,
+            43,
+            48
+        ],
+        "next": [
+            "GiftClickShowGift"
+        ],
+        "post_wait_freezes": 2000
+    },
+    "GiftClickShowGift": {
+        "desc": "点击赠礼按钮",
+        "recognition": "TemplateMatch",
+        "template": [
+            "Feidu/ShowGiftButton.png"
+        ],
+        "action": "Click",
+        "next": [
+            "GiftChooseFirstGift"
+        ],
+        "roi": [
+            1163,
+            581,
+            95,
+            115
+        ],
+        "post_wait_freezes": 2000
+    },
+    "GiftChooseFirstGift": {
+        "desc": "点击第一个礼物",
+        "recognition": "DirectHit",
+        "action": "Click",
+        "target": [
+            136,
+            610,
+            25,
+            25
+        ],
+        "next": [
+            "GiftGiveThree"
+        ],
+        "post_wait_freezes": 2000
+    },
+    "GiftGiveThree": {
+        "desc": "给三次礼物",
+        "recognition": "TemplateMatch",
+        "template": [
+            "Feidu/GiveGiftButton.png"
+        ],
+        "roi": [
+            1078,
+            428,
+            99,
+            102
+        ],
+        "action": "Click",
+        "repeat": 3,
+        "repeat_delay": 2000
+    }
+    // TEST
+    // "找非满好感角色": {
+    //     "enabled": false,
+    //     "recognition": "TemplateMatch",
+    //     "template": [
+    //         "haogan_0.png",
+    //         "haogan_1.png",
+    //         "haogan_2.png",
+    //         "haogan_3.png",
+    //         "haogan_4.png"
+    //     ],
+    //     "roi": [
+    //         161,
+    //         141,
+    //         952,
+    //         518
+    //     ],
+    //     "green_mask": true,
+    //     "action": "Click"
+    // }
+}

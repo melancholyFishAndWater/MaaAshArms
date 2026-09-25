@@ -55,7 +55,7 @@
         },
         {
             "name": "每日赠礼",
-            "entry": "TaskGiveGift"
+            "entry": "TaskGift"
         },
         {
             "name": "维修会",
