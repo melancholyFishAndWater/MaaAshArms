@@ -102,7 +102,7 @@
             "entry": "TaskTraining"
         },
         {
-            "name": "领取奖励",
+            "name": "任务奖励",
             "entry": "TaskMission",
             "group": [
                 "feidu"
