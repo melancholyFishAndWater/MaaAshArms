@@ -103,7 +103,10 @@
         },
         {
             "name": "领取奖励",
-            "entry": "TaskMission"
+            "entry": "TaskMission",
+            "group": [
+                "feidu"
+            ]
         }
         // {
         //     "name": "自律活动",
@@ -113,6 +116,13 @@
         //         // "战前一键补充"
         //     ]
         // }
+    ],
+    "group": [
+        {
+            "name": "feidu",
+            "label": "废都",
+            "default_expand": true
+        }
     ],
     "option": {
         "自定义建造数量": {
