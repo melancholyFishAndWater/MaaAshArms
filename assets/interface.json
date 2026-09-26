@@ -99,7 +99,13 @@
         },
         {
             "name": "训练所",
-            "entry": "TaskTraining"
+            "entry": "TaskTraining",
+            "option": [
+                "战斗演习",
+                "拓展训练",
+                "狩猎行动",
+                "资源筹备"
+            ]
         },
         {
             "name": "任务奖励",
@@ -124,7 +130,11 @@
             "default_expand": true
         }
     ],
+    "import": [
+        "tasks/option/battle_training.json"
+    ],
     "option": {
+        // 订单工厂
         "自定义建造数量": {
             "type": "input",
             "description": "单次建造数量，超过3个时，要开启跳过才生效",

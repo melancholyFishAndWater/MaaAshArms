@@ -2,6 +2,7 @@
     "TaskTraining": {
         "desc": "训练所任务",
         "next": [
+            "TrainingInHome",
             "TrainingEnterHome",
             "[JumpBack]ReturnBattleMainPage"
         ]
@@ -11,18 +12,36 @@
         "recognition": "OCR",
         "expected": "训练所",
         "roi": [
-            369,
-            658,
-            137,
-            65
+            394,
+            677,
+            84,
+            37
         ],
         "action": "Click",
         "next": [
-            "TrainingEnterHome",
-            "TrainingEnd",
-            "[JumpBack]TrainingEnterOne"
+            "TrainingInHome",
+            "TrainingEnterHome"
         ],
         "pre_wait_freezes": 500
+    },
+    "TrainingInHome": {
+        "desc": "在训练所主界面",
+        "recognition": "TemplateMatch",
+        "template": "Battle/BattleTraining/HomeFlag.png",
+        "threshold": 0.95,
+        "roi": [
+            57,
+            0,
+            403,
+            109
+        ],
+        "next": [
+            "[JumpBack]TrainingEnterOne",
+            "TrainingEnd",
+            "TrainingInHome",
+            "[JumpBack]BackButton"
+            // TODO 战斗失败的逻辑
+        ]
     },
     "TrainingEnd": {
         "desc": "无战斗次数",
@@ -34,45 +53,35 @@
             900,
             68
         ],
-        "action": "Click",
-        "target_offset": [
-            0,
-            -225,
-            0,
-            0
-        ],
         "index": 3
     },
     "TrainingEnterOne": {
-        "desc": "进入其中一个训练所关卡",
-        "recognition": "TemplateMatch",
-        "template": "Battle/BattleTraining/11.png",
+        "desc": "进入其中一个训练所关卡选择页面",
+        "recognition": "Custom",
+        "custom_recognition": "TrainingEnterOneRepo",
         "max_hit": 4,
-        "roi": [
-            192,
-            524,
-            900,
-            68
-        ],
         "action": "Click",
-        "target_offset": [
-            0,
-            -225,
-            0,
-            0
-        ],
+        "attach": {
+            "战斗演习": "六",
+            "狩猎行动": "六",
+            "拓展训练": "六",
+            "资源筹备": "六"
+        },
         "next": [
             "TrainingEnterFormation",
             "[JumpBack]MoveUp"
-        ]
+        ],
+        "post_wait_freezes": 2000
     },
     "TrainingEnterFormation": {
         "desc": "进入编队页面",
         "recognition": "Custom",
-        "custom_recognition": "EnterTrainingTeamRepo",
+        "custom_recognition": "TrainingEnterFormationRepo",
+        "custom_recognition_param": "unknow", // 覆写传递关卡难度数
         "action": "Click",
         "next": [
             "BattleReplay"
-        ]
+        ],
+        "post_wait_freezes": 2000
     }
 }
