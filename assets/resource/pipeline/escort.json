@@ -1,15 +1,14 @@
 {
-    // TODO 重构
     // TODO 判断物品价值
-    // TODO 优化判断逻辑
     "TaskEscort": {
         "desc": "防卫局任务",
         "next": [
-            "EnterEscort",
+            "EscortInHome",
+            "EscortEnterHome",
             "[JumpBack]ReturnMain"
         ]
     },
-    "EnterEscort": {
+    "EscortEnterHome": {
         "desc": "从主页进入防卫局",
         "recognition": "TemplateMatch",
         "template": "Escort/EnterButton.png",
@@ -21,14 +20,14 @@
         ],
         "action": "Click",
         "next": [
-            "InEscort",
-            "EnterEscort"
+            "EscortInHome",
+            "EscortEnterHome"
         ]
     },
-    "InEscort": {
+    "EscortInHome": {
         "desc": "在防卫局界面",
-        "recognition": "TemplateMatch",
-        "template": "Escort/EscortFlag/",
+        "recognition": "OCR",
+        "expected": ".+防卫生产局",
         "roi": [
             58,
             0,
@@ -36,42 +35,37 @@
             106
         ],
         "next": [
-            "EscortDelivery",
-            "FindAnyEscort"
+            "[JumpBack]ClickTap",
+            "[JumpBack]EscortDelivery",
+            "EscortFindToAccept"
         ]
     },
+    // 任务流程
     "EscortDelivery": {
         "desc": "一键交付",
         "recognition": "TemplateMatch",
         "template": "Escort/EscortDelivery.png",
         "method": 10001,
         "action": "Click",
+        "max_hit": 2,
+        "timeout": 5000,
         "roi": [
             280,
             599,
             309,
             121
         ],
-        "next": [
-            "[JumpBack]ClickTap",
-            "FindAnyEscort"
-        ]
+        "post_wait_freezes": 2000
     },
-    "FindAnyEscort": {
+    "EscortFindToAccept": {
         "desc": "左滑直到接取所有任务",
         "next": [
-            "CheckEscortEnd",
-            "[JumpBack]FindEscort",
+            "[JumpBack]EscortAccept",
+            "IsFreezes",
             "[JumpBack]MoveRight"
         ]
     },
-    "CheckEscortEnd": {
-        "desc": "检测防卫局任务是否结束 目前效果是检测10次后触发",
-        "recognition": "Custom",
-        "custom_recognition": "CheckEscortEndReco",
-        "action": "StopTask"
-    },
-    "FindEscort": {
+    "EscortAccept": {
         "desc": "接取任务",
         "recognition": "TemplateMatch",
         "template": "Escort/CanEscort.png",
@@ -83,12 +77,12 @@
         ],
         "action": "Click",
         "next": [
-            "ChooseToEscort"
+            "EscortChooseCharacter"
         ],
         "post_wait_freezes": 200
     },
-    "ChooseToEscort": {
-        "desc": "选择角色执行任务",
+    "EscortChooseCharacter": {
+        "desc": "点击一键推荐按钮",
         "recognition": "TemplateMatch",
         "template": "Escort/RecommendButton.png",
         "roi": [
@@ -99,11 +93,11 @@
         ],
         "action": "Click",
         "next": [
-            "ClickOkEscort"
+            "EscortClickOk"
         ],
         "post_wait_freezes": 200
     },
-    "ClickOkEscort": {
+    "EscortClickOk": {
         "desc": "点击确认按钮执行任务",
         "recognition": "OCR",
         "expected": "确认",

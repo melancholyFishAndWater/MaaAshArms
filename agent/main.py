@@ -5,7 +5,6 @@ from maa.toolkit import Toolkit
 
 import base
 import battle_training
-import escort
 import factory_fast
 import factory
 import train

@@ -70,7 +70,20 @@
         },
         {
             "name": "防卫局",
-            "entry": "TaskEscort"
+            "entry": "TaskEscort",
+            "pipeline_override": {
+                "IsFreezes": {
+                    "roi": [
+                        0,
+                        0,
+                        1280,
+                        481
+                    ],
+                    "next": [
+                        "TaskStop"
+                    ]
+                }
+            }
         },
         {
             "name": "联络人",
