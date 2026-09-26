@@ -12,7 +12,8 @@
         "expected": "酒馆夜话",
         "action": "Click",
         "next": [
-            "GiftEnterHome"
+            "GiftEnterHome",
+            "GiftEnterTavern"
         ],
         "post_wait_freezes": 500
     },
@@ -24,7 +25,8 @@
         ],
         "action": "Click",
         "next": [
-            "GiftClikSortRule"
+            "GiftClikSortRule",
+            "GiftEnterHome"
         ],
         "post_wait_freezes": 500
     },
