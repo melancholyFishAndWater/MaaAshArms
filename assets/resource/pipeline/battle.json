@@ -177,7 +177,7 @@
         "desc": "正在战斗",
         "recognition": "OCR",
         "expected": "接管作战",
-        "post_wait_freezes": 2000,
+        "post_wait_freezes": 3000,
         "roi": [
             664,
             638,
