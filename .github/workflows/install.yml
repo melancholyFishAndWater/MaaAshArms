@@ -126,6 +126,13 @@ jobs:
               mkdir -p install
               rsync -av --ignore-existing MFA/ install/
               echo "MFA files copied successfully."
+              if [ -f "install/MFAAvalonia.exe" ]; then
+                mv "install/MFAAvalonia.exe" "install/MaaAshArms.exe"
+                echo "GUI entry renamed: install/MFAAvalonia.exe -> install/MaaAshArms.exe"
+              elif [ -f "install/MFAAvalonia" ]; then
+                mv "install/MFAAvalonia" "install/MaaAshArms"
+                echo "GUI entry renamed: install/MFAAvalonia -> install/MaaAshArms"
+              fi
             else
               echo "MFA directory not found, skipping copy."
             fi
