@@ -17,7 +17,7 @@ from maa.pipeline import JStopTask, JTarget, JTemplateMatch, JOCR, JSwipe
 from re import search
 from numpy import ndarray, dtype
 
-from base import addListToTuple, is_hit, toTuple
+from base import DEFAULT_HIT_BOX, addListToTuple, is_hit, toTuple, log
 
 _TrainStatus = Literal["acceptable", "rewardable", "busy"]
 
@@ -110,7 +110,6 @@ def _get_train_status_number(
 # ---------- Reco ----------
 
 
-# TODO 警告用户识别失败
 # 从主页获取列车状态并记录出发数，若非全部出发，则返回点击box
 @AgentServer.custom_recognition("TrainGetStatusReco")
 class TrainGetStatusReco(CustomRecognition):
@@ -151,10 +150,13 @@ class TrainGetStatusReco(CustomRecognition):
         | tuple[int, int, int, int]
         | None
     ):
+        # 提取变量
+        n_name = argv.node_name
 
         # 识别派遣数
         r = _get_train_status_number(context, argv.image, (331, 129, 60, 53))
         if r is None:
+            log.warn(f"{n_name} 识别派遣数失败")
             return
 
         # 提取变量 min为未领取数+未完成数
@@ -172,12 +174,15 @@ class TrainGetStatusReco(CustomRecognition):
             # 若识别均忙 提前结束
             if len(busy_result.filtered_results) == max_:
                 context.run_action_direct(JActionType.StopTask, JStopTask())
+                log.info("所有列车未抵达，任务结束")
                 return
 
             # 遍历添加列车
             for i in busy_result.filtered_results:
                 assert type(i) == TemplateMatchResult
                 self.append_train(context, argv.image, toTuple(i.box), "busy")
+        else:
+            log.warn(f"{n_name} 识别未抵达列车失败")
 
         # 识别已抵达列车
         rewardable_result = context.run_recognition_direct(
@@ -202,10 +207,25 @@ class TrainGetStatusReco(CustomRecognition):
                     }
                 }
             )
+        else:
+            log.warn(f"{n_name} 识别已抵达列车失败")
 
         # 补充未出发列车
         for i in range(max_ - len(_train_list)):
             _train_list.append(_Train("acceptable", "unknow"))
+
+        # 获取识别结果
+        t_a = 0
+        t_b = 0
+        t_r = 0
+        for i in _train_list:
+            if i.stutus == "acceptable":
+                t_a += 1
+            elif i.stutus == "busy":
+                t_b += 1
+            else:
+                t_r += 1
+        log.info(f"识别结果: 可接取数:{t_a}, 可领取数:{t_r}, 未抵达数:{t_b}")
 
         # 若识别到已抵达列车 则返回点击位置
         if rewardable_result and rewardable_result.hit:
@@ -218,6 +238,7 @@ class TrainGetStatusReco(CustomRecognition):
             argv.image,
         )
         if not can_train_result:
+            log.warn(f"{n_name} 识别前往派遣失败")
             return
         return can_train_result.box
 
@@ -230,7 +251,8 @@ class TrainCheckEndReco(CustomRecognition):
     ) -> list[int] | None:
         assert len(_train_list) > 0
         if all(i.stutus == "busy" for i in _train_list):
-            return [0] * 4
+            log.info(f"{_train_list}列列车忙碌，全部忙碌，任务结束")
+            return DEFAULT_HIT_BOX
 
 
 # ----- 领取 -----
@@ -244,7 +266,7 @@ class TrainIsRewardableReco(CustomRecognition):
         self, context: Context, argv: CustomRecognition.AnalyzeArg
     ) -> list[int] | None:
         if any(i.stutus == "rewardable" for i in _train_list):
-            return [0] * 4
+            return DEFAULT_HIT_BOX
 
 
 # ----- 发车 -----
@@ -257,7 +279,7 @@ class TrainIsAcceptableReco(CustomRecognition):
         self, context: Context, argv: CustomRecognition.AnalyzeArg
     ) -> list[int] | None:
         if any(i.stutus != "busy" for i in _train_list):
-            return [0] * 4
+            return DEFAULT_HIT_BOX
 
 
 # 返回路线名称box 或 None
@@ -284,8 +306,12 @@ class TrainClickAcceptInfoReco(CustomRecognition):
     def analyze(
         self, context: Context, argv: CustomRecognition.AnalyzeArg
     ) -> Rect | None:
+        # 提取变量
+        n_name = argv.node_name
+
         # 若不能发车 则跳过判定 测试时需注释掉
         if all(i.stutus == "busy" for i in _train_list):
+            log.warn(f"{n_name} 不能发车，跳过返回路线box")
             return
         global _current_info_name
 
@@ -294,11 +320,13 @@ class TrainClickAcceptInfoReco(CustomRecognition):
             JRecognitionType.OCR, JOCR([r".+路线"], roi=(49, 125, 123, 505)), argv.image
         )
         if not r or not r.hit:
+            log.warn(f"{n_name} 路线名称识别失败")
             return
 
         # 候选列表
         s = argv.custom_recognition_param
         param: list[str] = s and json.loads(s) or []
+        log.info(f"候选路线: {param}")
 
         # 识别并记录当前画面路线解锁状态 若满足候选列表则返回box
         for i in r.filtered_results:
@@ -322,6 +350,7 @@ class TrainClickAcceptInfoReco(CustomRecognition):
                 )
                 if r2 and r2.hit:
                     self.route_status[text] = True
+                    log.debug(f"{n_name} 识别到路线 {text} 已解锁")
                 elif r2:
                     # 没有匹配到箭头 尝试匹配锁的图片
                     r3 = context.run_recognition_direct(
@@ -336,35 +365,47 @@ class TrainClickAcceptInfoReco(CustomRecognition):
                     )
                     if r3 and r3.hit:
                         self.route_status[text] = False
+                        log.info(f"识别到路线 {text} 锁定")
+                    else:
+                        log.warn(f"{n_name} 失败路线锁定失败")
+                else:
+                    log.warn(f"{n_name} 识别路线箭头失败")
 
             # 若在候选词中 且 路线解锁 则 返回路线名称box
             if text in param:
                 if text in self.route_status.keys() and self.route_status[text]:
+                    log.info(f"选择候选关卡: {text}")
                     _current_info_name = text
                     return i.box
 
         # 若候选词列表长度大于等于2 则跳过默认返回
         if len(param) >= 2:
+            log.debug(f"{n_name} 候选词充足，跳过使用备选候选词")
             return
+
+        # 依次匹配备选关卡
         r_text: dict[str, Rect | None] = {i.text: i.box for i in r.filtered_results}  # type: ignore
-        # 依次匹配列表
         for i in self._ROUTE:
             text = i + "路线"
 
             # 未获得该路线状态 匹配结束
             if text not in self.route_status.keys():
+                log.debug(f"{n_name} 未获得路线 {text} 状态，跳过返回")
                 break
 
             # 路线未解锁 匹配下一个
             if not self.route_status[text]:
+                log.debug(f"{n_name} 路线 {text} 未解锁，匹配下一个")
                 continue
 
             # 路线正在忙碌 匹配下一个
             if any(j.stutus == "busy" and j.route == text for j in _train_list):
+                log.debug(f"{n_name} 路线 {text} 未抵达，匹配下一个")
                 continue
 
             if text in r_text.keys():
                 _current_info_name = text
+                log.info(f"选择路线: {text}")
                 return r_text[text]
 
 
@@ -385,18 +426,24 @@ class TrainInfoMoverAct(CustomAction):
     def run(
         self, context: Context, argv: CustomAction.RunArg
     ) -> CustomAction.RunResult | bool:
+        # 提取变量
+        n_name = argv.node_name
 
         # 是否修改移动方向
-        if _in_info_bottom(context, argv.reco_detail.raw_image):  # BUG
+        if _in_info_bottom(context, argv.reco_detail.raw_image):
+            log.debug(f"{n_name} 列车路线在底部，设置路线移动方向为下滑")
             self._move_up = False
-        elif _in_info_top(context, argv.reco_detail.raw_image):  # BUG
+        elif _in_info_top(context, argv.reco_detail.raw_image):
+            log.debug(f"{n_name} 列车路线在顶部，设置路线移动方向为上滑")
             self._move_up = True
 
         # 移动方向
         if self._move_up:
             r = _info_move_up(context)
+            log.debug(f"{n_name} 上滑路线")
         else:
             r = _info_move_down(context)
+            log.debug(f"{n_name} 下滑路线")
 
         return r and r.success or False
 
@@ -410,6 +457,7 @@ class TrainBusyAct(CustomAction):
         first = next(i for i in _train_list if i.stutus == "acceptable")
         first.stutus = "busy"
         first.route = _current_info_name
+        log.info(f"路线 {_current_info_name} 发车成功")
         return True
 
 
@@ -421,4 +469,5 @@ class TrainGetRewardEndAct(CustomAction):
     ) -> CustomAction.RunResult | bool:
         first = next(i for i in _train_list if i.stutus == "rewardable")
         first.stutus = "acceptable"
+        log.info("领取列车奖励成功")
         return True
