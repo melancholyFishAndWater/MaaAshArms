@@ -25,10 +25,27 @@
         ],
         "action": "Click",
         "next": [
+            "GiftClickToChoose",
             "GiftClikSortRule",
             "GiftEnterHome"
         ],
         "post_wait_freezes": 500
+    },
+    "GiftClickToChoose": {
+        "desc": "点击切换DOLLS",
+        "recognition": "OCR",
+        "expected": "切换.+",
+        "roi": [
+            241,
+            658,
+            119,
+            36
+        ],
+        "action": "Click",
+        "next": [
+            "GiftClikSortRule"
+        ],
+        "post_wait_freezes": 2000
     },
     "GiftClikSortRule": {
         "desc": "点击排序按钮",
