@@ -26,7 +26,7 @@
         "action": "Click",
         "next": [
             "GiftClickToChoose",
-            "GiftClikSortRule",
+            "GiftClickSortRule",
             "GiftEnterHome"
         ],
         "post_wait_freezes": 500
@@ -43,11 +43,11 @@
         ],
         "action": "Click",
         "next": [
-            "GiftClikSortRule"
+            "GiftClickSortRule"
         ],
         "post_wait_freezes": 2000
     },
-    "GiftClikSortRule": {
+    "GiftClickSortRule": {
         "desc": "点击排序按钮",
         "recognition": "OCR",
         "expected": "排序",
