@@ -3,8 +3,11 @@
     "option": {
         "战斗演习": {
             "type": "select",
-            "default_case": "难度六",
+            "default_case": "不进行",
             "cases": [
+                {
+                    "name": "不进行"
+                },
                 {
                     "name": "难度一",
                     "pipeline_override": {
@@ -69,8 +72,11 @@
         },
         "狩猎行动": {
             "type": "select",
-            "default_case": "难度六",
+            "default_case": "不进行",
             "cases": [
+                {
+                    "name": "不进行"
+                },
                 {
                     "name": "难度一",
                     "pipeline_override": {
@@ -135,8 +141,11 @@
         },
         "拓展训练": {
             "type": "select",
-            "default_case": "难度六",
+            "default_case": "不进行",
             "cases": [
+                {
+                    "name": "不进行"
+                },
                 {
                     "name": "难度一",
                     "pipeline_override": {
@@ -201,8 +210,11 @@
         },
         "资源筹备": {
             "type": "select",
-            "default_case": "难度六",
+            "default_case": "不进行",
             "cases": [
+                {
+                    "name": "不进行"
+                },
                 {
                     "name": "难度一",
                     "pipeline_override": {

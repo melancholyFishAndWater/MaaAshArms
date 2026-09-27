@@ -12,7 +12,7 @@ from maa.context import (
     RecognitionDetail,
     OCRResult,
 )
-from maa.pipeline import JTemplateMatch, JOCR
+from maa.pipeline import JActionType, JStopTask, JTemplateMatch, JOCR
 from numpy import ndarray, dtype
 from re import search
 
@@ -24,18 +24,23 @@ from base import addListToTuple, toTuple, log
 # 识别关卡名 返回还有挑战次数的关卡名字box
 @AgentServer.custom_recognition("TrainingEnterOneRepo")
 class TrainingEnterOneRepo(CustomRecognition):
+    # 当前已有难度
+    _level = ["一", "二", "三", "四", "五", "六"]
+
     def analyze(
         self, context: Context, argv: CustomRecognition.AnalyzeArg
-    ) -> (
-        CustomRecognition.AnalyzeResult
-        | Rect
-        | list[int]
-        | ndarray[tuple[Any, ...], dtype[Any]]
-        | tuple[int, int, int, int]
-        | None
-    ):
+    ) -> Rect | None:
         # 提取变量
         n_name = argv.node_name
+        attach: dict[str, str] = (context.get_node_data("TrainingEnterOne") or {}).get(
+            "attach", {}
+        )
+
+        # 判断是否为空
+        if len(attach.keys()) == 0:
+            log.info("无训练所可选关卡，任务结束")
+            context.run_action_direct(JActionType.StopTask, JStopTask())
+            return
 
         # 识别关卡是否还有剩余次数
         r = context.run_recognition_direct(
@@ -44,41 +49,54 @@ class TrainingEnterOneRepo(CustomRecognition):
             argv.image,
         )
         if r is None or not r.hit:
+            log.warn(f"{n_name} 识别关卡剩余次数失败")
             return
 
-        # 识别关卡名字
-        r2 = context.run_recognition_direct(
-            JRecognitionType.OCR,
-            JOCR(
-                ["战斗演习", "狩猎行动", "拓展训练", "资源筹备"],
-                roi=toTuple(r.box),
-                roi_offset=(-63, -243, 126, 42),
-            ),
-            argv.image,
-        )
-        if r2 is None or not r2.hit:
-            log.warn(f"{n_name} 识别关卡名字失败")
-            return
-        b_r2 = r2.best_result
-        assert type(b_r2) == OCRResult
+        # 遍历识别还有次数的关卡名
+        expected = list(attach.keys())
+        for i in r.filtered_results:
+            assert type(i) == TemplateMatchResult
 
-        # 覆写关卡信息
-        name = b_r2.text
-        attach: dict[str, str] = (context.get_node_data("TrainingEnterOne") or {}).get(
-            "attach", {}
-        )
-        context.override_pipeline(
-            {
-                "TrainingEnterOne": {"focus": {"Node.Action.Starting": f"选择{name}"}},
-                "TrainingEnterFormation": {
-                    "custom_recognition_param": attach[name],
-                    "focus": {"Node.Action.Starting": f"选择难度{attach[name]}"},
-                },
-            }
-        )
+            # 识别关卡名字
+            r2 = context.run_recognition_direct(
+                JRecognitionType.OCR,
+                JOCR(
+                    expected,
+                    roi=toTuple(i.box),
+                    roi_offset=(-63, -243, 126, 42),
+                ),
+                argv.image,
+            )
+            if r2 is None or not r2.hit:
+                log.warn(f"{n_name} 识别关卡名字失败")
+                continue
+            b_r2 = r2.best_result
+            assert type(b_r2) == OCRResult
 
-        # 返回文字位置
-        return r2.box
+            # 提取关卡信息
+            name = b_r2.text
+            level = attach.get(name, self._level[-1])
+            if level not in self._level:
+                log.warn(
+                    f"{n_name} 错误的参数. attach: {attach}. expected: {expected}. _level: {self._level}"
+                )
+                continue
+
+            # 覆写
+            context.override_pipeline(
+                {
+                    "TrainingEnterOne": {
+                        "focus": {"Node.Action.Starting": f"选择{name}"}
+                    },
+                    "TrainingEnterFormation": {
+                        "custom_recognition_param": level,
+                        "focus": {"Node.Action.Starting": f"选择难度{level}"},
+                    },
+                }
+            )
+
+            # 返回文字位置
+            return i.box
 
 
 # 识别关卡难度 返回匹配难度的出击按钮box
@@ -97,7 +115,7 @@ class TrainingEnterFormationRepo(CustomRecognition):
         # 提取变量
         n_name = argv.node_name
         s = argv.custom_recognition_param
-        level: str = json.loads(s) if s is not None else "六"
+        level: str = json.loads(s) if s is not None else "不进行"
 
         # 识别难度
         result = context.run_recognition_direct(

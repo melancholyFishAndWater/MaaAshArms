@@ -61,12 +61,13 @@
         "custom_recognition": "TrainingEnterOneRepo",
         "max_hit": 4,
         "action": "Click",
-        "attach": {
-            "战斗演习": "六",
-            "狩猎行动": "六",
-            "拓展训练": "六",
-            "资源筹备": "六"
-        },
+        // 示例
+        // "attach": {
+        //     "战斗演习": "六",
+        //     "狩猎行动": "六",
+        //     "拓展训练": "六",
+        //     "资源筹备": "六"
+        // },
         "next": [
             "TrainingEnterFormation",
             "[JumpBack]MoveUp"
