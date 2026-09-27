@@ -96,7 +96,7 @@ class TrainingEnterOneRepo(CustomRecognition):
             )
 
             # 返回文字位置
-            return i.box
+            return b_r2.box
 
 
 # 识别关卡难度 返回匹配难度的出击按钮box
