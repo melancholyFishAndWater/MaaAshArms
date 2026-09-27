@@ -1,0 +1,41 @@
+{
+    // 订单工厂
+    "option": {
+        "自定义建造数量": {
+            "type": "input",
+            "description": "单次建造数量，超过3个时，要开启跳过才生效",
+            "inputs": [
+                {
+                    "name": "建造数量",
+                    "default": "3",
+                    "pipeline_type": "int",
+                    "verify": "^\\d$",
+                    "pattern_msg": "请输入数字"
+                }
+            ],
+            "pipeline_override": {
+                "FactoryCheckTaskEnd": {
+                    "custom_recognition_param": "{建造数量}"
+                }
+            }
+        },
+        "跳过": {
+            "type": "switch",
+            "description": "跳过建造等待",
+            "default_case": "No",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "pipeline_override": {
+                        "FactorySkip": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "No"
+                }
+            ]
+        }
+    }
+}
