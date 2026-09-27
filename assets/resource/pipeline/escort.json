@@ -29,10 +29,10 @@
         "recognition": "OCR",
         "expected": ".+防卫生产局",
         "roi": [
-            58,
-            0,
-            401,
-            106
+            990,
+            437,
+            282,
+            55
         ],
         "next": [
             "[JumpBack]ClickTap",
