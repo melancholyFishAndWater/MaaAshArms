@@ -53,23 +53,31 @@
             "name": "收取资源",
             "entry": "TaskFeiduReward",
             "group": [
-                "feidu"
+                "feidu",
+                "daily"
             ]
         },
         {
             "name": "每日赠礼",
             "entry": "TaskGift",
             "group": [
-                "feidu"
+                "feidu",
+                "daily"
             ]
         },
         {
             "name": "维修会",
-            "entry": "TaskMaintenance"
+            "entry": "TaskMaintenance",
+            "group": [
+                "daily"
+            ]
         },
         {
             "name": "武装押运",
             "entry": "TaskTrain",
+            "group": [
+                "daily"
+            ],
             "option": [
                 // TODO 路线选择
             ]
@@ -77,6 +85,9 @@
         {
             "name": "防卫局",
             "entry": "TaskEscort",
+            "group": [
+                "daily"
+            ],
             "pipeline_override": {
                 "IsFreezes": {
                     "roi": [
@@ -93,11 +104,17 @@
         },
         {
             "name": "联络人",
-            "entry": "TaskFriend"
+            "entry": "TaskFriend",
+            "group": [
+                "daily"
+            ]
         },
         {
             "name": "订单工厂",
             "entry": "TaskFactory",
+            "group": [
+                "daily"
+            ],
             "option": [
                 "自定义建造数量",
                 "跳过"
@@ -106,6 +123,9 @@
         {
             "name": "训练所",
             "entry": "TaskTraining",
+            "group": [
+                "daily"
+            ],
             "option": [
                 "战斗演习",
                 "拓展训练",
@@ -115,7 +135,10 @@
         },
         {
             "name": "任务奖励",
-            "entry": "TaskMission"
+            "entry": "TaskMission",
+            "group": [
+                "daily"
+            ]
         }
         // {
         //     "name": "自律活动",
@@ -130,6 +153,11 @@
         {
             "name": "feidu",
             "label": "废都",
+            "default_expand": true
+        },
+        {
+            "name": "daily",
+            "label": "每日任务",
             "default_expand": true
         }
     ],
