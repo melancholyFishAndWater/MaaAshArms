@@ -24,17 +24,10 @@
         }
     ],
     "resource": [
-        // {
-        //     "name": "官服",
-        //     "path": [
-        //         "./resource"
-        //     ]
-        // },
         {
             "name": "B 服",
             "path": [
                 "./resource"
-                // "./resource_bilibili"
             ]
         }
     ],
