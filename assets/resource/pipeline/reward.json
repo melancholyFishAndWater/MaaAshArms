@@ -79,20 +79,20 @@
     "MissionEnd": {
         "desc": "领取资源结束标志",
         "recognition": "TemplateMatch",
-        "template": "Reward/Mission/RewardDart.png",
+        "template": "Reward/Dart.png",
         "method": 10001,
         "threshold": 0.8,
         "roi": [
-            992,
-            69,
-            215,
-            84
+            986,
+            140,
+            195,
+            194
         ]
     },
     "MissionGetReward": {
         "desc": "点击一键领取",
         "recognition": "TemplateMatch",
-        "template": "Reward/Mission/RewardLight.png",
+        "template": "Reward/RewardLight.png",
         "action": "Click",
         "roi": [
             992,
