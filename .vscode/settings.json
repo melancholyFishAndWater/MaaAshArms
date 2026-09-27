@@ -2,10 +2,18 @@
     "json.schemas": [
         {
             "fileMatch": [
-                "/assets/resource/**/*.json",
-                "/install/resource/**/*.json",
-                "/assets/resource/**/*.jsonc",
-                "/install/resource/**/*.jsonc"
+                "/assets/resource/pipeline/**/*.json",
+                "/assets/resource/config/**/*.json",
+                "/assets/resource/model/**/*.json",
+                "/install/resource/pipeline/**/*.json",
+                "/install/resource/config/**/*.json",
+                "/install/resource/model/**/*.json",
+                "/assets/resource/pipeline/**/*.jsonc",
+                "/assets/resource/config/**/*.jsonc",
+                "/assets/resource/model/**/*.jsonc",
+                "/install/resource/pipeline/**/*.jsonc",
+                "/install/resource/config/**/*.jsonc",
+                "/install/resource/model/**/*.jsonc"
             ],
             "url": "/deps/tools/pipeline.schema.json"
         },
@@ -24,8 +32,14 @@
         },
         {
             "fileMatch": [
-                "/assets/tasks/*.json",
-                "/assets/tasks/**/*.json"
+                "/assets/resource/tasks/*.json",
+                "/assets/resource/tasks/**/*.json",
+                "/assets/resource/tasks/*.jsonc",
+                "/assets/resource/tasks/**/*.jsonc",
+                "/install/resource/tasks/*.json",
+                "/install/resource/tasks/**/*.json",
+                "/install/resource/tasks/*.jsonc",
+                "/install/resource/tasks/**/*.jsonc"
             ],
             "url": "/deps/tools/interface_import.schema.json"
         }

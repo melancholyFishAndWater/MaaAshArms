@@ -143,8 +143,8 @@
         }
     ],
     "import": [
-        "tasks/option/battle_training.json",
-        "tasks/option/factory.json",
-        "tasks/option/daily.json"
+        "resource/tasks/option/battle_training.json",
+        "resource/tasks/option/factory.json",
+        "resource/tasks/option/daily.json"
     ]
 }

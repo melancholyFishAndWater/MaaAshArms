@@ -119,11 +119,6 @@ def install_resource():
     with open(install_path / "interface.json", "w", encoding="utf-8") as f:
         jsonc.dump(interface, f, ensure_ascii=False, indent=4)
 
-    if (working_dir / "assets" / "tasks").exists():
-        shutil.copytree(
-            working_dir / "assets" / "tasks", install_path / "tasks", dirs_exist_ok=True
-        )
-
 
 def install_chores():
     shutil.copy2(
