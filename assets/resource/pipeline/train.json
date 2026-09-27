@@ -106,20 +106,25 @@
             "[JumpBack]TrainMoveUp"
         ]
     },
+    // TODO 移动到目标路线
     "TrainMoveUp": {
         // NOICE 起点是物品的话无法滑动
         "desc": "列车页面上滑",
         "action": "Swipe",
         "begin": [
             350,
-            500
+            500,
+            1,
+            20
         ],
         "end": [
             350,
-            400
+            300,
+            1,
+            20
         ],
         "end_hold": 300,
-        "post_wait_freezes": 200
+        "post_wait_freezes": 500
     },
     "TrainGetReward": {
         "desc": "领取列车奖励",
@@ -193,22 +198,13 @@
         ],
         "post_wait_freezes": 2500
     },
-    // BUG 不稳定，游戏卡就可能滑不到底部
     "TrainMoveToBottom": {
         "desc": "移动到STATION底部",
         "max_hit": 1,
-        "repeat": 10,
-        "repeat_delay": 200,
-        "action": "Swipe",
-        "begin": [
-            350,
-            500
-        ],
-        "end": [
-            350,
-            400
-        ],
-        "end_hold": 200
+        "next": [
+            "IsFreezes",
+            "[JumpBack]TrainMoveUp"
+        ]
     },
     // TODO 目标STATION list[str]
     "TrainAcceptable": {
