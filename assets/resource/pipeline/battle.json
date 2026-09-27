@@ -1,4 +1,5 @@
 {
+    // 通用战斗
     // TODO 改进
     "ReturnBattleMainPage": {
         "desc": "回到出击作页面主页",
@@ -150,8 +151,36 @@
             70
         ],
         "next": [
+            "[JumpBack]BattleNeedReplenish",
             "BattleClickAttack"
         ]
+    },
+    "BattleNeedReplenish": {
+        "desc": "补充成员数",
+        "recognition": "TemplateMatch",
+        "template": "Battle/NeedReplenish.png",
+        "roi": [
+            772,
+            402,
+            490,
+            162
+        ],
+        "next": [
+            "BattleClickReplenish"
+        ]
+    },
+    // TODO 补充数量不够
+    "BattleClickReplenish": {
+        "desc": "点击补充按钮",
+        "recognition": "OCR",
+        "expected": "一键补充",
+        "roi": [
+            233,
+            659,
+            104,
+            34
+        ],
+        "action": "Click"
     },
     // 战斗流程
     "BattleClickAttack": {
