@@ -5,6 +5,7 @@ from maa.toolkit import Toolkit
 
 import base
 import battle_training
+import daily
 import factory_fast
 import factory
 import train
