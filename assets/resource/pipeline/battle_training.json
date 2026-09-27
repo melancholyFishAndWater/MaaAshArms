@@ -28,7 +28,7 @@
         "desc": "在训练所主界面",
         "recognition": "TemplateMatch",
         "template": "Battle/BattleTraining/HomeFlag.png",
-        "threshold": 0.95,
+        "threshold": 0.975,
         "roi": [
             57,
             0,
@@ -38,7 +38,6 @@
         "next": [
             "[JumpBack]TrainingEnterOne",
             "TrainingEnd",
-            "TrainingInHome",
             "[JumpBack]BackButton"
             // TODO 战斗失败的逻辑
         ]
