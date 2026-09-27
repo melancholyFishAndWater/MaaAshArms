@@ -112,7 +112,6 @@
             "P"
         ],
         "action": "Click",
-        "post_wait_freezes": 200,
         "roi": [
             530,
             591,
