@@ -49,6 +49,10 @@
     // 领取
     "FeiduRewardOne": {
         "desc": "领取资源",
+        "recognition": "And",
+        "all_of": [
+            "FeiduInHome"
+        ],
         "next": [
             "[JumpBack]FeiduGetMoney",
             "[JumpBack]FeiduGetPart",
