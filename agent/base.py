@@ -34,6 +34,43 @@ def is_hit(detail: RecognitionDetail | None) -> bool:
     return detail is not None and detail.hit
 
 
+# ---------- Log ----------
+
+
+# 日志接口
+class _Log:
+    __instance = None
+
+    def __new__(cls):
+        if cls.__instance is None:
+            cls.__instance = super().__new__(cls)
+        return cls.__instance
+
+    def info(self, msg: str):
+        print(f"info: {msg}")
+
+    def error(self, msg: str):
+        print("error: {msg}")
+
+    def warn(self, msg: str):
+        print(f"warn: {msg}")
+
+    def trace(self, msg: str):
+        print(f"trace: {msg}")
+
+    def debug(self, msg: str):
+        print(f"{msg}")
+
+    def critical(self, msg: str):
+        print(f"critical: {msg}")
+
+    def success(self, msg: str):
+        print(f"success: {msg}")
+
+
+# 日志
+log = _Log()
+
 # ---------- Reco ----------
 
 
