@@ -46,8 +46,7 @@
             "name": "收取资源",
             "entry": "TaskFeiduReward",
             "group": [
-                "feidu",
-                "daily"
+                "feidu"
             ]
         },
         {
@@ -56,21 +55,18 @@
             "group": [
                 "feidu",
                 "daily"
+            ],
+            "option": [
+                "gift_daily"
             ]
         },
         {
             "name": "维修会",
-            "entry": "TaskMaintenance",
-            "group": [
-                "daily"
-            ]
+            "entry": "TaskMaintenance"
         },
         {
             "name": "武装押运",
             "entry": "TaskTrain",
-            "group": [
-                "daily"
-            ],
             "option": [
                 // TODO 路线选择
             ]
@@ -78,9 +74,6 @@
         {
             "name": "防卫局",
             "entry": "TaskEscort",
-            "group": [
-                "daily"
-            ],
             "pipeline_override": {
                 "IsFreezes": {
                     "roi": [
@@ -97,10 +90,7 @@
         },
         {
             "name": "联络人",
-            "entry": "TaskFriend",
-            "group": [
-                "daily"
-            ]
+            "entry": "TaskFriend"
         },
         {
             "name": "订单工厂",
@@ -128,10 +118,7 @@
         },
         {
             "name": "任务奖励",
-            "entry": "TaskMission",
-            "group": [
-                "daily"
-            ]
+            "entry": "TaskMission"
         }
         // {
         //     "name": "自律活动",
@@ -151,11 +138,13 @@
         {
             "name": "daily",
             "label": "每日任务",
-            "default_expand": true
+            "default_expand": true,
+            "description": "每日任务分组下的任务每日只会执行一次"
         }
     ],
     "import": [
         "tasks/option/battle_training.json",
-        "tasks/option/factory.json"
+        "tasks/option/factory.json",
+        "tasks/option/daily.json"
     ]
 }

@@ -1,0 +1,38 @@
+{
+    "option": {
+        "gift_daily": {
+            "type": "switch",
+            "label": "每日一次",
+            "cases": [
+                {
+                    "name": "Yes"
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "TaskGift": {
+                            "custom_recognition_param": false
+                        }
+                    }
+                }
+            ]
+        },
+        "training_daily": {
+            "type": "switch",
+            "label": "每日一次",
+            "cases": [
+                {
+                    "name": "Yes"
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "TaskTraining": {
+                            "custom_recognition_param": false
+                        }
+                    }
+                }
+            ]
+        }
+    }
+}

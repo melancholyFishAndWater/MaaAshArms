@@ -1,6 +1,8 @@
 {
     "TaskTraining": {
         "desc": "训练所任务",
+        "recognition": "Custom",
+        "custom_recognition": "DaliyReco",
         "next": [
             "TrainingInHome",
             "TrainingEnterHome",
