@@ -51,11 +51,17 @@
         },
         {
             "name": "收取资源",
-            "entry": "TaskFeiduReward"
+            "entry": "TaskFeiduReward",
+            "group": [
+                "feidu"
+            ]
         },
         {
             "name": "每日赠礼",
-            "entry": "TaskGift"
+            "entry": "TaskGift",
+            "group": [
+                "feidu"
+            ]
         },
         {
             "name": "维修会",
@@ -109,10 +115,7 @@
         },
         {
             "name": "任务奖励",
-            "entry": "TaskMission",
-            "group": [
-                "feidu"
-            ]
+            "entry": "TaskMission"
         }
         // {
         //     "name": "自律活动",
