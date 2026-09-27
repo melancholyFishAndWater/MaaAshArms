@@ -108,14 +108,19 @@ class IsFreezesReco(CustomRecognition):
                 ),
                 argv.image,
             )
+        else:
+            log.debug(f"{argv.node_name} 第一次识别冻结，跳过识别")
 
-        # 判断是否命中
+        # 判断是否冻结
         same = bool(r and r.hit)
+        if same:
+            log.debug(f"{argv.node_name} 检测到画面冻结")
 
         # 存储本帧识别
         if not context.override_image(name, argv.image[y : y + h, x : x + w]):
             print(f"override_image failed: {name}")
             same = False
+            log.warn(f"{argv.node_name} 覆写图片失败，冻结次数重置")
 
         # 存储连续识别成功次数
         self.__freezes_dict[key] = (self.__freezes_dict.get(key, 0) + 1) if same else 0
@@ -123,6 +128,7 @@ class IsFreezesReco(CustomRecognition):
         # 条件返回识别成功
         if self.__freezes_dict[key] >= k:
             del self.__freezes_dict[key]
+            log.debug(f"{argv.node_name} 画面冻结次数超过{k}，返回识别区域box")
             return (x, y, w, h)
 
 
