@@ -16,7 +16,7 @@ from maa.pipeline import JTemplateMatch, JOCR
 from numpy import ndarray, dtype
 from re import search
 
-from base import addListToTuple, toTuple
+from base import addListToTuple, toTuple, log
 
 # ---------- Reco ----------
 
@@ -34,6 +34,9 @@ class TrainingEnterOneRepo(CustomRecognition):
         | tuple[int, int, int, int]
         | None
     ):
+        # 提取变量
+        n_name = argv.node_name
+
         # 识别关卡是否还有剩余次数
         r = context.run_recognition_direct(
             JRecognitionType.TemplateMatch,
@@ -54,6 +57,7 @@ class TrainingEnterOneRepo(CustomRecognition):
             argv.image,
         )
         if r2 is None or not r2.hit:
+            log.warn(f"{n_name} 识别关卡名字失败")
             return
         b_r2 = r2.best_result
         assert type(b_r2) == OCRResult
@@ -91,6 +95,7 @@ class TrainingEnterFormationRepo(CustomRecognition):
         | None
     ):
         # 提取变量
+        n_name = argv.node_name
         s = argv.custom_recognition_param
         level: str = json.loads(s) if s is not None else "六"
 
@@ -101,6 +106,7 @@ class TrainingEnterFormationRepo(CustomRecognition):
             argv.image,
         )
         if not result or not result.hit:
+            log.warn(f"{n_name} 识别难度失败")
             return
 
         # 遍历判断关卡难度
