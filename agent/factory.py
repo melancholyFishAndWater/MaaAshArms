@@ -22,7 +22,7 @@ from maa.pipeline import (
     JColorMatch,
 )
 from numpy import ndarray, dtype
-from base import DEFAULT_HIT_BOX, addListToTuple, toTuple
+from base import DEFAULT_HIT_BOX, addListToTuple, toTuple, log
 
 # 建造次数
 build_times: int = 0
@@ -89,8 +89,12 @@ class FactoryGetRewardReco(CustomRecognition):
         | tuple[int, int, int, int]
         | None
     ):
+        # 提取变量
+        n_name = argv.node_name
+
         boxes = _get_cancel_buttons(context, argv.image)
         if not boxes:
+            log.warn(f"{n_name} 获取红叉位置失败")
             return
         for i in boxes:
             # 时间
@@ -112,6 +116,7 @@ class FactoryGetRewardReco(CustomRecognition):
             # 赋值给 FactoryGetRewardSuccessAct 用
             global _reward_name
             _reward_name = b_name.text
+            log.debug(f"{n_name} 设置领取角色为 {_reward_name}")
 
             return i
 
@@ -122,9 +127,12 @@ class FactoryChooseCharaterRepo(CustomRecognition):
     def analyze(
         self, context: Context, argv: CustomRecognition.AnalyzeArg
     ) -> tuple[int, int, int, int] | None:
+        # 常量
         PAGE = (235, 157, 140, 230)
         HORIZONTAL = 22 + PAGE[2]
         VERTICAL = 26 + PAGE[3]
+
+        # 判断是否在选择界面
         result = context.run_recognition_direct(
             JRecognitionType.OCR,
             JOCR(["选择需要建造的"], roi=(184, 54, 351, 78)),
@@ -132,6 +140,8 @@ class FactoryChooseCharaterRepo(CustomRecognition):
         )
         if not result or not result.hit:
             return
+
+        # 遍历识别找到不处于正在建造的角色的box
         for i in range(2):
             for j in range(5):
                 roi = (
@@ -162,10 +172,15 @@ class FactoryChooseNumberRepo(CustomRecognition):
         | tuple[int, int, int, int]
         | None
     ):
+        # 提取变量
+        n_name = argv.node_name
+
         # 获得红叉位置
         boxes = _get_cancel_buttons(context, argv.image)
         if not boxes:
+            log.warn(f"{n_name} 获取红叉位置失败")
             return
+
         for i in boxes:
             # 判断是否是选择建造
             result = context.run_recognition_direct(
@@ -185,13 +200,18 @@ class FactoryChooseNumberRepo(CustomRecognition):
                 argv.image,
             )
             if not build_result or not build_result.hit:
+                log.warn(f"{n_name} 获取建造按钮位置失败")
                 continue
 
-            # 返回选择位置
-            chooses = build_result.filtered_results
+            # 提取变量
+            f_result = build_result.filtered_results
             number = int(argv.custom_recognition_param)
-            final = len(chooses) >= number and chooses[number - 1] or chooses[-1]
+            final_number = number if len(f_result) <= number else len(f_result)
+            final = f_result[final_number - 1]
             assert type(final) == OCRResult
+
+            # 返回选择位置
+            log.info(f"建造{final_number}个")
             return final.box
 
 
@@ -209,14 +229,19 @@ class FactoryCheckTaskEndRepo(CustomRecognition):
         | tuple[int, int, int, int]
         | None
     ):
+        # 提取变量
+        n_name = argv.node_name
+
         # 满足建造次数则结束
         max_ = int(argv.custom_recognition_param)
         if build_times >= max_:
+            log.info("达到建造次数，任务结束")
             return DEFAULT_HIT_BOX
 
         # 获得取消按钮
         boxes = _get_cancel_buttons(context, argv.image)
         if not boxes:
+            log.warn(f"{n_name} 获取红叉失败")
             return
 
         # 遍历以获得所有状态
@@ -224,17 +249,20 @@ class FactoryCheckTaskEndRepo(CustomRecognition):
             # 名字OCR
             name_result = _get_name(context, argv.image, i)
             if not name_result or not name_result.hit:
+                log.warn(f"{n_name} 获取名字失败")
                 continue
             b_name = name_result.best_result
             assert type(b_name) == OCRResult
 
             # 在字典中则跳过
             if b_name.text in _timestamp_by_build_end_names.keys():
+                log.debug(f"{n_name} 状态存在，跳过识别时间")
                 continue
 
             # 时间OCR
             time_result = _get_time(context, argv.image, i)
             if not time_result or not time_result.hit:
+                log.warn(f"{n_name} 识别时间失败: {b_name.text}")
                 continue
             b_time = time_result.best_result
             assert type(b_time) == OCRResult
@@ -242,14 +270,18 @@ class FactoryCheckTaskEndRepo(CustomRecognition):
             # 提取时间
             m = search(r"(\d\d):(\d\d)", b_time.text)
             if not m:
+                log.warn(f"{n_name} 正则提取时间失败: {b_time.text}")
                 continue
 
             offset_sec = int(m.group(1)) * 60 + int(m.group(2))
-            _timestamp_by_build_end_names[b_name.text] = time.time() + offset_sec
+            sec = time.time() + offset_sec
+            _timestamp_by_build_end_names[b_name.text] = sec
+            log.debug(f"{n_name} 新增识别状态: {b_name.text} 结束时间戳: {sec}")
 
         # 全忙碌则结束
         if len(_timestamp_by_build_end_names) == 3:
             if all(v > time.time() for v in _timestamp_by_build_end_names.values()):
+                log.info(f"全部建造槽位处于忙碌，任务结束")
                 return DEFAULT_HIT_BOX
 
 
@@ -265,6 +297,7 @@ class TaskFactoryNextAct(CustomAction):
         global build_times
         build_times = 0
         _timestamp_by_build_end_names.clear()
+        log.debug(f"{argv.node_name} 执行初始化")
         return True
 
 
@@ -276,6 +309,7 @@ class FactoryChooseStartSuccess(CustomAction):
     ) -> CustomAction.RunResult | bool:
         global build_times
         build_times += 1
+        log.debug(f"{argv.node_name} 建造成功，建造数加一，当前数量: {build_times}")
         return True
 
 
@@ -288,4 +322,5 @@ class FactoryGetRewardSuccessAct(CustomAction):
         # 从字典中删除
         if _reward_name in _timestamp_by_build_end_names.keys():
             del _timestamp_by_build_end_names[_reward_name]
+            log.debug(f"从状态字典中删除: {_reward_name}")
         return True
