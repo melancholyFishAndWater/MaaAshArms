@@ -205,8 +205,8 @@
         "roi": [
             0,
             0,
-            0,
-            0
+            1280,
+            720
         ],
         "custom_recognition_param": {
             "from_": "unknow", // 如果要一个任务链中不同节点复用 填写父节点名
