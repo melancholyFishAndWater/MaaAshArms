@@ -74,7 +74,6 @@ log = _Log()
 # ---------- Reco ----------
 
 
-# TODO 更详细的log 画面不同 第一次匹配
 # 如果连续k次画面不变 则返回roi box 一般和move系列搭配判断移动前后是否有明显变化
 @AgentServer.custom_recognition("IsFreezesReco")
 class IsFreezesReco(CustomRecognition):
@@ -145,19 +144,13 @@ _move_entry: str = "MoveUp"
 class MoveUpDownReco(CustomRecognition):
     def analyze(
         self, context: Context, argv: CustomRecognition.AnalyzeArg
-    ) -> (
-        CustomRecognition.AnalyzeResult
-        | Rect
-        | list[int]
-        | ndarray[tuple[Any, ...], dtype[Any]]
-        | tuple[int, int, int, int]
-        | None
-    ):
+    ) -> list[int] | None:
         # 提取变量
         s = argv.custom_recognition_param
         param: dict[str, str] = s and json.loads(s) or {}
         from_ = param.get("from_", "unknow")
         x = int(param.get("x", 10))
+        n_name = argv.node_name
 
         # 合成key
         key = (argv.task_detail.task_id, from_)
@@ -165,7 +158,9 @@ class MoveUpDownReco(CustomRecognition):
         # 判断是否还有次数
         times = _move_up_down_dict.get(key, 0)
         if times >= x * 2:
+            log.debug(f"{n_name} 移动次数耗尽，取消移动")
             return
+        log.debug(f"{n_name} 当前移动次数: {times}")
 
         # 自增
         times += 1
@@ -177,6 +172,7 @@ class MoveUpDownReco(CustomRecognition):
             _move_entry = "MoveUp"
         else:
             _move_entry = "MoveDown"
+        log.debug(f"{n_name} 当前移动方向: {_move_entry}")
 
         return DEFAULT_HIT_BOX
 
@@ -190,6 +186,7 @@ class MoveUpDownAct(CustomAction):
     ) -> CustomAction.RunResult | bool:
         # 移动
         r = context.run_action(_move_entry)
+        log.debug(f"{argv.node_name} 执行移动: {_move_entry}")
 
         # 返回结果
         if r is not None:
