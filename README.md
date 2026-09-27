@@ -1,43 +1,68 @@
 <!-- markdownlint-disable MD033 MD041 -->
-<p align="center">
-  <img alt="LOGO" src="https://cdn.jsdelivr.net/gh/MaaAssistantArknights/design@main/v1/icons/maa-logo_512x512.png" width="256" height="256" />
-</p>
-
 <div align="center">
 
-# MaaPracticeBoilerplate
+# MaaAshArms
+
+基于全新架构的 灰烬战线 小助手。图像技术 + 模拟控制，解放双手
+由 [MaaFramework](https://github.com/MaaXYZ/MaaFramework) 强力驱动！
+<a href="https://github.com/melancholyFishAndWater/MaaAshArms" target="_blank" style="font-weight: bold;">🔗 本项目 GitHub 仓库</a><br>
+🌟喜欢本项目就在仓库右上角点个星星吧🌟
 
 </div>
 
-本仓库为 [MaaFramework](https://github.com/MaaXYZ/MaaFramework) 所提供的项目模板，开发者可基于此模板直接创建自己的 MaaXXX 项目。
+<p align="center">
+  <img alt="Python" src="https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=white">
+  <img alt="platform" src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-blueviolet">
+  <br>
+  <img alt="commit" src="https://img.shields.io/github/commit-activity/m/melancholyFishAndWater/MaaAshArms">
+  <img alt="stars" src="https://img.shields.io/github/stars/melancholyFishAndWater/MaaAshArms?style=social">
+  <img alt="downloads" src="https://img.shields.io/github/downloads/melancholyFishAndWater/MaaAshArms/total?style=social">
+</p>
 
-> **MaaFramework** 是基于图像识别技术、运用 [MAA](https://github.com/MaaAssistantArknights/MaaAssistantArknights) 开发经验去芜存菁、完全重写的新一代自动化黑盒测试框架。
-> 低代码的同时仍拥有高扩展性，旨在打造一款丰富、领先、且实用的开源库，助力开发者轻松编写出更好的黑盒测试程序，并推广普及。
+## 快速使用
 
-## 即刻开始
+1. 从[Releases](https://github.com/melancholyFishAndWater/MaaAshArms/releases)界面下载最新的符合自身条件的压缩包。
+2. 解压下载好的压缩包后双击或右键运行解压目录下的 `MaaAshArms.exe` 文件。
+3. 阅读功能说明后进行配置即可
 
-**请不要直接克隆本仓库！你应该通过模板创建自己的项目！**  
+推荐使用MuMu模拟器12运行游戏，[模拟器支持情况](https://maa.plus/docs/zh-cn/manual/device/windows.html)请查看官方文档。
 
-请阅读 [如何开发](./docs/zh_cn/develop/how_to_develop.md)。
+## 功能列表
 
-向本模板仓库提交改动前，请阅读 [PR 规范](./docs/zh_cn/develop/pull_request_guidelines.md)。
+- 启动游戏
+- 联络人
+- 订单工厂
+- 维修会
+- 武装押运
+- 防卫局
+- 训练所
+- 收取资源
+- 每日赠礼
+- 任务奖励
 
-## 生态共建
+## 未来功能
 
-MAA 正计划建设为一类项目，而非舟的单一软件。
+- 主线委托
+- 自律活动
+- 探索
+- 更多...
 
-若您的项目依赖于 MaaFramework，我们欢迎您将它命名为 MaaXXX, MXA, MAX 等等。当然，这是许可而不是限制，您也可以自由选择其他与 MAA 无关的名字，完全取决于您自己的想法！
+## 问题反馈
 
-同时，我们也非常欢迎您提出 PR，在 [社区项目列表](https://github.com/MaaXYZ/MaaFramework#%E7%A4%BE%E5%8C%BA%E9%A1%B9%E7%9B%AE) 中添加上您的项目！
-
-## 常见问题
-
-请阅读 [常见问题](./docs/zh_cn/develop/faq.md)。
+> 项目初期测试并不完善，如您在使用过程中有任何问题，请提交issiue并附上程序目录内的debug文件夹和logs文件夹内最新的文件。
 
 ## 鸣谢
 
-本项目由 **[MaaFramework](https://github.com/MaaXYZ/MaaFramework)** 强力驱动！
+### 核心框架
 
-感谢以下开发者对本项目作出的贡献（下面链接改成你自己的项目地址）:
+- [MaaFramework](https://github.com/MaaXYZ/MaaFramework)  
+  基于图像识别的自动化黑盒测试框架 | An automation black-box testing framework based on image recognition
 
-[![Contributors](https://contrib.rocks/image?repo=MaaXYZ/MaaFramework&max=1000)](https://github.com/MaaXYZ/MaaFramework/graphs/contributors)
+### UI 支持
+
+- [MFAAvalonia](https://github.com/SweetSmellFox/MFAAvalonia)  
+  基于 Avalonia UI 构建的 MaaFramework 通用 GUI 解决方案
+
+感谢以下开发者对本项目作出的贡献:
+
+[![Contributors](https://contrib.rocks/image?repo=melancholyFishAndWater/MaaAshArms&max=1000)](https://github.com/melancholyFishAndWater/MaaAshArms/graphs/contributors)
