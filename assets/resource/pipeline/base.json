@@ -107,6 +107,10 @@
             "A",
             "P"
         ],
+        "replace": [
+            "D",
+            "P"
+        ],
         "action": "Click",
         "post_wait_freezes": 200,
         "roi": [
