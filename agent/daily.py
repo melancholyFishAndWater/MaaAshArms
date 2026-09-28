@@ -3,7 +3,7 @@
 """
 
 import json
-from datetime import date
+from datetime import timedelta, datetime
 from pathlib import Path
 
 import json
@@ -27,10 +27,12 @@ from numpy import ndarray, dtype
 
 from base import DEFAULT_HIT_BOX, addListToTuple, is_hit, toTuple, log
 
+OFFSET = timedelta(hours=5)  # 凌晨 5 点跨天
+
 
 def _claim_today(name: str, state: str = "ash_arms_daily.json") -> bool:
     """
-    返回这个名字是否没有在今日存储过
+    返回这个名字是否是今日第一次
 
     Args:
         name (str): 名字，可以是模块名或者任务名等
@@ -39,10 +41,16 @@ def _claim_today(name: str, state: str = "ash_arms_daily.json") -> bool:
     Returns:
         bool: 是否没有在今日存储过
     """
-    today = date.today().isoformat()
+    today = (datetime.now() - OFFSET).date().isoformat()
     path = Path(state)
 
-    data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    except Exception as e:
+        data = {}
+        log.warn(f"{e}")
+
+    # 删除非今天的数据
     data = {k: v for k, v in data.items() if v == today}
 
     if data.get(name) == today:
