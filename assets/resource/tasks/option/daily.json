@@ -17,24 +17,6 @@
                     }
                 }
             ]
-        },
-        "training_daily": {
-            "type": "switch",
-            "label": "每日一次",
-            "default_case": "Yes",
-            "cases": [
-                {
-                    "name": "Yes"
-                },
-                {
-                    "name": "No",
-                    "pipeline_override": {
-                        "TaskTraining": {
-                            "custom_recognition_param": false
-                        }
-                    }
-                }
-            ]
         }
     }
 }
