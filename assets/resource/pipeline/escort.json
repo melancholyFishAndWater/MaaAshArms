@@ -66,6 +66,7 @@
             "[JumpBack]MoveRight"
         ]
     },
+    // BUG 未知原因导致最后一个任务领取失败
     "EscortAccept": {
         "desc": "接取任务",
         "recognition": "TemplateMatch",
