@@ -206,7 +206,7 @@ class FactoryChooseNumberRepo(CustomRecognition):
             # 提取变量
             f_result = build_result.filtered_results
             number = int(argv.custom_recognition_param)
-            final_number = number if len(f_result) <= number else len(f_result)
+            final_number = number if len(f_result) >= number else len(f_result)
             final = f_result[final_number - 1]
             assert type(final) == OCRResult
 
