@@ -3,6 +3,7 @@
         "gift_daily": {
             "type": "switch",
             "label": "每日一次",
+            "default_case": "Yes",
             "cases": [
                 {
                     "name": "Yes"
@@ -20,6 +21,7 @@
         "training_daily": {
             "type": "switch",
             "label": "每日一次",
+            "default_case": "Yes",
             "cases": [
                 {
                     "name": "Yes"
