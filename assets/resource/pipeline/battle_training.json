@@ -5,7 +5,16 @@
         "custom_recognition": "DaliyReco",
         "next": [
             "TrainingInHome",
-            "TrainingEnterHome",
+            "[JumpBack]ReturnTraining"
+        ]
+    },
+    "ReturnTraining": {
+        "desc": "返回训练所页面",
+        "max_hit": 2,
+        "timeout": 600000,
+        "next": [
+            "TrainingInHome",
+            "[JumpBack]TrainingEnterHome",
             "[JumpBack]ReturnBattleMainPage"
         ]
     },
@@ -20,10 +29,6 @@
             37
         ],
         "action": "Click",
-        "next": [
-            "TrainingInHome",
-            "TrainingEnterHome"
-        ],
         "pre_wait_freezes": 500
     },
     "TrainingInHome": {
@@ -40,8 +45,10 @@
         "next": [
             "[JumpBack]TrainingEnterOne",
             "TrainingEnd",
-            "[JumpBack]BackButton"
-            // TODO 战斗失败的逻辑
+            "[JumpBack]TrainingEnterHome",
+            "[JumpBack]BackButton",
+            "[JumpBack]ReturnBattleMainPage"
+            // TODO 自律战斗失败的逻辑、不可代理的逻辑
         ]
     },
     "TrainingEnd": {
