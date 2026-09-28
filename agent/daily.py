@@ -43,6 +43,7 @@ def _claim_today(name: str, state: str = "ash_arms_daily.json") -> bool:
     path = Path(state)
 
     data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    data = {k: v for k, v in data.items() if v == today}
 
     if data.get(name) == today:
         return False
@@ -71,5 +72,9 @@ class DaliyReco(CustomRecognition):
         if bool_ and _claim_today(argv.node_name):
             return DEFAULT_HIT_BOX
         else:
-            log.info("今日已执行过此任务，跳过")
-            context.run_action_direct(JActionType.StopTask, JStopTask())
+            s = f"今日已执行过{argv.node_name}，跳过"
+            log.info(s)
+            context.run_action(
+                "TaskStop",
+                pipeline_override={"TaskStop": {"focus": {"Node.Action.Succeeded": s}}},
+            )
