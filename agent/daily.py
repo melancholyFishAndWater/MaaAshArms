@@ -46,12 +46,12 @@ def _claim_today(name: str, state: str = "ash_arms_daily.json") -> bool:
 
     try:
         data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+
+        # 删除非今天的数据
+        data = {k: v for k, v in data.items() if v == today}
     except Exception as e:
         data = {}
         log.warn(f"{e}")
-
-    # 删除非今天的数据
-    data = {k: v for k, v in data.items() if v == today}
 
     if data.get(name) == today:
         return False
