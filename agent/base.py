@@ -59,7 +59,7 @@ class _Log:
         print(f"trace: {msg}")
 
     def debug(self, msg: str):
-        print(f"{msg}")
+        print(f"info: {msg}")
 
     def critical(self, msg: str):
         print(f"critical: {msg}")
