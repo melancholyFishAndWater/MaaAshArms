@@ -279,6 +279,7 @@ class TrainIsAcceptableReco(CustomRecognition):
         self, context: Context, argv: CustomRecognition.AnalyzeArg
     ) -> list[int] | None:
         if any(i.stutus != "busy" for i in _train_list):
+            context.clear_hit_count("TrainMoveToBottom")
             return DEFAULT_HIT_BOX
 
 
