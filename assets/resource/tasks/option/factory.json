@@ -37,15 +37,15 @@
             "default_case": "No",
             "cases": [
                 {
+                    "name": "No"
+                },
+                {
                     "name": "Yes",
                     "pipeline_override": {
                         "FactorySkip": {
                             "enabled": true
                         }
                     }
-                },
-                {
-                    "name": "No"
                 }
             ]
         }
