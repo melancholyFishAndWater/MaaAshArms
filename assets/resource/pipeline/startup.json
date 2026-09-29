@@ -3,11 +3,12 @@
         "desc": "启动游戏任务",
         "next": [
             "HomeFlagFirst",
-            "ClickGameIco",
-            "StartAshArms"
+            "StartUpClickIco",
+            "StartUpAshArms"
         ]
     },
-    "ClickGameIco": {
+    // 启动的两条路径 b服
+    "StartUpClickIco": {
         "desc": "点击游戏图标",
         "recognition": "TemplateMatch",
         "template": [
@@ -20,42 +21,38 @@
         "threshold": 0.8,
         "next": [
             "HomeFlagFirst",
-            "ClickGameIco",
-            "[JumpBack]Disclaimer",
-            "[JumpBack]GameLodingFlag",
+            "StartUpClickIco",
+            "[JumpBack]StartUpDisclaimer",
+            "[JumpBack]StartUpInLoding",
             "InServerMaintenance",
-            "[JumpBack]GameUpdate",
-            "[JumpBack]GameUpdateError",
-            "[JumpBack]GameUpdateNow",
-            "[JumpBack]GameClickLogin",
-            "[JumpBack]TouchSignIn",
-            "[JumpBack]GetReward",
-            "[JumpBack]NoticeClickDisable"
+            "[JumpBack]StartUpGameUpdate",
+            "[JumpBack]StartUpGameUpdateError",
+            "[JumpBack]StartUpGameUpdateNow",
+            "[JumpBack]StartUpClickLogin",
+            "StartUpClickSignIn"
         ],
         "post_wait_freezes": 5000,
         "timeout": 300000
     },
-    "StartAshArms": {
+    "StartUpAshArms": {
         "desc": "使用安装包启动",
         "action": "StartApp",
         "package": "com.asharmdolls.bilibili",
         "next": [
             "HomeFlagFirst",
-            "[JumpBack]Disclaimer",
-            "[JumpBack]GameLodingFlag",
+            "[JumpBack]StartUpDisclaimer",
+            "[JumpBack]StartUpInLoding",
             "InServerMaintenance",
-            "[JumpBack]GameUpdate",
-            "[JumpBack]GameUpdateError",
-            "[JumpBack]GameUpdateNow",
-            "[JumpBack]GameClickLogin",
-            "[JumpBack]TouchSignIn",
-            "[JumpBack]GetReward",
-            "[JumpBack]NoticeClickDisable"
+            "[JumpBack]StartUpGameUpdate",
+            "[JumpBack]StartUpGameUpdateError",
+            "[JumpBack]StartUpGameUpdateNow",
+            "[JumpBack]StartUpClickLogin",
+            "StartUpClickSignIn"
         ],
         "post_wait_freezes": 5000,
         "timeout": 300000
     },
-    "Disclaimer": {
+    "StartUpDisclaimer": {
         "desc": "隐私策略",
         "recognition": "OCR",
         "expected": "同意",
@@ -66,17 +63,24 @@
             49
         ],
         "action": "Click",
-        "post_wait_freezes": 3000
+        "post_wait_freezes": 3000,
+        "focus": {
+            "Node.Recognition.Succeeded": "点击同意隐私策略"
+        }
     },
-    "GameLodingFlag": {
+    "StartUpInLoding": {
         "desc": "正在加载游戏",
         "recognition": "TemplateMatch",
         "template": [
             "StartUp/SignInLoadingFlag/"
         ],
-        "post_wait_freezes": 3000
+        "post_wait_freezes": 5000,
+        "focus": {
+            "Node.Recognition.Succeeded": "等待游戏加载中"
+        }
     },
-    "GameClickLogin": {
+    // 点击进入游戏的两个分支
+    "StartUpClickLogin": {
         "desc": "点击登录按钮",
         "recognition": "OCR",
         "expected": "登录",
@@ -87,9 +91,18 @@
             46
         ],
         "action": "Click",
-        "post_wait_freezes": 3000
+        "next": [
+            "HomeFlagFirst",
+            "[JumpBack]GetReward",
+            "[JumpBack]NoticeClickDisable",
+            "StartUpClickLogin"
+        ],
+        "post_wait_freezes": 3000,
+        "focus": {
+            "Node.Recognition.Succeeded": "点击b站账号登录按钮"
+        }
     },
-    "TouchSignIn": {
+    "StartUpClickSignIn": {
         "desc": "点击进入游戏界面",
         "recognition": "TemplateMatch",
         "template": [
@@ -101,7 +114,16 @@
             630,
             540
         ],
-        "post_wait_freezes": 3000
+        "next": [
+            "HomeFlagFirst",
+            "[JumpBack]GetReward",
+            "[JumpBack]NoticeClickDisable",
+            "StartUpClickSignIn"
+        ],
+        "post_wait_freezes": 3000,
+        "focus": {
+            "Node.Recognition.Succeeded": "点击进入游戏"
+        }
     },
     "NoticeClickDisable": {
         "desc": "点击公告不再提示",
@@ -111,18 +133,24 @@
         "next": [
             "NoticeClose"
         ],
-        "post_wait_freezes": 1000
+        "post_wait_freezes": 1000,
+        "focus": {
+            "Node.Recognition.Succeeded": "点击公告不再提示"
+        }
     },
     "NoticeClose": {
-        "desc": "关闭公告页面",
+        "desc": "点击其他区域关闭公告页面",
         "action": "Click",
         "target": [
             0,
             -1
         ],
-        "post_wait_freezes": 1000
+        "post_wait_freezes": 1000,
+        "focus": {
+            "Node.Recognition.Succeeded": "关闭公告页面"
+        }
     },
-    "GameUpdate": {
+    "StartUpGameUpdate": {
         "desc": "提示更新",
         "recognition": "OCR",
         "expected": "下载更新",
@@ -139,10 +167,11 @@
             "Node.Recognition.Succeeded": "检测到游戏更新"
         }
     },
-    "GameUpdateError": {
+    "StartUpGameUpdateError": {
         "desc": "更新失败",
         "recognition": "OCR",
         "expected": ".+失败",
+        "max_hit": 3,
         "roi": [
             984,
             431,
@@ -156,7 +185,7 @@
             "Node.Recognition.Succeeded": "更新失败，尝试重新更新"
         }
     },
-    "GameUpdateNow": {
+    "StartUpGameUpdateNow": {
         "desc": "正在更新",
         "recognition": "OCR",
         "expected": "下载更新",
@@ -166,6 +195,9 @@
             89,
             22
         ],
-        "post_wait_freezes": 3000
+        "post_wait_freezes": 5000,
+        "focus": {
+            "Node.Recognition.Succeeded": "等待游戏更新中"
+        }
     }
 }

@@ -168,6 +168,12 @@
         "recognition": "TemplateMatch",
         "template": [
             "StartUp/HomeFlag/"
+        ],
+        "roi": [
+            805,
+            288,
+            460,
+            111
         ]
     },
     "ReturnMain": {
