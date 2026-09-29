@@ -27,10 +27,14 @@ from numpy import ndarray, dtype
 
 from base import DEFAULT_HIT_BOX, addListToTuple, is_hit, toTuple, log
 
-OFFSET = timedelta(hours=5)  # 凌晨 5 点跨天
+# 凌晨 5 点跨天
+OFFSET = timedelta(hours=5)
+
+# 当前数据
+_current_data = {}
 
 
-def _claim_today(name: str, state: str = "ash_arms_daily.json") -> bool:
+def _claim_today_read(name: str, state: str = "ash_arms_daily.json") -> bool:
     """
     返回这个名字是否是今日第一次
 
@@ -39,25 +43,37 @@ def _claim_today(name: str, state: str = "ash_arms_daily.json") -> bool:
         state (str, optional): 存储文件名字. 默认 "ash_arms_daily.json".
 
     Returns:
-        bool: 是否没有在今日存储过
+        bool: 是否是今日第一次
     """
+    global _current_data
     today = (datetime.now() - OFFSET).date().isoformat()
     path = Path(state)
 
     try:
-        data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+        _current_data = (
+            json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+        )
 
         # 删除非今天的数据
-        data = {k: v for k, v in data.items() if v == today}
+        _current_data = {k: v for k, v in _current_data.items() if v == today}
     except Exception as e:
-        data = {}
         log.warn(f"{e}")
 
-    if data.get(name) == today:
+    if _current_data.get(name) == today:
         return False
-    data[name] = today
-    path.write_text(json.dumps(data), encoding="utf-8")
+    _current_data[name] = today
     return True
+
+
+def _claim_today_write(state: str = "ash_arms_daily.json"):
+    """
+    更新数据每日一次数据
+
+    Args:
+        state (str, optional): 存储文件名. Defaults to "ash_arms_daily.json".
+    """
+    path = Path(state)
+    path.write_text(json.dumps(_current_data), encoding="utf-8")
 
 
 @AgentServer.custom_recognition("DaliyReco")
@@ -77,7 +93,7 @@ class DaliyReco(CustomRecognition):
         bool_ = bool(p) if p is not None else True
 
         # 判断是否跳过此次任务
-        if bool_ and _claim_today(argv.node_name):
+        if bool_ and _claim_today_read(argv.node_name):
             return DEFAULT_HIT_BOX
         else:
             s = f"今日已执行过{argv.node_name}，跳过"
@@ -86,3 +102,13 @@ class DaliyReco(CustomRecognition):
                 "TaskStop",
                 pipeline_override={"TaskStop": {"focus": {"Node.Action.Succeeded": s}}},
             )
+
+
+@AgentServer.custom_action("DaliyAct")
+class DaliyAct(CustomAction):
+    def run(
+        self, context: Context, argv: CustomAction.RunArg
+    ) -> CustomAction.RunResult | bool:
+        _claim_today_write()
+        log.info("更新每日一次数据")
+        return True

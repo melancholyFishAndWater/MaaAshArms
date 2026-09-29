@@ -61,7 +61,10 @@
             900,
             68
         ],
-        "index": 3
+        "index": 3,
+        "next": [
+            "DailyUpdate"
+        ]
     },
     "TrainingEnterOne": {
         "desc": "进入其中一个训练所关卡选择页面",

@@ -159,7 +159,10 @@
         ],
         "action": "Click",
         "repeat": 3,
-        "repeat_delay": 2000
+        "repeat_delay": 2000,
+        "next": [
+            "DailyUpdate"
+        ]
     }
     // TEST
     // "找非满好感角色": {
