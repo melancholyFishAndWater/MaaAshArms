@@ -41,6 +41,9 @@ class TrainingEnterOneRepo(CustomRecognition):
             log.info("无训练所可选关卡，任务结束")
             context.run_action_direct(JActionType.StopTask, JStopTask())
             return
+        else:
+            # 设置结束需要识别的数量
+            context.override_pipeline({"TrainingEnd": {"index": f"{len(attach) - 1}"}})
 
         # 识别关卡是否还有剩余次数
         r = context.run_recognition_direct(
