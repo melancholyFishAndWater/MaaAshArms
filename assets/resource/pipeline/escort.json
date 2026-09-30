@@ -80,7 +80,7 @@
         "action": "Click",
         "index": -1,
         "next": [
-            "EscortAccept"
+            "EscortChooseCharacter"
         ],
         "post_wait_freezes": 3000 // 太短容易点到角色
     },
