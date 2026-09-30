@@ -7,7 +7,7 @@
         ]
     },
     "TrainClickArrow": {
-        "desc": "点击火车押运的蓝色箭头",
+        "desc": "点击列车押运的蓝色箭头",
         "recognition": "TemplateMatch",
         "template": "Train/TrainButton.png",
         "action": "Click",
@@ -24,7 +24,7 @@
         "post_wait_freezes": 1000
     },
     "TrainGetStatus": {
-        "desc": "获取火车状态",
+        "desc": "获取列车状态",
         "recognition": "Custom",
         "custom_recognition": "TrainGetStatusReco",
         "next": [
@@ -59,7 +59,7 @@
     },
     // 领取奖励流程
     "TrainIsRewardable": {
-        "desc": "判断是否可以领取火车奖励",
+        "desc": "判断是否可以领取列车奖励",
         "recognition": "Custom",
         "custom_recognition": "TrainIsRewardableReco",
         "max_hit": 2,
@@ -226,12 +226,27 @@
         ],
         "next": [
             "TrainFormation",
+            "[JumpBack]TrainResetCancel", // 兜底
             "TrainAcceptable"
         ],
         "post_wait_freezes": 5000 //防止点太快点到其他按钮
     },
+    "TrainResetCancel": {
+        "desc": "取消重置",
+        "recognition": "OCR",
+        "expected": ".{0,}重置.{0,}",
+        "roi": [
+            356,
+            208,
+            565,
+            322
+        ],
+        "next": [
+            "ClickCancel"
+        ]
+    },
     "TrainFormation": {
-        "desc": "火车出发编队页面",
+        "desc": "列车出发编队页面",
         "recognition": "OCR",
         "expected": "列车编队",
         "roi": [

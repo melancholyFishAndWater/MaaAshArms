@@ -90,6 +90,19 @@
         "action": "Click",
         "post_wait_freezes": 500
     },
+    "ClickCancel": {
+        "desc": "通用点击取消",
+        "recognition": "OCR",
+        "expected": "取消",
+        "roi": [
+            340,
+            168,
+            596,
+            383
+        ],
+        "action": "Click",
+        "post_wait_freezes": 500
+    },
     "Click": {
         "desc": "点击屏幕中心",
         "action": "Click",
