@@ -43,7 +43,7 @@ class TrainingEnterOneRepo(CustomRecognition):
             return
         else:
             # 设置结束需要识别的数量
-            context.override_pipeline({"TrainingEnd": {"index": f"{len(attach) - 1}"}})
+            context.override_pipeline({"TrainingEnd": {"index": len(attach) - 1}})
 
         # 识别关卡是否还有剩余次数
         r = context.run_recognition_direct(
