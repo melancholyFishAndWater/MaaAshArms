@@ -59,7 +59,7 @@
         "post_wait_freezes": 2000
     },
     "EscortFindToAccept": {
-        "desc": "左滑直到接取所有任务",
+        "desc": "右滑直到接取所有任务",
         "next": [
             "[JumpBack]EscortAccept",
             "IsFreezes",
