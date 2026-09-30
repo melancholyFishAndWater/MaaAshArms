@@ -124,7 +124,7 @@
             "FactoryGetRewardSuccess",
             "FactoryGetReward"
         ],
-        "post_wait_freezes": 1000
+        "post_wait_freezes": 3000 // 太短容易导致点到创建订单
     },
     "FactoryGetRewardSuccess": {
         "desc": "领取奖励成功",
