@@ -80,9 +80,25 @@
         "action": "Click",
         "index": -1,
         "next": [
-            "EscortChooseCharacter"
+            "EscortInChoose",
+            "EscortAccept"
         ],
         "post_wait_freezes": 3000 // 太短容易点到角色
+    },
+    "EscortInChoose": {
+        "desc": "在选择界面",
+        "recognition": "OCR",
+        "expected": "指派委托成员",
+        "roi": [
+            36,
+            1,
+            371,
+            160
+        ],
+        "next": [
+            "EscortChooseCharacter",
+            "EscortInChoose"
+        ]
     },
     // 选择角色页面
     "EscortChooseCharacter": {
