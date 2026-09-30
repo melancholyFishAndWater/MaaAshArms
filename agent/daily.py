@@ -57,6 +57,7 @@ def _claim_today_read(name: str, state: str = "ash_arms_daily.json") -> bool:
         # 删除非今天的数据
         _current_data = {k: v for k, v in _current_data.items() if v == today}
     except Exception as e:
+        _current_data = {}
         log.warn(f"{e}")
 
     if _current_data.get(name) == today:
@@ -80,14 +81,7 @@ def _claim_today_write(state: str = "ash_arms_daily.json"):
 class DaliyReco(CustomRecognition):
     def analyze(
         self, context: Context, argv: CustomRecognition.AnalyzeArg
-    ) -> (
-        CustomRecognition.AnalyzeResult
-        | Rect
-        | list[int]
-        | ndarray[tuple[Any, ...], dtype[Any]]
-        | tuple[int, int, int, int]
-        | None
-    ):
+    ) -> list[int] | None:
         # 提取变量
         p = argv.custom_recognition_param
         bool_ = bool(p) if p is not None else True
