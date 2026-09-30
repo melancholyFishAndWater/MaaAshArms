@@ -31,8 +31,9 @@
             "GiftClickSortRule",
             "GiftEnterHome"
         ],
-        "post_wait_freezes": 500
+        "post_wait_freezes": 1500
     },
+    // 赠礼页面
     "GiftClickToChoose": {
         "desc": "点击切换DOLLS",
         "recognition": "OCR",
