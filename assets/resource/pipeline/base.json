@@ -112,6 +112,15 @@
         ],
         "post_wait_freezes": 200
     },
+    "ClickUpperRight": {
+        "desc": "点击右上",
+        "target": [
+            -1,
+            0
+        ],
+        "action": "Click",
+        "post_wait_freezes": 500
+    },
     "ClickTap": {
         "desc": "点击tap",
         "recognition": "OCR",
@@ -195,7 +204,8 @@
         "next": [
             "HomeFlagFirst",
             "[JumpBack]HomeButton",
-            "[JumpBack]BackButton"
+            "[JumpBack]BackButton",
+            "[JumpBack]ClickUpperRight"
         ]
     },
     "InServerMaintenance": {
