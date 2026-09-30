@@ -39,7 +39,7 @@
             "[JumpBack]EscortDelivery",
             "EscortFindToAccept"
         ],
-        "post_wait_freezes": 5000 // 延迟太短会导致右滑，错过最右边的任务
+        "post_wait_freezes": 3000 // 延迟太短会导致右滑，错过最右边的任务
     },
     // 任务流程
     "EscortDelivery": {
@@ -78,11 +78,11 @@
             61
         ],
         "action": "Click",
+        "index": -1,
         "next": [
-            "EscortChooseCharacter",
             "EscortAccept"
         ],
-        "post_wait_freezes": 200
+        "post_wait_freezes": 3000 // 太短容易点到角色
     },
     // 选择角色页面
     "EscortChooseCharacter": {
@@ -99,7 +99,7 @@
         "next": [
             "EscortClickOk"
         ],
-        "post_wait_freezes": 200
+        "pre_wait_freezes": 1000
     },
     "EscortClickOk": {
         "desc": "点击确认按钮执行任务",
@@ -112,6 +112,16 @@
             73
         ],
         "action": "Click",
-        "post_wait_freezes": 200
+        "post_wait_freezes": 1500,
+        "next": [
+            "EscortClickOkEnd"
+        ]
+    },
+    "EscortClickOkEnd": {
+        "desc": "点击确认结束",
+        "recognition": "And",
+        "all_of": [
+            "EscortInHome"
+        ]
     }
 }
