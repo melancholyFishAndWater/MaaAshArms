@@ -14,7 +14,7 @@
         "timeout": 600000,
         "next": [
             "TrainingInHome",
-            "[JumpBack]TrainingEnterHome",
+            "TrainingEnterHome",
             "[JumpBack]ReturnBattleMainPage"
         ]
     },
@@ -29,7 +29,11 @@
             37
         ],
         "action": "Click",
-        "pre_wait_freezes": 500
+        "pre_wait_freezes": 500,
+        "next": [
+            "TrainingInHome",
+            "TrainingEnterHome"
+        ]
     },
     "TrainingInHome": {
         "desc": "在训练所主界面",
