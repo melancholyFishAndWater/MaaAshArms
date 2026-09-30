@@ -118,6 +118,7 @@
             "HomeFlagFirst",
             "[JumpBack]GetReward",
             "[JumpBack]NoticeClickDisable",
+            "[JumpBack]BackButton",
             "StartUpClickSignIn"
         ],
         "post_wait_freezes": 3000,
