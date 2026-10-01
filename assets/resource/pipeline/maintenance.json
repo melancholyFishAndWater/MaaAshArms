@@ -60,11 +60,18 @@
     "GetCharacter": {
         "desc": "获得角色则点空白处",
         "recognition": "OCR",
-        "expected": "ARMS Type",
+        "expected": [
+            ".*ARMS.*",
+            ".*Type.*",
+            ".*坦克.*",
+            ".*车.*",
+            ".*炮.*",
+            ".*机.*"
+        ],
         "roi": [
-            953,
+            859,
             553,
-            136,
+            230,
             63
         ],
         "action": "Click",
