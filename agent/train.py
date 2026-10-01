@@ -142,14 +142,7 @@ class TrainGetStatusReco(CustomRecognition):
 
     def analyze(
         self, context: Context, argv: CustomRecognition.AnalyzeArg
-    ) -> (
-        CustomRecognition.AnalyzeResult
-        | Rect
-        | list[int]
-        | ndarray[tuple[Any, ...], dtype[Any]]
-        | tuple[int, int, int, int]
-        | None
-    ):
+    ) -> Rect | None:
         # 提取变量
         n_name = argv.node_name
 
@@ -175,6 +168,8 @@ class TrainGetStatusReco(CustomRecognition):
             if len(busy_result.filtered_results) == max_:
                 context.run_action_direct(JActionType.StopTask, JStopTask())
                 log.info("所有列车未抵达，任务结束")
+                context.run_recognition("TrainCloseStatusArrow", argv.image)
+                log.info("关闭列车状态页面")
                 return
 
             # 遍历添加列车
@@ -215,9 +210,7 @@ class TrainGetStatusReco(CustomRecognition):
             _train_list.append(_Train("acceptable", "unknow"))
 
         # 获取识别结果
-        t_a = 0
-        t_b = 0
-        t_r = 0
+        t_a, t_b, t_r = 0, 0, 0
         for i in _train_list:
             if i.stutus == "acceptable":
                 t_a += 1
@@ -228,7 +221,9 @@ class TrainGetStatusReco(CustomRecognition):
         log.info(f"识别结果: 可接取数:{t_a}, 可领取数:{t_r}, 未抵达数:{t_b}")
 
         # 若识别到已抵达列车 则返回点击位置
-        if rewardable_result and rewardable_result.hit:
+        if not rewardable_result:
+            log.warn(f"{n_name} 识别已抵达列车失败")
+        elif rewardable_result.hit:
             return rewardable_result.box
 
         # 搜索 前往派遣 的box
@@ -239,8 +234,10 @@ class TrainGetStatusReco(CustomRecognition):
         )
         if not can_train_result:
             log.warn(f"{n_name} 识别前往派遣失败")
-            return
-        return can_train_result.box
+        elif can_train_result.hit:
+            return can_train_result.box
+
+        log.error("识别错误")
 
 
 # 判断是否任务结束

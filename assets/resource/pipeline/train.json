@@ -50,7 +50,6 @@
         "recognition": "Custom",
         "custom_recognition": "TrainCheckEndReco",
         "next": [
-            "[JumpBack]TrainCloseStatusArrow",
             "TaskStop"
         ]
     },
