@@ -168,7 +168,7 @@ class TrainGetStatusReco(CustomRecognition):
             if len(busy_result.filtered_results) == max_:
                 context.run_action_direct(JActionType.StopTask, JStopTask())
                 log.info("所有列车未抵达，任务结束")
-                context.run_recognition("TrainCloseStatusArrow", argv.image)
+                context.run_task("TrainCloseStatusArrow")
                 log.info("关闭列车状态页面")
                 return
 
