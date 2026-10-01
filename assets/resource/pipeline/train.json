@@ -49,7 +49,23 @@
         "desc": "检测武装押运任务是否结束",
         "recognition": "Custom",
         "custom_recognition": "TrainCheckEndReco",
-        "action": "StopTask"
+        "next": [
+            "[JumpBack]TrainCloseStatusArrow",
+            "TaskStop"
+        ]
+    },
+    "TrainCloseStatusArrow": {
+        "desc": "关闭状态箭头",
+        "recognition": "TemplateMatch",
+        "template": "Train/CloseArrow.png",
+        "action": "Click",
+        "roi": [
+            299,
+            191,
+            140,
+            173
+        ],
+        "post_wait_freezes": 1000
     },
     "TrainInfoMover": {
         "desc": "尝试移动路线",
