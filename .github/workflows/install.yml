@@ -166,6 +166,13 @@ jobs:
         shell: bash
         run: python tools/ci/smoke_packaged_agent.py
 
+      - name: Clean up smoke leftovers
+        shell: bash
+        run: |
+          # 冒烟会真启动一次 agent，而 agent 把自己的日志写到 <包根>/debug/agent/；
+          # 不删就会把这个构建日志一起打进产物（win-x64 的 v1.0.0-beta.2-ci.9 那次就是）。
+          rm -rf install/debug
+
       - name: Assert executable bits
         if: matrix.artifact_os != 'win' && matrix.artifact_os != 'android'
         shell: bash
