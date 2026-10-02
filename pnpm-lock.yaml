@@ -9,8 +9,8 @@ importers:
   .:
     devDependencies:
       '@nekosu/maa-tools':
-        specifier: 1.0.23
-        version: 1.0.23
+        specifier: 1.1.3
+        version: 1.1.3
       '@types/node':
         specifier: ^25.5.2
         version: 25.5.2
@@ -49,21 +49,21 @@ packages:
     resolution: {integrity: sha512-wgm9Ehl2jpeqP3zw/7mo3kRHFp5MEDhqAdwy1fTGkHAwnkGOVsgpvQhL8B5n1qlb01jV3n/bI0ZfZp5lWA1k4w==}
     engines: {node: '>=18.0.0'}
 
-  '@nekosu/maa-locale@1.0.2':
-    resolution: {integrity: sha512-h09IQIN6iKt3OmwiCD7O36QOkmfL8lFO4nAAj+cXOuQfXYbWv4kLDzApzfURhGezjpm4+9gPaksYY9xK9LLkOA==}
+  '@nekosu/maa-locale@1.2.0':
+    resolution: {integrity: sha512-fzuC4yeOhQAMJVMEC0SN6SePDvmtiKrsNIUubHrYfVJc9FHi/VooQy7Mx3y14+T7fX3thIo7cF3O1/2oV/yzKQ==}
 
-  '@nekosu/maa-pipeline-manager@1.0.11':
-    resolution: {integrity: sha512-5OzCMO5w7ohaLBlgpcuKeidUN+tU49e2EFpY5MveKXDPpyVkwKkqtrcug52nfJgJP57v+8Eta1ZU9/8aGyL9tA==}
+  '@nekosu/maa-pipeline-manager@1.1.0':
+    resolution: {integrity: sha512-JCB7gaHBnl2Iet5F9hb/ATiAukkyPIfSzlNmvc5O5j55qBZAxH6lqyK3rU0Etg/XMQVtCVnhGMFhPPxqrYAYXQ==}
 
   '@nekosu/maa-tasker@1.0.0':
     resolution: {integrity: sha512-p5SaBJGvAMr5J2uk6imoiK7eIF7yA67HndWyfxddAHHdoyliai2dkHqBhTmDDuRmmAJ/ly4INg5Hnx8CI7Po3A==}
 
-  '@nekosu/maa-tools@1.0.23':
-    resolution: {integrity: sha512-U+n2AQUzSDByMF2/oyRLBABRYCFSR6ZBo4YoCPJx0kuFQCSpxXQqp15n2Vc8VINP7sCekCOruhA0dnP8hIGrnQ==}
+  '@nekosu/maa-tools@1.1.3':
+    resolution: {integrity: sha512-SK0lBDnR/tDFjWQbfhvLNbjQx+VZQYed7Rvjecow7dG+ZdWheTosq1rYI9VypNRptjOV2Bg0lS5FvDwQMx3xBQ==}
     hasBin: true
 
-  '@nekosu/maa-version-manager@1.0.2':
-    resolution: {integrity: sha512-jQ4wTJKNAkjzf7MIFzKMlyRx3PjHyEWMD+M8Yjh8pCLAB+LyZKDHcDojczWQKeYmGL93uxtTDhyKB12UEo7TkQ==}
+  '@nekosu/maa-version-manager@1.1.0':
+    resolution: {integrity: sha512-WB2rHQYFUK+e49+dTd7KW0k17OWM3H89jkTgH092iOH/pmOqBIBAzanUSKw5yEwI1ikhY+IRa75b1zhKh+wjNA==}
 
   '@nekosu/simple-parser@1.0.0':
     resolution: {integrity: sha512-Jf3tGs3/0D8XJtjRguInFh8ofGdCk6PcDK2V7HEZTXA4RN/9kk527I6pAX4zqPEUU8ISNu8dCR9F+KAn1U6tdg==}
@@ -533,11 +533,11 @@ snapshots:
     dependencies:
       minipass: 7.1.3
 
-  '@nekosu/maa-locale@1.0.2': {}
+  '@nekosu/maa-locale@1.2.0': {}
 
-  '@nekosu/maa-pipeline-manager@1.0.11':
+  '@nekosu/maa-pipeline-manager@1.1.0':
     dependencies:
-      '@nekosu/maa-locale': 1.0.2
+      '@nekosu/maa-locale': 1.2.0
       '@nekosu/maa-tasker': 1.0.0
       chokidar: 5.0.0
       jsonc-parser: 3.3.1
@@ -546,12 +546,12 @@ snapshots:
     dependencies:
       '@nekosu/simple-parser': 1.0.0
 
-  '@nekosu/maa-tools@1.0.23':
+  '@nekosu/maa-tools@1.1.3':
     dependencies:
       '@actions/core': 3.0.0
-      '@nekosu/maa-locale': 1.0.2
-      '@nekosu/maa-pipeline-manager': 1.0.11
-      '@nekosu/maa-version-manager': 1.0.2
+      '@nekosu/maa-locale': 1.2.0
+      '@nekosu/maa-pipeline-manager': 1.1.0
+      '@nekosu/maa-version-manager': 1.1.0
       chalk: 5.6.2
       jiti: 2.6.1
       jsonc-parser: 3.3.1
@@ -559,7 +559,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@nekosu/maa-version-manager@1.0.2':
+  '@nekosu/maa-version-manager@1.1.0':
     dependencies:
       pacote: 21.5.0
       proper-lockfile: 4.1.2
