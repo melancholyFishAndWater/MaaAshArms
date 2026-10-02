@@ -1,10 +1,18 @@
 import os
 import sys
+from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+# 必须在 import maa 之前：maa 在导入时读 MAAFW_BINARY_PATH 把原生库目录定死
+# （maa/__init__.py:6-9）。发行包里指向客户端那份 runtimes/<os>-<arch>/native，
+# 开发态找不到就不设变量、继续用 wheel 自带的 site-packages/maa/bin。
+import maafw_paths
+
+maafw_paths.ensure_maafw_binary_path()
+
 from maa.agent.agent_server import AgentServer
-from maa.toolkit import Toolkit
+from maa.tasker import Tasker
 
 import base
 import battle_training
@@ -15,7 +23,12 @@ import train
 
 
 def main():
-    Toolkit.init_option("./")
+    # 日志目录固定成 <安装根>/debug/agent，不要用 "./"（= 安装根）：设置 log_dir 会让框架在
+    # 后台线程里删掉该目录下 mtime 超过 7 天的 png/jpg/log，而安装根里有 resource/image/** 的
+    # 识别模板。用绝对路径，不受 CWD 影响（M9A 也是把日志下沉到 ./debug/agent）。
+    log_dir = Path(__file__).resolve().parents[1] / "debug" / "agent"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    Tasker.set_log_dir(log_dir)
 
     if len(sys.argv) < 2:
         print("Usage: python main.py <socket_id>")
