@@ -17,6 +17,7 @@ on:
       - ".github/workflows/install.yml"
       - "assets/**"
       - "**.py"
+      - "requirements.txt"
   pull_request:
     branches:
       - "**"
@@ -24,6 +25,7 @@ on:
       - ".github/workflows/install.yml"
       - "assets/**"
       - "**.py"
+      - "requirements.txt"
   workflow_dispatch:
 
 jobs:
@@ -69,86 +71,125 @@ jobs:
 
   install:
     needs: meta
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     strategy:
-      matrix:
-        os: [win, macos, linux, android]
-        arch: [aarch64, x86_64]
       fail-fast: false
+      matrix:
+        # 一档 = 一个"原生 runner + 目标平台/架构"。必须原生：
+        #   * aarch64 的解释器和它的 wheel 不能在 x86_64 宿主上安装/校验；
+        #   * macOS 的 wheel 必须在 macOS 宿主上解析，否则会静默装成别的平台。
+        # runtime_platform 为空表示这一档不打包 Python 运行时（android 没有 CPython）。
+        # mfa_os / mfa_arch 是 MFAAvalonia 资产名里的平台段（注意 macOS 用 osx）。
+        include:
+          - { runner: windows-latest,   artifact_os: win,     arch: x86_64,  mfa_os: win,   mfa_arch: x64,   runtime_platform: win-x64 }
+          - { runner: windows-11-arm,   artifact_os: win,     arch: aarch64, mfa_os: win,   mfa_arch: arm64, runtime_platform: win-arm64 }
+          - { runner: ubuntu-latest,    artifact_os: linux,   arch: x86_64,  mfa_os: linux, mfa_arch: x64,   runtime_platform: linux-x64 }
+          - { runner: ubuntu-24.04-arm, artifact_os: linux,   arch: aarch64, mfa_os: linux, mfa_arch: arm64, runtime_platform: linux-arm64 }
+          - { runner: macos-15-intel,   artifact_os: macos,   arch: x86_64,  mfa_os: osx,   mfa_arch: x64,   runtime_platform: osx-x64 }
+          - { runner: macos-latest,     artifact_os: macos,   arch: aarch64, mfa_os: osx,   mfa_arch: arm64, runtime_platform: osx-arm64 }
+          - { runner: ubuntu-latest,    artifact_os: android, arch: x86_64,  mfa_os: "",    mfa_arch: "",    runtime_platform: "" }
+          - { runner: ubuntu-latest,    artifact_os: android, arch: aarch64, mfa_os: "",    mfa_arch: "",    runtime_platform: "" }
 
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: true
+          submodules: true   # assets/MaaCommonAssets 提供 OCR 模型，tools/configure.py 需要它
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"   # 只给构建脚本用；打进包的那份由 setup_python_runtime.py 另下
 
       - name: Download MaaFramework
         uses: robinraju/release-downloader@v1
         with:
           repository: MaaXYZ/MaaFramework
-          fileName: "MAA-${{ matrix.os }}-${{ matrix.arch }}*"
+          fileName: "MAA-${{ matrix.artifact_os }}-${{ matrix.arch }}*"
           latest: ${{ env.MAAFW_VERSION == '' }}
           tag: ${{ env.MAAFW_VERSION }}
           out-file-path: "deps"
           extract: true
 
       - name: Download MFAAvalonia
-        if: matrix.os != 'android'
+        if: matrix.artifact_os != 'android'
         id: download_mfa
         uses: robinraju/release-downloader@v1
         with:
           repository: SweetSmellFox/MFAAvalonia
-          fileName: "MFAAvalonia-*-${{ (matrix.os == 'win' && 'win') || (matrix.os == 'macos' && 'osx') || (matrix.os == 'linux' && 'linux') }}-${{ (matrix.arch == 'x86_64' && 'x64') || (matrix.arch == 'aarch64' && 'arm64') }}*"
+          fileName: "MFAAvalonia-*-${{ matrix.mfa_os }}-${{ matrix.mfa_arch }}*"
           latest: ${{ env.MFAA_VERSION == '' }}
           tag: ${{ env.MFAA_VERSION }}
           out-file-path: "MFA"
           extract: true
 
       - name: Clean up MFAAvalonia archive
-        if: matrix.os != 'android'
+        if: matrix.artifact_os != 'android'
         shell: bash
         run: |
+          # 下载的压缩包留在 MFA/ 里会被 install.py 一起拷进包，必须删掉
           ARCHIVE_FILE_PATH="${{ fromJson(steps.download_mfa.outputs.downloaded_files)[0] }}"
           rm -f "${ARCHIVE_FILE_PATH}"
           echo "Archive cleanup command executed for MFAAvalonia."
 
-      - name: Remove built-in runtime in MFA
-        if: matrix.os != 'android'
+      - name: Setup Python runtime
+        if: matrix.runtime_platform != ''
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}   # 拉 python-build-standalone 的 release 元数据，避免 API 限流
         run: |
-          rm -rf MFA/runtimes
-      
+          python -m pip install --disable-pip-version-check uv
+          python tools/ci/setup_python_runtime.py \
+            --platform "${{ matrix.runtime_platform }}" \
+            --dest .python-runtime \
+            --requirements requirements.txt \
+            --maafw-version "$MAAFW_VERSION"
+
       - name: Install
         shell: bash
         run: |
-          if [[ "${{ matrix.os }}" != "android" ]]; then
-            if [ -d "MFA" ]; then
-              echo "Copying MFA files to install directory..."
-              mkdir -p install
-              rsync -av --ignore-existing MFA/ install/
-              echo "MFA files copied successfully."
-              if [ -f "install/MFAAvalonia.exe" ]; then
-                mv "install/MFAAvalonia.exe" "install/MaaAshArms.exe"
-                echo "GUI entry renamed: install/MFAAvalonia.exe -> install/MaaAshArms.exe"
-              elif [ -f "install/MFAAvalonia" ]; then
-                mv "install/MFAAvalonia" "install/MaaAshArms"
-                echo "GUI entry renamed: install/MFAAvalonia -> install/MaaAshArms"
-              fi
-            else
-              echo "MFA directory not found, skipping copy."
-            fi
-          else
-            echo "Skipping copy MFA for Android."
+          python -m pip install --disable-pip-version-check -r tools/requirements.txt
+          args=()
+          if [ -n "${{ matrix.runtime_platform }}" ]; then
+            args+=(--python-runtime .python-runtime)
           fi
+          # --mfa-dir 可以无条件传：android 档没有 MFA/，install.py 会打印跳过
+          python tools/install.py "${{ needs.meta.outputs.tag }}" "${{ matrix.artifact_os }}" "${{ matrix.arch }}" \
+            --mfa-dir MFA "${args[@]}"
 
-          cd tools/
-          python -m pip install -r ./requirements.txt
-          python ./install.py ${{ needs.meta.outputs.tag }} ${{ matrix.os }} ${{ matrix.arch }}
-          cd ..
+      - name: Smoke test packaged agent
+        if: matrix.runtime_platform != ''
+        shell: bash
+        run: python tools/ci/smoke_packaged_agent.py
+
+      - name: Assert executable bits
+        if: matrix.artifact_os != 'win' && matrix.artifact_os != 'android'
+        shell: bash
+        run: |
+          for f in install/MaaAshArms install/python/bin/python3; do
+            if [ ! -x "$f" ]; then
+              echo "[ERR] 缺少可执行位：$f"
+              exit 1
+            fi
+            echo "[OK] 可执行：$f"
+          done
+
+      - name: Package
+        shell: bash
+        run: |
+          archive="MaaAshArms-${{ matrix.artifact_os }}-${{ matrix.arch }}-${{ needs.meta.outputs.tag }}.zip"
+          rm -f "$archive"
+          if [ "${{ matrix.artifact_os }}" = "win" ]; then
+            (cd install && 7z a "../$archive" .)
+          else
+            (cd install && zip -r -y "../$archive" .)
+          fi
+          ls -l "$archive"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: MaaAshArms-${{ matrix.os }}-${{ matrix.arch }}
-          path: "install"
+          name: MaaAshArms-${{ matrix.artifact_os }}-${{ matrix.arch }}
+          path: MaaAshArms-*.zip
+          compression-level: 0   # 内容已经是 zip，别再压一遍
 
   changelog:
     name: Generate changelog
@@ -184,13 +225,8 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: assets
+          merge-multiple: true   # 各档的 zip 直接落到 assets/，这里不再重新打包
 
-      - run: |
-          cd assets
-          for f in *; do
-            (cd $f && zip -r ../$f-${{ needs.meta.outputs.tag }}.zip .)
-          done
-          
       - uses: softprops/action-gh-release@v2
         with:
           files: assets/*

@@ -447,6 +447,7 @@ deps/tools/*
 !deps/tools/*.schema.json
 build
 install
+.python-runtime*/
 
 # Tools
 tools/ImageCropper/**/*.png

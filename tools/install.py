@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import argparse
 import shutil
 import sys
 
@@ -16,16 +17,86 @@ from configure import configure_ocr_model
 
 working_dir = Path(__file__).parent.parent.resolve()
 install_path = working_dir / Path("install")
-version = len(sys.argv) > 1 and sys.argv[1] or "v0.0.1"
 
-# the first parameter is self name
-if sys.argv.__len__() < 4:
-    print("Usage: python install.py <version> <os> <arch>")
-    print("Example: python install.py v1.0.0 win x86_64")
-    sys.exit(1)
+# ---------------------------------------------------------------------------
+# 段 1：命令行
+#
+# 参数在模块级解析，下面几个函数继续直接读全局变量 —— 与原文件的结构保持一致，
+# 少一层传递。代价是 import 本模块就会解析 argv，对一次性构建脚本无所谓。
+# ---------------------------------------------------------------------------
 
-os_name = sys.argv[2]
-arch = sys.argv[3]
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        prog="install.py",
+        description="把 assets/ + agent/ + deps/（可选 MFA、可选 Python 运行时）组装成 install/ 发布包",
+    )
+    parser.add_argument(
+        "version", help="版本号，会写进包内 interface.json，例如 v1.0.0"
+    )
+    parser.add_argument(
+        "os_name", choices=["win", "macos", "linux", "android"], help="目标平台"
+    )
+    parser.add_argument("arch", choices=["aarch64", "x86_64"], help="目标架构")
+    parser.add_argument(
+        "--mfa-dir",
+        type=Path,
+        default=None,
+        help="MFAAvalonia 解压目录；给了就整体铺进包并把 GUI 入口改名成 MaaAshArms",
+    )
+    parser.add_argument(
+        "--python-runtime",
+        type=Path,
+        default=None,
+        help="tools/ci/setup_python_runtime.py 的产出目录；给了就拷成包内 python/ 并改写 agent.child_exec",
+    )
+    return parser.parse_args()
+
+
+ARGS = parse_args()
+version = ARGS.version
+os_name = ARGS.os_name
+arch = ARGS.arch
+
+
+# ---------------------------------------------------------------------------
+# 段 2：MFAAvalonia 本体（原来是工作流里的 rsync + mv）
+# ---------------------------------------------------------------------------
+
+
+def install_mfa(mfa_dir: Path | None) -> None:
+    """把 GUI 的文件铺到包的根。
+
+    搬进 Python 的原因：换原生 runner 后 Windows/macOS 上的 `shell: bash` 是 Git Bash，
+    `rsync` 不一定存在（原来 install.yml 里那一行会直接失败，包就没有 GUI）。
+    `ignore_patterns("runtimes")` 等价于原来那句 `rm -rf MFA/runtimes`：GUI 自带的那份原生库不要，
+    随后 install_deps() 会把 deps/bin 那份写进 install/runtimes/<platform-tag>/native。
+    """
+    if mfa_dir is None or not mfa_dir.is_dir():
+        print(f"MFA directory not found ({mfa_dir}), skipping copy.")
+        return
+
+    shutil.copytree(
+        mfa_dir,
+        install_path,
+        dirs_exist_ok=True,
+        ignore=shutil.ignore_patterns("runtimes"),
+    )
+
+    suffix = ".exe" if os_name == "win" else ""
+    source = install_path / f"MFAAvalonia{suffix}"
+    target = install_path / f"MaaAshArms{suffix}"
+    if not source.exists():
+        print(f"{source.name} not found, skipping rename.")
+        return
+    target.unlink(missing_ok=True)
+    source.rename(target)
+    print(f"GUI entry renamed: {source.name} -> {target.name}")
+
+
+# ---------------------------------------------------------------------------
+# 段 3：MaaFramework 原生库（逻辑不变，只保留原样）
+# ---------------------------------------------------------------------------
 
 
 def get_dotnet_platform_tag():
@@ -97,8 +168,42 @@ def install_deps():
         )
 
 
-def install_resource():
+# ---------------------------------------------------------------------------
+# 段 4：资源 + interface.json（新增 agent 改写）
+# ---------------------------------------------------------------------------
 
+
+def rewrite_agent(interface: dict, python_runtime: Path | None) -> None:
+    """把包内 interface.json 的 agent 指向包内解释器。
+
+    开发态（assets/interface.json）保持 "child_exec": "python"：包内路径在开发机上不存在，
+    改了本地就没法用系统 Python 跑 agent（VSCode / maa-tools 调试都受影响）。
+    MFA 按 AppPaths.DataRoot 解析 child_exec（AgentHelper.cs:219，`ReplacePlaceholder(..., DataRoot, true)`），
+    DataRoot 就是安装根，所以 "python/python.exe" 这种相对路径能落到包内。
+    `-u` 关掉 stdout 缓冲，agent 的 print 才会实时出现在 MFA 面板里。
+    """
+    if python_runtime is None:
+        return
+
+    agents = interface.get("agent")
+    if agents is None:
+        print("interface.json has no 'agent' field, skipping rewrite.")
+        return
+
+    child_exec = "python/python.exe" if os_name == "win" else "python/bin/python3"
+    items = (
+        agents if isinstance(agents, list) else [agents]
+    )  # schema 里 agent 是 oneOf 对象/数组
+    for agent in items:
+        if not isinstance(agent, dict):
+            continue
+        agent["child_exec"] = child_exec
+        args = [item for item in (agent.get("child_args") or []) if item != "-u"]
+        agent["child_args"] = ["-u", *args]
+        print(f"agent: child_exec={child_exec}, child_args={agent['child_args']}")
+
+
+def install_resource(python_runtime: Path | None):
     configure_ocr_model()
 
     shutil.copytree(
@@ -115,9 +220,15 @@ def install_resource():
         interface = jsonc.load(f)
 
     interface["version"] = version
+    rewrite_agent(interface, python_runtime)
 
     with open(install_path / "interface.json", "w", encoding="utf-8") as f:
         jsonc.dump(interface, f, ensure_ascii=False, indent=4)
+
+
+# ---------------------------------------------------------------------------
+# 段 5：杂项与 agent 拷贝
+# ---------------------------------------------------------------------------
 
 
 def install_chores():
@@ -132,17 +243,113 @@ def install_chores():
 
 
 def install_agent():
+    """拷 agent 源码，过滤构建期垃圾。
+
+    `__pycache__` / `*.pyc` 与解释器版本绑定，开发机或 CI 上跑过一次 agent 就会留下，
+    打进包既没用又可能让用户 import 到不匹配的字节码。
+    """
     shutil.copytree(
         working_dir / "agent",
         install_path / "agent",
         dirs_exist_ok=True,
+        ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo"),
     )
 
 
+# ---------------------------------------------------------------------------
+# 段 6：Python 运行时
+# ---------------------------------------------------------------------------
+
+
+def install_python_runtime(python_runtime: Path | None) -> None:
+    """把便携解释器铺到包根 python/。
+
+    放包根而不是 agent/ 下：资源更新的全量删除只覆盖 DataRoot/resource/** 与 DataRoot/agent/**，
+    放 agent/ 里每次资源更新都会被删掉，用户就又要自己装 Python。
+    注意不要删 site-packages/maa/bin：MFA 不给子进程设 MAAFW_BINARY_PATH，
+    maa/__init__.py 会回落到 site-packages/maa/bin 找原生库，删了 agent 直接起不来。
+    """
+    if python_runtime is None:
+        print("No --python-runtime given, skipping (agent 将依赖用户自装的 Python)。")
+        return
+    if not python_runtime.is_dir():
+        sys.exit(f"--python-runtime 不存在：{python_runtime}")
+
+    shutil.copytree(python_runtime, install_path / "python", dirs_exist_ok=True)
+    print(f"Python runtime installed: {install_path / 'python'}")
+
+
+# ---------------------------------------------------------------------------
+# 段 7：冒烟
+# ---------------------------------------------------------------------------
+
+
+def smoke_check(python_runtime: Path | None) -> None:
+    """打包最后一环的产出验收。
+
+    在这里失败，好过让用户在 MFA 里看到 `Agent 'python' failed to start`。
+    只检查 `agent/` 下没有 __pycache__，不检查 `python/`：解释器一 import 就会生成字节码，
+    那是正常的（setup_python_runtime.py 的自检用 -B 避免它，但用户运行后必然会有）。
+    """
+    problems: list[str] = []
+
+    if not (install_path / "agent" / "main.py").is_file():
+        problems.append("install/agent/main.py 缺失")
+    for cache in (install_path / "agent").rglob("__pycache__"):
+        problems.append(
+            f"install/agent 下不该有构建缓存：{cache.relative_to(install_path)}"
+        )
+
+    if os_name != "android":
+        if not (
+            install_path / "runtimes" / get_dotnet_platform_tag() / "native"
+        ).is_dir():
+            problems.append(
+                "install/runtimes/<platform-tag>/native 缺失（原生框架没铺进去）"
+            )
+        if not (install_path / "libs" / "MaaAgentBinary").is_dir():
+            problems.append("install/libs/MaaAgentBinary 缺失")
+
+    with open(install_path / "interface.json", "r", encoding="utf-8") as f:
+        interface = jsonc.load(f)
+
+    if python_runtime is not None:
+        exe_rel = "python.exe" if os_name == "win" else "bin/python3"
+        if not (install_path / "python" / exe_rel).is_file():
+            problems.append(f"install/python/{exe_rel} 缺失")
+
+        expected = "python/python.exe" if os_name == "win" else "python/bin/python3"
+        agents = interface.get("agent")
+        items = agents if isinstance(agents, list) else [agents]
+        actual = [item.get("child_exec") for item in items if isinstance(item, dict)]
+        if not actual or any(value != expected for value in actual):
+            problems.append(
+                f"包内 interface.json 的 agent.child_exec 应为 {expected}，实际 {actual}"
+            )
+
+    if problems:
+        for problem in problems:
+            print(f"[smoke] {problem}")
+        sys.exit(1)
+    print("[smoke] OK")
+
+
+# ---------------------------------------------------------------------------
+# 段 8：入口
+# ---------------------------------------------------------------------------
+
+
 if __name__ == "__main__":
+    install_path.mkdir(parents=True, exist_ok=True)
+
+    # 顺序有讲究：先铺 GUI（且不带它自带的 runtimes），再让 install_deps() 往
+    # runtimes/<platform-tag>/native 写框架；反过来会被 copytree 覆盖。
+    install_mfa(ARGS.mfa_dir)
     install_deps()
-    install_resource()
+    install_resource(ARGS.python_runtime)
     install_chores()
     install_agent()
+    install_python_runtime(ARGS.python_runtime)
+    smoke_check(ARGS.python_runtime)
 
     print(f"Install to {install_path} successfully.")
