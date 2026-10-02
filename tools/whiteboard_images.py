@@ -1,22 +1,24 @@
 #!/usr/bin/env python3
-"""把白板目录里的图片统一成 MaaFramework 的 log_dir 清理不会删的格式。
+"""把白板目录里的图片统一成指定格式（默认 png），并改写 .canvas / .md 里的引用。
 
-为什么需要：MaaFramework 的全局选项 log_dir（`MaaGlobalOption_LogDir`，绑定侧是
-`maa.Global.log_dir = <目录>`）一设置，框架就把该目录当自己的 SaveDraw / 日志输出目录，
-**异步递归删除其中的 `*.png` / `*.jpg` / `*.log`**。maa-tools 的 `check` 默认把这个目录
-设成 `cwd`（`maatools.config.mts` 未写 `maaLogDir` 时 = 仓库根），所以随手跑一次
-`npx @nekosu/maa-tools check` 就会删掉仓库里的图片（本机 2026-09-27 已发生过：
-`assets/resource/image/**` 掉 62 张、`docs/白板/image/**` 掉 69 张，且不进回收站）。
+为什么默认 png：本仓库用的 VS Code 插件只认 png。
+历史背景：曾经把白板图统一成 webp/jpeg，是为了躲开 MaaFramework 的 log_dir 清理——设置
+log_dir 会递归删掉该目录下 mtime 超过 7 天的 `*.png` / `*.jpg` / `*.log`（MaaUtils
+`source/Logger/Logger.cpp` 的 `remove_old_files`，`kMaxAge = 24*7h`），而 maa-tools 1.0.24
+及以前把 log_dir 默认设成 `cwd`（= 仓库根）。maatools 1.0.25 起默认改成 `<cwd>/debug`，
+本仓库已钉 1.1.3，所以仓库里的 png 不再被它影响。
 
-白板图片位于被 .gitignore 忽略的 `docs/白板/` 下、没有版本历史，删了就找不回来，
-所以这里把它们换成不在清理名单里的扩展名（默认 webp 无损，可用 --format jpeg）。
+残留风险：只要有人把 `maaLogDir` 写成 `"."`、或手跑旧版 maa-tools、或写调试脚本时把
+`maa.Global.log_dir` 指到仓库根，7 天以上的 png 仍会被删；而 `docs/白板` 在 .gitignore 里，
+删了没有版本历史可恢复。真要换回去用 `--format webp`（无损，体积约为 png 的 1/2–1/4）。
 
 用法：
-    python tools/whiteboard_images.py            # 转换 + 改写引用
-    python tools/whiteboard_images.py --check    # 只报告，发现不安全格式即 exit 1
+    python tools/whiteboard_images.py            # 转换 + 改写引用（输出 png）
+    python tools/whiteboard_images.py --check    # 只报告，发现非目标格式即 exit 1
     python tools/whiteboard_images.py --dry-run  # 报告将要做什么，不改动
 其他参数：
-    --dir # 指定目录，默认 docs/白板
+    --dir      # 扫描范围，默认 docs/白板（含各子白板文件夹）
+    --format   # 目标格式：png（默认）/ webp / jpeg
 """
 
 from __future__ import annotations
@@ -25,29 +27,44 @@ import argparse
 import sys
 from pathlib import Path
 
-# MaaFramework 5.14.0 实测：设置 log_dir 后消失的是这些扩展名，其余（.jpeg/.webp/.json/
-# .txt/.md/.lnk 等）不受影响。名单随框架版本可能变化，换版本后请用 --check 复验。
-DELETED_EXTS = {".png", ".jpg", ".log"}
-SAFE_EXTS = {".webp", ".jpeg", ".gif", ".bmp", ".avif"}
+# 会被当成图片处理的扩展名（收集候选、统计、改写引用都用它）
+ALL_EXTS = {
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".webp",
+    ".gif",
+    ".bmp",
+    ".avif",
+    ".tif",
+    ".tiff",
+}
+
+# 目标格式 -> 它接受的扩展名。按「族」判定：jpeg 族里 .jpg 与 .jpeg 等价，
+# 所以选 jpeg 时不会把已有的 .jpg 无意义地改名成 .jpeg。
+FORMAT_EXTS = {
+    "png": {".png"},
+    "webp": {".webp"},
+    "jpeg": {".jpg", ".jpeg"},
+}
+
+# 非族内文件转换时写出的后缀
+CANONICAL_EXT = {"png": ".png", "webp": ".webp", "jpeg": ".jpeg"}
 
 # 会被改写引用的文本文件类型
 TEXT_EXTS = {".canvas", ".md"}
 
 
-def collect_targets(scan_dir: Path) -> list[Path]:
-    return sorted(
-        p
-        for p in scan_dir.rglob("*")
-        if p.is_file() and p.suffix.lower() in DELETED_EXTS
-    )
-
-
 def all_images(scan_dir: Path) -> list[Path]:
-    """扫描范围内所有图片文件，用于统计。"""
-    exts = DELETED_EXTS | SAFE_EXTS
     return sorted(
-        p for p in scan_dir.rglob("*") if p.is_file() and p.suffix.lower() in exts
+        p for p in scan_dir.rglob("*") if p.is_file() and p.suffix.lower() in ALL_EXTS
     )
+
+
+def collect_targets(scan_dir: Path, fmt: str) -> list[Path]:
+    """收集需要转换的图片：族内已合规的不动，其余全转。"""
+    accepted = FORMAT_EXTS[fmt]
+    return [p for p in all_images(scan_dir) if p.suffix.lower() not in accepted]
 
 
 def convert(src: Path, dst: Path, fmt: str) -> None:
@@ -55,7 +72,12 @@ def convert(src: Path, dst: Path, fmt: str) -> None:
 
     with Image.open(src) as im:
         im.load()
-        if fmt == "webp":
+        if fmt == "png":
+            # PNG 不支持 CMYK，遇到就转 RGB（白板截图不会是 CMYK，纯属兜底）
+            if im.mode == "CMYK":
+                im = im.convert("RGB")
+            im.save(dst, "PNG", optimize=True)
+        elif fmt == "webp":
             # method 越高越慢：6 在 1280×720 截图上约 15–20 s/张，4 约 1–3 s，体积差 <5%。
             im.save(dst, "WEBP", lossless=True, method=4)
         elif fmt == "jpeg":
@@ -71,22 +93,28 @@ def convert(src: Path, dst: Path, fmt: str) -> None:
         chk.verify()
 
 
-def rewrite_refs(scan_dir: Path, dry_run: bool) -> list[str]:
-    """把引用里指向被清理格式的文件名换成实际存在的安全格式同名文件。
+def rewrite_refs(scan_dir: Path, fmt: str, dry_run: bool) -> list[str]:
+    """把引用里的图片文件名改成该图片在磁盘上的真实文件名。
 
-    不依赖"本次转换了哪些"：直接按磁盘上存在的安全格式文件，把它的 .png/.jpg/.log
-    同名变体在文本里换掉。这样中途被打断、分几次转换也能自愈，可重复执行。
+    不依赖"本次转换了哪些"：直接看磁盘现状，把同一个 stem + 任意图片扩展名的写法
+    换成真实文件名。中途被打断、分几次转换也能自愈，可重复执行。
+    同一个 stem 存在多份时优先选目标格式那份（否则按路径排序取第一份），保证结果确定。
 
     引用改写与图片扫描用同一个目录边界（默认整棵 `docs/白板/`），子白板文件夹里的图
     与引用一并覆盖。
     """
-    safe_files = [
-        p for p in scan_dir.rglob("*") if p.is_file() and p.suffix.lower() in SAFE_EXTS
-    ]
+    by_stem: dict[str, list[Path]] = {}
+    for path in all_images(scan_dir):
+        by_stem.setdefault(path.stem, []).append(path)
+
+    accepted = FORMAT_EXTS[fmt]
     substitutions: dict[str, str] = {}
-    for safe in safe_files:
-        for ext in DELETED_EXTS:
-            substitutions[safe.stem + ext] = safe.name
+    for stem, paths in by_stem.items():
+        preferred = sorted(p for p in paths if p.suffix.lower() in accepted) or sorted(
+            paths
+        )
+        for ext in ALL_EXTS:
+            substitutions[stem + ext] = preferred[0].name
 
     touched: list[str] = []
     for path in scan_dir.rglob("*"):
@@ -121,12 +149,12 @@ def main() -> int:
     )
     parser.add_argument(
         "--format",
-        default="webp",
-        choices=["webp", "jpeg"],
-        help="目标格式（默认 webp 无损）",
+        default="png",
+        choices=sorted(FORMAT_EXTS),
+        help="目标格式（默认 png）",
     )
     parser.add_argument(
-        "--check", action="store_true", help="只报告，发现不安全格式就 exit 1"
+        "--check", action="store_true", help="只报告，发现非目标格式就 exit 1"
     )
     parser.add_argument("--dry-run", action="store_true", help="只报告将要做什么")
     args = parser.parse_args()
@@ -142,48 +170,57 @@ def main() -> int:
         print(f"scan dir not found: {scan_dir}")
         return 1
 
-    targets = collect_targets(scan_dir)
+    images = all_images(scan_dir)
+    targets = collect_targets(scan_dir, args.format)
+
     if not targets:
         print(
-            f"OK: {scan_dir.relative_to(vault_root)} 下没有被 log_dir 清理的格式，共 {len(all_images(scan_dir))} 个图片文件"
+            f"OK: {scan_dir.relative_to(vault_root)} 下 {len(images)} 个图片文件都已是 {args.format}"
         )
         return 0
 
     if args.check:
-        print(
-            f"发现 {len(targets)} 个会被删的图片格式（{', '.join(sorted(DELETED_EXTS))}）："
-        )
+        print(f"发现 {len(targets)} 个非 {args.format} 的图片：")
         for p in targets:
             print(f"  {p.relative_to(vault_root)}")
-        print("跑一次 python tools/whiteboard_images.py 即可转换。")
+        print(
+            f"跑一次 python tools/whiteboard_images.py --format {args.format} 即可转换。"
+        )
         return 1
 
+    size_before = 0
+    size_after = 0
+    converted = 0
     for src in targets:
-        dst = src.with_suffix("." + args.format)
+        dst = src.with_suffix(CANONICAL_EXT[args.format])
         if dst.exists() and src != dst:
             print(f"目标已存在，跳过转换: {dst.relative_to(vault_root)}")
             continue
         if args.dry_run:
             print(f"[dry-run] {src.relative_to(vault_root)} -> {dst.name}")
-        else:
-            convert(src, dst, args.format)
-            src.unlink()
-            print(
-                f"{src.relative_to(vault_root)} -> {dst.name}  ({dst.stat().st_size} B)"
-            )
+            continue
+        convert(src, dst, args.format)
+        size_before += src.stat().st_size
+        src.unlink()
+        size_after += dst.stat().st_size
+        converted += 1
+        print(f"{src.relative_to(vault_root)} -> {dst.name}  ({dst.stat().st_size} B)")
+
+    if not args.dry_run and converted:
+        print(
+            f"转换 {converted} 个：{size_before / 1048576:.1f} MB -> {size_after / 1048576:.1f} MB"
+        )
 
     # 引用改写按磁盘现状做，不依赖本次转了哪些，可重复执行
-    touched = rewrite_refs(scan_dir, args.dry_run)
-    if touched:
-        for t in touched:
-            print(f"引用已更新: {t}")
+    for t in rewrite_refs(scan_dir, args.format, args.dry_run):
+        print(f"引用已更新: {t}")
 
-    remaining = collect_targets(scan_dir)
+    remaining = collect_targets(scan_dir, args.format)
     if remaining:
-        print(f"仍有 {len(remaining)} 个不安全格式，未处理完。")
+        print(f"仍有 {len(remaining)} 个非 {args.format} 的图片，未处理完。")
         return 1
     print(
-        f"完成：{scan_dir.relative_to(vault_root)} 下已无 {', '.join(sorted(DELETED_EXTS))}"
+        f"完成：{scan_dir.relative_to(vault_root)} 下 {len(all_images(scan_dir))} 个图片文件都已是 {args.format}"
     )
     return 0
 
