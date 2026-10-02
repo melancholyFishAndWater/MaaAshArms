@@ -275,13 +275,43 @@ def install_agent():
 # ---------------------------------------------------------------------------
 
 
+def strip_agent_native_runtime(installed: Path) -> None:
+    """删掉 agent 侧重复的 MaaFramework 原生库（win-x64 实测 59.1 MiB）。
+
+    agent/maafw_paths.py 会在 import maa 之前把 MAAFW_BINARY_PATH 指到客户端那份
+    （install/runtimes/<platform-tag>/native），所以 wheel 自带的 site-packages/maa/bin
+    是纯冗余。一个都没删到就报错——否则 MaaFw 改了 wheel 布局后会静默多打一份。
+    """
+    removed: list[Path] = []
+    for bin_dir in (installed / "python").rglob("bin"):
+        if (
+            bin_dir.is_dir()
+            and bin_dir.parent.name == "maa"
+            and bin_dir.parent.parent.name == "site-packages"
+        ):
+            shutil.rmtree(bin_dir, ignore_errors=True)
+            removed.append(bin_dir)
+    if not removed:
+        sys.exit("install/python 下没找到 site-packages/maa/bin：MaaFw 的 wheel 布局可能变了")
+
+
+def ensure_agent_native_plugins_dir(installed: Path) -> None:
+    """给 agent 用的那份原生库补一个空 plugins/。
+
+    MaaFramework 的 PluginMgr 把"插件目录不存在"当加载失败，每次启动打 4 行 ERR；空目录则安静。
+    本包的插件在 install/plugins/<tag>，不在 runtimes/<tag>/native 下，而 agent 现在从后者加载，
+    所以补一个空目录（M9A 的 ensureClientNativePluginsDir 是同一个处理）。
+    """
+    (installed / "runtimes" / get_dotnet_platform_tag() / "native" / "plugins").mkdir(
+        parents=True, exist_ok=True
+    )
+
+
 def install_python_runtime(python_runtime: Path | None) -> None:
-    """把便携解释器铺到包根 python/。
+    """把便携解释器铺到包根 python/，并去掉里面重复的原生库。
 
     放包根而不是 agent/ 下：资源更新的全量删除只覆盖 DataRoot/resource/** 与 DataRoot/agent/**，
     放 agent/ 里每次资源更新都会被删掉，用户就又要自己装 Python。
-    注意不要删 site-packages/maa/bin：MFA 不给子进程设 MAAFW_BINARY_PATH，
-    maa/__init__.py 会回落到 site-packages/maa/bin 找原生库，删了 agent 直接起不来。
     """
     if python_runtime is None:
         print("No --python-runtime given, skipping (agent 将依赖用户自装的 Python)。")
@@ -290,7 +320,9 @@ def install_python_runtime(python_runtime: Path | None) -> None:
         sys.exit(f"--python-runtime 不存在：{python_runtime}")
 
     shutil.copytree(python_runtime, install_path / "python", dirs_exist_ok=True)
-    print(f"Python runtime installed: {install_path / 'python'}")
+    strip_agent_native_runtime(install_path)
+    ensure_agent_native_plugins_dir(install_path)
+    print(f"Python runtime installed: {install_path / 'python'}（已剔除重复原生库）")
 
 
 # ---------------------------------------------------------------------------
@@ -315,11 +347,14 @@ def smoke_check(python_runtime: Path | None) -> None:
         )
 
     if os_name != "android":
-        if not (
-            install_path / "runtimes" / get_dotnet_platform_tag() / "native"
-        ).is_dir():
+        native = install_path / "runtimes" / get_dotnet_platform_tag() / "native"
+        if not native.is_dir():
             problems.append(
                 "install/runtimes/<platform-tag>/native 缺失（原生框架没铺进去）"
+            )
+        elif not (native / "plugins").is_dir():
+            problems.append(
+                "agent 使用的原生库目录缺少 plugins/（MaaFramework 每次启动会打 ERR）"
             )
         if not (install_path / "libs" / "MaaAgentBinary").is_dir():
             problems.append("install/libs/MaaAgentBinary 缺失")
@@ -331,6 +366,18 @@ def smoke_check(python_runtime: Path | None) -> None:
         exe_rel = "python.exe" if os_name == "win" else "bin/python3"
         if not (install_path / "python" / exe_rel).is_file():
             problems.append(f"install/python/{exe_rel} 缺失")
+
+        leftover = [
+            p
+            for p in (install_path / "python").rglob("bin")
+            if p.is_dir()
+            and p.parent.name == "maa"
+            and p.parent.parent.name == "site-packages"
+        ]
+        if leftover:
+            problems.append(
+                f"install/python 下仍有重复原生库：{leftover[0].relative_to(install_path)}"
+            )
 
         expected = "python/python.exe" if os_name == "win" else "python/bin/python3"
         agents = interface.get("agent")
