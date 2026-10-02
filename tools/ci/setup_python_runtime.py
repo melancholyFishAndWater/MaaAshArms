@@ -517,17 +517,22 @@ def install_requirements(exe: Path, dest: Path, platform: str, req_path: Path) -
     - 能执行：uv 直接装进解释器自己的环境（embeddable 没有 pip，这是必须用 uv 的原因之一）。
     - 不能执行（交叉）：装成 wheel 到 site-packages，只允许预编译轮子；
       这时没有解释器可以校验，所以段 8 的自检会退化成"按目录核对"。
+    注意这里只负责装，不负责验；自检在 self_check()，且必须在装完之后跑。
     """
     if can_execute(exe):
         run(
             [
+                "uv",
+                "pip",
+                "install",
+                "--python",
                 str(exe),
-                "-B",
-                "-c",
-                "import maa, numpy, strenum; print('agent imports ok')",
+                "--system",
+                "-r",
+                str(req_path),
             ]
         )
-        print("[setup] 自检通过：目录齐全 + 实际 import 成功")
+        return
 
     target = site_packages(dest, platform)
     target.mkdir(parents=True, exist_ok=True)
