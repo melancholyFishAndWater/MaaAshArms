@@ -221,6 +221,8 @@ class ClickTargetAction(CustomAction): ...
 
 具体流程可以参考这几个文件： [ci 配置文件](https://github.com/duorua/narutomobile/blob/19cc32fc81ef53da2476540c48a60b72f0e07f6a/.github/workflows/install.yml#L148)、[安装 Python](https://github.com/duorua/narutomobile/blob/main/tools/ci/setup_embed_python.py)、[安装依赖](https://github.com/duorua/narutomobile/blob/main/tools/ci/download_deps.py)、[修改interface.json](https://github.com/duorua/narutomobile/blob/55ab710e3293bdbcee8cfb696f4607bfefc2e0c1/tools/ci/install.py#L153)
 
+本仓库按这个思路实现：`tools/ci/setup_python_runtime.py` 准备便携解释器（Windows 用 python.org embeddable，macOS/Linux 用 python-build-standalone）并把 agent 依赖装进去；`tools/install.py --python-runtime` 在打包时把它铺成包内 `python/`，并把**包内** `interface.json` 的 `agent.child_exec` 改写成 `python/python.exe`（Windows）或 `python/bin/python3`（其它平台）；`agent/maafw_paths.py` 让 agent 复用客户端那份 MaaFramework 原生库，发行包不再携带第二份。CI 因此改用各平台的原生 runner 构建（`.github/workflows/install.yml`），并用 `tools/ci/smoke_packaged_agent.py` 在打包后真跑一次 agent 入口做冒烟。
+
 > [!WARNING]
 >
 > 如果你正在使用其他编译型语言，请考虑编译链和调用包的跨平台能力。
