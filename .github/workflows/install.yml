@@ -72,6 +72,11 @@ jobs:
   install:
     needs: meta
     runs-on: ${{ matrix.runner }}
+    # Windows runner 的控制台编码是 cp1252，Python 默认拿它当 stdout 编码，print 中文会
+    # UnicodeEncodeError（本机 cp936 走不到这条路径）。UTF-8 模式让所有步骤的日志按 UTF-8
+    # 输出，中文正常显示；脚本侧另有 reconfigure(errors="replace") 兜底。
+    env:
+      PYTHONUTF8: "1"
     strategy:
       fail-fast: false
       matrix:

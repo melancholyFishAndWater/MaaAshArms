@@ -17,9 +17,21 @@
 
 from __future__ import annotations
 
+import io
 import subprocess
 import sys
 from pathlib import Path
+
+# Windows runner 的控制台编码是 cp1252，print 中文会 UnicodeEncodeError。
+# 只调 errors 不动 encoding：本机保持原编码、不乱码；CI 侧另有 job 级 PYTHONUTF8=1。
+for _stream in (sys.stdout, sys.stderr):
+    # reconfigure() 定义在 io.TextIOWrapper 上，而 sys.stdout 的静态类型是 typing.TextIO，
+    # 直接调用会被 Pylance 报 reportAttributeAccessIssue；isinstance 收窄后静态与运行时都成立。
+    if isinstance(_stream, io.TextIOWrapper):
+        try:
+            _stream.reconfigure(errors="replace")
+        except (OSError, ValueError):
+            pass
 
 EXPECTED = "Usage: python main.py"
 TIMEOUT_SECONDS = 60
@@ -42,8 +54,10 @@ def main() -> int:
     if not agent.is_file():
         sys.exit(f"找不到包内 agent：{agent}")
 
+    # -u 很关键：不加它的话，agent 一旦在启动阶段崩溃或挂住，traceback / 用法输出会留在
+    # 子进程的块缓冲里，随 kill 一起丢掉，日志里只剩一句"没有打印用法"，等于没有诊断信息。
     proc = subprocess.Popen(
-        [str(exe), "-B", str(agent)],
+        [str(exe), "-B", "-u", str(agent)],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
@@ -58,12 +72,20 @@ def main() -> int:
         proc.kill()
         output, _ = proc.communicate()
 
-    print(output, end="")
+    state = (
+        f"{TIMEOUT_SECONDS} 秒未退出已 kill"
+        if timed_out
+        else f"已退出 exit={proc.returncode}"
+    )
+    sys.stdout.write(output)
+    if output and not output.endswith("\n"):
+        print()
+    print(f"[smoke] 子进程状态：{state}；捕获输出 {len(output)} 字符")
+
     if EXPECTED not in output:
-        sys.exit("[smoke] agent 入口没有打印用法，判失败（import 链有问题）")
+        sys.exit("[smoke] agent 入口没有打印用法，判失败（import 链有问题，看不出原因就看上面的输出）")
     if "Traceback" in output:
         sys.exit("[smoke] agent 入口有 traceback，判失败")
-    state = "未按时退出，已 kill" if timed_out else "正常退出"
     print(f"[smoke] agent 入口 OK（imports 通过；进程{state}）")
     return 0
 

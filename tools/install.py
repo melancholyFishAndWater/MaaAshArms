@@ -1,8 +1,22 @@
 from pathlib import Path
 
 import argparse
+import io
 import shutil
 import sys
+
+# Windows runner 的控制台编码是 cp1252，Python 默认拿它当 stdout/stderr 编码，print 中文就
+# UnicodeEncodeError（本机 cp936 不复现，CI 的 windows 档会撞）。只调 errors 不动 encoding：
+# 本机保持原编码、不乱码；编码装不下时退化成替代字符而不是崩。同一个进程里 configure.py
+# 的 print 也受这一处影响。CI 侧另有 job 级 PYTHONUTF8=1。
+for _stream in (sys.stdout, sys.stderr):
+    # reconfigure() 定义在 io.TextIOWrapper 上，而 sys.stdout 的静态类型是 typing.TextIO，
+    # 直接调用会被 Pylance 报 reportAttributeAccessIssue；isinstance 收窄后静态与运行时都成立。
+    if isinstance(_stream, io.TextIOWrapper):
+        try:
+            _stream.reconfigure(errors="replace")
+        except (OSError, ValueError):
+            pass
 
 try:
     import jsonc
