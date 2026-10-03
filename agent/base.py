@@ -89,7 +89,7 @@ class _Log:
         print(f"info: {msg}")
 
     def error(self, msg: str):
-        print("error: {msg}")
+        print(f"error: {msg}")
 
     def warn(self, msg: str):
         print(f"warn: {msg}")
