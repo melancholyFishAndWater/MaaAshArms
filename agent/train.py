@@ -409,36 +409,42 @@ class TrainClickAcceptInfoReco(CustomRecognition):
                 return r_text[text]
 
 
-# TODO 目标路线
-# @AgentServer.custom_recognition("TrainAcceptReco")
-# class TrainAcceptReco(CustomRecognition):
-#     def analyze(self, context: Context, argv: CustomRecognition.AnalyzeArg) -> CustomRecognition.AnalyzeResult | Rect | list[int] | ndarray[tuple[Any, ...], dtype[Any]] | tuple[int, int, int, int] | None:
-#         return super().analyze(context, argv)
+# ----- 移动路线列表 -----
 
-# ---------- Action ----------
+_move_up = True
+
+
+# 识别并修改移动方向
+@AgentServer.custom_recognition("TrainInfoMoverReco")
+class TrainInfoMoverReco(CustomRecognition):
+    def analyze(
+        self, context: Context, argv: CustomRecognition.AnalyzeArg
+    ) -> list[int] | None:
+        # 提取变量
+        n_name = argv.node_name
+
+        # 是否修改移动方向
+        if _in_info_bottom(context, argv.image):
+            log.debug(f"{n_name} 列车路线在底部，设置路线移动方向为下滑")
+            _move_up = False
+        elif _in_info_top(context, argv.image):
+            log.debug(f"{n_name} 列车路线在顶部，设置路线移动方向为上滑")
+            _move_up = True
+
+        return DEFAULT_HIT_BOX
 
 
 # 尝试移动列表
 @AgentServer.custom_action("TrainInfoMoverAct")
 class TrainInfoMoverAct(CustomAction):
-    _move_up = True
-
     def run(
         self, context: Context, argv: CustomAction.RunArg
     ) -> CustomAction.RunResult | bool:
         # 提取变量
         n_name = argv.node_name
 
-        # 是否修改移动方向
-        if _in_info_bottom(context, argv.reco_detail.raw_image):
-            log.debug(f"{n_name} 列车路线在底部，设置路线移动方向为下滑")
-            self._move_up = False
-        elif _in_info_top(context, argv.reco_detail.raw_image):
-            log.debug(f"{n_name} 列车路线在顶部，设置路线移动方向为上滑")
-            self._move_up = True
-
         # 移动方向
-        if self._move_up:
+        if _move_up:
             r = _info_move_up(context)
             log.debug(f"{n_name} 上滑路线")
         else:
@@ -446,6 +452,15 @@ class TrainInfoMoverAct(CustomAction):
             log.debug(f"{n_name} 下滑路线")
 
         return r and r.success or False
+
+
+# TODO 目标路线
+# @AgentServer.custom_recognition("TrainAcceptReco")
+# class TrainAcceptReco(CustomRecognition):
+#     def analyze(self, context: Context, argv: CustomRecognition.AnalyzeArg) -> CustomRecognition.AnalyzeResult | Rect | list[int] | ndarray[tuple[Any, ...], dtype[Any]] | tuple[int, int, int, int] | None:
+#         return super().analyze(context, argv)
+
+# ---------- Action ----------
 
 
 # 发车成功

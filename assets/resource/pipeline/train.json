@@ -68,6 +68,8 @@
     },
     "TrainInfoMover": {
         "desc": "尝试移动路线",
+        "recognition": "Custom",
+        "custom_recognition": "TrainInfoMoverReco",
         "action": "Custom",
         "custom_action": "TrainInfoMoverAct",
         "post_wait_freezes": 1000
