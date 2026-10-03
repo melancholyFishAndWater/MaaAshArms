@@ -233,12 +233,12 @@
         "next": [
             "[JumpBack]GetReward",
             "BattleWin",
-            "BattleEnd"
+            "BattleWinEnd"
         ],
         "post_wait_freezes": 1000
     },
-    "BattleEnd": {
-        "desc": "战斗结束后的出口节点",
+    "BattleWinEnd": {
+        "desc": "战斗胜利的出口节点",
         "recognition": "OCR",
         "expected": "战斗胜利",
         "inverse": true
