@@ -112,7 +112,7 @@
     "FactoryGetReward": {
         "desc": "领取奖励",
         "recognition": "Custom",
-        "custom_recognition": "FactoryGetRewardReco",
+        "custom_recognition": "FactoryGetRewardReco", // 返回红叉位置
         "action": "Click",
         "target_offset": [
             -892,
@@ -122,6 +122,7 @@
         ],
         "next": [
             "FactoryGetRewardSuccess",
+            "FactoryGetRewardFaild",
             "FactoryGetReward"
         ],
         "post_wait_freezes": 3000 // 太短容易导致点到创建订单
@@ -140,7 +141,48 @@
             100
         ],
         "action": "Custom",
-        "custom_action": "FactoryGetRewardSuccessAct"
+        "custom_action": "FactoryGetRewardNextAct"
+    },
+    "FactoryGetRewardFaild": {
+        "desc": "领取奖励失败 库存满",
+        "roi": [
+            362,
+            253,
+            285,
+            141
+        ],
+        "recognition": "OCR",
+        "expected": "库存数量已达上限",
+        "next": [
+            "[JumpBack]ClickConfirm",
+            "FactoryClickCancel"
+        ],
+        "focus": {
+            "Node.Recognition.Succeeded": "库存满，删除订单"
+        }
+    },
+    "FactoryClickCancel": {
+        "desc": "点击取消建造按钮",
+        "target": "FactoryGetReward",
+        "action": "Click",
+        "next": [
+            "[JumpBack]ClickConfirm",
+            "FactoryClickCancelEnd"
+        ]
+    },
+    "FactoryClickCancelEnd": {
+        "desc": "确认取消订单完毕",
+        "recognition": "OCR",
+        "expected": "取消订单",
+        "inverse": true,
+        "roi": [
+            362,
+            193,
+            208,
+            142
+        ],
+        "action": "Custom",
+        "custom_action": "FactoryGetRewardNextAct"
     },
     // max_hit 限制创建次数
     // 分节点 创建新订单 及其系列

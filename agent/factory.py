@@ -113,7 +113,7 @@ class FactoryGetRewardReco(CustomRecognition):
             b_name = name_result.best_result
             assert type(b_name) == OCRResult
 
-            # 赋值给 FactoryGetRewardSuccessAct 用
+            # 赋值给 FactoryGetRewardNextAct 用
             global _reward_name
             _reward_name = b_name.text
             log.debug(f"{n_name} 设置领取角色为 {_reward_name}")
@@ -322,9 +322,9 @@ class FactoryChooseStartSuccess(CustomAction):
         return True
 
 
-# 领取成功
-@AgentServer.custom_action("FactoryGetRewardSuccessAct")
-class FactoryGetRewardSuccessAct(CustomAction):
+# 领取成功或失败都执行
+@AgentServer.custom_action("FactoryGetRewardNextAct")
+class FactoryGetRewardNextAct(CustomAction):
     def run(
         self, context: Context, argv: CustomAction.RunArg
     ) -> CustomAction.RunResult | bool:
