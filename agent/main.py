@@ -16,7 +16,7 @@ from maa.tasker import Tasker
 
 import base
 import battle_training
-import daily
+import store
 import factory_fast
 import factory
 import train

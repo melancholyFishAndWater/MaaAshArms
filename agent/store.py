@@ -34,6 +34,9 @@ OFFSET = timedelta(hours=5)
 _current_data = {}
 
 
+# ---------- 每日一次 ----------
+
+
 def _claim_today_read(name: str, state: str = "ash_arms_daily.json") -> bool:
     """
     返回这个名字是否是今日第一次
@@ -77,8 +80,8 @@ def _claim_today_write(state: str = "ash_arms_daily.json"):
     path.write_text(json.dumps(_current_data), encoding="utf-8")
 
 
-@AgentServer.custom_recognition("DaliyReco")
-class DaliyReco(CustomRecognition):
+@AgentServer.custom_recognition("DailyReco")
+class DailyReco(CustomRecognition):
     def analyze(
         self, context: Context, argv: CustomRecognition.AnalyzeArg
     ) -> list[int] | None:
@@ -98,8 +101,8 @@ class DaliyReco(CustomRecognition):
             )
 
 
-@AgentServer.custom_action("DaliyAct")
-class DaliyAct(CustomAction):
+@AgentServer.custom_action("DailyAct")
+class DailyAct(CustomAction):
     def run(
         self, context: Context, argv: CustomAction.RunArg
     ) -> CustomAction.RunResult | bool:
