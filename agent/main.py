@@ -14,7 +14,7 @@ maafw_paths.ensure_maafw_binary_path()
 from maa.agent.agent_server import AgentServer
 from maa.tasker import Tasker
 
-import base
+from base import pi_check_maafw_version, pi_log_snapshot
 import battle_training
 import store
 import factory_fast
@@ -29,6 +29,8 @@ def main():
     log_dir = Path(__file__).resolve().parents[1] / "debug" / "agent"
     log_dir.mkdir(parents=True, exist_ok=True)
     Tasker.set_log_dir(log_dir)
+    pi_log_snapshot()
+    pi_check_maafw_version()
 
     if len(sys.argv) < 2:
         print("Usage: python main.py <socket_id>")
