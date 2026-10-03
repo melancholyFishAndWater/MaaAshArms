@@ -117,6 +117,15 @@ class FactoryGetRewardReco(CustomRecognition):
             global _reward_name
             _reward_name = b_name.text
             log.debug(f"{n_name} 设置领取角色为 {_reward_name}")
+            context.override_pipeline(
+                {
+                    "FactoryGetReward": {
+                        "focus": {
+                            "Node.Recognition.Succeeded": f"领取角色 {_reward_name}"
+                        }
+                    }
+                }
+            )
 
             return i
 
