@@ -7,7 +7,7 @@
             "inputs": [
                 {
                     "name": "build_amrs_number",
-                    "label": "建造数量",
+                    "label": "建造次数",
                     "default": "3",
                     "pipeline_type": "int",
                     "verify": "^\\d+$",
