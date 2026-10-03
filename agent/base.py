@@ -1,6 +1,5 @@
 import json
-import time
-from typing import Any, TypedDict
+from typing import TypeVar
 
 from maa.agent.agent_server import AgentServer
 from maa.custom_action import CustomAction
@@ -8,15 +7,11 @@ from maa.custom_recognition import CustomRecognition
 from maa.context import (
     Context,
     JRecognitionType,
-    JActionType,
-    Rect,
-    TemplateMatchResult,
     RecognitionDetail,
-    OCRResult,
 )
-from maa.pipeline import JTemplateMatch, JOCR, JSwipe
-from re import search
-from numpy import ndarray, dtype
+from maa.pipeline import JTemplateMatch
+
+T = TypeVar("T")
 
 # 默认hit box 仅用于不需要坐标的节点
 DEFAULT_HIT_BOX = [0] * 4
