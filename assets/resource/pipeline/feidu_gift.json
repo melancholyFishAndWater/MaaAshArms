@@ -2,7 +2,7 @@
     "TaskGift": {
         "desc": "赠礼任务",
         "recognition": "Custom",
-        "custom_recognition": "DaliyReco",
+        "custom_recognition": "DailyReco",
         "next": [
             "GiftEnterTavern",
             "[JumpBack]ReturnFeidu"
