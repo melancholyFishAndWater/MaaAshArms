@@ -16,7 +16,8 @@ from maa.custom_action import CustomAction
 from maa.context import Context
 
 from base import DEFAULT_HIT_BOX, log, T, parse_params
-from factory import build_times
+
+import factory
 import battle_training
 
 
@@ -197,7 +198,7 @@ class Store(Generic[T]):
 
 # ----- 每日赠礼 -----
 
-gift = Store[bool]("daily_gift.json")
+_gift = Store[bool]("daily_gift.json")
 
 
 # 若为今日第一次或若未开启每日一次，则返回 BOX；
@@ -206,7 +207,7 @@ class TaskGiftReco(CustomRecognition):
     def analyze(
         self, context: Context, argv: CustomRecognition.AnalyzeArg
     ) -> list[int] | None:
-        return gift.reco(context, argv)
+        return _gift.reco(context, argv)
 
 
 # 更新每日一次数据
@@ -215,12 +216,12 @@ class GiftDailyUpdateAct(CustomAction):
     def run(
         self, context: Context, argv: CustomAction.RunArg
     ) -> CustomAction.RunResult | bool:
-        return gift.act(argv, True)
+        return _gift.act(argv, True)
 
 
 # ----- 订单工厂 -----
 
-factory = Store[int]("daily_factory.json", default=0, func=lambda x: x >= 3)
+_factory = Store[int]("daily_factory.json", default=0, func=lambda x: x >= 3)
 
 
 @AgentServer.custom_recognition("TaskFactoryReco")
@@ -228,7 +229,7 @@ class TaskFactoryReco(CustomRecognition):
     def analyze(
         self, context: Context, argv: CustomRecognition.AnalyzeArg
     ) -> list[int] | None:
-        return factory.reco(context, argv)
+        return _factory.reco(context, argv)
 
 
 @AgentServer.custom_action("FactoryDailyUpdateAct")
@@ -236,7 +237,9 @@ class FactoryDailyUpdateAct(CustomAction):
     def run(
         self, context: Context, argv: CustomAction.RunArg
     ) -> CustomAction.RunResult | bool:
-        return factory.act(argv, factory.get(argv.task_detail.entry) + build_times)
+        return _factory.act(
+            argv, _factory.get(argv.task_detail.entry) + factory.build_times
+        )
 
 
 # ----- 训练所 -----
@@ -246,7 +249,7 @@ def _training_func(x: list[str]) -> bool:
     return len(x) > 0 and all(i in x for i in battle_training.battle_targets.keys())
 
 
-training = Store[list[str]]("daily_training.json", default=[], func=_training_func)
+_training = Store[list[str]]("daily_training.json", default=[], func=_training_func)
 
 
 @AgentServer.custom_recognition("TaskTrainingReco")
@@ -254,7 +257,7 @@ class TaskTrainingReco(CustomRecognition):
     def analyze(
         self, context: Context, argv: CustomRecognition.AnalyzeArg
     ) -> list[int] | None:
-        return training.reco(context, argv)
+        return _training.reco(context, argv)
 
 
 @AgentServer.custom_action("TrainingDailyUpdateAct")
@@ -270,8 +273,8 @@ class TrainingDailyUpdateAct(CustomAction):
                 log.error(f"{argv.node_name} 错误的关卡名参数: {name}")
                 return False
 
-            return training.act(
-                argv, sorted(set(training.get(argv.task_detail.entry)) | {name})
+            return _training.act(
+                argv, sorted(set(_training.get(argv.task_detail.entry)) | {name})
             )
         except Exception as e:
             log.error(f"{argv.node_name} 参数解析失败: {e}")
