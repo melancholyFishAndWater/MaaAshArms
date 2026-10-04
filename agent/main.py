@@ -16,9 +16,10 @@ from maa.tasker import Tasker
 
 from base import pi_check_maafw_version, pi_log_snapshot
 import battle_training
-import store
 import factory_fast
 import factory
+import startup
+import store
 import train
 
 

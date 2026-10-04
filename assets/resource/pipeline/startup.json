@@ -7,6 +7,7 @@
             "StartUpAshArms"
         ]
     },
+    // PERF 待优化
     // 启动的两条路径 b服
     "StartUpClickIco": {
         "desc": "点击游戏图标",
@@ -50,7 +51,26 @@
             "StartUpClickSignIn"
         ],
         "post_wait_freezes": 5000,
-        "timeout": 300000
+        "timeout": 300000,
+        "on_error": [
+            "StartUpFailed"
+        ]
+    },
+    "StartUpFailed": {
+        "desc": "游戏启动失败：禁用启动节点并提示用户",
+        "action": "Custom",
+        "custom_action": "StartUpFailedAct",
+        "custom_action_param": {}, // 键名与默认值由 agent 侧决定
+        "focus": {
+            "Node.Action.Succeeded": {
+                "content": "<span style=\"color:crimson;\">启动游戏失败，请检查是否正确选择游戏资源</span>",
+                "display": [
+                    "log",
+                    "notification",
+                    "modal"
+                ]
+            }
+        }
     },
     "StartUpDisclaimer": {
         "desc": "隐私策略",
