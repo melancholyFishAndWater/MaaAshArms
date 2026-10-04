@@ -176,11 +176,13 @@ class Store(Generic[T]):
 
         # 判断是否跳过此次任务
         if bool_ and self._func(self._data.get(argv.task_detail.entry, self._default)):
-            s = "今日已执行过，跳过"
-            log.info(s)
             b = context.run_action(
                 "TaskStop",
-                pipeline_override={"TaskStop": {"focus": {"Node.Action.Succeeded": s}}},
+                pipeline_override={
+                    "TaskStop": {
+                        "focus": {"Node.Action.Succeeded": "今日已执行过，跳过"}
+                    }
+                },
             )
             if b is None or not b.success:
                 log.warn(f"{argv.node_name} 执行 TaskStop 失败")
