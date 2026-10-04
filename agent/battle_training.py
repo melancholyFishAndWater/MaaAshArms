@@ -46,7 +46,7 @@ class TrainingEnterOneRepo(CustomRecognition):
             argv.image,
         )
         if r is None or not r.hit:
-            log.warn(f"{n_name} 识别关卡剩余次数失败")
+            log.debug(f"{n_name} 识别关卡剩余次数失败")
             return
 
         # 遍历识别还有次数的关卡名
@@ -65,7 +65,7 @@ class TrainingEnterOneRepo(CustomRecognition):
                 argv.image,
             )
             if r2 is None or not r2.hit:
-                log.warn(f"{n_name} 识别关卡名字失败")
+                log.debug(f"{n_name} 识别关卡名字失败")
                 continue
             b_r2 = r2.best_result
             assert type(b_r2) == OCRResult
@@ -73,7 +73,7 @@ class TrainingEnterOneRepo(CustomRecognition):
             # 提取关卡信息
             name = next((k for k in battle_targets if k in b_r2.text), None)
             if name is None:
-                log.warn(f"{n_name} 识别到的关卡名无法匹配: {b_r2.text}")
+                log.debug(f"{n_name} 识别到的关卡名无法匹配: {b_r2.text}")
                 continue
             level = battle_targets.get(name)
 
@@ -120,7 +120,7 @@ class TrainingEnterFormationRepo(CustomRecognition):
             argv.image,
         )
         if not result or not result.hit:
-            log.warn(f"{n_name} 识别难度失败")
+            log.debug(f"{n_name} 识别难度失败")
             return
 
         # 遍历判断关卡难度

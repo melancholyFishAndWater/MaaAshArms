@@ -271,7 +271,7 @@ class FactoryCheckTaskEndRepo(CustomRecognition):
             # 时间OCR
             time_result = _get_time(context, argv.image, i)
             if not time_result or not time_result.hit:
-                log.warn(f"{n_name} 识别时间失败: {b_name.text}")
+                log.debug(f"{n_name} 识别时间失败: {b_name.text}")
                 continue
             b_time = time_result.best_result
             assert type(b_time) == OCRResult

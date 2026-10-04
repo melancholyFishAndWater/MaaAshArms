@@ -151,7 +151,7 @@ class TrainGetStatusReco(CustomRecognition):
         # 识别派遣数
         r = _get_train_status_number(context, argv.image, (331, 129, 60, 53))
         if r is None:
-            log.warn(f"{n_name} 识别派遣数失败")
+            log.debug(f"{n_name} 识别派遣数失败")
             return
 
         # 提取变量 min为未领取数+未完成数
@@ -179,7 +179,7 @@ class TrainGetStatusReco(CustomRecognition):
                 assert type(i) == TemplateMatchResult
                 self.append_train(context, argv.image, toTuple(i.box), "busy")
         else:
-            log.warn(f"{n_name} 识别未抵达列车失败")
+            log.debug(f"{n_name} 识别未抵达列车失败")
 
         # 识别已抵达列车
         rewardable_result = context.run_recognition_direct(
@@ -205,7 +205,7 @@ class TrainGetStatusReco(CustomRecognition):
                 }
             )
         else:
-            log.warn(f"{n_name} 识别已抵达列车失败")
+            log.debug(f"{n_name} 识别已抵达列车失败")
 
         # 补充未出发列车
         for i in range(max_ - len(_train_list)):
@@ -224,7 +224,7 @@ class TrainGetStatusReco(CustomRecognition):
 
         # 若识别到已抵达列车 则返回点击位置
         if not rewardable_result:
-            log.warn(f"{n_name} 识别已抵达列车失败")
+            log.debug(f"{n_name} 识别已抵达列车失败")
         elif rewardable_result.hit:
             return rewardable_result.box
 
@@ -235,7 +235,7 @@ class TrainGetStatusReco(CustomRecognition):
             argv.image,
         )
         if not can_train_result:
-            log.warn(f"{n_name} 识别前往派遣失败")
+            log.debug(f"{n_name} 识别前往派遣失败")
         elif can_train_result.hit:
             return can_train_result.box
 
@@ -320,7 +320,7 @@ class TrainClickAcceptInfoReco(CustomRecognition):
             JRecognitionType.OCR, JOCR([r".+路线"], roi=(49, 125, 123, 505)), argv.image
         )
         if not r or not r.hit:
-            log.warn(f"{n_name} 路线名称识别失败")
+            log.debug(f"{n_name} 路线名称识别失败")
             return
 
         # 候选列表
@@ -369,7 +369,7 @@ class TrainClickAcceptInfoReco(CustomRecognition):
                     else:
                         log.debug(f"{n_name} 失败路线锁定失败")
                 else:
-                    log.warn(f"{n_name} 识别路线箭头失败")
+                    log.debug(f"{n_name} 识别路线箭头失败")
 
             # 若在候选词中 且 路线解锁 则 返回路线名称box
             if text in param:
