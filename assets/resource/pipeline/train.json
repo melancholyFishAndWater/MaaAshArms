@@ -64,7 +64,17 @@
             140,
             173
         ],
-        "post_wait_freezes": 1000
+        "post_wait_freezes": 1000,
+        "next": [
+            "TrainCloseStatusArrowSuccess",
+            "TrainCloseStatusArrow"
+        ]
+    },
+    "TrainCloseStatusArrowSuccess": {
+        "desc": "关闭状态箭头成功",
+        "recognition": "TemplateMatch",
+        "template": "Train/CloseArrow.png",
+        "inverse": true
     },
     "TrainInfoMover": {
         "desc": "尝试移动路线",
