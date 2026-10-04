@@ -17,7 +17,7 @@ from maa.context import Context
 
 from base import DEFAULT_HIT_BOX, log, T, parse_params
 from factory import build_times
-from battle_training import battle_targets
+import battle_training
 
 
 class Store(Generic[T]):
@@ -243,7 +243,7 @@ class FactoryDailyUpdateAct(CustomAction):
 
 
 def _training_func(x: list[str]) -> bool:
-    return all(i in x for i in battle_targets.keys())
+    return len(x) > 0 and all(i in x for i in battle_training.battle_targets.keys())
 
 
 training = Store[list[str]]("daily_training.json", default=[], func=_training_func)

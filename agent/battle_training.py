@@ -146,7 +146,8 @@ class TaskTrainingAct(CustomAction):
                 "attach", {}
             )
 
-            battle_targets = {k: v for k, v in attach.items() if v != "不进行"}
+            battle_targets.clear()
+            battle_targets.update({k: v for k, v in attach.items() if v != "不进行"})
             if len(battle_targets) == 0:
                 log.info(f"{argv.node_name} 未选择任何训练所关卡，任务结束")
                 context.run_action_direct(JActionType.StopTask, JStopTask())
