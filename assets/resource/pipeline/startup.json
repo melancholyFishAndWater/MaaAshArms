@@ -7,7 +7,7 @@
             "StartUpAshArms"
         ]
     },
-    // PERF 待优化
+    // PERF 待优化 启动后立马结束并启动，post_wait_freezes过久导致启动失败且显示所有任务失败
     // 启动的两条路径 b服
     "StartUpClickIco": {
         "desc": "点击游戏图标",
