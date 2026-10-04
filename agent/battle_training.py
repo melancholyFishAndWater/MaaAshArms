@@ -1,6 +1,5 @@
 import json
 from typing import Any
-from unittest import result
 
 from maa.agent.agent_server import AgentServer
 from maa.custom_recognition import CustomRecognition
@@ -10,28 +9,128 @@ from maa.context import (
     JRecognitionType,
     Rect,
     TemplateMatchResult,
-    RecognitionDetail,
     OCRResult,
 )
 from maa.pipeline import JActionType, JStopTask, JTemplateMatch, JOCR
 from numpy import ndarray, dtype
-from re import search
 
-from base import addListToTuple, toTuple, log, parse_params
+from base import toTuple, log, DEFAULT_HIT_BOX
 
 # 总关卡名
 _all = ["战斗演习", "狩猎行动", "拓展训练", "资源筹备"]
 # 要进行的训练所关卡名: 难度
 battle_targets: dict[str, str] = {}
+# 是否进行过初始化
+_inited = False
+
 
 # ---------- Reco ----------
+
+
+# 初始化识别，识别所有已完成关卡的关卡名
+@AgentServer.custom_recognition("TrainingInitReco")
+class TrainingInitReco(CustomRecognition):
+
+    def analyze(
+        self, context: Context, argv: CustomRecognition.AnalyzeArg
+    ) -> (
+        CustomRecognition.AnalyzeResult
+        | Rect
+        | list[int]
+        | ndarray[tuple[Any, ...], dtype[Any]]
+        | tuple[int, int, int, int]
+        | None
+    ):
+        # 保证剩余识别只触发一次
+        global _inited
+        if _inited:
+            log.debug("已初始化过训练所任务，跳过初始化")
+            return DEFAULT_HIT_BOX
+
+        # 提取变量
+        n_name = argv.node_name
+
+        # 识别关卡
+        r = context.run_recognition_direct(
+            JRecognitionType.TemplateMatch,
+            JTemplateMatch(["Battle/BattleTraining/01.png"], roi=(192, 524, 900, 68)),
+            argv.image,
+        )
+        if r is None or not r.hit:
+            log.debug(f"{n_name} 识别关卡剩余次数失败，可能未进行过战斗")
+            return DEFAULT_HIT_BOX
+
+        _inited = True
+
+        # 获取已完成的关卡
+        done_targets: list[str] = []
+        for i in r.filtered_results:
+            assert type(i) == TemplateMatchResult
+
+            # 识别关卡名字
+            r2 = context.run_recognition_direct(
+                JRecognitionType.OCR,
+                JOCR(
+                    _all,
+                    roi=toTuple(i.box),
+                    roi_offset=(-63, -243, 126, 42),
+                ),
+                argv.image,
+            )
+            if r2 is None or not r2.hit:
+                log.debug(f"{n_name} 识别关卡名字失败")
+                continue
+            b_r2 = r2.best_result
+            assert type(b_r2) == OCRResult
+
+            # 提取关卡信息
+            name = next((k for k in _all if k in b_r2.text), None)
+            if name is None:
+                log.debug(f"{n_name} 识别到的关卡名无法匹配: {b_r2.text}")
+                continue
+
+            # 追加
+            done_targets.append(name)
+
+        # 校验
+        if len(done_targets) != len(r.filtered_results):
+            log.warn(
+                f"{n_name} 识别到的训练所关卡名数量与相应的状态数量不匹配，可能会出现非预期的情况。名字数 {len(done_targets)} / 状态数 {len(r.filtered_results)}"
+            )
+
+        # 条件更新和返回
+        if len(done_targets) > 0:
+            result = context.run_action(
+                "TrainingDailyUpdate",
+                pipeline_override={
+                    "TrainingDailyUpdate": {
+                        "custom_action_param": {"name": done_targets}
+                    }
+                },
+            )
+
+            # 执行失败就尝试结束任务
+            if result is None or not result.success:
+                s = "训练所任务初始化失败"
+                result2 = context.run_action(
+                    "TaskStop",
+                    pipeline_override={
+                        "TaskStop": {"focus": {"Node.Action.Succeeded": s}}
+                    },
+                )
+
+                # 还是失败就退化为日志警告+None以触发节点的focus
+                if result2 is None or not result2.success:
+                    log.error(s)
+                    return None
+        return DEFAULT_HIT_BOX
 
 
 # 识别关卡名 返回还有挑战次数的关卡名字box
 @AgentServer.custom_recognition("TrainingEnterOneRepo")
 class TrainingEnterOneRepo(CustomRecognition):
-    # 当前已有难度
-    _level = ["一", "二", "三", "四", "五", "六"]
+    # TODO 当前已有难度
+    # _level = ["一", "二", "三", "四", "五", "六"]
 
     def analyze(
         self, context: Context, argv: CustomRecognition.AnalyzeArg
@@ -87,7 +186,7 @@ class TrainingEnterOneRepo(CustomRecognition):
                         "custom_recognition_param": level,
                         "focus": {"Node.Action.Starting": f"选择{name} 难度{level}"},
                     },
-                    "TrainingDailyUpdate": {"custom_action_param": {"name": name}},
+                    "TrainingDailyUpdate": {"custom_action_param": {"name": [name]}},
                 }
             )
 

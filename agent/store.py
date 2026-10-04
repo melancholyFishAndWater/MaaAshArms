@@ -271,12 +271,12 @@ class TrainingDailyUpdateAct(CustomAction):
             # 提取参数
             p = parse_params(argv.custom_action_param, "name")
             name = p.get("name")
-            if type(name) != str:
-                log.error(f"{argv.node_name} 错误的关卡名参数: {name}")
+            if type(name) != list:
+                log.error(f"{argv.node_name} 错误的关卡名参数: {name}{(type(name))}")
                 return False
 
             return _training.act(
-                argv, sorted(set(_training.get(argv.task_detail.entry)) | {name})
+                argv, sorted(set(_training.get(argv.task_detail.entry)) | {*name})
             )
         except Exception as e:
             log.error(f"{argv.node_name} 参数解析失败: {e}")
