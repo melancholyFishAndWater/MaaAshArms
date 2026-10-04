@@ -168,10 +168,10 @@ class TrainGetStatusReco(CustomRecognition):
         if busy_result and busy_result.hit:
             # 若识别均忙 提前结束
             if len(busy_result.filtered_results) == max_:
-                context.run_action_direct(JActionType.StopTask, JStopTask())
-                log.info("所有列车未抵达，任务结束")
+                log.debug("关闭列车状态页面")
                 context.run_task("TrainCloseStatusArrow")
-                log.info("关闭列车状态页面")
+                log.info("所有列车未抵达，任务结束")
+                context.run_action_direct(JActionType.StopTask, JStopTask())
                 return
 
             # 遍历添加列车
