@@ -94,7 +94,7 @@ class FactoryGetRewardReco(CustomRecognition):
 
         boxes = _get_cancel_buttons(context, argv.image)
         if not boxes:
-            log.warn(f"{n_name} 获取红叉位置失败")
+            log.debug(f"{n_name} 获取红叉位置失败，可能画面暂未恢复")
             return
         for i in boxes:
             # 时间
@@ -187,7 +187,7 @@ class FactoryChooseNumberRepo(CustomRecognition):
         # 获得红叉位置
         boxes = _get_cancel_buttons(context, argv.image)
         if not boxes:
-            log.warn(f"{n_name} 获取红叉位置失败")
+            log.debug(f"{n_name} 获取红叉位置失败，可能画面暂未恢复")
             return
 
         for i in boxes:
@@ -220,7 +220,7 @@ class FactoryChooseNumberRepo(CustomRecognition):
             assert type(final) == OCRResult
 
             # 返回选择位置
-            log.info(f"建造{final_number}个")
+            log.debug(f"建造{final_number}个")
             return final.box
 
 

@@ -331,7 +331,7 @@ def pi_log_snapshot() -> None:
     非 MFA 拉起时各字段都是空，会打成 '-'，这是预期的。
     """
     env = pi_env()
-    log.info(
+    log.debug(
         f"PI: interface={env['PI_INTERFACE_VERSION'] or '-'} "
         f"client={env['PI_CLIENT_NAME'] or '-'}/{env['PI_CLIENT_VERSION'] or '-'} "
         f"lang={env['PI_CLIENT_LANGUAGE'] or '-'} "

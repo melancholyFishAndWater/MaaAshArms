@@ -85,7 +85,7 @@ class TrainingEnterOneRepo(CustomRecognition):
                     },
                     "TrainingEnterFormation": {
                         "custom_recognition_param": level,
-                        "focus": {"Node.Action.Starting": f"选择难度{level}"},
+                        "focus": {"Node.Action.Starting": f"选择{name} 难度{level}"},
                     },
                     "TrainingDailyUpdate": {"custom_action_param": {"name": name}},
                 }

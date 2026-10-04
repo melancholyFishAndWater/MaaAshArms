@@ -220,7 +220,7 @@ class TrainGetStatusReco(CustomRecognition):
                 t_b += 1
             else:
                 t_r += 1
-        log.info(f"识别结果: 可接取数:{t_a}, 可领取数:{t_r}, 未抵达数:{t_b}")
+        log.debug(f"识别结果: 可接取数:{t_a}, 可领取数:{t_r}, 未抵达数:{t_b}")
 
         # 若识别到已抵达列车 则返回点击位置
         if not rewardable_result:
@@ -250,7 +250,7 @@ class TrainCheckEndReco(CustomRecognition):
     ) -> list[int] | None:
         assert len(_train_list) > 0
         if all(i.stutus == "busy" for i in _train_list):
-            log.info(f"{_train_list}列列车忙碌，全部忙碌，任务结束")
+            log.info(f"{len(_train_list)}列列车忙碌，全部忙碌，任务结束")
             return DEFAULT_HIT_BOX
 
 
@@ -326,7 +326,7 @@ class TrainClickAcceptInfoReco(CustomRecognition):
         # 候选列表
         s = argv.custom_recognition_param
         param: list[str] = s and json.loads(s) or []
-        log.info(f"候选路线: {param}")
+        log.debug(f"候选路线为: {param}")
 
         # 识别并记录当前画面路线解锁状态 若满足候选列表则返回box
         for i in r.filtered_results:
@@ -367,7 +367,7 @@ class TrainClickAcceptInfoReco(CustomRecognition):
                         self.route_status[text] = False
                         log.info(f"识别到路线 {text} 锁定")
                     else:
-                        log.warn(f"{n_name} 失败路线锁定失败")
+                        log.debug(f"{n_name} 失败路线锁定失败")
                 else:
                     log.warn(f"{n_name} 识别路线箭头失败")
 
