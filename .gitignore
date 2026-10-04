@@ -445,6 +445,7 @@ deps/*
 !deps/tools/
 deps/tools/*
 !deps/tools/*.schema.json
+!deps/tools/schema-manifest.json
 build
 install
 .python-runtime*/

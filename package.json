@@ -1,4 +1,8 @@
 {
+  "scripts": {
+    "sync:schema": "node tools/sync-schema.mjs",
+    "optimize:images": "node tools/optimize-images.mjs"
+  },
   "devDependencies": {
     "@nekosu/maa-tools": "1.1.3",
     "@types/node": "^25.5.2",
