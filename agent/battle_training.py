@@ -81,7 +81,7 @@ class TrainingEnterOneRepo(CustomRecognition):
             context.override_pipeline(
                 {
                     "TrainingEnterOne": {
-                        "focus": {"Node.Action.Starting": f"选择{name}"}
+                        "focus": {"Node.Action.Starting": f"进入{name}"}
                     },
                     "TrainingEnterFormation": {
                         "custom_recognition_param": level,
