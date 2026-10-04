@@ -1,8 +1,26 @@
 {
     "TaskTraining": {
         "desc": "训练所任务",
+        "action": "Custom",
+        "custom_action": "TaskTrainingAct",
+        // 示例
+        // "attach": {
+        //     "战斗演习": "六",
+        //     "狩猎行动": "六",
+        //     "拓展训练": "六",
+        //     "资源筹备": "六"
+        // },
+        "next": [
+            "TaskTrainingCheckDaily"
+        ]
+    },
+    "TaskTrainingCheckDaily": {
+        "desc": "检测每日一次",
         "recognition": "Custom",
-        "custom_recognition": "DailyReco",
+        "custom_recognition": "TaskTrainingReco",
+        "custom_recognition_param": {
+            "enable": true // 每日一次开关 覆写关闭
+        },
         "next": [
             "TrainingInHome",
             "[JumpBack]ReturnTraining"
@@ -65,10 +83,7 @@
             900,
             68
         ],
-        "index": 3,
-        "next": [
-            "DailyUpdate"
-        ]
+        "index": 3
     },
     "TrainingEnterOne": {
         "desc": "进入其中一个训练所关卡选择页面",
@@ -76,13 +91,6 @@
         "custom_recognition": "TrainingEnterOneRepo",
         "max_hit": 4,
         "action": "Click",
-        // 示例
-        // "attach": {
-        //     "战斗演习": "六",
-        //     "狩猎行动": "六",
-        //     "拓展训练": "六",
-        //     "资源筹备": "六"
-        // },
         "next": [
             "TrainingEnterFormation",
             "[JumpBack]MoveUp"
@@ -99,5 +107,13 @@
             "BattleReplay"
         ],
         "post_wait_freezes": 2000
+    },
+    "TrainingDailyUpdate": {
+        "desc": "更新每日一次",
+        "action": "Custom",
+        "custom_action": "TrainingDailyUpdateAct",
+        "custom_action_param": {
+            "name": null // 覆写传递关卡名
+        }
     }
 }

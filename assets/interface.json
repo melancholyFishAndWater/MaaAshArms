@@ -99,8 +99,9 @@
                 "daily"
             ],
             "option": [
-                "自定义数量",
-                "build_skip"
+                "build_number",
+                "build_skip",
+                "factory_daily"
             ]
         },
         {
@@ -110,16 +111,25 @@
                 "daily"
             ],
             "option": [
+                "training_daily",
                 "战斗演习",
                 "狩猎行动",
                 "拓展训练",
                 "资源筹备"
-            ]
+            ],
+            "pipeline_override": {
+                "BattleWinEnd": {
+                    "next": [
+                        "TrainingDailyUpdate"
+                    ]
+                }
+            }
         },
         {
             "name": "任务奖励",
             "entry": "TaskMission"
         }
+        // TODO
         // {
         //     "name": "自律活动",
         //     "entry": "TaskAutoActivity",
@@ -139,12 +149,12 @@
             "name": "daily",
             "label": "每日任务",
             "default_expand": true,
-            "description": "每日任务分组下的任务每日只会执行一次"
+            "description": "每日任务分组下的任务允许：完成每日任务指标后不再进行"
         }
     ],
     "import": [
         "resource/tasks/option/battle_training.json",
         "resource/tasks/option/factory.json",
-        "resource/tasks/option/daily.json"
+        "resource/tasks/option/feidu_gift.json"
     ]
 }

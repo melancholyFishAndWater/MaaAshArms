@@ -2,7 +2,10 @@
     "TaskGift": {
         "desc": "赠礼任务",
         "recognition": "Custom",
-        "custom_recognition": "DailyReco",
+        "custom_recognition": "TaskGiftReco",
+        "custom_recognition_param": {
+            "enable": true // 每日一次开关 覆写关闭
+        },
         "next": [
             "GiftEnterTavern",
             "[JumpBack]ReturnFeidu"
@@ -162,8 +165,13 @@
         "repeat": 3,
         "repeat_delay": 2000,
         "next": [
-            "DailyUpdate"
+            "GiftDailyUpdate"
         ]
+    },
+    "GiftDailyUpdate": {
+        "desc": "更新每日一次数据",
+        "action": "Custom",
+        "custom_action": "GiftDailyUpdateAct"
     }
     // TEST
     // "找非满好感角色": {

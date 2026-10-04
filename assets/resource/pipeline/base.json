@@ -245,11 +245,6 @@
             "threshold": 0.99, // 阈值
             "k": 3 // 连续不变次数 太低可能移动卡顿也识别成功了
         }
-    },
-    "DailyUpdate": {
-        "desc": "更新每日一次数据",
-        "action": "Custom",
-        "custom_action": "DailyAct"
     }
     // "Noice": {
     //     "desc": "给python端提供的自定义通知处理",

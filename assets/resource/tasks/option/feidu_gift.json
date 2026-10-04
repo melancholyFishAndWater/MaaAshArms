@@ -12,7 +12,9 @@
                     "name": "No",
                     "pipeline_override": {
                         "TaskGift": {
-                            "custom_recognition_param": false
+                            "custom_recognition_param": {
+                                "enable": false
+                            }
                         }
                     }
                 }

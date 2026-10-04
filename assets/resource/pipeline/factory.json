@@ -3,6 +3,11 @@
     // 工厂任务入口
     "TaskFactory": {
         "desc": "开始订单工厂任务",
+        "recognition": "Custom",
+        "custom_recognition": "TaskFactoryReco",
+        "custom_recognition_param": {
+            "enable": true // 每日一次开关 覆写关闭
+        },
         "next": [
             "TaskFactoryNext",
             "[JumpBack]ReturnFactory"
@@ -72,11 +77,21 @@
     },
     // 特殊节点
     "FactoryCheckTaskEnd": {
-        "desc": "检测任务是否满足其他结束条件",
+        "desc": "检测任务是否满足结束条件",
         "recognition": "Custom",
         "custom_recognition": "FactoryCheckTaskEndRepo",
-        "custom_recognition_param": 3, // 建造次数 超过3最好开启skip
-        "action": "StopTask"
+        "custom_recognition_param": 3, // 建造次数 超过3最好开启skip,
+        "next": [
+            "FactoryDailyUpdate"
+        ]
+    },
+    "FactoryDailyUpdate": {
+        "desc": "更新每日一次",
+        "action": "Custom",
+        "custom_action": "FactoryDailyUpdateAct",
+        "next": [
+            "TaskStop"
+        ]
     },
     // 跳过系列
     "FactorySkip": {

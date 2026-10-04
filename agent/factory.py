@@ -224,7 +224,7 @@ class FactoryChooseNumberRepo(CustomRecognition):
             return final.box
 
 
-# 检测任务是否满足其他结束条件 目前 满足建造次数则结束 全忙碌则结束
+# 检测任务是否满足结束条件 目前 满足建造次数则结束 全忙碌则结束
 @AgentServer.custom_recognition("FactoryCheckTaskEndRepo")
 class FactoryCheckTaskEndRepo(CustomRecognition):
 

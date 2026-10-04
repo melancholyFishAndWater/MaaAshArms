@@ -1,6 +1,27 @@
 {
     // 训练所
     "option": {
+        "training_daily": {
+            "type": "switch",
+            "label": "每日一次",
+            "description": "启用以优化任务流程，出现误判后关闭选项再运行",
+            "default_case": "Yes",
+            "cases": [
+                {
+                    "name": "Yes"
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "TaskTrainingCheckDaily": {
+                            "custom_recognition_param": {
+                                "enable": false
+                            }
+                        }
+                    }
+                }
+            ]
+        },
         "战斗演习": {
             "type": "select",
             "default_case": "不进行",
@@ -11,7 +32,7 @@
                 {
                     "name": "难度一",
                     "pipeline_override": {
-                        "TrainingEnterOne": {
+                        "TaskTraining": {
                             "attach": {
                                 "战斗演习": "一"
                             }
@@ -21,7 +42,7 @@
                 {
                     "name": "难度二",
                     "pipeline_override": {
-                        "TrainingEnterOne": {
+                        "TaskTraining": {
                             "attach": {
                                 "战斗演习": "二"
                             }
@@ -31,7 +52,7 @@
                 {
                     "name": "难度三",
                     "pipeline_override": {
-                        "TrainingEnterOne": {
+                        "TaskTraining": {
                             "attach": {
                                 "战斗演习": "三"
                             }
@@ -41,7 +62,7 @@
                 {
                     "name": "难度四",
                     "pipeline_override": {
-                        "TrainingEnterOne": {
+                        "TaskTraining": {
                             "attach": {
                                 "战斗演习": "四"
                             }
@@ -51,7 +72,7 @@
                 {
                     "name": "难度五",
                     "pipeline_override": {
-                        "TrainingEnterOne": {
+                        "TaskTraining": {
                             "attach": {
                                 "战斗演习": "五"
                             }
@@ -61,7 +82,7 @@
                 {
                     "name": "难度六",
                     "pipeline_override": {
-                        "TrainingEnterOne": {
+                        "TaskTraining": {
                             "attach": {
                                 "战斗演习": "六"
                             }
@@ -80,7 +101,7 @@
                 {
                     "name": "难度一",
                     "pipeline_override": {
-                        "TrainingEnterOne": {
+                        "TaskTraining": {
                             "attach": {
                                 "狩猎行动": "一"
                             }
@@ -90,7 +111,7 @@
                 {
                     "name": "难度二",
                     "pipeline_override": {
-                        "TrainingEnterOne": {
+                        "TaskTraining": {
                             "attach": {
                                 "狩猎行动": "二"
                             }
@@ -100,7 +121,7 @@
                 {
                     "name": "难度三",
                     "pipeline_override": {
-                        "TrainingEnterOne": {
+                        "TaskTraining": {
                             "attach": {
                                 "狩猎行动": "三"
                             }
@@ -110,7 +131,7 @@
                 {
                     "name": "难度四",
                     "pipeline_override": {
-                        "TrainingEnterOne": {
+                        "TaskTraining": {
                             "attach": {
                                 "狩猎行动": "四"
                             }
@@ -120,7 +141,7 @@
                 {
                     "name": "难度五",
                     "pipeline_override": {
-                        "TrainingEnterOne": {
+                        "TaskTraining": {
                             "attach": {
                                 "狩猎行动": "五"
                             }
@@ -130,7 +151,7 @@
                 {
                     "name": "难度六",
                     "pipeline_override": {
-                        "TrainingEnterOne": {
+                        "TaskTraining": {
                             "attach": {
                                 "狩猎行动": "六"
                             }
@@ -149,7 +170,7 @@
                 {
                     "name": "难度一",
                     "pipeline_override": {
-                        "TrainingEnterOne": {
+                        "TaskTraining": {
                             "attach": {
                                 "拓展训练": "一"
                             }
@@ -159,7 +180,7 @@
                 {
                     "name": "难度二",
                     "pipeline_override": {
-                        "TrainingEnterOne": {
+                        "TaskTraining": {
                             "attach": {
                                 "拓展训练": "二"
                             }
@@ -169,7 +190,7 @@
                 {
                     "name": "难度三",
                     "pipeline_override": {
-                        "TrainingEnterOne": {
+                        "TaskTraining": {
                             "attach": {
                                 "拓展训练": "三"
                             }
@@ -179,7 +200,7 @@
                 {
                     "name": "难度四",
                     "pipeline_override": {
-                        "TrainingEnterOne": {
+                        "TaskTraining": {
                             "attach": {
                                 "拓展训练": "四"
                             }
@@ -189,7 +210,7 @@
                 {
                     "name": "难度五",
                     "pipeline_override": {
-                        "TrainingEnterOne": {
+                        "TaskTraining": {
                             "attach": {
                                 "拓展训练": "五"
                             }
@@ -199,7 +220,7 @@
                 {
                     "name": "难度六",
                     "pipeline_override": {
-                        "TrainingEnterOne": {
+                        "TaskTraining": {
                             "attach": {
                                 "拓展训练": "六"
                             }
@@ -218,7 +239,7 @@
                 {
                     "name": "难度一",
                     "pipeline_override": {
-                        "TrainingEnterOne": {
+                        "TaskTraining": {
                             "attach": {
                                 "资源筹备": "一"
                             }
@@ -228,7 +249,7 @@
                 {
                     "name": "难度二",
                     "pipeline_override": {
-                        "TrainingEnterOne": {
+                        "TaskTraining": {
                             "attach": {
                                 "资源筹备": "二"
                             }
@@ -238,7 +259,7 @@
                 {
                     "name": "难度三",
                     "pipeline_override": {
-                        "TrainingEnterOne": {
+                        "TaskTraining": {
                             "attach": {
                                 "资源筹备": "三"
                             }
@@ -248,7 +269,7 @@
                 {
                     "name": "难度四",
                     "pipeline_override": {
-                        "TrainingEnterOne": {
+                        "TaskTraining": {
                             "attach": {
                                 "资源筹备": "四"
                             }
@@ -258,7 +279,7 @@
                 {
                     "name": "难度五",
                     "pipeline_override": {
-                        "TrainingEnterOne": {
+                        "TaskTraining": {
                             "attach": {
                                 "资源筹备": "五"
                             }
@@ -268,7 +289,7 @@
                 {
                     "name": "难度六",
                     "pipeline_override": {
-                        "TrainingEnterOne": {
+                        "TaskTraining": {
                             "attach": {
                                 "资源筹备": "六"
                             }
