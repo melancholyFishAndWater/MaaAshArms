@@ -128,6 +128,7 @@
         "template": [
             "StartUp/TouchSignInPage.png"
         ],
+        "timeout": 60000,
         "action": "Click",
         "green_mask": true,
         "target": [
@@ -144,7 +145,10 @@
         "post_wait_freezes": 3000,
         "focus": {
             "Node.Recognition.Succeeded": "点击进入游戏"
-        }
+        },
+        "on_error": [
+            "StartUpFailed"
+        ]
     },
     "NoticeClickDisable": {
         "desc": "点击公告不再提示",
