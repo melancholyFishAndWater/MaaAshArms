@@ -119,9 +119,9 @@ class FactoryGetRewardReco(CustomRecognition):
             log.debug(f"{n_name} 设置领取角色为 {_reward_name}")
             context.override_pipeline(
                 {
-                    "FactoryGetReward": {
+                    "FactoryGetRewardSuccess": {
                         "focus": {
-                            "Node.Recognition.Succeeded": f"领取角色 {_reward_name}"
+                            "Node.Recognition.Succeeded": f"领取角色 {_reward_name} 成功"
                         }
                     }
                 }
