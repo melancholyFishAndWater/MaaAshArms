@@ -65,13 +65,18 @@
             109
         ],
         "next": [
-            "TrainingInit"
+            "[JumpBack]TrainingInit",
+            "TrainingLoop"
         ]
     },
     "TrainingInit": {
         "desc": "训练所初始化", // 此初始化只影响每日一次的识别效果
         "recognition": "Custom",
         "custom_recognition": "TrainingInitReco",
+        "max_hit": 1
+    },
+    "TrainingLoop": {
+        "desc": "训练所主循环",
         "next": [
             "[JumpBack]TrainingEnterOne",
             "TrainingEnd",
@@ -79,10 +84,7 @@
             "[JumpBack]BackButton",
             "[JumpBack]ReturnBattleMainPage"
             // TODO 自律战斗失败的逻辑、不可代理的逻辑
-        ],
-        "focus": {
-            "Node.Recognition.Failed": "训练所任务初始化失败"
-        }
+        ]
     },
     "TrainingEnd": {
         "desc": "无战斗次数",
@@ -124,7 +126,7 @@
         "action": "Custom",
         "custom_action": "TrainingDailyUpdateAct",
         "custom_action_param": {
-            "name": null // 覆写传递关卡名 list
+            "name": [] // 覆写传递关卡名 list
         }
     }
 }

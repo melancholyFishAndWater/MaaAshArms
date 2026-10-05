@@ -20,8 +20,6 @@ from base import toTuple, log, DEFAULT_HIT_BOX
 _all = ["战斗演习", "狩猎行动", "拓展训练", "资源筹备"]
 # 要进行的训练所关卡名: 难度
 battle_targets: dict[str, str] = {}
-# 是否进行过初始化
-_inited = False
 
 
 # ---------- Reco ----------
@@ -41,12 +39,6 @@ class TrainingInitReco(CustomRecognition):
         | tuple[int, int, int, int]
         | None
     ):
-        # 保证剩余识别只触发一次
-        global _inited
-        if _inited:
-            log.debug("已初始化过训练所任务，跳过初始化")
-            return DEFAULT_HIT_BOX
-
         # 提取变量
         n_name = argv.node_name
 
@@ -59,8 +51,6 @@ class TrainingInitReco(CustomRecognition):
         if r is None or not r.hit:
             log.debug(f"{n_name} 识别关卡剩余次数失败，可能未进行过战斗")
             return DEFAULT_HIT_BOX
-
-        _inited = True
 
         # 获取已完成的关卡
         done_targets: list[str] = []
@@ -98,31 +88,18 @@ class TrainingInitReco(CustomRecognition):
                 f"{n_name} 识别到的训练所关卡名数量与相应的状态数量不匹配，可能会出现非预期的情况。名字数 {len(done_targets)} / 状态数 {len(r.filtered_results)}"
             )
 
-        # 条件更新和返回
+        # 条件覆写和返回
         if len(done_targets) > 0:
-            result = context.run_action(
-                "TrainingDailyUpdate",
-                pipeline_override={
-                    "TrainingDailyUpdate": {
-                        "custom_action_param": {"name": done_targets}
-                    }
-                },
+            result = context.override_pipeline(
+                {"TrainingDailyUpdate": {"custom_action_param": {"name": done_targets}}}
             )
+            if not result:
+                log.warn("训练所任务覆写传参失败")
+                return DEFAULT_HIT_BOX
 
-            # 执行失败就尝试结束任务
-            if result is None or not result.success:
-                s = "训练所任务初始化失败"
-                result2 = context.run_action(
-                    "TaskStop",
-                    pipeline_override={
-                        "TaskStop": {"focus": {"Node.Action.Succeeded": s}}
-                    },
-                )
-
-                # 还是失败就退化为日志警告+None以触发节点的focus
-                if result2 is None or not result2.success:
-                    log.error(s)
-                    return None
+            result2 = context.override_next(argv.node_name, ["TrainingDailyUpdate"])
+            if not result2:
+                log.warn("训练所任务覆写next失败")
         return DEFAULT_HIT_BOX
 
 
