@@ -35,7 +35,7 @@
             55
         ],
         "next": [
-            "[JumpBack]ClickTap",
+            "[JumpBack]GetReward",
             "[JumpBack]EscortDelivery",
             "EscortFindToAccept"
         ],

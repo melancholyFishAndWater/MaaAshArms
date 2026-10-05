@@ -72,9 +72,18 @@
         "desc": "领取奖励",
         "recognition": "OCR",
         "expected": "获得一览",
-        "next": [
-            "ClickTap"
-        ]
+        "roi": [
+            525,
+            154,
+            174,
+            53
+        ],
+        "action": "Click",
+        "target": [
+            640,
+            620
+        ],
+        "post_wait_freezes": 500
     },
     // 点击系列
     "ClickConfirm": {
@@ -120,26 +129,6 @@
         ],
         "action": "Click",
         "post_wait_freezes": 500
-    },
-    "ClickTap": {
-        "desc": "点击tap",
-        "recognition": "OCR",
-        "expected": [
-            "T",
-            "A",
-            "P"
-        ],
-        "replace": [
-            "D",
-            "P"
-        ],
-        "action": "Click",
-        "roi": [
-            530,
-            591,
-            218,
-            129
-        ]
     },
     "NetworkError": {
         "desc": "关闭网络错误",
