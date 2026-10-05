@@ -68,23 +68,6 @@
         "action": "Custom",
         "custom_action": "MoveUpDownAct"
     },
-    "GetReward": {
-        "desc": "领取奖励",
-        "recognition": "OCR",
-        "expected": "获得一览",
-        "roi": [
-            525,
-            154,
-            174,
-            53
-        ],
-        "action": "Click",
-        "target": [
-            640,
-            620
-        ],
-        "post_wait_freezes": 500
-    },
     // 点击系列
     "ClickConfirm": {
         "desc": "通用点击确认",
@@ -128,6 +111,23 @@
             0
         ],
         "action": "Click",
+        "post_wait_freezes": 500
+    },
+    "GetReward": {
+        "desc": "领取奖励",
+        "recognition": "OCR",
+        "expected": "获得一览",
+        "roi": [
+            525,
+            154,
+            174,
+            53
+        ],
+        "action": "Click",
+        "target": [
+            640,
+            620
+        ],
         "post_wait_freezes": 500
     },
     "NetworkError": {
