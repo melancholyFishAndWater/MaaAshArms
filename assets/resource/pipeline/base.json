@@ -113,6 +113,15 @@
         "action": "Click",
         "post_wait_freezes": 500
     },
+    "ClickTap": {
+        "desc": "点击tap区域",
+        "action": "Click",
+        "target": [
+            640,
+            620
+        ],
+        "post_wait_freezes": 500
+    },
     "GetReward": {
         "desc": "领取奖励",
         "recognition": "OCR",

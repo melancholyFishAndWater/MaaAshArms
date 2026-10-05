@@ -166,7 +166,7 @@
         ],
         "next": [
             "TrainGetRewardEnd",
-            "[JumpBack]GetReward"
+            "[JumpBack]ClickTap"
         ],
         "post_wait_freezes": 500
     },
