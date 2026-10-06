@@ -60,5 +60,43 @@
         "editor.formatOnSave": true,
         "editor.defaultFormatter": "DavidAnson.vscode-markdownlint"
     },
-    "python.REPL.enableREPLSmartSend": false
+    "python.REPL.enableREPLSmartSend": false,
+    "python.analysis.exclude": [
+        "**/build",
+        "**/install",
+        "**/temp",
+        "**/deps"
+    ],
+    "files.watcherExclude": {
+        "**/node_modules/**": true,
+        "**/__pycache__/**": true,
+        "**/.python-runtime*/**": true,
+        "**/build/**": true,
+        "**/install/**": true,
+        "**/temp/**": true,
+        "**/deps/**": true,
+        "**/debug/**": true,
+        "**/docs/node_modules/**": true,
+        "**/docs/.vuepress/.temp/**": true
+    },
+    "search.exclude": {
+        "**/node_modules/**": true,
+        "**/__pycache__/**": true,
+        "**/.python-runtime*/**": true,
+        "**/build/**": true,
+        "**/install/**": true,
+        "**/temp/**": true,
+        "**/deps/**": true,
+        "**/debug/**": true,
+        "**/docs/node_modules/**": true
+    },
+    "files.exclude": {
+        "build": true,
+        "temp": true,
+        ".python-runtime-linux": true,
+        ".python-runtime-osx": true,
+        "node_modules": true,
+        "docs/node_modules": true,
+        "**/__pycache__": true
+    }
 }
