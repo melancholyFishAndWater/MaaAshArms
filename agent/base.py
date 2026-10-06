@@ -194,6 +194,9 @@ class _Log:
     def critical(self, msg: str):
         _logger.critical(msg)
 
+    def ferror(self, msg: str = ""):
+        _logger.error("内部错误。" + msg)
+
 
 # 日志
 log = _Log()
