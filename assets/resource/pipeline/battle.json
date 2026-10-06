@@ -3,20 +3,13 @@
     // TODO 改进
     "ReturnBattleMainPage": {
         "desc": "回到出击作页面主页",
-        "next": [
-            "BattleInHome",
-            "BattleEnterHome",
-            "[JumpBack]ReturnMain"
-        ]
-    },
-    "BattleEnterHome": {
-        "desc": "从主页进入出击页面",
         "recognition": "TemplateMatch",
         "template": "Battle/MainBattleButton.png",
         "action": "Click",
         "next": [
             "BattleInHome",
-            "BattleEnterHome"
+            "ReturnBattleMainPage",
+            "[JumpBack]ReturnMain"
         ],
         "post_wait_freezes": 1000
     },
