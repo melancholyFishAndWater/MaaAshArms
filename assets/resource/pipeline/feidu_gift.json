@@ -112,7 +112,8 @@
             48
         ],
         "next": [
-            "GiftClickShowGift"
+            "GiftClickShowGift",
+            "GiftChooseFrist"
         ],
         "post_wait_freezes": 2000
     },
