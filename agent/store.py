@@ -203,7 +203,6 @@ class Store(Generic[T]):
 _gift = Store[bool]("daily_gift.json")
 
 
-# 若为今日第一次或若未开启每日一次，则返回 BOX；
 @AgentServer.custom_recognition("TaskGiftReco")
 class TaskGiftReco(CustomRecognition):
     def analyze(
@@ -212,7 +211,6 @@ class TaskGiftReco(CustomRecognition):
         return _gift.reco(context, argv)
 
 
-# 更新每日一次数据
 @AgentServer.custom_action("GiftDailyUpdateAct")
 class GiftDailyUpdateAct(CustomAction):
     def run(
