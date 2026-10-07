@@ -156,9 +156,11 @@
             608,
             37
         ],
-        "action": "StopTask",
+        "next": [
+            "EntrustDailyUpdate"
+        ],
         "focus": {
-            "Node.Recognition.Succeeded": "委托次数已达上限，任务结束"
+            "Node.Recognition.Succeeded": "委托次数已达上限"
         }
     },
     // INFO 可以委派的后续
