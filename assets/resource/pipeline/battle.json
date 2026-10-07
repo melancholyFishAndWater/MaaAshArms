@@ -3,15 +3,18 @@
     // TODO 改进
     "ReturnBattleMainPage": {
         "desc": "回到出击作页面主页",
-        "recognition": "TemplateMatch",
-        "template": "Battle/MainBattleButton.png",
-        "action": "Click",
         "next": [
             "BattleInHome",
-            "ReturnBattleMainPage",
+            "[JumpBack]BattleEnterMainPage",
             "[JumpBack]ReturnMain"
         ],
         "post_wait_freezes": 1000
+    },
+    "BattleEnterMainPage": {
+        "desc": "点击进入出击页面",
+        "recognition": "TemplateMatch",
+        "template": "Battle/MainBattleButton.png",
+        "action": "Click"
     },
     // 判断节点
     "BattleInHome": {
