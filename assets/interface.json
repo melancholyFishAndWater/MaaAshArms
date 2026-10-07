@@ -11,7 +11,7 @@
     "welcome": "resource/announcement/0-welcome.md",
     // 填写项目地址和版本号可实现自动更新功能
     "github": "https://github.com/melancholyFishAndWater/MaaAshArms",
-    "version": "1.0.0-beta.15",
+    "version": "1.0.0-beta.16",
     "telemetry": {
         "sentry": {
             "dsn": "https://f231f330aaf9138fe2fd690d70f82d94@o4512197377523712.ingest.us.sentry.io/4512197395480576",
