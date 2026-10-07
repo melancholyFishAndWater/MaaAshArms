@@ -50,10 +50,25 @@
             "entry": "TaskStartUp"
         },
         {
+            "name": "联络人",
+            "entry": "TaskFriend"
+        },
+        {
             "name": "收取资源",
             "entry": "TaskFeiduReward",
             "group": [
                 "feidu"
+            ]
+        },
+        {
+            "name": "每日赠礼",
+            "entry": "TaskGift",
+            "group": [
+                "feidu",
+                "daily"
+            ],
+            "option": [
+                "gift_daily"
             ]
         },
         {
@@ -71,17 +86,6 @@
                 }
             },
             "description": "此任务必须位于[任务奖励]前，才能领取今日委派奖励"
-        },
-        {
-            "name": "每日赠礼",
-            "entry": "TaskGift",
-            "group": [
-                "feidu",
-                "daily"
-            ],
-            "option": [
-                "gift_daily"
-            ]
         },
         {
             "name": "维修会",
@@ -110,10 +114,6 @@
                     ]
                 }
             }
-        },
-        {
-            "name": "联络人",
-            "entry": "TaskFriend"
         },
         {
             "name": "订单工厂",
