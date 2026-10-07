@@ -209,7 +209,7 @@ class FactoryChooseNumberRepo(CustomRecognition):
                 argv.image,
             )
             if not build_result or not build_result.hit:
-                log.warn(f"{n_name} 获取建造按钮位置失败")
+                log.debug(f"{n_name} 获取建造按钮位置失败")
                 continue
 
             # 提取变量
@@ -250,7 +250,7 @@ class FactoryCheckTaskEndRepo(CustomRecognition):
         # 获得取消按钮
         boxes = _get_cancel_buttons(context, argv.image)
         if not boxes:
-            log.warn(f"{n_name} 获取红叉失败")
+            log.debug(f"{n_name} 获取红叉失败")
             return
 
         # 遍历以获得所有状态
@@ -258,7 +258,7 @@ class FactoryCheckTaskEndRepo(CustomRecognition):
             # 名字OCR
             name_result = _get_name(context, argv.image, i)
             if not name_result or not name_result.hit:
-                log.warn(f"{n_name} 获取名字失败")
+                log.debug(f"{n_name} 获取名字失败")
                 continue
             b_name = name_result.best_result
             assert type(b_name) == OCRResult
@@ -279,7 +279,7 @@ class FactoryCheckTaskEndRepo(CustomRecognition):
             # 提取时间
             m = search(r"(\d\d):(\d\d)", b_time.text)
             if not m:
-                log.warn(f"{n_name} 正则提取时间失败: {b_time.text}")
+                log.debug(f"{n_name} 正则提取时间失败: {b_time.text}")
                 continue
 
             offset_sec = int(m.group(1)) * 60 + int(m.group(2))
