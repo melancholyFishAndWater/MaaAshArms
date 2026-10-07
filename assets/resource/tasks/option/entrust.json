@@ -1,0 +1,23 @@
+{
+    "option": {
+        "entrust_daily": {
+            "type": "switch",
+            "label": "每日一次",
+            "cases": [
+                {
+                    "name": "Yes"
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "EntrustCheckDaily": {
+                            "custom_recognition_param": {
+                                "enable": false
+                            }
+                        }
+                    }
+                }
+            ]
+        }
+    }
+}

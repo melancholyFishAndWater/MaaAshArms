@@ -2,6 +2,7 @@
     "TaskMission": {
         "desc": "领取奖励的任务",
         "next": [
+            "[JumpBack]TaskEntrustGetReward",
             "CheckMissionStatus",
             "[JumpBack]ReturnMain"
         ]

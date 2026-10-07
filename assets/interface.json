@@ -57,6 +57,22 @@
             ]
         },
         {
+            "name": "主线委派",
+            "entry": "TaskEntrust",
+            "group": [
+                "daily"
+            ],
+            "option": [
+                "entrust_daily"
+            ],
+            "pipeline_override": {
+                "MoveRight": {
+                    "max_hit": 20
+                }
+            },
+            "description": "由于领取功能位于 [任务奖励]，因此启用次任务时建议启用 [任务奖励] 以能够领取今日委托奖励"
+        },
+        {
             "name": "每日赠礼",
             "entry": "TaskGift",
             "group": [
@@ -162,6 +178,7 @@
     "import": [
         "resource/tasks/option/battle_training.json",
         "resource/tasks/option/factory.json",
-        "resource/tasks/option/feidu_gift.json"
+        "resource/tasks/option/feidu_gift.json",
+        "resource/tasks/option/entrust.json"
     ]
 }

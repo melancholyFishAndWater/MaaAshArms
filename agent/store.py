@@ -279,3 +279,24 @@ class TrainingDailyUpdateAct(CustomAction):
         except Exception as e:
             log.error(f"{argv.node_name} 参数解析失败: {e}")
             return False
+
+
+# ----- 委派 -----
+
+_entrust = Store[bool]("daily_entrust.json")
+
+
+@AgentServer.custom_recognition("EntrustCheckDailyReco")
+class EntrustCheckDailyReco(CustomRecognition):
+    def analyze(
+        self, context: Context, argv: CustomRecognition.AnalyzeArg
+    ) -> list[int] | None:
+        return _entrust.reco(context, argv)
+
+
+@AgentServer.custom_action("EntrustDailyUpdateAct")
+class EntrustDailyUpdateAct(CustomAction):
+    def run(
+        self, context: Context, argv: CustomAction.RunArg
+    ) -> CustomAction.RunResult | bool:
+        return _entrust.act(argv, True)
