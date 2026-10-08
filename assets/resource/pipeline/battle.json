@@ -48,14 +48,16 @@
         ]
     },
     // INFO 两个战斗入口
+    // TODO 与目前的BattleNow不兼容
     "TaskBattleAuto": {
         "desc": "代理战斗 否则使用自律作战战斗",
         "recognition": "And",
         "all_of": [
             "BattleInFormation"
         ],
+        "action": "Custom",
+        "custom_action": "LoopErrorByTimesInitAct", // LoopErrorByTimes 初始化。因为允许一次多次重入
         "next": [
-            "[JumpBack]LoopErrorByTimesInit",
             "BattleReplayLight",
             "BattleClickReplay",
             "BattleClickAuto"
@@ -67,14 +69,15 @@
         "all_of": [
             "BattleInFormation"
         ],
+        "action": "Custom",
+        "custom_action": "LoopErrorByTimesInitAct", // LoopErrorByTimes 初始化。因为允许一次多次重入
         "next": [
-            "[JumpBack]LoopErrorByTimesInit",
             "BattleReplayLight",
             "BattleClickReplay",
             "BattleIsReplayLocked"
         ]
     },
-    // 终止节点
+    // INFO 终止节点
     "BattleIsReplayLocked": {
         "desc": "代理作战锁定则结束任务链",
         "recognition": "TemplateMatch",
@@ -88,7 +91,7 @@
             70
         ]
     },
-    // 自动作战流程
+    // INFO 自动作战
     "BattleClickAuto": {
         "desc": "点击自律作战按钮",
         "recognition": "TemplateMatch",
@@ -107,17 +110,18 @@
         "desc": "自律作战已开启",
         "recognition": "TemplateMatch",
         "template": "Battle/AutoButtonLight.png",
-        "next": [
-            "BattleClickAttack"
-        ],
         "roi": [
             1085,
             572,
             195,
             143
+        ],
+        "next": [
+            "[JumpBack]BattleNeedReplenish",
+            "BattleClickAttack"
         ]
     },
-    // 代理作战流程
+    // INFO 代理作战
     "BattleClickReplay": {
         "desc": "点击暗淡的代理作战按钮",
         "recognition": "TemplateMatch",
@@ -152,6 +156,7 @@
             "BattleClickAttack"
         ]
     },
+    // INFO 补充成员
     "BattleNeedReplenish": {
         "desc": "补充成员数",
         "recognition": "TemplateMatch",
@@ -179,7 +184,7 @@
         ],
         "action": "Click"
     },
-    // 战斗流程
+    // INFO 战斗流程
     "BattleClickAttack": {
         "desc": "[Loop] 点击出击按钮 即使是灰色的",
         "recognition": "OCR",
@@ -205,9 +210,49 @@
     },
     "BattleIsLoading": {
         "desc": "在加载战斗界面",
+        "recognition": "Or",
+        "any_of": [
+            "BattleInTips",
+            "BattleInBlack"
+        ],
+        "next": [
+            "BattleInTips",
+            "LoopErrorByTimes", // 保证纯黑次数不太多
+            "BattleInBlack"
+        ],
+        "post_wait_freezes": 3000
+    },
+    "BattleInBlack": {
+        "desc": "在纯黑页面",
+        "recognition": "ColorMatch",
+        "lower": [
+            0,
+            0,
+            0
+        ],
+        "upper": [
+            10,
+            10,
+            10
+        ],
+        "count": 250000,
+        "roi": [
+            248,
+            124,
+            837,
+            375
+        ]
+    },
+    "BattleInTips": {
+        "desc": "在Tips页面",
         "recognition": "OCR",
         "expected": "Tips",
-        "post_wait_freezes": 3000
+        "roi": [
+            0,
+            649,
+            1280,
+            71
+        ]
     },
     // TODO 战斗异常
     "BattleNow": {
@@ -241,7 +286,7 @@
         "next": [
             "[JumpBack]GetReward",
             "BattleWin",
-            "BattleWinEnd"
+            "BattleWinSuccess"
         ],
         "post_wait_freezes": 1000
     },
