@@ -1,6 +1,5 @@
 {
-    // 通用战斗
-    // TODO 改进
+    // INFO 通用战斗
     "ReturnBattleMainPage": {
         "desc": "回到出击作页面主页",
         "next": [
