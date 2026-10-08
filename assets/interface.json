@@ -156,7 +156,10 @@
             "name": "自动战役",
             "entry": "TaskBattleReplays",
             "default_check": false,
-            "description": "自动进行战役战斗<br/>[color:red]必须在战斗编队页面且设置好自律次数[/color]"
+            "description": "自动进行战役战斗<br/>[color:red]必须在战斗编队页面且设置好自律次数[/color]",
+            "option": [
+                "battle_replays_number"
+            ]
         }
         // TODO
         // {
@@ -185,6 +188,7 @@
         "resource/tasks/option/battle_training.json",
         "resource/tasks/option/factory.json",
         "resource/tasks/option/feidu_gift.json",
-        "resource/tasks/option/entrust.json"
+        "resource/tasks/option/entrust.json",
+        "resource/tasks/option/battle_replays.json"
     ]
 }

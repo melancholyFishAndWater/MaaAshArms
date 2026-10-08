@@ -1,0 +1,26 @@
+{
+    "option": {
+        "battle_replays_number": {
+            "label": "自定义数量",
+            "type": "input",
+            "inputs": [
+                {
+                    "name": "times",
+                    "label": "出击次数",
+                    "default": "0",
+                    "pipeline_type": "int",
+                    "verify": "^\\d+$",
+                    "pattern_msg": "请输入一个正确数字",
+                    "description": "输入0则循环直到合金或入场券耗尽"
+                }
+            ],
+            "pipeline_override": {
+                "BattleReplaysInit": {
+                    "custom_action_param": {
+                        "times": "{times}" // 执行次数
+                    }
+                }
+            }
+        }
+    }
+}

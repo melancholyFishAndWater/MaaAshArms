@@ -41,6 +41,7 @@ class BattleReplaysInitAct(CustomAction):
         try:
             p = parse_params(argv.custom_action_param, "times")
             _max_count = p["times"]
+            log.debug(f"{argv.node_name} 设置 _max_count为{_max_count}")
         except Exception as e:
             log.warn(f"{argv.node_name} 解析param失败: {e}")
 
@@ -55,7 +56,7 @@ class BattleReplaysChooseReattackSuccessAct(CustomAction):
     ) -> CustomAction.RunResult | bool:
         global _finish_count
         _finish_count += 1
-        if _finish_count >= _max_count:
+        if _max_count > 0 and _finish_count >= _max_count:
             log.info("满足结束次数，任务结束")
             context.run_action("TaskStop")
         return True
