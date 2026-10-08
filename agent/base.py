@@ -447,7 +447,7 @@ class LoopErrorByTimesReco(CustomRecognition):
             return DEFAULT_HIT_BOX
 
 
-# 初始化
+# LoopErrorByTimes 初始化
 @AgentServer.custom_action("LoopErrorByTimesInitAct")
 class LoopErrorByTimesInitAct(CustomAction):
     def run(
