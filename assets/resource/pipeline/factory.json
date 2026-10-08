@@ -1,6 +1,5 @@
 {
-    // TODO 资源不足时
-    // 工厂任务入口
+    // INFO 工厂任务入口
     "TaskFactory": {
         "desc": "开始订单工厂任务",
         "recognition": "Custom",
@@ -52,7 +51,7 @@
             51
         ]
     },
-    // 工厂任务
+    // INFO 工厂任务
     "TaskFactoryNext": {
         "desc": "订单厂任务",
         "recognition": "OCR",
@@ -123,7 +122,7 @@
             66
         ]
     },
-    // 分节点 领取奖励
+    // INFO 分节点-领取奖励
     "FactoryGetReward": {
         "desc": "领取奖励",
         "recognition": "Custom",
@@ -200,7 +199,7 @@
         "custom_action": "FactoryGetRewardNextAct"
     },
     // max_hit 限制创建次数
-    // 分节点 创建新订单 及其系列
+    // INFO 分节点-创建新订单
     "FactoryCreateOrder": {
         "desc": "创建新订单",
         "recognition": "OCR",
