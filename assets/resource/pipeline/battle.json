@@ -195,7 +195,6 @@
             199,
             73
         ],
-        "max_hit": 10,
         "action": "Click",
         "timeout": 40000,
         "rate_limit": 3000,
@@ -204,8 +203,8 @@
             "[JumpBack]BattleIsLoading",
             "BattleWin",
             "NoMetal",
-            "BattleClickAttack",
-            "LoopErrorByTimes"
+            "LoopErrorByTimes",
+            "BattleClickAttack"
         ]
     },
     "BattleIsLoading": {
@@ -214,12 +213,6 @@
         "any_of": [
             "BattleInTips",
             "BattleInBlack"
-        ],
-        "timeout": 30000,
-        "next": [
-            "BattleInTips",
-            "BattleInBlack",
-            "BattleNow"
         ],
         "post_wait_freezes": 3000
     },

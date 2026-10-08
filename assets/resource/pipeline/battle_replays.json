@@ -1,4 +1,5 @@
 {
+    // PERF 优化
     // INFO 重复自律节点
     "TaskBattleReplays": {
         "desc": "重复自律任务 战役",
@@ -28,7 +29,6 @@
             199,
             73
         ],
-        "max_hit": 8,
         "action": "Click",
         "post_wait_freezes": 3000,
         "timeout": -1,
@@ -37,8 +37,8 @@
             "BattleReplaysNoProps",
             "NoMetal",
             "[JumpBack]BattleReplaysInBattle",
-            "BattleReplaysChooseAttack",
-            "LoopErrorByTimes"
+            "LoopErrorByTimes", // 出击后会清空，不用担心轻易超次
+            "BattleReplaysChooseAttack"
         ]
     },
     "BattleReplaysInBattle": {
