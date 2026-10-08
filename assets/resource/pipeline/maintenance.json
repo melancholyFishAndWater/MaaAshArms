@@ -1,8 +1,9 @@
 {
+    // INFO 维修会任务
     "TaskMaintenance": {
         "desc": "维修会任务",
         "next": [
-            "FlagInMaintenance",
+            "[JumpBack]LoopErrorByTimesInit",
             "EnterMaintenance",
             "[JumpBack]ReturnMain"
         ]
@@ -21,14 +22,14 @@
             53
         ],
         "next": [
-            "FlagInMaintenance",
-            "EnterMaintenance",
-            "[JumpBack]BackButton"
+            "MaintenanceLoop",
+            "LoopErrorByTimes",
+            "EnterMaintenance"
         ],
         "post_wait_freezes": 3000
     },
-    "FlagInMaintenance": {
-        "desc": "维修会标志",
+    "MaintenanceInHome": {
+        "desc": "在维修会 可能是主页，也可能是选择范围页面",
         "recognition": "OCR",
         "expected": [
             "维修会"
@@ -38,27 +39,41 @@
             13,
             122,
             43
-        ],
-        "next": [
-            "[JumpBack]RecycleOk",
-            "[JumpBack]GetCharacterOk",
-            "[JumpBack]GetCharacter",
-            "[JumpBack]CanRecycle",
-            "[JumpBack]ChooseRecycle",
-            "FlagAllBusy"
         ]
     },
-    "RecycleOk": {
+    // INFO 主页面循环
+    "MaintenanceLoop": {
+        "desc": "[Loop] 维修会主循环",
+        "recognition": "And",
+        "all_of": [
+            "MaintenanceInHome"
+        ],
+        "next": [
+            "[JumpBack]MaintenanceChooseFinish",
+            "[JumpBack]MaintenanceCanRecycle",
+            "MaintenanceAllBusy",
+            "LoopErrorByTimes"
+        ]
+    },
+    // INFO 分支-完成
+    "MaintenanceChooseFinish": {
         "desc": "点击回收完成按钮",
         "recognition": "TemplateMatch",
         "template": [
             "Maintenance/RecycleOkButton.png"
         ],
         "action": "Click",
-        "post_delay": 1000
+        "post_delay": 1000,
+        "next": [
+            "[JumpBack]MaintenanceGetCharacter",
+            "[JumpBack]MaintenanceGetCharacterOk",
+            "LoopErrorByTimes",
+            "MaintenanceChooseFinish",
+            "MaintenanceInHome"
+        ]
     },
-    "GetCharacter": {
-        "desc": "获得角色则点空白处",
+    "MaintenanceGetCharacter": {
+        "desc": "获得角色则点识别处",
         "recognition": "OCR",
         "expected": [
             ".*ARMS.*",
@@ -77,7 +92,7 @@
         "action": "Click",
         "post_delay": 1000
     },
-    "GetCharacterOk": {
+    "MaintenanceGetCharacterOk": {
         "desc": "点击确认零件转换",
         "recognition": "OCR",
         "expected": "确认",
@@ -90,7 +105,8 @@
         "action": "Click",
         "post_delay": 1000
     },
-    "CanRecycle": {
+    // INFO 分支-可以回收
+    "MaintenanceCanRecycle": {
         "desc": "点击进入选择回收页面",
         "recognition": "TemplateMatch",
         "template": [
@@ -103,9 +119,15 @@
             112,
             268
         ],
-        "post_delay": 1000
+        "post_delay": 1000,
+        "next": [
+            "MaintenanceCanNotAction",
+            "MaintenanceChooseAction",
+            "LoopErrorByTimes",
+            "MaintenanceCanRecycle"
+        ]
     },
-    "ChooseRecycle": {
+    "MaintenanceChooseAction": {
         "desc": "点击开始行动",
         "recognition": "OCR",
         "expected": "开始行动",
@@ -118,7 +140,23 @@
         ],
         "post_delay": 1000
     },
-    "FlagAllBusy": {
+    // INFO 两个结束分支
+    "MaintenanceCanNotAction": {
+        "desc": "不可以开始行动",
+        "recognition": "TemplateMatch",
+        "template": "Maintenance/ActionDart.png",
+        "roi": [
+            900,
+            554,
+            320,
+            166
+        ],
+        "action": "StopTask",
+        "focus": {
+            "Node.Action.Succeeded": "合金不足，任务结束"
+        }
+    },
+    "MaintenanceAllBusy": {
         "desc": "全部都在行动",
         "recognition": "TemplateMatch",
         "template": "Maintenance/BusyButton.png",
@@ -128,6 +166,10 @@
             162,
             134,
             311
-        ]
+        ],
+        "action": "StopTask",
+        "focus": {
+            "Node.Recognition.Succeeded": "全部忙碌，任务结束"
+        }
     }
 }
