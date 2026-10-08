@@ -1,11 +1,14 @@
 {
+    // INFO 武装押运
     "TaskTrain": {
         "desc": "武装押运任务",
         "next": [
+            "[JumpBack]LoopErrorByTimesInit",
             "TrainClickArrow",
             "[JumpBack]ReturnMain"
         ]
     },
+    // INFO 游戏主界面
     "TrainClickArrow": {
         "desc": "点击列车押运的蓝色箭头",
         "recognition": "TemplateMatch",
@@ -32,19 +35,20 @@
         ],
         "post_wait_freezes": 1000
     },
+    // INFO 主循环
     "TrainEnterMainPage": {
-        "desc": "进入武装押运界面",
+        "desc": "[Loop] 进入武装押运界面",
         "action": "Click",
         "target": "TrainGetStatus",
         "next": [
             "TrainCheckEnd",
             "[JumpBack]TrainIsRewardable",
-            "[JumpBack]TrainIsAcceptable"
-            // TODO TrainIsAcceptable 发第二列车的时候
+            "[JumpBack]TrainIsAcceptable",
+            "LoopErrorByTimes"
         ],
         "post_wait_freezes": 3000
     },
-    // 特殊节点
+    // INFO 特殊节点
     "TrainCheckEnd": {
         "desc": "检测武装押运任务是否结束",
         "recognition": "Custom",
@@ -84,7 +88,7 @@
         "custom_action": "TrainInfoMoverAct",
         "post_wait_freezes": 1000
     },
-    // 领取奖励流程
+    // INFO 领取奖励流程
     "TrainIsRewardable": {
         "desc": "判断是否可以领取列车奖励",
         "recognition": "Custom",
@@ -184,7 +188,7 @@
         "action": "Custom",
         "custom_action": "TrainGetRewardEndAct"
     },
-    // 发车流程
+    // INFO 发车流程
     "TrainIsAcceptable": {
         "desc": "判断是否可以发车",
         "recognition": "Custom",
@@ -316,7 +320,21 @@
             116
         ],
         "next": [
-            "TrainGoButtonLight"
+            "TrainGoButtonLight",
+            "TrainGoButtonDartToo"
+        ]
+    },
+    "TrainGoButtonDartToo": {
+        "desc": "依然暗淡，尝试点击",
+        "recognition": "And",
+        "all_of": [
+            "TrainGoButtonDart"
+        ],
+        "action": "Click",
+        "next": [
+            "NoMetal",
+            "LoopErrorByTimes",
+            "TrainGoButtonDartToo"
         ]
     },
     "TrainGoButtonLight": {
