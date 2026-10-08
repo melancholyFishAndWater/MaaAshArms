@@ -72,7 +72,7 @@
             ]
         },
         {
-            "name": "主线委派",
+            "name": "委派",
             "entry": "TaskEntrust",
             "group": [
                 "daily"
