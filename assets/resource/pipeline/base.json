@@ -260,7 +260,7 @@
         "recognition": "Custom",
         "custom_recognition": "LoopErrorByTimesReco",
         "custom_recognition_param": {
-            "times": 20 // 识别需超过的次数
+            "times": 10 // 识别需超过的次数
         },
         "next": [
             "TaskStopError"
