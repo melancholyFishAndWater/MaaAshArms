@@ -141,7 +141,7 @@
                 "资源筹备"
             ],
             "pipeline_override": {
-                "BattleWinEnd": {
+                "BattleWinSuccess": {
                     "next": [
                         "TrainingDailyUpdate"
                     ]

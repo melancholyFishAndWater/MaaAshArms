@@ -245,7 +245,7 @@
         ],
         "post_wait_freezes": 1000
     },
-    "BattleWinEnd": {
+    "BattleWinSuccess": {
         "desc": "战斗胜利的出口节点",
         "recognition": "OCR",
         "expected": "战斗胜利",
