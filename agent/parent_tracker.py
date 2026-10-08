@@ -77,7 +77,7 @@ def candidates(task_id: int) -> tuple[JNodeAttr, ...] | None:
 
 
 def reset(task_id: int) -> None:
-    """清掉一个任务的记录（只清这里的账，base.py 那套计数器由自己的 InitAct 清）。"""
+    """清掉一个任务的记录"""
     _ParentTracker.rounds.pop(task_id, None)
     _ParentTracker.current.pop(task_id, None)
     _ParentTracker.candidates.pop(task_id, None)
