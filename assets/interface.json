@@ -151,6 +151,12 @@
         {
             "name": "任务奖励",
             "entry": "TaskMission"
+        },
+        {
+            "name": "自动战役",
+            "entry": "TaskBattleReplays",
+            "default_check": false,
+            "description": "自动进行战役战斗<br/>[color:red]必须在战斗编队页面且设置好自律次数[/color]"
         }
         // TODO
         // {

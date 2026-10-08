@@ -15,6 +15,7 @@ from maa.agent.agent_server import AgentServer
 from maa.tasker import Tasker
 
 from base import pi_check_maafw_version, pi_log_snapshot
+import battle_replays
 import battle_training
 import entrust
 import factory_fast

@@ -1,0 +1,185 @@
+{
+    // INFO 重复自律节点
+    "TaskBattleReplays": {
+        "desc": "重复自律任务 战役",
+        "timeout": 10000,
+        "next": [
+            "[JumpBack]BattleReplaysInit",
+            "[JumpBack]LoopErrorByTimesInit",
+            "BattleReplaysChooseAttack"
+        ]
+    },
+    "BattleReplaysInit": {
+        "desc": "初始化agent全局变量",
+        "action": "Custom",
+        "custom_action": "BattleReplaysInitAct",
+        "custom_action_param": {
+            "times": 5 // 执行次数
+        },
+        "max_hit": 1
+    },
+    "BattleReplaysChooseAttack": {
+        "desc": "[Loop] 点击出击按钮 即使是灰色的",
+        "recognition": "OCR",
+        "expected": "出击",
+        "roi": [
+            901,
+            612,
+            199,
+            73
+        ],
+        "max_hit": 8,
+        "action": "Click",
+        "post_wait_freezes": 3000,
+        "timeout": -1,
+        "next": [
+            "[JumpBack]BattleIsLoading",
+            "BattleReplaysNoProps",
+            "BattleReplaysNoMetal",
+            "[JumpBack]BattleReplaysInBattle",
+            "BattleReplaysChooseAttack",
+            "LoopErrorByTimes"
+        ]
+    },
+    "BattleReplaysInBattle": {
+        "desc": "[Loop] 正在战斗",
+        "recognition": "And",
+        "all_of": [
+            "BattleNow"
+        ],
+        "post_wait_freezes": 3000,
+        "rate_limit": 3000,
+        "next": [
+            "[JumpBack]BattleNow",
+            "[JumpBack]BattleIsLoading",
+            "BattleReplaysEnd",
+            "BattleReplaysMetalEnd",
+            "LoopErrorByTimes"
+        ]
+    },
+    // INFO 金属不足结束分支
+    "BattleReplaysMetalEnd": {
+        "desc": "金属不足结束",
+        "recognition": "OCR",
+        "expected": "体力不足",
+        "roi": [
+            411,
+            302,
+            361,
+            51
+        ],
+        "next": [
+            "[JumpBack]ClickConfirm",
+            "[JumpBack]GetReward",
+            "BattleReplaysChooseFinish",
+            "LoopErrorByTimes"
+        ]
+    },
+    "BattleReplaysChooseFinish": {
+        "desc": "点击完成",
+        "recognition": "OCR",
+        "expected": "完成",
+        "roi": [
+            793,
+            633,
+            147,
+            52
+        ],
+        "action": "Click",
+        "max_hit": 8,
+        "next": [
+            "BattleReplaysChooseFinishSuccess",
+            "BattleReplaysChooseFinish"
+        ]
+    },
+    "BattleReplaysChooseFinishSuccess": {
+        "desc": "点击完成成功",
+        "recognition": "And",
+        "all_of": [
+            "BattleReplaysChooseFinish"
+        ],
+        "next": [
+            "TaskStop"
+        ],
+        "focus": {
+            "Node.Action.Succeeded": "金属不足，任务结束"
+        }
+    },
+    // INFO 代理结束结束分支
+    "BattleReplaysEnd": {
+        "desc": "代理正常结束",
+        "recognition": "OCR",
+        "expected": "已完成\\d+次代理指挥",
+        "next": [
+            "BattleReplaysClearAttackHit"
+        ]
+    },
+    "BattleReplaysClearAttackHit": {
+        "desc": "清空 [点击出击按钮] 的hit_count",
+        "action": "Custom",
+        "custom_action": "BattleReplaysClearAttackHitAct",
+        "next": [
+            "[JumpBack]ClickConfirm",
+            "[JumpBack]GetReward",
+            "BattleReplaysChooseReattack",
+            "LoopErrorByTimes"
+        ]
+    },
+    "BattleReplaysChooseReattack": {
+        "desc": "点击再次出击 进入编队页面",
+        "recognition": "OCR",
+        "expected": "再次出击",
+        "roi": [
+            583,
+            633,
+            123,
+            50
+        ],
+        "action": "Click",
+        "next": [
+            "BattleReplaysChooseReattackSuccess",
+            "LoopErrorByTimes",
+            "BattleReplaysChooseReattack"
+        ],
+        "post_wait_freezes": 1000
+    },
+    "BattleReplaysChooseReattackSuccess": {
+        "desc": "点击再次出击成功",
+        "recognition": "And",
+        "all_of": [
+            "BattleReplaysChooseReattack"
+        ],
+        "action": "Custom",
+        "custom_action": "BattleReplaysChooseReattackSuccessAct",
+        "inverse": true
+    },
+    // INFO 两种资源缺失
+    "BattleReplaysNoProps": {
+        "desc": "道具不足",
+        "recognition": "OCR",
+        "expected": "道具不足",
+        "roi": [
+            356,
+            344,
+            617,
+            34
+        ],
+        "focus": {
+            "Node.Recognition.Succeeded": "道具不足，任务结束"
+        }
+    },
+    "BattleReplaysNoMetal": {
+        "desc": "合金不足",
+        "recognition": "OCR",
+        "expected": "资源不足",
+        "roi": [
+            356,
+            344,
+            617,
+            34
+        ],
+        "focus": {
+            "Node.Recognition.Succeeded": "合金不足，任务结束"
+        }
+    }
+}
