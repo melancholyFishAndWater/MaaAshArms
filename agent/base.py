@@ -6,12 +6,10 @@ from typing import Any, TypeVar
 from maa.agent.agent_server import AgentServer
 from maa.custom_action import CustomAction
 from maa.custom_recognition import CustomRecognition
-from maa.context import (
-    Context,
-    JRecognitionType,
-    RecognitionDetail,
-)
+from maa.context import Context, JRecognitionType, RecognitionDetail
 from maa.pipeline import JTemplateMatch
+
+from parent_tracker import father_name
 
 T = TypeVar("T")
 
@@ -408,7 +406,59 @@ class IsFreezesReco(CustomRecognition):
 
 # ---------- Action ----------
 
-# ---------- MoveUpDown ----------
+
+# 始终执行失败
+@AgentServer.custom_action("TaskStopErrorAct")
+class TaskStopErrorAct(CustomAction):
+    def run(
+        self, context: Context, argv: CustomAction.RunArg
+    ) -> CustomAction.RunResult | bool:
+        return False
+
+
+# ----- LoopErrorByTimes -----
+
+_times_by_name: dict[str, int] = {}
+
+
+# 返回 box 以结束任务
+@AgentServer.custom_recognition("LoopErrorByTimesReco")
+class LoopErrorByTimesReco(CustomRecognition):
+    def analyze(
+        self, context: Context, argv: CustomRecognition.AnalyzeArg
+    ) -> list[int] | None:
+        node_name = argv.node_name
+        name = father_name(argv.task_detail.task_id, node_name)
+        if name is None:
+            log.warn(f"{node_name} 获取父节点失败")
+            return
+
+        global _times_by_name
+        loop_times = _times_by_name.get(name, 0) + 1
+        _times_by_name[name] = loop_times
+
+        times = 10
+        try:
+            p = parse_params(argv.custom_recognition_param, "times")
+            times = p["times"]
+        except Exception as e:
+            log.warn(f"{argv.node_name} 解析param失败: {e}")
+        if loop_times >= times:
+            return DEFAULT_HIT_BOX
+
+
+# 初始化
+@AgentServer.custom_action("LoopErrorByTimesInitAct")
+class LoopErrorByTimesInitAct(CustomAction):
+    def run(
+        self, context: Context, argv: CustomAction.RunArg
+    ) -> CustomAction.RunResult | bool:
+        global _times_by_name
+        _times_by_name.clear()
+        return True
+
+
+# ----- MoveUpDown -----
 
 _move_up_down_dict: dict[tuple[int, str], int] = {}
 _move_entry: str = "MoveUp"

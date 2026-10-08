@@ -228,6 +228,11 @@
         "desc": "无条件结束任务",
         "action": "StopTask"
     },
+    "TaskStopError": {
+        "desc": "无条件结束任务并报错",
+        "action": "Custom",
+        "custom_action": "TaskStopErrorAct"
+    },
     "IsFreezes": {
         "desc": "判断画面是否冻结 注意覆写roi",
         "recognition": "Custom",
@@ -242,6 +247,26 @@
             "from_": "unknow", // 如果要一个任务链中不同节点复用 填写父节点名
             "threshold": 0.99, // 阈值
             "k": 3 // 连续不变次数 太低可能移动卡顿也识别成功了
+        }
+    },
+    "LoopErrorByTimesInit": {
+        "desc": "LoopErrorByTimes 初始化",
+        "action": "Custom",
+        "custom_action": "LoopErrorByTimesInitAct",
+        "max_hit": 1
+    },
+    "LoopErrorByTimes": {
+        "desc": "[兜底节点] 当识别超过指定次数后，直接报错并结束任务",
+        "recognition": "Custom",
+        "custom_recognition": "LoopErrorByTimesReco",
+        "custom_recognition_param": {
+            "times": 20 // 识别需超过的次数
+        },
+        "next": [
+            "TaskStopError"
+        ],
+        "focus": {
+            "Node.Recognition.Succeeded": "loop异常 结束任务"
         }
     }
     // "Noice": {
