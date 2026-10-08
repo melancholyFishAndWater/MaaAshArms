@@ -183,6 +183,12 @@
         "desc": "点击出击按钮",
         "recognition": "TemplateMatch",
         "template": "Battle/BattleButton.png",
+        "roi": [
+            851,
+            562,
+            299,
+            158
+        ],
         "target_offset": [
             20,
             20,
