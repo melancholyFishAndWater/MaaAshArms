@@ -250,7 +250,7 @@
         }
     },
     "LoopErrorByTimesInit": {
-        "desc": "LoopErrorByTimes 初始化",
+        "desc": "LoopErrorByTimes 初始化。不允许重入",
         "action": "Custom",
         "custom_action": "LoopErrorByTimesInitAct",
         "max_hit": 1
