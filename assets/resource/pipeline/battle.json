@@ -198,25 +198,10 @@
             "[JumpBack]BattleNow",
             "[JumpBack]BattleIsLoading",
             "BattleWin",
-            "BattleNoMetal",
+            "NoMetal",
             "BattleClickAttack",
             "LoopErrorByTimes"
         ]
-    },
-    "BattleNoMetal": {
-        "desc": "合金不足",
-        "recognition": "OCR",
-        "expected": "资源不足",
-        "roi": [
-            356,
-            344,
-            617,
-            34
-        ],
-        "action": "StopTask",
-        "focus": {
-            "Node.Recognition.Succeeded": "合金不足，任务结束"
-        }
     },
     "BattleIsLoading": {
         "desc": "在加载战斗界面",

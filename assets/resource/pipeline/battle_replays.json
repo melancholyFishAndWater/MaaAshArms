@@ -35,7 +35,7 @@
         "next": [
             "[JumpBack]BattleIsLoading",
             "BattleReplaysNoProps",
-            "BattleNoMetal",
+            "NoMetal",
             "[JumpBack]BattleReplaysInBattle",
             "BattleReplaysChooseAttack",
             "LoopErrorByTimes"
