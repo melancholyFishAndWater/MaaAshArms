@@ -48,26 +48,28 @@
             }
         ]
     },
-    // 两个战斗入口
-    "BattleAuto": {
+    // INFO 两个战斗入口
+    "TaskBattleAuto": {
         "desc": "代理战斗 否则使用自律作战战斗",
         "recognition": "And",
         "all_of": [
             "BattleInFormation"
         ],
         "next": [
+            "[JumpBack]LoopErrorByTimesInit",
             "BattleReplayLight",
             "BattleClickReplay",
             "BattleClickAuto"
         ]
     },
-    "BattleReplay": {
+    "TaskBattleReplay": {
         "desc": "使用代理作战战斗",
         "recognition": "And",
         "all_of": [
             "BattleInFormation"
         ],
         "next": [
+            "[JumpBack]LoopErrorByTimesInit",
             "BattleReplayLight",
             "BattleClickReplay",
             "BattleIsReplayLocked"
@@ -180,29 +182,42 @@
     },
     // 战斗流程
     "BattleClickAttack": {
-        "desc": "点击出击按钮",
-        "recognition": "TemplateMatch",
-        "template": "Battle/BattleButton.png",
+        "desc": "[Loop] 点击出击按钮 即使是灰色的",
+        "recognition": "OCR",
+        "expected": "出击",
         "roi": [
-            851,
-            562,
-            299,
-            158
+            901,
+            612,
+            199,
+            73
         ],
-        "target_offset": [
-            20,
-            20,
-            -40,
-            -40
-        ],
+        "max_hit": 10,
         "action": "Click",
-        "timeout": 30000,
+        "timeout": 40000,
+        "rate_limit": 3000,
         "next": [
-            "[JumpBack]BattleIsLoading",
             "[JumpBack]BattleNow",
+            "[JumpBack]BattleIsLoading",
             "BattleWin",
-            "BattleClickAttack"
+            "BattleNoMetal",
+            "BattleClickAttack",
+            "LoopErrorByTimes"
         ]
+    },
+    "BattleNoMetal": {
+        "desc": "合金不足",
+        "recognition": "OCR",
+        "expected": "资源不足",
+        "roi": [
+            356,
+            344,
+            617,
+            34
+        ],
+        "action": "StopTask",
+        "focus": {
+            "Node.Recognition.Succeeded": "合金不足，任务结束"
+        }
     },
     "BattleIsLoading": {
         "desc": "在加载战斗界面",

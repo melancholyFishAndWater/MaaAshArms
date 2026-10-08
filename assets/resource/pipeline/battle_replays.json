@@ -35,7 +35,7 @@
         "next": [
             "[JumpBack]BattleIsLoading",
             "BattleReplaysNoProps",
-            "BattleReplaysNoMetal",
+            "BattleNoMetal",
             "[JumpBack]BattleReplaysInBattle",
             "BattleReplaysChooseAttack",
             "LoopErrorByTimes"
@@ -153,7 +153,7 @@
         "custom_action": "BattleReplaysChooseReattackSuccessAct",
         "inverse": true
     },
-    // INFO 两种资源缺失
+    // INFO 战役道具缺失
     "BattleReplaysNoProps": {
         "desc": "道具不足",
         "recognition": "OCR",
@@ -164,22 +164,9 @@
             617,
             34
         ],
+        "action": "StopTask",
         "focus": {
             "Node.Recognition.Succeeded": "道具不足，任务结束"
-        }
-    },
-    "BattleReplaysNoMetal": {
-        "desc": "合金不足",
-        "recognition": "OCR",
-        "expected": "资源不足",
-        "roi": [
-            356,
-            344,
-            617,
-            34
-        ],
-        "focus": {
-            "Node.Recognition.Succeeded": "合金不足，任务结束"
         }
     }
 }

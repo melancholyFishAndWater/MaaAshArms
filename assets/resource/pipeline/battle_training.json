@@ -117,7 +117,7 @@
         "custom_recognition_param": "unknow", // 覆写传递关卡难度数
         "action": "Click",
         "next": [
-            "BattleReplay"
+            "TaskBattleReplay"
         ],
         "post_wait_freezes": 2000
     },
