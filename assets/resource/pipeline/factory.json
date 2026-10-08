@@ -253,9 +253,10 @@
             504
         ],
         "action": "Click",
-        "post_wait_freezes": 200,
+        "post_wait_freezes": 1000,
         "next": [
             "FactoryChooseStart",
+            "FactoryChooseStartFail",
             "FactorySkip",
             "FactoryChooseStartSuccess"
         ]
@@ -269,5 +270,22 @@
         "inverse": true,
         "action": "Custom",
         "custom_action": "FactoryChooseStartSuccessAct"
+    },
+    "FactoryChooseStartFail": {
+        "desc": "建造失败 资源不足",
+        "recognition": "OCR",
+        "expected": "资源不足",
+        "roi": [
+            411,
+            305,
+            117,
+            43
+        ],
+        "next": [
+            "ClickConfirm"
+        ],
+        "focus": {
+            "Node.Recognition.Succeeded": "合金不足，任务结束"
+        }
     }
 }
