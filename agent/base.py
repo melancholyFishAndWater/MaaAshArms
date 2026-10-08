@@ -418,7 +418,7 @@ class TaskStopErrorAct(CustomAction):
 
 # ----- LoopErrorByTimes -----
 
-_times_by_name: dict[str, int] = {}
+loop_times_by_name: dict[str, int] = {}
 
 
 # 返回 box 以结束任务
@@ -433,9 +433,9 @@ class LoopErrorByTimesReco(CustomRecognition):
             log.warn(f"{node_name} 获取父节点失败")
             return
 
-        global _times_by_name
-        loop_times = _times_by_name.get(name, 0) + 1
-        _times_by_name[name] = loop_times
+        global loop_times_by_name
+        loop_times = loop_times_by_name.get(name, 0) + 1
+        loop_times_by_name[name] = loop_times
 
         times = 10
         try:
@@ -453,8 +453,8 @@ class LoopErrorByTimesInitAct(CustomAction):
     def run(
         self, context: Context, argv: CustomAction.RunArg
     ) -> CustomAction.RunResult | bool:
-        global _times_by_name
-        _times_by_name.clear()
+        global loop_times_by_name
+        loop_times_by_name.clear()
         return True
 
 
