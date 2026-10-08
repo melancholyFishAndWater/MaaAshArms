@@ -215,10 +215,11 @@
             "BattleInTips",
             "BattleInBlack"
         ],
+        "timeout": 30000,
         "next": [
             "BattleInTips",
-            "LoopErrorByTimes", // 保证纯黑次数不太多
-            "BattleInBlack"
+            "BattleInBlack",
+            "BattleNow"
         ],
         "post_wait_freezes": 3000
     },
