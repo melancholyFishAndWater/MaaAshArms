@@ -1,4 +1,5 @@
 {
+    // INFO 委派
     "TaskEntrust": {
         "desc": "委派作战任务",
         "next": [
@@ -166,6 +167,9 @@
     // INFO 可以委派的后续
     "EntrustTouchDown": {
         "desc": "按下加号",
+        "recognition": "TemplateMatch",
+        "template": "Entrust/AddButton.png",
+        "pre_wait_freezes": 1000,
         "action": "TouchDown",
         "target": [
             476,
@@ -175,7 +179,7 @@
         "next": [
             "EntrustTouchUp"
         ],
-        // "auto_up": true,
+        // // "auto_up": true,
         "pressure": 1,
         "on_error": [
             "[JumpBack]EntrustTouchUp2",
@@ -185,19 +189,16 @@
     "EntrustTouchUp2": {
         "desc": "无条件松手",
         "action": "TouchUp",
-        "max_hit": 1
+        "max_hit": 1,
+        "focus": {
+            "Node.Action.Succeeded": "警告，未识别到期望派遣数"
+        }
     },
     "EntrustTouchUp": {
         "desc": "松开加号",
-        "recognition": "OCR",
-        "expected": "30",
+        "recognition": "Custom",
+        "custom_recognition": "EntrustTouchUpReco",
         "action": "TouchUp",
-        "roi": [
-            375,
-            640,
-            56,
-            33
-        ],
         "next": [
             "EntrustStart"
         ]
@@ -224,13 +225,13 @@
         "action": "Custom",
         "custom_action": "EntrustDailyUpdateAct"
     },
-    // INFO 领取相关
     "EntrustEnableReward": {
         "desc": "启用领取功能",
         "action": "Custom",
         "custom_action": "EntrustEnableRewardAct",
         "max_hit": 1
     },
+    // INFO 领取任务入口
     "TaskEntrustGetReward": {
         "desc": "领取委派奖励任务入口",
         "enabled": false,
