@@ -235,7 +235,8 @@
             124,
             837,
             375
-        ]
+        ],
+        "post_wait_freezes": 3000
     },
     "BattleInTips": {
         "desc": "在Tips页面",
@@ -246,7 +247,8 @@
             649,
             1280,
             71
-        ]
+        ],
+        "post_wait_freezes": 3000
     },
     // TODO 战斗异常
     "BattleNow": {
