@@ -9,7 +9,6 @@
     "contact": "QQ群: 1128946439",
     "license": "MIT",
     "welcome": "resource/announcement/0-welcome.md",
-    // 填写项目地址和版本号可实现自动更新功能
     "github": "https://github.com/melancholyFishAndWater/MaaAshArms",
     "version": "1.0.0-beta.21",
     "telemetry": {
