@@ -27,7 +27,10 @@
         "all_of": [
             {
                 "recognition": "TemplateMatch",
-                "template": "Battle/BattleButton.png",
+                "template": [
+                    "Battle/BattleButton.png",
+                    "Battle/BattleButtonDart.png"
+                ],
                 "roi": [
                     854,
                     563,
