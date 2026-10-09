@@ -69,3 +69,13 @@ class BattleReplaysClearAttackHitAct(CustomAction):
         self, context: Context, argv: CustomAction.RunArg
     ) -> CustomAction.RunResult | bool:
         return context.clear_hit_count("BattleReplaysChooseAttack")
+
+
+# 代理结束 往面板输出日志
+@AgentServer.custom_action("BattleReplaysEndAct")
+class BattleReplaysEndAct(CustomAction):
+    def run(
+        self, context: Context, argv: CustomAction.RunArg
+    ) -> CustomAction.RunResult | bool:
+        log.info(f"代理结束，已完成次数：{context.get_hit_count(argv.node_name)}")
+        return True
