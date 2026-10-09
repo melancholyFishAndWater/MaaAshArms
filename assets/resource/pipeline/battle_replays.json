@@ -48,6 +48,7 @@
             "BattleNow"
         ],
         "post_wait_freezes": 3000,
+        "timeout": -1,
         "rate_limit": 3000,
         "next": [
             "[JumpBack]BattleNow",
