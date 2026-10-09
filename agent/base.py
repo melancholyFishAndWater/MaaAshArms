@@ -6,10 +6,9 @@ from typing import Any, TypeVar
 from maa.agent.agent_server import AgentServer
 from maa.custom_action import CustomAction
 from maa.custom_recognition import CustomRecognition
-from maa.context import Context, JRecognitionType, RecognitionDetail
+from maa.context import Context, ContextEventSink, JRecognitionType, RecognitionDetail
 from maa.event_sink import NotificationType
 from maa.pipeline import JTemplateMatch
-from maa.tasker import ContextEventSink
 
 from parent_tracker import father_name
 
