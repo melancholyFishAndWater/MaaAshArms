@@ -53,10 +53,20 @@
         "next": [
             "[JumpBack]BattleNow",
             "[JumpBack]BattleIsLoading",
+            "[JumpBack]BattleReplaysWin",
             "BattleReplaysEnd",
             "BattleReplaysMetalEnd",
             "LoopErrorByTimes"
         ]
+    },
+    // INFO 战斗胜利等待分支
+    "BattleReplaysWin": {
+        "desc": "战斗结算，等游戏自己进下一场",
+        "recognition": "And",
+        "all_of": [
+            "BattleWin"
+        ],
+        "post_wait_freezes": 3000
     },
     // INFO 金属不足结束分支
     "BattleReplaysMetalEnd": {
