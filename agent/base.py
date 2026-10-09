@@ -369,7 +369,7 @@ class IsFreezesReco(CustomRecognition):
         x, y, w, h = argv.roi
 
         # 保证画面处于静止
-        context.wait_freezes(2000, box=(x, y, w, h))
+        context.wait_freezes(1000, box=(x, y, w, h))
 
         # 有上一张图像，则识别
         r = None
