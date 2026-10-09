@@ -7,7 +7,9 @@ from maa.agent.agent_server import AgentServer
 from maa.custom_action import CustomAction
 from maa.custom_recognition import CustomRecognition
 from maa.context import Context, JRecognitionType, RecognitionDetail
+from maa.event_sink import NotificationType
 from maa.pipeline import JTemplateMatch
+from maa.tasker import ContextEventSink
 
 from parent_tracker import father_name
 
@@ -418,7 +420,8 @@ class TaskStopErrorAct(CustomAction):
 
 # ----- LoopErrorByTimes -----
 
-loop_times_by_name: dict[str, int] = {}
+# (task_id, 父节点名) -> 连续未命中轮数
+_times_by_name: dict[tuple[int, str], int] = {}
 
 
 # 返回 box 以结束任务
@@ -427,35 +430,49 @@ class LoopErrorByTimesReco(CustomRecognition):
     def analyze(
         self, context: Context, argv: CustomRecognition.AnalyzeArg
     ) -> list[int] | None:
+        # 提取变量
+        task_id = argv.task_detail.task_id
         node_name = argv.node_name
         name = father_name(argv.task_detail.task_id, node_name)
         if name is None:
             log.warn(f"{node_name} 获取父节点失败")
             return
 
-        global loop_times_by_name
-        loop_times = loop_times_by_name.get(name, 0) + 1
-        loop_times_by_name[name] = loop_times
-
+        # 解析param
         times = 10
         try:
             p = parse_params(argv.custom_recognition_param, "times")
             times = p["times"]
         except Exception as e:
             log.warn(f"{argv.node_name} 解析param失败: {e}")
-        if loop_times >= times:
+
+        # 判断和更新
+        key = (task_id, name)
+        _times_by_name[key] = _times_by_name.get(key, 0) + 1
+        if _times_by_name[key] >= times:
+            log.warn(f"{name} 连续 {_times_by_name[key]} 轮未命中，结束任务")
             return DEFAULT_HIT_BOX
+        return
 
 
-# LoopErrorByTimes 初始化
+# LoopErrorByTimes 初始化 清空本次task所有键
 @AgentServer.custom_action("LoopErrorByTimesInitAct")
 class LoopErrorByTimesInitAct(CustomAction):
     def run(
         self, context: Context, argv: CustomAction.RunArg
     ) -> CustomAction.RunResult | bool:
-        global loop_times_by_name
-        loop_times_by_name.clear()
+        task_id = argv.task_detail.task_id
+        for key in [k for k in _times_by_name if k[0] == task_id]:
+            del _times_by_name[key]
         return True
+
+
+# 注册上下文监听器 当next中有节点命中时，清空累积次数
+@AgentServer.context_sink()
+class _LoopErrorResetSink(ContextEventSink):
+    def on_node_pipeline_node(self, context, noti_type, detail) -> None:
+        if noti_type == NotificationType.Succeeded:
+            _times_by_name.pop((detail.task_id, detail.name), None)
 
 
 # ----- MoveUpDown -----

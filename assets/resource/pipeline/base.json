@@ -256,7 +256,7 @@
         "max_hit": 1
     },
     "LoopErrorByTimes": {
-        "desc": "[兜底节点] 当识别超过指定次数后，直接报错并结束任务",
+        "desc": "[兜底] 当同一个next中连续识别超过指定次数后，直接报错并结束任务",
         "recognition": "Custom",
         "custom_recognition": "LoopErrorByTimesReco",
         "custom_recognition_param": {
