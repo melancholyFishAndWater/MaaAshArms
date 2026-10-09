@@ -37,7 +37,7 @@
             "BattleReplaysNoProps",
             "NoMetal",
             "[JumpBack]BattleReplaysInBattle",
-            "LoopErrorByTimes", // 出击后会清空，不用担心轻易超次
+            "LoopErrorByTimes",
             "BattleReplaysChooseAttack"
         ]
     },
