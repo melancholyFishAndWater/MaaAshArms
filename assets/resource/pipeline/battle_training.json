@@ -23,6 +23,7 @@
             "enable": true // 每日一次开关 覆写关闭
         },
         "next": [
+            "[JumpBack]LoopErrorByTimesInit",
             "TrainingInHome",
             "[JumpBack]ReturnTraining"
         ]
@@ -119,7 +120,9 @@
         "custom_recognition_param": "unknow", // 覆写传递关卡难度数
         "action": "Click",
         "next": [
-            "TaskBattleReplay"
+            "TaskBattleReplay",
+            "LoopErrorByTimes",
+            "[JumpBack]BattleInBlack"
         ],
         "post_wait_freezes": 2000
     },
