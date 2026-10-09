@@ -215,7 +215,9 @@
             46
         ],
         "action": "Click",
+        "post_wait_freezes": 500,
         "next": [
+            "NoMetal",
             "[JumpBack]EntrustEnableReward",
             "EntrustDailyUpdate"
         ]
