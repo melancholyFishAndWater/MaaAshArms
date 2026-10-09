@@ -265,7 +265,7 @@
     "TrainResetCancel": {
         "desc": "取消重置",
         "recognition": "OCR",
-        "expected": ".{0,}重置.{0,}",
+        "expected": "重置",
         "roi": [
             356,
             208,
@@ -292,6 +292,7 @@
             "[JumpBack]TrainResetCancel" // 兜底
         ]
     },
+    // TODO 缺少合金时也会进入此页面
     "TrainGoButtonDart": {
         "desc": "出发按钮暗淡",
         "recognition": "TemplateMatch",
@@ -320,8 +321,23 @@
             116
         ],
         "next": [
+            "TrainOverride",
             "TrainGoButtonLight",
             "TrainGoButtonDartToo"
+        ]
+    },
+    "TrainOverride": {
+        "desc": "是否覆盖",
+        "recognition": "OCR",
+        "expected": "覆盖",
+        "roi": [
+            414,
+            306,
+            442,
+            70
+        ],
+        "next": [
+            "ClickConfirm"
         ]
     },
     "TrainGoButtonDartToo": {
