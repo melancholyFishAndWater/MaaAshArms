@@ -284,17 +284,4 @@
             "Node.Recognition.Succeeded": "合金不足，任务结束"
         }
     }
-    // "Noice": {
-    //     "desc": "给python端提供的自定义通知处理",
-    //     "focus": {
-    //         "Node.Action.Starting": "这是一条测试信息"
-    //     }
-    // },
-    // "Error": {
-    //     "desc": "给python端提供的自定义报错处理",
-    //     "inverse": true,
-    //     "focus": {
-    //         "Node.Action.Failed": "这是一条测试错误"
-    //     }
-    // }
 }
