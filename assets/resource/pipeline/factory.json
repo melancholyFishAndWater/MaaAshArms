@@ -255,7 +255,7 @@
         "post_wait_freezes": 1000,
         "next": [
             "FactoryChooseStart",
-            "FactoryChooseStartFail",
+            "FactoryNoMetal",
             "FactorySkip",
             "FactoryChooseStartSuccess"
         ]
@@ -270,7 +270,7 @@
         "action": "Custom",
         "custom_action": "FactoryChooseStartSuccessAct"
     },
-    "FactoryChooseStartFail": {
+    "FactoryNoMetal": {
         "desc": "建造失败 资源不足",
         "recognition": "OCR",
         "expected": "资源不足",
@@ -281,7 +281,8 @@
             43
         ],
         "next": [
-            "ClickConfirm"
+            "[JumpBack]ClickConfirm",
+            "TaskStop"
         ],
         "focus": {
             "Node.Recognition.Succeeded": "合金不足，任务结束"
