@@ -65,8 +65,8 @@
         "action": "Click",
         "post_delay": 1000,
         "next": [
-            "[JumpBack]MaintenanceGetCharacter",
             "[JumpBack]MaintenanceGetCharacterOk",
+            "[JumpBack]MaintenanceGetCharacter",
             "LoopErrorByTimes",
             "MaintenanceChooseFinish",
             "MaintenanceInHome"
