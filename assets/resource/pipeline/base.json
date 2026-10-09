@@ -281,7 +281,7 @@
         ],
         "action": "StopTask",
         "focus": {
-            "Node.Recognition.Succeeded": "合金不足，任务结束"
+            "Node.Action.Succeeded": "合金不足，任务结束"
         }
     }
 }
