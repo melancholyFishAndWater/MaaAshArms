@@ -321,9 +321,9 @@
             116
         ],
         "next": [
-            "TrainOverride",
             "TrainGoButtonLight",
-            "TrainGoButtonDartToo"
+            "TrainGoButtonDartToo",
+            "[JumpBack]TrainOverride" // 兜底
         ]
     },
     "TrainOverride": {
