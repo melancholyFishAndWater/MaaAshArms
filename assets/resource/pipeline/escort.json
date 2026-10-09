@@ -130,7 +130,11 @@
         "action": "Click",
         "post_wait_freezes": 1500,
         "next": [
-            "EscortClickOkEnd"
+            "EscortClickOkEnd",
+            "EscortClickOk"
+        ],
+        "on_error": [
+            "EscortClickOkFail"
         ]
     },
     "EscortClickOkEnd": {
@@ -139,5 +143,25 @@
         "all_of": [
             "EscortInHome"
         ]
+    },
+    "EscortClickOkFail": {
+        "desc": "接取任务失败",
+        "recognition": "OCR",
+        "expected": "取消",
+        "roi": [
+            783,
+            472,
+            174,
+            142
+        ],
+        "action": "Click",
+        "post_wait_freezes": 1000,
+        "next": [
+            "[JumpBack]EscortClickOkFail",
+            "TaskStopError"
+        ],
+        "focus": {
+            "Node.Action.Succeeded": "接取失败，任务结束"
+        }
     }
 }
