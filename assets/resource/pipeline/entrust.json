@@ -3,15 +3,16 @@
     "TaskEntrust": {
         "desc": "委派作战任务",
         "next": [
-            "[JumpBack]EntrustCheckDaily", // 先检测防止出现昨日未领取先写入，然后跳过今日任务的情况
             "[JumpBack]EntrustEnterRewardMainLine",
+            "[JumpBack]EntrustCheckDaily",
+            "[JumpBack]EntrustEnableDailyUpdate",
             "[JumpBack]EntrustInit",
             "EntrustEnterMainLine",
             "[JumpBack]ReturnBattleMainPage"
         ]
     },
     "EntrustCheckDaily": {
-        "desc": "检测每日一次",
+        "desc": "检测每日一次。不可重入",
         "recognition": "Custom",
         "custom_recognition": "EntrustCheckDailyReco",
         "custom_recognition_param": {
@@ -19,8 +20,22 @@
         },
         "max_hit": 1
     },
+    "EntrustEnableDailyUpdate": {
+        "desc": "启用更新每日一次。不可重入",
+        "max_hit": 1,
+        "action": "Custom",
+        "custom_action": "EntrustEnableDailyUpdateAct",
+        "focus": {
+            "Node.Action.Failed": "警告：启用更新每日一次失败"
+        },
+        "on_error": [
+            "[JumpBack]EntrustInit",
+            "EntrustEnterMainLine",
+            "[JumpBack]ReturnBattleMainPage"
+        ]
+    },
     "EntrustInit": {
-        "desc": "委派作战初始化",
+        "desc": "委派作战初始化。不可重入",
         "action": "Custom",
         "custom_action": "EntrustInitAct",
         "max_hit": 1,
@@ -225,7 +240,8 @@
     "EntrustDailyUpdate": {
         "desc": "更新每日一次",
         "action": "Custom",
-        "custom_action": "EntrustDailyUpdateAct"
+        "custom_action": "EntrustDailyUpdateAct",
+        "enabled": false
     },
     "EntrustEnableReward": {
         "desc": "启用领取功能",

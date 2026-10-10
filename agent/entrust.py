@@ -176,3 +176,12 @@ class EntrustEnableRewardAct(CustomAction):
         self, context: Context, argv: CustomAction.RunArg
     ) -> CustomAction.RunResult | bool:
         return context.override_pipeline({"TaskEntrustGetReward": {"enabled": True}})
+
+
+# 启用每日一次检测
+@AgentServer.custom_action("EntrustEnableDailyUpdateAct")
+class EntrustEnableDailyUpdateAct(CustomAction):
+    def run(
+        self, context: Context, argv: CustomAction.RunArg
+    ) -> CustomAction.RunResult | bool:
+        return context.override_pipeline({"EntrustDailyUpdate": {"enabled": True}})
