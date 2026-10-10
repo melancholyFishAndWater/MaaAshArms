@@ -52,7 +52,6 @@
         ]
     },
     // INFO 两个战斗入口
-    // TODO 与目前的BattleNow不兼容
     "TaskBattleAuto": {
         "desc": "代理战斗 否则使用自律作战战斗",
         "recognition": "And",
@@ -257,15 +256,38 @@
     // TODO 战斗异常
     "BattleNow": {
         "desc": "正在战斗",
+        "recognition": "Or",
+        "any_of": [
+            "BattleReplayNow",
+            "BattleAutoNow"
+        ],
+        "post_wait_freezes": 3000
+    },
+    "BattleReplayNow": {
+        "desc": "正在代理作战",
         "recognition": "OCR",
         "expected": "接管作战",
-        "post_wait_freezes": 3000,
         "roi": [
             664,
             638,
             217,
             65
-        ]
+        ],
+        "post_wait_freezes": 3000
+    },
+    "BattleAutoNow": {
+        "desc": "正在自律作战",
+        "recognition": "TemplateMatch",
+        "template": "Battle/AutoLight.png",
+        "threshold": 0.8,
+        "method": 5,
+        "roi": [
+            119,
+            0,
+            201,
+            121
+        ],
+        "post_wait_freezes": 3000
     },
     // TODO 战败
     "BattleWin": {
