@@ -45,22 +45,26 @@
     },
     "task": [
         {
-            "name": "启动游戏",
+            "name": "StartUp",
+            "label": "启动游戏",
             "entry": "TaskStartUp"
         },
         {
-            "name": "联络人",
+            "name": "Friend",
+            "label": "联络人",
             "entry": "TaskFriend"
         },
         {
-            "name": "收取资源",
+            "name": "Reward",
+            "label": "收取资源",
             "entry": "TaskFeiduReward",
             "group": [
                 "feidu"
             ]
         },
         {
-            "name": "每日赠礼",
+            "name": "Gift",
+            "label": "每日赠礼",
             "entry": "TaskGift",
             "group": [
                 "feidu",
@@ -71,7 +75,8 @@
             ]
         },
         {
-            "name": "委派",
+            "name": "Entrust",
+            "label": "委派",
             "entry": "TaskEntrust",
             "group": [
                 "daily"
@@ -87,18 +92,21 @@
             "description": "此任务必须位于[任务奖励]前，才能领取今日委派奖励"
         },
         {
-            "name": "维修会",
+            "name": "Maintenance",
+            "label": "维修会",
             "entry": "TaskMaintenance"
         },
         {
-            "name": "武装押运",
+            "name": "Train",
+            "label": "武装押运",
             "entry": "TaskTrain",
             "option": [
                 // TODO 路线选择
             ]
         },
         {
-            "name": "防卫局",
+            "name": "Escort",
+            "label": "防卫局",
             "entry": "TaskEscort",
             "pipeline_override": {
                 "IsFreezes": {
@@ -115,7 +123,8 @@
             }
         },
         {
-            "name": "订单工厂",
+            "name": "Factory",
+            "label": "订单工厂",
             "entry": "TaskFactory",
             "group": [
                 "daily"
@@ -127,7 +136,8 @@
             ]
         },
         {
-            "name": "训练所",
+            "name": "Training",
+            "label": "训练所",
             "entry": "TaskTraining",
             "group": [
                 "daily"
@@ -148,11 +158,13 @@
             }
         },
         {
-            "name": "任务奖励",
+            "name": "Mission",
+            "label": "任务奖励",
             "entry": "TaskMission"
         },
         {
-            "name": "自动自律",
+            "name": "Replays",
+            "label": "自动自律",
             "entry": "TaskReplays",
             "default_check": false,
             "description": "自动进行自律战斗，支持主线和战役<br/>[color:red]必须在战斗编队页面且设置好自律次数[/color]",
