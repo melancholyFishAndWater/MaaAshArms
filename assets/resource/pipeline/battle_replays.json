@@ -29,10 +29,8 @@
             73
         ],
         "action": "Click",
-        "post_wait_freezes": 3000,
         "timeout": -1,
         "next": [
-            "[JumpBack]BattleIsLoading",
             "ReplaysNoProps",
             "NoMetal",
             "[JumpBack]ReplaysInBattle",
@@ -42,8 +40,9 @@
     },
     "ReplaysInBattle": {
         "desc": "[Loop] 正在战斗",
-        "recognition": "And",
-        "all_of": [
+        "recognition": "Or",
+        "any_of": [
+            "BattleIsLoading",
             "BattleNow"
         ],
         "post_wait_freezes": 3000,
