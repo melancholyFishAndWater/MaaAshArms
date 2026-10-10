@@ -10,7 +10,7 @@
     "license": "MIT",
     "welcome": "resource/announcement/0-welcome.md",
     "github": "https://github.com/melancholyFishAndWater/MaaAshArms",
-    "version": "1.0.0-beta.30",
+    "version": "1.0.0-beta.31",
     "telemetry": {
         "sentry": {
             "dsn": "https://f231f330aaf9138fe2fd690d70f82d94@o4512197377523712.ingest.us.sentry.io/4512197395480576",
