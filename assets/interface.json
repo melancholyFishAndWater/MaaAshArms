@@ -229,6 +229,7 @@
         "resource/tasks/option/factory.json",
         "resource/tasks/option/feidu_gift.json",
         "resource/tasks/option/entrust.json",
-        "resource/tasks/option/battle_replays.json"
+        "resource/tasks/option/battle_replays.json",
+        "resource/tasks/preset/default.json"
     ]
 }

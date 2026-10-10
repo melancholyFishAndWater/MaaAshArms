@@ -1,0 +1,47 @@
+{
+    "preset": [
+        {
+            "name": "default",
+            "label": "默认",
+            "task": [
+                {
+                    "name": "StarUp"
+                },
+                {
+                    "name": "Friend"
+                },
+                {
+                    "name": "Escort"
+                },
+                {
+                    "name": "Factory"
+                },
+                {
+                    "name": "Train"
+                },
+                {
+                    "name": "Maintenance"
+                },
+                {
+                    "name": "Training"
+                },
+                {
+                    "name": "Entrust"
+                },
+                {
+                    "name": "Reward"
+                },
+                {
+                    "name": "Gift"
+                },
+                {
+                    "name": "Mission"
+                },
+                {
+                    "name": "Replays",
+                    "enabled": false
+                }
+            ]
+        }
+    ]
+}
