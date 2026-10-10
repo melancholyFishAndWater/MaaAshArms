@@ -2,12 +2,13 @@
     // INFO 自动代理节点
     "TaskReplays": {
         "desc": "自动代理任务",
-        "timeout": 10000,
         "next": [
             "[JumpBack]ReplaysInit",
             "[JumpBack]LoopErrorByTimesInit",
             "ReplaysStartChooseAttack",
-            "ReplaysStartInBattle"
+            "ReplaysStartInConfirm",
+            "ReplaysStartInBattle",
+            "LoopErrorByTimes"
         ]
     },
     "ReplaysInit": {
@@ -19,7 +20,7 @@
         },
         "max_hit": 1
     },
-    // INFO 两种情况
+    // INFO 启动任务时的多种情况
     "ReplaysStartInBattle": {
         "desc": "任务开始时处于战斗中",
         "recognition": "And",
@@ -29,6 +30,19 @@
         "next": [
             "[JumpBack]ReplaysInBattle",
             "ReplaysStartChooseAttack"
+        ]
+    },
+    "ReplaysStartInConfirm": {
+        "desc": "在确认界面",
+        "recognition": "And",
+        "all_of": [
+            "ClickConfirm"
+        ],
+        "next": [
+            "[JumpBack]ReplaysEnd",
+            "ReplaysMetalEnd",
+            "ReplaysStartChooseAttack",
+            "LoopErrorByTimes"
         ]
     },
     "ReplaysStartChooseAttack": {
@@ -42,6 +56,7 @@
             73
         ],
         "action": "Click",
+        "post_wait_freezes": 1000,
         "timeout": -1,
         "next": [
             "ReplaysNoProps",
