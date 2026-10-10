@@ -7,7 +7,7 @@
             "[JumpBack]ReturnMain"
         ]
     },
-    // TODO
+    // TODO 领取邮箱奖励
     "TaskEmail": {
         "desc": "领取邮箱奖励"
     },

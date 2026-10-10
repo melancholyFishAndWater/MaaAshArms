@@ -218,7 +218,6 @@
             "EntrustStart"
         ]
     },
-    // TODO 金属不足
     "EntrustStart": {
         "desc": "开始委派",
         "recognition": "OCR",

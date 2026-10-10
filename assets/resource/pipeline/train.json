@@ -225,7 +225,7 @@
         "next": [
             "[JumpBack]TrainMoveToBottom",
             "TrainAcceptable"
-            // "[JumpBack]TrainMoveDown" // TODO
+            // "[JumpBack]TrainMoveDown" // TODO 移动到目标路线
         ],
         "post_wait_freezes": 2500
     },
