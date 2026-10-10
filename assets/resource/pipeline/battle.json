@@ -19,7 +19,8 @@
     "BattleInHome": {
         "desc": "在出击作页面标志",
         "recognition": "TemplateMatch",
-        "template": "Battle/MainPageFlag/"
+        "template": "Battle/MainPageFlag/",
+        "threshold": 0.9
     },
     "BattleInFormation": {
         "desc": "在战斗编队页面",
