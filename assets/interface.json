@@ -84,7 +84,8 @@
             "entry": "TaskEntrust",
             "default_check": true,
             "group": [
-                "daily"
+                "daily",
+                "metal"
             ],
             "option": [
                 "entrust_daily"
@@ -100,13 +101,19 @@
             "name": "Maintenance",
             "label": "维修会",
             "entry": "TaskMaintenance",
-            "default_check": true
+            "default_check": true,
+            "group": [
+                "metal"
+            ]
         },
         {
             "name": "Train",
             "label": "武装押运",
             "entry": "TaskTrain",
             "default_check": true,
+            "group": [
+                "metal"
+            ],
             "option": [
                 // TODO 路线选择
             ]
@@ -136,7 +143,8 @@
             "entry": "TaskFactory",
             "default_check": true,
             "group": [
-                "daily"
+                "daily",
+                "metal"
             ],
             "option": [
                 "build_number",
@@ -150,7 +158,8 @@
             "entry": "TaskTraining",
             "default_check": true,
             "group": [
-                "daily"
+                "daily",
+                "metal"
             ],
             "option": [
                 "training_daily",
@@ -181,6 +190,9 @@
             "description": "自动进行自律战斗，支持主线和战役<br/>[color:red]必须在战斗编队页面且设置好自律次数[/color]",
             "option": [
                 "battle_replays_number"
+            ],
+            "group": [
+                "metal"
             ]
         }
         // TODO
@@ -197,13 +209,19 @@
         {
             "name": "feidu",
             "label": "废都",
-            "default_expand": true
+            "default_expand": false
         },
         {
             "name": "daily",
             "label": "每日任务",
             "default_expand": true,
             "description": "每日任务分组下的任务允许：完成每日任务指标后不再进行"
+        },
+        {
+            "name": "metal",
+            "label": "消耗合金",
+            "default_expand": false,
+            "description": "这些任务消耗合金，需要与收取资源任务看情况排，或直接收取两次"
         }
     ],
     "import": [
