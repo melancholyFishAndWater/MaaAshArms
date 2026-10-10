@@ -457,6 +457,9 @@ tools/ImageCropper/**/*.png
 .obsidian
 白板
 
+# ffmpeg
+ffmpeg/*
+
 *.lnk
 assets/agent
 temp
