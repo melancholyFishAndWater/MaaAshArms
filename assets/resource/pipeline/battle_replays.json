@@ -1,25 +1,24 @@
 {
-    // PERF 优化
-    // INFO 重复自律节点
-    "TaskBattleReplays": {
-        "desc": "重复自律任务 战役",
+    // INFO 自动自律节点
+    "TaskReplays": {
+        "desc": "自动自律任务",
         "timeout": 10000,
         "next": [
-            "[JumpBack]BattleReplaysInit",
+            "[JumpBack]ReplaysInit",
             "[JumpBack]LoopErrorByTimesInit",
-            "BattleReplaysChooseAttack"
+            "ReplaysChooseAttack"
         ]
     },
-    "BattleReplaysInit": {
+    "ReplaysInit": {
         "desc": "初始化agent全局变量",
         "action": "Custom",
-        "custom_action": "BattleReplaysInitAct",
+        "custom_action": "ReplaysInitAct",
         "custom_action_param": {
             "times": 5 // 执行次数
         },
         "max_hit": 1
     },
-    "BattleReplaysChooseAttack": {
+    "ReplaysChooseAttack": {
         "desc": "[Loop] 点击出击按钮 即使是灰色的",
         "recognition": "OCR",
         "expected": "出击",
@@ -34,14 +33,14 @@
         "timeout": -1,
         "next": [
             "[JumpBack]BattleIsLoading",
-            "BattleReplaysNoProps",
+            "ReplaysNoProps",
             "NoMetal",
-            "[JumpBack]BattleReplaysInBattle",
+            "[JumpBack]ReplaysInBattle",
             "LoopErrorByTimes",
-            "BattleReplaysChooseAttack"
+            "ReplaysChooseAttack"
         ]
     },
-    "BattleReplaysInBattle": {
+    "ReplaysInBattle": {
         "desc": "[Loop] 正在战斗",
         "recognition": "And",
         "all_of": [
@@ -53,14 +52,14 @@
         "next": [
             "[JumpBack]BattleNow",
             "[JumpBack]BattleIsLoading",
-            "[JumpBack]BattleReplaysWin",
-            "BattleReplaysEnd",
-            "BattleReplaysMetalEnd",
+            "[JumpBack]ReplaysWin",
+            "ReplaysEnd",
+            "ReplaysMetalEnd",
             "LoopErrorByTimes"
         ]
     },
     // INFO 战斗胜利等待分支
-    "BattleReplaysWin": {
+    "ReplaysWin": {
         "desc": "战斗结算，等游戏自己进下一场",
         "recognition": "And",
         "all_of": [
@@ -69,7 +68,7 @@
         "post_wait_freezes": 3000
     },
     // INFO 金属不足结束分支
-    "BattleReplaysMetalEnd": {
+    "ReplaysMetalEnd": {
         "desc": "金属不足结束",
         "recognition": "OCR",
         "expected": "体力不足",
@@ -82,11 +81,11 @@
         "next": [
             "[JumpBack]ClickConfirm",
             "[JumpBack]GetReward",
-            "BattleReplaysChooseFinish",
+            "ReplaysChooseFinish",
             "LoopErrorByTimes"
         ]
     },
-    "BattleReplaysChooseFinish": {
+    "ReplaysChooseFinish": {
         "desc": "点击完成",
         "recognition": "OCR",
         "expected": "完成",
@@ -99,15 +98,15 @@
         "action": "Click",
         "max_hit": 8,
         "next": [
-            "BattleReplaysChooseFinishSuccess",
-            "BattleReplaysChooseFinish"
+            "ReplaysChooseFinishSuccess",
+            "ReplaysChooseFinish"
         ]
     },
-    "BattleReplaysChooseFinishSuccess": {
+    "ReplaysChooseFinishSuccess": {
         "desc": "点击完成成功",
         "recognition": "And",
         "all_of": [
-            "BattleReplaysChooseFinish"
+            "ReplaysChooseFinish"
         ],
         "next": [
             "TaskStop"
@@ -117,28 +116,28 @@
         }
     },
     // INFO 代理结束结束分支
-    "BattleReplaysEnd": {
+    "ReplaysEnd": {
         "desc": "代理正常结束",
         "recognition": "OCR",
         "expected": "已完成\\d+次代理指挥",
         "action": "Custom",
-        "custom_action": "BattleReplaysEndAct",
+        "custom_action": "ReplaysEndAct",
         "next": [
-            "BattleReplaysClearAttackHit"
+            "ReplaysClearAttackHit"
         ]
     },
-    "BattleReplaysClearAttackHit": {
+    "ReplaysClearAttackHit": {
         "desc": "清空 [点击出击按钮] 的hit_count",
         "action": "Custom",
-        "custom_action": "BattleReplaysClearAttackHitAct",
+        "custom_action": "ReplaysClearAttackHitAct",
         "next": [
             "[JumpBack]ClickConfirm",
             "[JumpBack]GetReward",
-            "BattleReplaysChooseReattack",
+            "ReplaysChooseReattack",
             "LoopErrorByTimes"
         ]
     },
-    "BattleReplaysChooseReattack": {
+    "ReplaysChooseReattack": {
         "desc": "点击再次出击 进入编队页面",
         "recognition": "OCR",
         "expected": "再次出击",
@@ -150,24 +149,24 @@
         ],
         "action": "Click",
         "next": [
-            "BattleReplaysChooseReattackSuccess",
+            "ReplaysChooseReattackSuccess",
             "LoopErrorByTimes",
-            "BattleReplaysChooseReattack"
+            "ReplaysChooseReattack"
         ],
         "post_wait_freezes": 1000
     },
-    "BattleReplaysChooseReattackSuccess": {
+    "ReplaysChooseReattackSuccess": {
         "desc": "点击再次出击成功",
         "recognition": "And",
         "all_of": [
-            "BattleReplaysChooseReattack"
+            "ReplaysChooseReattack"
         ],
         "action": "Custom",
-        "custom_action": "BattleReplaysChooseReattackSuccessAct",
+        "custom_action": "ReplaysChooseReattackSuccessAct",
         "inverse": true
     },
     // INFO 战役道具缺失
-    "BattleReplaysNoProps": {
+    "ReplaysNoProps": {
         "desc": "道具不足",
         "recognition": "OCR",
         "expected": "道具不足",

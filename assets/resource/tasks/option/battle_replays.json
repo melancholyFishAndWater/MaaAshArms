@@ -11,11 +11,11 @@
                     "pipeline_type": "int",
                     "verify": "^\\d+$",
                     "pattern_msg": "请输入一个正确数字",
-                    "description": "输入0则循环直到合金或入场券耗尽"
+                    "description": "0 则循环直到合金或入场券耗尽"
                 }
             ],
             "pipeline_override": {
-                "BattleReplaysInit": {
+                "ReplaysInit": {
                     "custom_action_param": {
                         "times": "{times}" // 执行次数
                     }
