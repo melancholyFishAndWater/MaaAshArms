@@ -47,12 +47,14 @@
         {
             "name": "StartUp",
             "label": "启动游戏",
-            "entry": "TaskStartUp"
+            "entry": "TaskStartUp",
+            "default_check": true
         },
         {
             "name": "Friend",
             "label": "联络人",
-            "entry": "TaskFriend"
+            "entry": "TaskFriend",
+            "default_check": true
         },
         {
             "name": "Reward",
@@ -60,12 +62,14 @@
             "entry": "TaskFeiduReward",
             "group": [
                 "feidu"
-            ]
+            ],
+            "default_check": true
         },
         {
             "name": "Gift",
             "label": "每日赠礼",
             "entry": "TaskGift",
+            "default_check": true,
             "group": [
                 "feidu",
                 "daily"
@@ -78,6 +82,7 @@
             "name": "Entrust",
             "label": "委派",
             "entry": "TaskEntrust",
+            "default_check": true,
             "group": [
                 "daily"
             ],
@@ -94,12 +99,14 @@
         {
             "name": "Maintenance",
             "label": "维修会",
-            "entry": "TaskMaintenance"
+            "entry": "TaskMaintenance",
+            "default_check": true
         },
         {
             "name": "Train",
             "label": "武装押运",
             "entry": "TaskTrain",
+            "default_check": true,
             "option": [
                 // TODO 路线选择
             ]
@@ -108,6 +115,7 @@
             "name": "Escort",
             "label": "防卫局",
             "entry": "TaskEscort",
+            "default_check": true,
             "pipeline_override": {
                 "IsFreezes": {
                     "roi": [
@@ -126,6 +134,7 @@
             "name": "Factory",
             "label": "订单工厂",
             "entry": "TaskFactory",
+            "default_check": true,
             "group": [
                 "daily"
             ],
@@ -139,6 +148,7 @@
             "name": "Training",
             "label": "训练所",
             "entry": "TaskTraining",
+            "default_check": true,
             "group": [
                 "daily"
             ],
@@ -160,7 +170,8 @@
         {
             "name": "Mission",
             "label": "任务奖励",
-            "entry": "TaskMission"
+            "entry": "TaskMission",
+            "default_check": true
         },
         {
             "name": "Replays",
