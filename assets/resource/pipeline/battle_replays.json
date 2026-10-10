@@ -6,7 +6,8 @@
         "next": [
             "[JumpBack]ReplaysInit",
             "[JumpBack]LoopErrorByTimesInit",
-            "ReplaysChooseAttack"
+            "ReplaysStartChooseAttack",
+            "ReplaysStartInBattle"
         ]
     },
     "ReplaysInit": {
@@ -18,8 +19,20 @@
         },
         "max_hit": 1
     },
-    "ReplaysChooseAttack": {
-        "desc": "[Loop] 点击出击按钮 即使是灰色的",
+    // INFO 两种情况
+    "ReplaysStartInBattle": {
+        "desc": "任务开始时处于战斗中",
+        "recognition": "And",
+        "all_of": [
+            "ReplaysInBattle"
+        ],
+        "next": [
+            "[JumpBack]ReplaysInBattle",
+            "ReplaysStartChooseAttack"
+        ]
+    },
+    "ReplaysStartChooseAttack": {
+        "desc": "[Loop] 任务开始处于编队界面 点击出击按钮 即使是灰色的",
         "recognition": "OCR",
         "expected": "出击",
         "roi": [
@@ -35,7 +48,7 @@
             "NoMetal",
             "[JumpBack]ReplaysInBattle",
             "LoopErrorByTimes",
-            "ReplaysChooseAttack"
+            "ReplaysStartChooseAttack"
         ]
     },
     "ReplaysInBattle": {
