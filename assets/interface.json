@@ -184,10 +184,10 @@
         },
         {
             "name": "Replays",
-            "label": "自动自律",
+            "label": "自动代理",
             "entry": "TaskReplays",
             "default_check": false,
-            "description": "自动进行自律战斗，支持主线和战役<br/>[color:red]必须在战斗编队页面且设置好自律次数[/color]",
+            "description": "自动进行代理作战，支持主线和战役<br/>[color:red]必须在战斗编队页面且设置好代理指挥次数[/color]",
             "option": [
                 "battle_replays_number"
             ],

@@ -1,7 +1,7 @@
 {
-    // INFO 自动自律节点
+    // INFO 自动代理节点
     "TaskReplays": {
-        "desc": "自动自律任务",
+        "desc": "自动代理任务",
         "timeout": 10000,
         "next": [
             "[JumpBack]ReplaysInit",
