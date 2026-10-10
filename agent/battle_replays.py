@@ -29,8 +29,8 @@ _max_count = 5
 
 
 # 初始化全局变量
-@AgentServer.custom_action("BattleReplaysInitAct")
-class BattleReplaysInitAct(CustomAction):
+@AgentServer.custom_action("ReplaysInitAct")
+class ReplaysInitAct(CustomAction):
     def run(
         self, context: Context, argv: CustomAction.RunArg
     ) -> CustomAction.RunResult | bool:
@@ -49,8 +49,8 @@ class BattleReplaysInitAct(CustomAction):
 
 
 # 点击再次出击成功 离开奖励页面 完成数自增
-@AgentServer.custom_action("BattleReplaysChooseReattackSuccessAct")
-class BattleReplaysChooseReattackSuccessAct(CustomAction):
+@AgentServer.custom_action("ReplaysChooseReattackSuccessAct")
+class ReplaysChooseReattackSuccessAct(CustomAction):
     def run(
         self, context: Context, argv: CustomAction.RunArg
     ) -> CustomAction.RunResult | bool:
@@ -63,17 +63,17 @@ class BattleReplaysChooseReattackSuccessAct(CustomAction):
 
 
 # 清空 [点击出击按钮] 的hit_count
-@AgentServer.custom_action("BattleReplaysClearAttackHitAct")
-class BattleReplaysClearAttackHitAct(CustomAction):
+@AgentServer.custom_action("ReplaysClearAttackHitAct")
+class ReplaysClearAttackHitAct(CustomAction):
     def run(
         self, context: Context, argv: CustomAction.RunArg
     ) -> CustomAction.RunResult | bool:
-        return context.clear_hit_count("BattleReplaysChooseAttack")
+        return context.clear_hit_count("ReplaysChooseAttack")
 
 
 # 代理结束 往面板输出日志
-@AgentServer.custom_action("BattleReplaysEndAct")
-class BattleReplaysEndAct(CustomAction):
+@AgentServer.custom_action("ReplaysEndAct")
+class ReplaysEndAct(CustomAction):
     def run(
         self, context: Context, argv: CustomAction.RunArg
     ) -> CustomAction.RunResult | bool:
