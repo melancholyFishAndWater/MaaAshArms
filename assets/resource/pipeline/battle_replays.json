@@ -122,14 +122,6 @@
         "action": "Custom",
         "custom_action": "ReplaysEndAct",
         "next": [
-            "ReplaysClearAttackHit"
-        ]
-    },
-    "ReplaysClearAttackHit": {
-        "desc": "清空 [点击出击按钮] 的hit_count",
-        "action": "Custom",
-        "custom_action": "ReplaysClearAttackHitAct",
-        "next": [
             "[JumpBack]ClickConfirm",
             "[JumpBack]GetReward",
             "ReplaysChooseReattack",

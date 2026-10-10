@@ -62,15 +62,6 @@ class ReplaysChooseReattackSuccessAct(CustomAction):
         return True
 
 
-# 清空 [点击出击按钮] 的hit_count
-@AgentServer.custom_action("ReplaysClearAttackHitAct")
-class ReplaysClearAttackHitAct(CustomAction):
-    def run(
-        self, context: Context, argv: CustomAction.RunArg
-    ) -> CustomAction.RunResult | bool:
-        return context.clear_hit_count("ReplaysChooseAttack")
-
-
 # 代理结束 往面板输出日志
 @AgentServer.custom_action("ReplaysEndAct")
 class ReplaysEndAct(CustomAction):
