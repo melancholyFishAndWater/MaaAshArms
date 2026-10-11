@@ -234,7 +234,7 @@
         "custom_action": "TaskStopErrorAct"
     },
     "IsFreezes": {
-        "desc": "判断画面是否冻结 注意覆写roi",
+        "desc": "若画面冻结则结束任务 注意覆写roi",
         "recognition": "Custom",
         "custom_recognition": "IsFreezesReco",
         "roi": [
