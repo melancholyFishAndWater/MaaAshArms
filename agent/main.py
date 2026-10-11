@@ -18,6 +18,7 @@ from base import pi_check_maafw_version, pi_log_snapshot
 import battle_replays
 import battle_training
 import entrust
+import escort
 import factory_fast
 import factory
 import parent_tracker
