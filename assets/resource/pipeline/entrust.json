@@ -231,7 +231,7 @@
         "action": "Click",
         "post_wait_freezes": 500,
         "next": [
-            "NoMetal",
+            "IsNoMetal",
             "[JumpBack]EntrustEnableReward",
             "EntrustDailyUpdate"
         ]
@@ -311,7 +311,7 @@
             "EntrustGetReward",
             "EntrustChooseRewardLevel",
             "EntrustChooseFinish",
-            "[JumpBack]GetReward",
+            "[JumpBack]IsGetReward",
             "[JumpBack]ClickTap"
         ]
     },

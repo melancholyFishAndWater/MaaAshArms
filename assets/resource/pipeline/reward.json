@@ -104,7 +104,7 @@
         "next": [
             "MissionEnd",
             "MissionGetReward",
-            "GetReward"
+            "IsGetReward"
         ],
         "post_wait_freezes": 1000
     }

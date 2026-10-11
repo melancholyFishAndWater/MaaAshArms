@@ -1,6 +1,5 @@
 {
-    // NOICE 起点是物品的话无法滑动，详见 TrainMoveToBottom
-    // 移动系列
+    // INFO 移动系列 起点是物品的话无法滑动，详见 TrainMoveToBottom
     "MoveDown": {
         "desc": "通用下滑",
         "action": "Swipe",
@@ -68,7 +67,7 @@
         "action": "Custom",
         "custom_action": "MoveUpDownAct"
     },
-    // 点击系列
+    // INFO 点击系列
     "ClickConfirm": {
         "desc": "通用点击确认",
         "recognition": "OCR",
@@ -122,37 +121,21 @@
         ],
         "post_wait_freezes": 500
     },
-    "GetReward": {
-        "desc": "领取奖励",
-        "recognition": "OCR",
-        "expected": "获得一览",
+    // INFO 判断节点
+    "HomeFlagFirst": {
+        "desc": "在游戏主页",
+        "recognition": "TemplateMatch",
+        "template": [
+            "StartUp/HomeFlag/"
+        ],
         "roi": [
-            525,
-            154,
-            174,
-            53
-        ],
-        "action": "Click",
-        "target": [
-            640,
-            620
-        ],
-        "post_wait_freezes": 500
-    },
-    "NetworkError": {
-        "desc": "关闭网络错误",
-        "recognition": "OCR",
-        "expected": "通信异常",
-        "roi": [
-            373,
-            227,
-            192,
-            70
-        ],
-        "next": [
-            "ClickConfirm"
+            805,
+            288,
+            460,
+            111
         ]
     },
+    // INFO 条件执行节点
     "BackButton": {
         "desc": "点击返回按钮",
         "recognition": "TemplateMatch",
@@ -183,28 +166,52 @@
             130
         ]
     },
-    "HomeFlagFirst": {
-        "desc": "在游戏主页",
-        "recognition": "TemplateMatch",
-        "template": [
-            "StartUp/HomeFlag/"
-        ],
+    "IsGetReward": {
+        "desc": "领取奖励",
+        "recognition": "OCR",
+        "expected": "获得一览",
         "roi": [
-            805,
-            288,
-            460,
-            111
+            525,
+            154,
+            174,
+            53
+        ],
+        "action": "Click",
+        "target": [
+            640,
+            620
+        ],
+        "post_wait_freezes": 500
+    },
+    "IsNetworkError": {
+        "desc": "关闭网络错误",
+        "recognition": "OCR",
+        "expected": "通信异常",
+        "roi": [
+            373,
+            227,
+            192,
+            70
+        ],
+        "next": [
+            "ClickConfirm"
         ]
     },
-    "ReturnMain": {
-        "desc": "返回主界面",
-        "max_hit": 3,
-        "next": [
-            "HomeFlagFirst",
-            "[JumpBack]HomeButton",
-            "[JumpBack]BackButton",
-            "[JumpBack]ClickUpperRight"
-        ]
+    "IsFreezes": {
+        "desc": "若画面冻结则结束任务 注意覆写roi",
+        "recognition": "Custom",
+        "custom_recognition": "IsFreezesReco",
+        "roi": [
+            0,
+            0,
+            1280,
+            720
+        ],
+        "custom_recognition_param": {
+            "from_": "unknow", // 如果要一个任务链中不同节点复用 填写父节点名
+            "threshold": 0.99, // 阈值
+            "k": 3 // 连续不变次数 太低可能移动卡顿也识别成功了
+        }
     },
     "InServerMaintenance": {
         "desc": "游戏维护中",
@@ -224,6 +231,32 @@
             }
         }
     },
+    "IsNoMetal": {
+        "desc": "合金不足，任务结束",
+        "recognition": "OCR",
+        "expected": "资源不足",
+        "roi": [
+            356,
+            344,
+            617,
+            34
+        ],
+        "action": "StopTask",
+        "focus": {
+            "Node.Action.Succeeded": "合金不足，任务结束"
+        }
+    },
+    // INFO 执行节点
+    "ReturnMain": {
+        "desc": "返回主界面",
+        "max_hit": 3,
+        "next": [
+            "HomeFlagFirst",
+            "[JumpBack]HomeButton",
+            "[JumpBack]BackButton",
+            "[JumpBack]ClickUpperRight"
+        ]
+    },
     "TaskStop": {
         "desc": "无条件结束任务",
         "action": "StopTask"
@@ -233,22 +266,7 @@
         "action": "Custom",
         "custom_action": "TaskStopErrorAct"
     },
-    "IsFreezes": {
-        "desc": "若画面冻结则结束任务 注意覆写roi",
-        "recognition": "Custom",
-        "custom_recognition": "IsFreezesReco",
-        "roi": [
-            0,
-            0,
-            1280,
-            720
-        ],
-        "custom_recognition_param": {
-            "from_": "unknow", // 如果要一个任务链中不同节点复用 填写父节点名
-            "threshold": 0.99, // 阈值
-            "k": 3 // 连续不变次数 太低可能移动卡顿也识别成功了
-        }
-    },
+    // INFO LoopErrorByTimes
     "LoopErrorByTimesInit": {
         "desc": "LoopErrorByTimes 初始化。不允许重入",
         "action": "Custom",
@@ -267,21 +285,6 @@
         ],
         "focus": {
             "Node.Recognition.Succeeded": "loop异常 结束任务"
-        }
-    },
-    "NoMetal": {
-        "desc": "合金不足，任务结束",
-        "recognition": "OCR",
-        "expected": "资源不足",
-        "roi": [
-            356,
-            344,
-            617,
-            34
-        ],
-        "action": "StopTask",
-        "focus": {
-            "Node.Action.Succeeded": "合金不足，任务结束"
         }
     }
 }

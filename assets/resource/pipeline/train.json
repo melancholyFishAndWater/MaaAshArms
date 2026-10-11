@@ -360,7 +360,7 @@
         "action": "Click",
         "next": [
             "[JumpBack]TrainOverride",
-            "NoMetal",
+            "IsNoMetal",
             "LoopErrorByTimes",
             "TrainGoButtonDartToo"
         ]

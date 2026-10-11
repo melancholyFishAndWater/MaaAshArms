@@ -205,7 +205,7 @@
             "[JumpBack]BattleNow",
             "[JumpBack]BattleIsLoading",
             "BattleWin",
-            "NoMetal",
+            "IsNoMetal",
             "LoopErrorByTimes",
             "BattleClickAttack"
         ]
@@ -306,7 +306,7 @@
             78
         ],
         "next": [
-            "[JumpBack]GetReward",
+            "[JumpBack]IsGetReward",
             "BattleWin",
             "BattleWinSuccess"
         ],

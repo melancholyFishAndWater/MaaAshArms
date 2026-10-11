@@ -255,7 +255,7 @@
         "post_wait_freezes": 1000,
         "next": [
             "FactoryChooseStart",
-            "FactoryNoMetal",
+            "FactoryIsNoMetal",
             "FactorySkip",
             "FactoryChooseStartSuccess"
         ]
@@ -270,7 +270,7 @@
         "action": "Custom",
         "custom_action": "FactoryChooseStartSuccessAct"
     },
-    "FactoryNoMetal": {
+    "FactoryIsNoMetal": {
         "desc": "建造失败 资源不足",
         "recognition": "OCR",
         "expected": "资源不足",

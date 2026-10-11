@@ -60,7 +60,7 @@
         "timeout": -1,
         "next": [
             "ReplaysNoProps",
-            "NoMetal",
+            "IsNoMetal",
             "[JumpBack]ReplaysInBattle",
             "LoopErrorByTimes",
             "ReplaysStartChooseAttack"
@@ -107,7 +107,7 @@
         ],
         "next": [
             "[JumpBack]ClickConfirm",
-            "[JumpBack]GetReward",
+            "[JumpBack]IsGetReward",
             "ReplaysChooseFinish",
             "LoopErrorByTimes"
         ]
@@ -151,7 +151,7 @@
         "custom_action": "ReplaysEndAct",
         "next": [
             "[JumpBack]ClickConfirm",
-            "[JumpBack]GetReward",
+            "[JumpBack]IsGetReward",
             "ReplaysChooseReattack",
             "LoopErrorByTimes"
         ]
