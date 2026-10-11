@@ -40,8 +40,9 @@
         "custom_action": "EntrustInitAct",
         "max_hit": 1,
         "custom_action_param": {
-            "chapter_name": "结晶废墟", // 章节名
-            "level": 10 // 关卡小节数
+            // 层级：章节（"下一章"所在层）→ 大关（stage_name）→ 小关（level 匹配的数字）
+            "stage_name": "结晶废墟", // 大关名
+            "level": 10 // 目标小关的数字
         }
     },
     "EntrustEnterMainLine": {
@@ -56,16 +57,16 @@
         ],
         "action": "Click",
         "next": [
-            "EntrustEnterChapter",
+            "EntrustChooseStage",
             "[JumpBack]EntrustNextChapter",
             "EntrustEnterMainLine"
         ],
         "post_wait_freezes": 3000
     },
-    "EntrustEnterChapter": {
-        "desc": "进入目标章节",
+    "EntrustChooseStage": {
+        "desc": "选择目标大关",
         "recognition": "Custom",
-        "custom_recognition": "EntrustEnterChapterReco",
+        "custom_recognition": "EntrustChooseStageReco",
         "action": "Click",
         "next": [
             "EntrustMoveToFind"
@@ -270,11 +271,11 @@
         ],
         "action": "Click",
         "next": [
-            "EntrustChooseRewardLevel",
+            "EntrustClickRewardLevel",
             "EntrustEnterRewardMainLine"
         ]
     },
-    "EntrustChooseRewardLevel": {
+    "EntrustClickRewardLevel": {
         "desc": "点击可领取的关卡",
         "recognition": "OCR",
         "expected": "委派完成",
@@ -293,7 +294,7 @@
         "action": "Click",
         "next": [
             "EntrustGetReward",
-            "EntrustChooseRewardLevel"
+            "EntrustClickRewardLevel"
         ]
     },
     "EntrustGetReward": {
@@ -309,13 +310,13 @@
         "action": "Click",
         "next": [
             "EntrustGetReward",
-            "EntrustChooseRewardLevel",
-            "EntrustChooseFinish",
+            "EntrustClickRewardLevel",
+            "EntrustClickFinish",
             "[JumpBack]IsGetReward",
             "[JumpBack]ClickTap"
         ]
     },
-    "EntrustChooseFinish": {
+    "EntrustClickFinish": {
         "desc": "点击完成",
         "recognition": "OCR",
         "expected": "完成",
@@ -327,15 +328,15 @@
         ],
         "action": "Click",
         "next": [
-            "EntrustChooseFinishSuccess",
-            "EntrustChooseFinish"
+            "EntrustClickFinishSuccess",
+            "EntrustClickFinish"
         ]
     },
-    "EntrustChooseFinishSuccess": {
-        "desc": "点击完成成功",
+    "EntrustClickFinishSuccess": {
+        "desc": "点击完成后画面已变（第二帧）",
         "recognition": "And",
         "all_of": [
-            "EntrustChooseFinish"
+            "EntrustClickFinish"
         ],
         "inverse": true
     }

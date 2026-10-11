@@ -131,8 +131,8 @@ class FactoryGetRewardReco(CustomRecognition):
 
 
 # 返回None或第一个可建造角色的选择区域
-@AgentServer.custom_recognition("FactoryChooseCharaterRepo")
-class FactoryChooseCharaterRepo(CustomRecognition):
+@AgentServer.custom_recognition("FactoryChooseCharacterRepo")
+class FactoryChooseCharacterRepo(CustomRecognition):
     def analyze(
         self, context: Context, argv: CustomRecognition.AnalyzeArg
     ) -> tuple[int, int, int, int] | None:

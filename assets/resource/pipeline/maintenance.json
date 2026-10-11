@@ -49,14 +49,14 @@
             "MaintenanceInHome"
         ],
         "next": [
-            "[JumpBack]MaintenanceChooseFinish",
+            "[JumpBack]MaintenanceClickFinish",
             "[JumpBack]MaintenanceCanRecycle",
             "MaintenanceAllBusy",
             "LoopErrorByTimes"
         ]
     },
     // INFO 分支-完成
-    "MaintenanceChooseFinish": {
+    "MaintenanceClickFinish": {
         "desc": "点击回收完成按钮",
         "recognition": "TemplateMatch",
         "template": [
@@ -68,7 +68,7 @@
             "[JumpBack]MaintenanceGetCharacterOk",
             "[JumpBack]MaintenanceGetCharacter",
             "LoopErrorByTimes",
-            "MaintenanceChooseFinish",
+            "MaintenanceClickFinish",
             "MaintenanceInHome"
         ]
     },
@@ -122,12 +122,12 @@
         "post_delay": 1000,
         "next": [
             "MaintenanceCanNotAction",
-            "MaintenanceChooseAction",
+            "MaintenanceClickAction",
             "LoopErrorByTimes",
             "MaintenanceCanRecycle"
         ]
     },
-    "MaintenanceChooseAction": {
+    "MaintenanceClickAction": {
         "desc": "点击开始行动",
         "recognition": "OCR",
         "expected": "开始行动",

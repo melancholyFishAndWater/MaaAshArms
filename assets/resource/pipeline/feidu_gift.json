@@ -1,4 +1,5 @@
 {
+    // INFO 赠礼任务
     "TaskGift": {
         "desc": "赠礼任务",
         "recognition": "Custom",
@@ -11,8 +12,9 @@
             "[JumpBack]ReturnFeidu"
         ]
     },
-    // 礼物任务流程
+    // INFO 任务流程
     "GiftEnterTavern": {
+        "desc": "进入酒馆页面",
         "recognition": "OCR",
         "expected": "酒馆夜话",
         "action": "Click",
@@ -23,7 +25,7 @@
         "post_wait_freezes": 500
     },
     "GiftEnterHome": {
-        "desc": "点击深入交流",
+        "desc": "进入深入交流页面(赠礼页面)",
         "recognition": "TemplateMatch",
         "template": [
             "Feidu/TavernButton1.png"
@@ -36,7 +38,7 @@
         ],
         "post_wait_freezes": 1500
     },
-    // 赠礼页面
+    // INFO 赠礼页面
     "GiftClickToChoose": {
         "desc": "点击切换DOLLS",
         "recognition": "OCR",
@@ -91,7 +93,7 @@
         ],
         "action": "Click",
         "next": [
-            "GiftChooseFrist"
+            "GiftClickFirstcharacter"
         ],
         "roi": [
             1055,
@@ -101,7 +103,7 @@
         ],
         "post_wait_freezes": 2000
     },
-    "GiftChooseFrist": {
+    "GiftClickFirstcharacter": {
         "desc": "点击第一个角色",
         "recognition": "DirectHit",
         "action": "Click",
@@ -113,7 +115,7 @@
         ],
         "next": [
             "GiftClickShowGift",
-            "GiftChooseFrist"
+            "GiftClickFirstcharacter"
         ],
         "post_wait_freezes": 2000
     },

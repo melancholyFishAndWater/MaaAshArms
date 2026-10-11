@@ -136,7 +136,7 @@
         ],
         "next": [
             "FactoryGetRewardSuccess",
-            "FactoryGetRewardFaild",
+            "FactoryGetRewardFailed",
             "FactoryGetReward"
         ],
         "post_wait_freezes": 3000 // 太短容易导致点到创建订单
@@ -157,7 +157,7 @@
         "action": "Custom",
         "custom_action": "FactoryGetRewardNextAct"
     },
-    "FactoryGetRewardFaild": {
+    "FactoryGetRewardFailed": {
         "desc": "领取奖励失败 库存满",
         "roi": [
             362,
@@ -212,20 +212,20 @@
         ],
         "action": "Click",
         "next": [
-            "FactoryChooseCharater",
+            "FactoryChooseCharacter",
             "FactoryChooseNumber", // 还是点到那就这样吧
             "FactoryCreateOrder"
         ],
         "post_wait_freezes": 4000 // 太短容易点到中间角色
     },
-    "FactoryChooseCharater": {
+    "FactoryChooseCharacter": {
         "desc": "选择角色",
         "recognition": "Custom",
-        "custom_recognition": "FactoryChooseCharaterRepo",
+        "custom_recognition": "FactoryChooseCharacterRepo",
         "action": "Click",
         "next": [
             "FactoryChooseNumber",
-            "FactoryChooseCharater"
+            "FactoryChooseCharacter"
         ],
         "post_wait_freezes": 1000
     },
@@ -236,12 +236,12 @@
         "custom_recognition_param": 1, // 建造数
         "action": "Click",
         "next": [
-            "FactoryChooseStart",
+            "FactoryClickStart",
             "FactoryChooseNumber"
         ],
         "post_wait_freezes": 1000
     },
-    "FactoryChooseStart": {
+    "FactoryClickStart": {
         "desc": "选择开始建造按钮",
         "recognition": "OCR",
         "expected": "开始建造",
@@ -254,7 +254,7 @@
         "action": "Click",
         "post_wait_freezes": 1000,
         "next": [
-            "FactoryChooseStart",
+            "FactoryClickStart",
             "FactoryIsNoMetal",
             "FactorySkip",
             "FactoryChooseStartSuccess"
@@ -264,7 +264,7 @@
         "desc": "建造成功",
         "recognition": "And",
         "all_of": [
-            "FactoryChooseStart"
+            "FactoryClickStart"
         ],
         "inverse": true,
         "action": "Custom",

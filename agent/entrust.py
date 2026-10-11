@@ -15,9 +15,9 @@ from re import search
 
 from base import log, parse_params
 
-# 章节名
-chapter_name: str = "结晶废墟"
-# 关卡小节数
+# 大关名
+stage_name: str = "结晶废墟"
+# 目标小关的数字
 level: int = 10
 # 今日剩余次数
 _max_number = 0
@@ -47,8 +47,8 @@ def get_level_ocr(
 
 
 # 返回匹配的章节名
-@AgentServer.custom_recognition("EntrustEnterChapterReco")
-class EntrustEnterChapterReco(CustomRecognition):
+@AgentServer.custom_recognition("EntrustChooseStageReco")
+class EntrustChooseStageReco(CustomRecognition):
     def analyze(
         self, context: Context, argv: CustomRecognition.AnalyzeArg
     ) -> Rect | None:
@@ -56,7 +56,7 @@ class EntrustEnterChapterReco(CustomRecognition):
 
         r = context.run_recognition_direct(
             JRecognitionType.OCR,
-            JOCR([chapter_name], roi=(380, 127, 826, 447)),
+            JOCR([stage_name], roi=(380, 127, 826, 447)),
             image=argv.image,
         )
         if r is None or not r.hit:
@@ -157,9 +157,9 @@ class EntrustInitAct(CustomAction):
     ) -> CustomAction.RunResult | bool:
         node_name = argv.node_name
         try:
-            global chapter_name, level, _max_number
-            p = parse_params(argv.custom_action_param, "chapter_name", "level")
-            chapter_name = p["chapter_name"]
+            global stage_name, level, _max_number
+            p = parse_params(argv.custom_action_param, "stage_name", "level")
+            stage_name = p["stage_name"]
             level = p["level"]
             _max_number = 0
             return True

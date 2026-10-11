@@ -5,7 +5,7 @@
         "next": [
             "[JumpBack]ReplaysInit",
             "[JumpBack]LoopErrorByTimesInit",
-            "ReplaysStartChooseAttack",
+            "ReplaysStartClickAttack",
             "ReplaysStartInConfirm",
             "ReplaysStartInBattle",
             "LoopErrorByTimes"
@@ -29,7 +29,7 @@
         ],
         "next": [
             "[JumpBack]ReplaysInBattle",
-            "ReplaysStartChooseAttack"
+            "ReplaysStartClickAttack"
         ]
     },
     "ReplaysStartInConfirm": {
@@ -41,11 +41,11 @@
         "next": [
             "[JumpBack]ReplaysEnd",
             "ReplaysMetalEnd",
-            "ReplaysStartChooseAttack",
+            "ReplaysStartClickAttack",
             "LoopErrorByTimes"
         ]
     },
-    "ReplaysStartChooseAttack": {
+    "ReplaysStartClickAttack": {
         "desc": "[Loop] 任务开始处于编队界面 点击出击按钮 即使是灰色的",
         "recognition": "OCR",
         "expected": "出击",
@@ -63,7 +63,7 @@
             "IsNoMetal",
             "[JumpBack]ReplaysInBattle",
             "LoopErrorByTimes",
-            "ReplaysStartChooseAttack"
+            "ReplaysStartClickAttack"
         ]
     },
     "ReplaysInBattle": {
@@ -108,11 +108,11 @@
         "next": [
             "[JumpBack]ClickConfirm",
             "[JumpBack]IsGetReward",
-            "ReplaysChooseFinish",
+            "ReplaysClickFinish",
             "LoopErrorByTimes"
         ]
     },
-    "ReplaysChooseFinish": {
+    "ReplaysClickFinish": {
         "desc": "点击完成",
         "recognition": "OCR",
         "expected": "完成",
@@ -125,15 +125,15 @@
         "action": "Click",
         "max_hit": 8,
         "next": [
-            "ReplaysChooseFinishSuccess",
-            "ReplaysChooseFinish"
+            "ReplaysClickFinishSuccess",
+            "ReplaysClickFinish"
         ]
     },
-    "ReplaysChooseFinishSuccess": {
+    "ReplaysClickFinishSuccess": {
         "desc": "点击完成成功",
         "recognition": "And",
         "all_of": [
-            "ReplaysChooseFinish"
+            "ReplaysClickFinish"
         ],
         "next": [
             "TaskStop"
