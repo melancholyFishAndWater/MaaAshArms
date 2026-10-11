@@ -233,29 +233,21 @@ jobs:
     if: ${{ needs.meta.outputs.is_release == 'true' }}
     needs: [meta, install, changelog]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write          # 现在 install.yml 整个文件没有 permissions 块；gh 步骤需要写权限
     steps:
       - uses: actions/download-artifact@v4
-        with:
-          path: assets
-          merge-multiple: true   # 各档的 zip 直接落到 assets/，这里不再重新打包
+        with: { path: assets, merge-multiple: true }
 
       - uses: softprops/action-gh-release@v2
         with:
           files: assets/*
           tag_name: ${{ needs.meta.outputs.tag }}
           body: ${{ needs.changelog.outputs.release_body }}
-          draft: false
+          draft: true                                   # ← 只改这一行
           prerelease: ${{ needs.meta.outputs.is_prerelease == 'true' }}
 
-        # Mirror酱为第三方分发服务，新项目默认关闭
-        # 若有需要请联系 Mirror酱 开通，直接自行开启是无法使用的
-        # https://mirrorchyan.com/
-      - name: Trigger MirrorChyanUploading
-        if: false
-        # if: ${{ github.repository_owner == 'MaaXYZ' }}
-        shell: bash
-        run: |
-          gh workflow run --repo $GITHUB_REPOSITORY mirrorchyan_release.yml -f tag=${{ needs.meta.outputs.tag }}
-          gh workflow run --repo $GITHUB_REPOSITORY mirrorchyan_release_note.yml -f tag=${{ needs.meta.outputs.tag }}
+      - name: Publish release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "${{ needs.meta.outputs.tag }}" --draft=false
