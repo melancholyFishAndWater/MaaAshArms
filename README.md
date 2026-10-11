@@ -1,6 +1,8 @@
 <!-- markdownlint-disable MD033 MD041 -->
 <div align="center">
 
+<img alt="LOGO" src="./assets/logo.ico" width="256" height="256" />
+
 # MaaAshArms
 
 基于全新架构的 灰烬战线 小助手。图像技术 + 模拟控制，解放双手  
