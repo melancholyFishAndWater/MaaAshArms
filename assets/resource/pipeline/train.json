@@ -62,7 +62,7 @@
         ],
         "post_wait_freezes": 1000
     },
-    // INFO 主循环
+    // INFO 主页面
     "TrainEnterMainPage": {
         "desc": "[Loop] 进入武装押运界面",
         "action": "Click",
@@ -94,7 +94,7 @@
     },
     // INFO 分支-领取奖励流程
     "TrainIsRewardable": {
-        "desc": "判断是否可以领取列车奖励",
+        "desc": "[jp] 判断是否可以领取列车奖励",
         "recognition": "Custom",
         "custom_recognition": "TrainIsRewardableReco",
         "max_hit": 2,
@@ -194,7 +194,7 @@
     },
     // INFO 分支-发车流程
     "TrainIsAcceptable": {
-        "desc": "判断是否可以发车",
+        "desc": "[jp] 判断是否可以发车",
         "recognition": "Custom",
         "custom_recognition": "TrainIsAcceptableReco",
         "next": [
@@ -262,15 +262,15 @@
         ],
         "next": [
             "TrainFormation",
-            "[JumpBack]TrainOverride", // INFO 兜底
-            "[JumpBack]TrainResetCancel", // INFO 兜底
+            "[JumpBack]TrainOverride", // 兜底
+            "[JumpBack]TrainResetCancel", // 兜底
             "LoopErrorByTimes",
             "TrainAcceptable"
         ]
     },
     // INFO 覆盖和重置
     "TrainOverride": {
-        "desc": "是否覆盖",
+        "desc": "[jp] 是否覆盖",
         "recognition": "OCR",
         "expected": "覆盖",
         "roi": [
@@ -284,7 +284,7 @@
         ]
     },
     "TrainResetCancel": {
-        "desc": "取消重置",
+        "desc": "[jp] 取消重置",
         "recognition": "OCR",
         "expected": "重置",
         "roi": [
@@ -300,17 +300,13 @@
     // INFO 编队页面
     "TrainFormation": {
         "desc": "[Loop] 列车出发编队页面",
-        "recognition": "OCR",
-        "expected": "列车编队",
-        "roi": [
-            113,
-            4,
-            162,
-            63
+        "recognition": "And",
+        "all_of": [
+            "TrainAtFormation"
         ],
         "next": [
             "TrainGoButtonDart",
-            "TrainOverride",
+            "[JumpBack]TrainOverride", // 兜底
             "TrainGoButtonLight",
             "LoopErrorByTimes",
             "[JumpBack]TrainResetCancel" // 兜底
@@ -373,6 +369,7 @@
         "action": "Click",
         "next": [
             "TrainBusy",
+            "LoopErrorByTimes",
             "TrainGoButtonLight",
             "[JumpBack]ClickConfirm",
             "[JumpBack]Click"
@@ -393,5 +390,28 @@
         ],
         "action": "Custom",
         "custom_action": "TrainBusyAct"
+    },
+    // INFO 判断节点
+    "TrainAtHome": {
+        "desc": "在主页面",
+        "recognition": "OCR",
+        "expected": "路线一览",
+        "roi": [
+            113,
+            4,
+            162,
+            63
+        ]
+    },
+    "TrainAtFormation": {
+        "desc": "在列车编队页面",
+        "recognition": "OCR",
+        "expected": "列车编队",
+        "roi": [
+            113,
+            4,
+            162,
+            63
+        ]
     }
 }
