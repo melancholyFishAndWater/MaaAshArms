@@ -3,6 +3,7 @@
     "TaskEscort": {
         "desc": "防卫局任务",
         "next": [
+            "[JumpBack]LoopErrorByTimesInit",
             "EscortInHome",
             "EscortEnterHome",
             "[JumpBack]ReturnMain"
@@ -59,14 +60,15 @@
         "post_wait_freezes": 2000
     },
     "EscortFindToAccept": {
-        "desc": "右滑直到接取所有任务",
+        "desc": "[Loop] 右滑直到接取所有任务",
+        "timeout": -1,
         "next": [
             "[JumpBack]EscortAccept",
             "IsFreezes",
+            "LoopErrorByTimes",
             "[JumpBack]MoveRight"
         ]
     },
-    // BUG 未知原因导致最后一个任务领取失败
     "EscortAccept": {
         "desc": "接取任务",
         "recognition": "TemplateMatch",
