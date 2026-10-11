@@ -233,6 +233,8 @@ jobs:
     if: ${{ needs.meta.outputs.is_release == 'true' }}
     needs: [meta, install, changelog]
     runs-on: ubuntu-latest
+    concurrency:
+      group: release-${{ github.ref_name }}
     permissions:
       contents: write          # 现在 install.yml 整个文件没有 permissions 块；gh 步骤需要写权限
     steps:
@@ -250,4 +252,4 @@ jobs:
       - name: Publish release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release edit "${{ needs.meta.outputs.tag }}" --draft=false
+        run: gh release view "${{ needs.meta.outputs.tag }}" --json isDraft,assets || true
