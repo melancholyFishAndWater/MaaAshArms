@@ -252,4 +252,7 @@ jobs:
       - name: Publish release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release view "${{ needs.meta.outputs.tag }}" --json isDraft,assets || true
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release edit "${{ needs.meta.outputs.tag }}" --draft=false --prerelease=${{ needs.meta.outputs.is_prerelease }}
+          gh release view "${{ needs.meta.outputs.tag }}" --json isDraft,isPrerelease,assets
