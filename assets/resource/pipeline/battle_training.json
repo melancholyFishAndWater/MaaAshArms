@@ -50,7 +50,8 @@
             37
         ],
         "action": "Click",
-        "pre_wait_freezes": 500,
+        "pre_wait_freezes": 1000,
+        "rate_limit": 1500,
         "next": [
             "TrainingInHome",
             "TrainingEnterHome"
