@@ -26,6 +26,33 @@
         ],
         "post_wait_freezes": 1000
     },
+    "TrainCloseStatusArrow": { // INFO 调用见agent
+        "desc": "关闭状态箭头",
+        "recognition": "TemplateMatch",
+        "template": "Train/CloseArrow.png",
+        "action": "Click",
+        "roi": [
+            299,
+            191,
+            140,
+            173
+        ],
+        "post_wait_freezes": 1000,
+        "next": [
+            "TrainCloseStatusArrowSuccess",
+            "TrainCloseStatusArrow"
+        ],
+        "focus": {
+            "Node.Recognition.Succeeded": "所有列车未抵达，任务结束"
+        }
+    },
+    "TrainCloseStatusArrowSuccess": {
+        "desc": "关闭状态箭头成功",
+        "recognition": "TemplateMatch",
+        "template": "Train/CloseArrow.png",
+        "inverse": true,
+        "action": "StopTask"
+    },
     "TrainGetStatus": {
         "desc": "获取列车状态",
         "recognition": "Custom",
@@ -41,9 +68,9 @@
         "action": "Click",
         "target": "TrainGetStatus",
         "next": [
-            "TrainCheckEnd",
             "[JumpBack]TrainIsRewardable",
             "[JumpBack]TrainIsAcceptable",
+            "TrainCheckEnd",
             "LoopErrorByTimes"
         ],
         "post_wait_freezes": 3000
@@ -57,29 +84,6 @@
             "TaskStop"
         ]
     },
-    "TrainCloseStatusArrow": {
-        "desc": "关闭状态箭头",
-        "recognition": "TemplateMatch",
-        "template": "Train/CloseArrow.png",
-        "action": "Click",
-        "roi": [
-            299,
-            191,
-            140,
-            173
-        ],
-        "post_wait_freezes": 1000,
-        "next": [
-            "TrainCloseStatusArrowSuccess",
-            "TrainCloseStatusArrow"
-        ]
-    },
-    "TrainCloseStatusArrowSuccess": {
-        "desc": "关闭状态箭头成功",
-        "recognition": "TemplateMatch",
-        "template": "Train/CloseArrow.png",
-        "inverse": true
-    },
     "TrainInfoMover": {
         "desc": "尝试移动路线",
         "recognition": "Custom",
@@ -88,7 +92,7 @@
         "custom_action": "TrainInfoMoverAct",
         "post_wait_freezes": 1000
     },
-    // INFO 领取奖励流程
+    // INFO 分支-领取奖励流程
     "TrainIsRewardable": {
         "desc": "判断是否可以领取列车奖励",
         "recognition": "Custom",
@@ -188,7 +192,7 @@
         "action": "Custom",
         "custom_action": "TrainGetRewardEndAct"
     },
-    // INFO 发车流程
+    // INFO 分支-发车流程
     "TrainIsAcceptable": {
         "desc": "判断是否可以发车",
         "recognition": "Custom",
@@ -244,11 +248,12 @@
         // "custom_recognition": "TrainAcceptReco",
         "recognition": "TemplateMatch",
         "template": "Train/CanTrainButton.png",
-        "action": "Click",
         "order_by": "Vertical",
         "index": -1,
         "method": 10001,
         "threshold": 0.85,
+        "action": "Click",
+        "post_wait_freezes": 3000, //防止点太快点到其他按钮
         "roi": [
             886,
             128,
@@ -257,10 +262,26 @@
         ],
         "next": [
             "TrainFormation",
-            "[JumpBack]TrainResetCancel", // 兜底
+            "[JumpBack]TrainOverride", // INFO 兜底
+            "[JumpBack]TrainResetCancel", // INFO 兜底
+            "LoopErrorByTimes",
             "TrainAcceptable"
+        ]
+    },
+    // INFO 覆盖和重置
+    "TrainOverride": {
+        "desc": "是否覆盖",
+        "recognition": "OCR",
+        "expected": "覆盖",
+        "roi": [
+            414,
+            306,
+            442,
+            70
         ],
-        "post_wait_freezes": 5000 //防止点太快点到其他按钮
+        "next": [
+            "ClickConfirm"
+        ]
     },
     "TrainResetCancel": {
         "desc": "取消重置",
@@ -276,8 +297,9 @@
             "ClickCancel"
         ]
     },
+    // INFO 编队页面
     "TrainFormation": {
-        "desc": "列车出发编队页面",
+        "desc": "[Loop] 列车出发编队页面",
         "recognition": "OCR",
         "expected": "列车编队",
         "roi": [
@@ -288,7 +310,9 @@
         ],
         "next": [
             "TrainGoButtonDart",
+            "TrainOverride",
             "TrainGoButtonLight",
+            "LoopErrorByTimes",
             "[JumpBack]TrainResetCancel" // 兜底
         ]
     },
@@ -309,6 +333,7 @@
         ],
         "post_wait_freezes": 1500
     },
+    // INFO 编队分支-不可直接发车
     "TrainClickAutoButton": {
         "desc": "点击推荐搭乘",
         "recognition": "TemplateMatch",
@@ -326,20 +351,6 @@
             "TrainGoButtonDartToo"
         ]
     },
-    "TrainOverride": {
-        "desc": "是否覆盖",
-        "recognition": "OCR",
-        "expected": "覆盖",
-        "roi": [
-            414,
-            306,
-            442,
-            70
-        ],
-        "next": [
-            "ClickConfirm"
-        ]
-    },
     "TrainGoButtonDartToo": {
         "desc": "依然暗淡，尝试点击",
         "recognition": "And",
@@ -354,6 +365,7 @@
             "TrainGoButtonDartToo"
         ]
     },
+    // INFO 编队分支-可直接发车
     "TrainGoButtonLight": {
         "desc": "出发按钮亮",
         "recognition": "TemplateMatch",
