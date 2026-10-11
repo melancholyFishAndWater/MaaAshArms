@@ -135,6 +135,17 @@
             111
         ]
     },
+    "HasHelpButton": {
+        "desc": "有问号按钮",
+        "recognition": "TemplateMatch",
+        "template": "Base/HelpButton.png",
+        "roi": [
+            315,
+            0,
+            143,
+            106
+        ]
+    },
     // INFO 条件执行节点
     "BackButton": {
         "desc": "点击返回按钮",
