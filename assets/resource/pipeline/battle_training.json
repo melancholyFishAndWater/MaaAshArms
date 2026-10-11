@@ -38,6 +38,7 @@
             "[JumpBack]ReturnBattleMainPage"
         ]
     },
+    // INFO 训练所页面
     "TrainingEnterHome": {
         "desc": "进入训练所",
         "recognition": "OCR",
@@ -88,9 +89,9 @@
     "TrainingLoop": {
         "desc": "训练所主循环",
         "next": [
-            "[JumpBack]TrainingEnterOne",
+            "[JumpBack]TrainingEnterOne", // TODO max_hit始终为4 
             "TrainingEnd",
-            "[JumpBack]TrainingEnterHome",
+            "[JumpBack]TrainingEnterHome", // 防止返回按钮点过头
             "[JumpBack]BackButton",
             "[JumpBack]ReturnBattleMainPage"
             // TODO 自律战斗失败的逻辑、不可代理的逻辑
@@ -108,6 +109,7 @@
         ],
         "index": 3
     },
+    // INFO 关卡选择页面
     "TrainingEnterOne": {
         "desc": "进入其中一个训练所关卡选择页面",
         "recognition": "Custom",
@@ -126,6 +128,7 @@
         "custom_recognition": "TrainingEnterFormationRepo",
         "custom_recognition_param": "unknow", // 覆写传递关卡难度数
         "action": "Click",
+        "rate_limit": 2000,
         "next": [
             "TaskBattleReplay",
             "LoopErrorByTimes",
@@ -133,6 +136,7 @@
         ],
         "post_wait_freezes": 2000
     },
+    // INFO 更新每日一次
     "TrainingDailyUpdate": {
         "desc": "更新每日一次",
         "action": "Custom",
