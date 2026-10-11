@@ -1,7 +1,7 @@
 <!-- markdownlint-disable MD033 MD041 -->
 <div align="center">
 
-<img alt="LOGO" src="./assets/logo.ico" width="256" height="256" />
+<img alt="LOGO" src="logo.png" width="256" height="256" />
 
 # MaaAshArms
 
