@@ -57,18 +57,25 @@
     },
     "TrainingInHome": {
         "desc": "在训练所主界面",
-        "recognition": "TemplateMatch",
-        "template": "Battle/BattleTraining/HomeFlag.png",
-        "threshold": 0.975,
-        "roi": [
-            57,
-            0,
-            403,
-            109
+        "recognition": "And",
+        "all_of": [
+            "TrainingHasHomeName",
+            "HasHelpButton"
         ],
         "next": [
             "[JumpBack]TrainingInit",
             "TrainingLoop"
+        ]
+    },
+    "TrainingHasHomeName": {
+        "desc": "有训练所文字",
+        "recognition": "OCR",
+        "expected": "训练所",
+        "roi": [
+            109,
+            13,
+            208,
+            49
         ]
     },
     "TrainingInit": {
