@@ -193,7 +193,10 @@
             104,
             34
         ],
-        "action": "Click"
+        "action": "Click",
+        "focus": {
+            "Node.Action.Succeeded": "补充小队成员"
+        }
     },
     // INFO 战斗流程
     "BattleClickAttack": {
