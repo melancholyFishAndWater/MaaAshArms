@@ -1,23 +1,36 @@
 {
     // INFO 通用战斗
+    "BattleEnsureHome": {
+        "desc": "[jp][max] 确保在出击页面",
+        "max_hit": 2,
+        "next": [
+            "BattleProbeHome",
+            "[JumpBack]BattleEnterHome",
+            "[JumpBack]ReturnMain",
+            "[JumpBack]LoopErrorByTimesInit",
+            "LoopErrorByTimes"
+        ]
+    },
+    // TODO 不再使用Return
     "ReturnBattleMainPage": {
         "desc": "回到出击作页面主页",
         "next": [
-            "BattleInHome",
-            "[JumpBack]BattleEnterMainPage",
+            "BattleProbeHome",
+            "[JumpBack]BattleEnterHome",
             "[JumpBack]ReturnMain"
         ],
         "post_wait_freezes": 1000
     },
-    "BattleEnterMainPage": {
-        "desc": "点击进入出击页面",
+    "BattleEnterHome": {
+        "desc": "[jp] 点击进入出击页面",
         "recognition": "TemplateMatch",
         "template": "Battle/MainBattleButton.png",
-        "action": "Click"
+        "action": "Click",
+        "post_wait_freezes": 1000
     },
     // 判断节点
-    "BattleInHome": {
-        "desc": "在出击作页面标志",
+    "BattleProbeHome": {
+        "desc": "[end] 在出击作页面标志",
         "recognition": "TemplateMatch",
         "template": "Battle/MainPageFlag/",
         "threshold": 0.9
