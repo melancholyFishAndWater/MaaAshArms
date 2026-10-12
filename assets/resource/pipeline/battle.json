@@ -223,29 +223,7 @@
         "recognition": "Or",
         "any_of": [
             "BattleInTips",
-            "BattleInBlack"
-        ],
-        "post_wait_freezes": 3000
-    },
-    "BattleInBlack": {
-        "desc": "在纯黑页面",
-        "recognition": "ColorMatch",
-        "lower": [
-            0,
-            0,
-            0
-        ],
-        "upper": [
-            10,
-            10,
-            10
-        ],
-        "count": 250000,
-        "roi": [
-            248,
-            124,
-            837,
-            375
+            "ProbeBlackPage"
         ],
         "post_wait_freezes": 3000
     },

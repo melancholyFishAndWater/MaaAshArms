@@ -257,6 +257,28 @@
             "Node.Action.Succeeded": "合金不足，任务结束"
         }
     },
+    "ProbeBlackPage": {
+        "desc": "在纯黑页面",
+        "recognition": "ColorMatch",
+        "lower": [
+            0,
+            0,
+            0
+        ],
+        "upper": [
+            10,
+            10,
+            10
+        ],
+        "count": 250000,
+        "roi": [
+            248,
+            124,
+            837,
+            375
+        ],
+        "post_wait_freezes": 3000
+    },
     // INFO 执行节点
     "ReturnMain": {
         "desc": "返回主界面",
