@@ -87,4 +87,4 @@
 
 ## 编码约定
 
-新增或重命名 pipeline 节点、`custom_*` 注册名、任务参数键前，请先读 [命名规范](./naming.md)。
+新增或重命名 pipeline 节点、`custom_*` 注册名、任务参数键前，请先读 [命名规范](./naming.md)；搭任务链、写页面入口与循环、决定 `[JumpBack]` 和 `max_hit` 前，请先读 [任务链结构](./pipeline-structure.md)。
