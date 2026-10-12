@@ -2,7 +2,9 @@
   "license": "MIT",
   "scripts": {
     "sync:schema": "node tools/sync-schema.mjs",
-    "optimize:images": "node tools/optimize-images.mjs"
+    "optimize:images": "node tools/optimize-images.mjs",
+    "check:refs": "python tools/validate_refs.py",
+    "check:refs:github": "python tools/validate_refs.py --format github"
   },
   "devDependencies": {
     "@nekosu/maa-tools": "1.1.3",

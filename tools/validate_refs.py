@@ -1,0 +1,1461 @@
+#!/usr/bin/env python3
+"""资源一致性校验：跨文件的名字与约定。
+
+分工：
+  * 字段类型 / schema          -> tools/validate_schema.py
+  * 引用图的通用错误            -> npx @nekosu/maa-tools check
+  * 跨文件的名字与命名/结构约定 -> 本脚本
+
+五个可选域（都不给 = 全开，路径由 interface.json 推导）：
+  --interface   interface.json：entry / option / group / preset / pipeline_override 接线
+  --pipeline    节点引用完整性、自定义名与 agent 注册名、静态可达性陷阱、
+                命名规范（docs/zh_cn/develop/naming.md）与任务链结构（pipeline-structure.md）约定
+  --tasks       tasks/ 片段：option 形状、case.option、pipeline_override 目标、preset 任务名
+  --agent       agent/*.py：模块是否被 main.py 导入、注册名唯一性与后缀
+  --image       image/：模板引用存在性（含 agent 里的模板字面量）、未引用图片、非 png
+
+只读，不修改任何文件。纯标准库：本机装不上 jsonschema（.agents/project.md），
+所以这里不 import tools/validate_schema.py。
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import sys
+from dataclasses import dataclass, field
+from pathlib import Path
+
+# --------------------------------------------------------------------------
+# JSONC
+# --------------------------------------------------------------------------
+
+
+def strip_jsonc_comments(text: str) -> str:
+    """移除 JSONC 注释，保持结构（与 tools/validate_schema.py:23-70 同源）。"""
+    result: list[str] = []
+    state = 0  # 0=正常, 1=字符串中, 2=转义
+    i = 0
+    while i < len(text):
+        char = text[i]
+        if state == 0:
+            if char == '"':
+                result.append(char)
+                state = 1
+                i += 1
+            elif text[i : i + 2] == "//":
+                while i < len(text) and text[i] != "\n":
+                    i += 1
+                if i < len(text):
+                    result.append("\n")
+                    i += 1
+            elif text[i : i + 2] == "/*":
+                i += 2
+                while i + 1 < len(text) and text[i : i + 2] != "*/":
+                    if text[i] == "\n":
+                        result.append("\n")
+                    i += 1
+                i += 2
+            else:
+                result.append(char)
+                i += 1
+        elif state == 1:
+            result.append(char)
+            if char == "\\":
+                state = 2
+            elif char == '"':
+                state = 0
+            i += 1
+        else:
+            result.append(char)
+            state = 1
+            i += 1
+    return "".join(result)
+
+
+def load_jsonc(path: Path):
+    return json.loads(strip_jsonc_comments(path.read_text(encoding="utf-8")))
+
+
+# --------------------------------------------------------------------------
+# 常量
+# --------------------------------------------------------------------------
+
+# deps/tools/pipeline.schema.json 的 $defs.FocusTemplateMap（:334-397）
+FOCUS_KEYS = frozenset(
+    {
+        "Node.PipelineNode.Starting",
+        "Node.PipelineNode.Succeeded",
+        "Node.PipelineNode.Failed",
+        "Node.RecognitionNode.Starting",
+        "Node.RecognitionNode.Succeeded",
+        "Node.RecognitionNode.Failed",
+        "Node.ActionNode.Starting",
+        "Node.ActionNode.Succeeded",
+        "Node.ActionNode.Failed",
+        "Node.NextList.Starting",
+        "Node.NextList.Succeeded",
+        "Node.NextList.Failed",
+        "Node.Recognition.Starting",
+        "Node.Recognition.Succeeded",
+        "Node.Recognition.Failed",
+        "Node.Action.Starting",
+        "Node.Action.Succeeded",
+        "Node.Action.Failed",
+        "Node.WaitFreezes.Starting",
+        "Node.WaitFreezes.Succeeded",
+        "Node.WaitFreezes.Failed",
+    }
+)
+
+# naming.md §4 动词表
+VERBS = (
+    "TouchDown",
+    "TouchUp",
+    "Choose",
+    "Click",
+    "Enter",
+    "Start",
+    "Close",
+    "Move",
+    "Stop",
+    "Init",
+    "Get",
+)
+# naming.md §2 里已成类的后缀，不按动词表判
+CLASS_SUFFIXES = ("DailyUpdate", "Success", "Failed", "Init", "End", "Loop")
+# naming.md §3：旧写法（并入 Probe + 状态词）
+LEGACY_PREFIXES = ("Is", "Has", "In", "At", "Can", "Able", "Unable")
+
+# 由 agent 在运行时注入的节点名（override_pipeline / override_next 里出现、
+# pipeline 文件里没有定义的）。目前为空：本仓库注入的名字都已在 pipeline 里定义。
+DYNAMIC_NODES: frozenset[str] = frozenset()
+
+ENSURE_RE = re.compile(r"Ensure[A-Z]")
+IMAGE_EXT_RE = re.compile(r"\.(png|jpg|jpeg|webp)$", re.IGNORECASE)
+BOUNDED_QUANTIFIER_RE = re.compile(r"\{\d+(?:,\d+)?\}")
+
+SEVERITY_ORDER = {"error": 0, "warn": 1, "info": 2}
+
+
+# --------------------------------------------------------------------------
+# 数据结构
+# --------------------------------------------------------------------------
+
+
+@dataclass
+class Finding:
+    id: str
+    severity: str
+    file: str
+    line: int | None
+    message: str
+
+
+@dataclass
+class Node:
+    name: str
+    data: dict
+    file: Path
+
+
+@dataclass
+class Reg:
+    name: str
+    kind: str  # recognition / action
+    cls: str
+    file: Path
+    line: int
+
+
+@dataclass
+class Option:
+    name: str
+    data: dict
+    file: Path
+
+
+@dataclass
+class Ctx:
+    repo_root: Path
+    interface_file: Path | None = None
+    interface: dict | None = None
+    interface_dir: Path | None = None
+    nodes: dict[str, Node] = field(default_factory=dict)
+    node_dups: dict[str, list[Path]] = field(default_factory=dict)
+    regs: dict[str, Reg] = field(default_factory=dict)
+    reg_dups: dict[str, list[Reg]] = field(default_factory=dict)
+    options: dict[str, Option] = field(default_factory=dict)
+    option_dups: dict[str, list[Path]] = field(default_factory=dict)
+    presets: list[tuple[Path, dict]] = field(default_factory=list)
+    import_files: list[Path] = field(default_factory=list)
+    pipeline_files: list[Path] = field(default_factory=list)
+    task_files: list[Path] = field(default_factory=list)
+    agent_files: list[Path] = field(default_factory=list)
+    image_roots: list[Path] = field(default_factory=list)
+    explicit: dict[str, list[Path]] = field(default_factory=dict)
+    findings: list[Finding] = field(default_factory=list)
+
+    def add(self, id_: str, severity: str, file: Path | str, line: int | None, message: str) -> None:
+        self.findings.append(Finding(id_, severity, str(file), line, message))
+
+    # ---- 派生 ----
+    @property
+    def generic_nodes(self) -> set[str]:
+        """定义在 base.json 里的通用节点（不带任务前缀）。"""
+        return {n for n, i in self.nodes.items() if i.file.name == "base.json"}
+
+
+# --------------------------------------------------------------------------
+# 行号定位
+# --------------------------------------------------------------------------
+
+_LINE_CACHE: dict[Path, list[str]] = {}
+
+
+def lines_of(path: Path) -> list[str]:
+    if path not in _LINE_CACHE:
+        try:
+            _LINE_CACHE[path] = path.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            _LINE_CACHE[path] = []
+    return _LINE_CACHE[path]
+
+
+def find_line(path: Path, needle: str) -> int | None:
+    """找 `"needle":` 所在行（退回找 `"needle"` 字面量）。"""
+    lines = lines_of(path)
+    pat = re.compile(r'"' + re.escape(needle) + r'"\s*:')
+    for i, line in enumerate(lines, 1):
+        if pat.search(line):
+            return i
+    for i, line in enumerate(lines, 1):
+        if f'"{needle}"' in line:
+            return i
+    return None
+
+
+# --------------------------------------------------------------------------
+# 小工具
+# --------------------------------------------------------------------------
+
+
+def to_list(value) -> list:
+    if value is None:
+        return []
+    return value if isinstance(value, list) else [value]
+
+
+def walk_key(data, key: str, path: str = ""):
+    """递归产出 (路径, 值)：所有名为 key 的字段。"""
+    if isinstance(data, dict):
+        for k, v in data.items():
+            p = f"{path}.{k}" if path else str(k)
+            if k == key:
+                yield p, v
+            else:
+                yield from walk_key(v, key, p)
+    elif isinstance(data, list):
+        for i, v in enumerate(data):
+            yield from walk_key(v, key, f"{path}[{i}]")
+
+
+_TAG_RE = re.compile(r"^(?:\[[^\]]*\]\s*)+")
+
+
+def parse_ref(item) -> tuple[str | None, bool, bool]:
+    """把 next/on_error 的一项解析成 (节点名, 是否 [JumpBack], 是否 enabled)。
+
+    支持字符串（可带 `[JumpBack]` 前缀）与 NodeAttr 对象（`name` / `jump_back` / `enabled`）。
+    内联定义（对象里没有 name）返回 (None, False, True)。
+    """
+    if isinstance(item, str):
+        jump = item.lstrip().startswith("[JumpBack]")
+        return _TAG_RE.sub("", item).strip(), jump, True
+    if isinstance(item, dict):
+        raw = item.get("name")
+        enabled = item.get("enabled", True) is not False
+        jump = bool(item.get("jump_back"))
+        if isinstance(raw, str):
+            jump = jump or raw.lstrip().startswith("[JumpBack]")
+            return _TAG_RE.sub("", raw).strip(), jump, enabled
+        return None, jump, enabled
+    return None, False, True
+
+
+def ref_lists(node: dict):
+    for key in ("next", "on_error"):
+        if key in node:
+            yield key, to_list(node[key])
+
+
+def always_hit(node: dict) -> bool:
+    """必然命中：没有 recognition（默认 DirectHit）或显式 DirectHit。"""
+    rec = node.get("recognition")
+    if rec is None:
+        return True
+    if isinstance(rec, str):
+        return rec == "DirectHit"
+    if isinstance(rec, dict):
+        return rec.get("type") == "DirectHit"
+    return False
+
+
+# 内置输入动作：Click / Swipe / TouchDown … 这类节点当 [JumpBack] 候选是
+# "做一下再回来重扫" 的惯用写法（滚动找目标、点掉弹窗后重试），不按自旋判。
+BUILTIN_ACTIONS = frozenset(
+    {
+        "Click",
+        "LongPress",
+        "Swipe",
+        "MultiSwipe",
+        "TouchDown",
+        "TouchMove",
+        "TouchUp",
+        "ClickKey",
+        "LongPressKey",
+        "KeyDown",
+        "KeyUp",
+        "InputText",
+        "StartApp",
+        "StopApp",
+        "StopTask",
+        "Command",
+    }
+)
+
+
+def hits_always(target: "Node | None") -> bool:
+    """候选目标的识别是否必然命中（并考虑 enabled: false 与内置输入动作）。"""
+    if target is None:
+        return False
+    if target.data.get("enabled") is False:
+        return False
+    if not always_hit(target.data):
+        return False
+    action = target.data.get("action")
+    if isinstance(action, str) and action in BUILTIN_ACTIONS:
+        # 内置输入动作：自旋与否取决于动作有没有效果，静态判不了
+        return False
+    return True
+
+
+def complement_of(node: dict) -> str | None:
+    """`And all_of [X] + inverse` 这种严格取反节点：返回被取反的节点名 X。"""
+    if node.get("recognition") != "And" or node.get("inverse") is not True:
+        return None
+    all_of = node.get("all_of")
+    if isinstance(all_of, list) and len(all_of) == 1 and isinstance(all_of[0], str):
+        return _TAG_RE.sub("", all_of[0]).strip()
+    return None
+
+
+def iter_custom_refs(data):
+    """递归产出 (字段名, 注册名)：custom_recognition / custom_action。"""
+    if isinstance(data, dict):
+        for k, v in data.items():
+            if k in ("custom_recognition", "custom_action") and isinstance(v, str):
+                yield k, v
+            else:
+                yield from iter_custom_refs(v)
+    elif isinstance(data, list):
+        for v in data:
+            yield from iter_custom_refs(v)
+
+
+def leading_word(name: str) -> str:
+    """名字的第一个 CamelCase 词（`BattleEnsureHome` -> `Battle`、`TaskBattleAuto` -> `Task`）。"""
+    m = re.match(r"[A-Z][a-z0-9]*|[A-Z]+(?![a-z])", name)
+    return m.group(0) if m else name
+
+
+def word_suffixes(name: str) -> list[str]:
+    """名字在所有 CamelCase 边界处的后缀（含自身）。
+
+    `BattleClickReplay` -> ["BattleClickReplay", "ClickReplay", "Replay"]；
+    用来表达"`<前缀…><动词><宾语>`"，不要求前缀只有一个词（`StartUpClickIcon` 也成立）。
+    """
+    out: list[str] = []
+    for i, ch in enumerate(name):
+        if i == 0 or not ch.isupper():
+            continue
+        prev_upper = name[i - 1].isupper()
+        next_lower = i + 1 < len(name) and name[i + 1].islower()
+        if not prev_upper or next_lower:
+            out.append(name[i:])
+    return [name, *out]
+
+
+# --------------------------------------------------------------------------
+# 载入
+# --------------------------------------------------------------------------
+
+
+def iter_json_files(dirs: list[Path]) -> list[Path]:
+    out: list[Path] = []
+    for d in dirs:
+        if d.is_file():
+            out.append(d)
+            continue
+        for pat in ("*.json", "*.jsonc"):
+            out.extend(sorted(d.rglob(pat)))
+    # 去重并保序
+    seen: set[Path] = set()
+    uniq: list[Path] = []
+    for p in out:
+        rp = p.resolve()
+        if rp not in seen:
+            seen.add(rp)
+            uniq.append(p)
+    return uniq
+
+
+def load_pipeline(ctx: Ctx, paths: list[Path]) -> None:
+    for path in paths:
+        try:
+            data = load_jsonc(path)
+        except Exception as e:  # noqa: BLE001
+            ctx.add("A0-parse-error", "error", path, None, f"JSONC 解析失败：{e}")
+            continue
+        if not isinstance(data, dict):
+            ctx.add("A0-parse-error", "error", path, None, "pipeline 文件的顶层必须是对象")
+            continue
+        ctx.pipeline_files.append(path)
+        for name, node in data.items():
+            if not isinstance(node, dict):
+                continue
+            if name in ctx.nodes:
+                ctx.node_dups.setdefault(name, [ctx.nodes[name].file]).append(path)
+                continue
+            ctx.nodes[name] = Node(name, node, path)
+    for name, files in ctx.node_dups.items():
+        ctx.add(
+            "A0-duplicate-node",
+            "error",
+            files[-1],
+            find_line(files[-1], name),
+            f"节点 {name} 在多个文件里定义：{', '.join(str(f) for f in files)}",
+        )
+
+
+def load_tasks(ctx: Ctx, paths: list[Path]) -> None:
+    for path in paths:
+        try:
+            data = load_jsonc(path)
+        except Exception as e:  # noqa: BLE001
+            ctx.add("B0-parse-error", "error", path, None, f"JSONC 解析失败：{e}")
+            continue
+        if not isinstance(data, dict):
+            continue
+        ctx.task_files.append(path)
+        for name, opt in (data.get("option") or {}).items():
+            if not isinstance(opt, dict):
+                continue
+            if name in ctx.options:
+                ctx.option_dups.setdefault(name, [ctx.options[name].file]).append(path)
+                continue
+            ctx.options[name] = Option(name, opt, path)
+        for preset in to_list(data.get("preset")):
+            if isinstance(preset, dict):
+                ctx.presets.append((path, preset))
+    for name, files in ctx.option_dups.items():
+        ctx.add(
+            "B0-duplicate-option",
+            "error",
+            files[-1],
+            find_line(files[-1], name),
+            f"option {name} 在多个片段里定义：{', '.join(str(f) for f in files)}",
+        )
+
+
+def load_agents(ctx: Ctx, files: list[Path]) -> None:
+    reg_pat = re.compile(r"@AgentServer\.custom_(recognition|action)\(\s*[\"']([^\"']+)[\"']")
+    cls_pat = re.compile(r"^\s*class\s+(\w+)")
+    # 注意：不能 append 到 ctx.agent_files —— 传进来的往往就是它，会边遍历边长。
+    ctx.agent_files = list(files)
+    for path in ctx.agent_files:
+        lines = lines_of(path)
+        for i, line in enumerate(lines):
+            code = line.split("#", 1)[0]  # 注释掉的注册（如 train.py 的 TrainAcceptReco）不算
+            m = reg_pat.search(code)
+            if not m:
+                continue
+            kind = "recognition" if m.group(1) == "recognition" else "action"
+            name = m.group(2)
+            cls = ""
+            for j in range(i + 1, min(i + 6, len(lines))):
+                cm = cls_pat.match(lines[j])
+                if cm:
+                    cls = cm.group(1)
+                    break
+            reg = Reg(name, kind, cls, path, i + 1)
+            if name in ctx.regs:
+                ctx.reg_dups.setdefault(name, [ctx.regs[name]]).append(reg)
+            else:
+                ctx.regs[name] = reg
+    for name, regs in ctx.reg_dups.items():
+        where = ", ".join(f"{r.file}:{r.line}" for r in regs)
+        ctx.add("D2-duplicate-registration", "error", regs[-1].file, regs[-1].line, f"注册名 {name} 重复：{where}")
+
+
+def list_images(roots: list[Path]) -> list[Path]:
+    out: list[Path] = []
+    for root in roots:
+        if root.is_dir():
+            out.extend(sorted(p for p in root.rglob("*") if p.is_file()))
+    return out
+
+
+# --------------------------------------------------------------------------
+# A. pipeline
+# --------------------------------------------------------------------------
+
+
+def check_a1_dangling(ctx: Ctx) -> None:
+    known = set(ctx.nodes) | set(DYNAMIC_NODES)
+    for node in ctx.nodes.values():
+        for key, items in ref_lists(node.data):
+            for item in items:
+                name, _jump, _enabled = parse_ref(item)
+                if not name:
+                    continue
+                if name not in known:
+                    ctx.add(
+                        "A1-dangling-node",
+                        "error",
+                        node.file,
+                        find_line(node.file, node.name),
+                        f"{node.name}.{key} 引用了未定义节点 {name!r}",
+                    )
+
+
+def check_a2_custom(ctx: Ctx) -> None:
+    used: set[str] = set()
+    for node in ctx.nodes.values():
+        for key, name in iter_custom_refs(node.data):
+            used.add(name)
+            reg = ctx.regs.get(name)
+            if reg is None:
+                ctx.add(
+                    "A2-unknown-custom",
+                    "error",
+                    node.file,
+                    find_line(node.file, node.name),
+                    f"{node.name}.{key} = {name!r}，agent 侧没有这个注册名（静默不命中）",
+                )
+                continue
+            want = "recognition" if key == "custom_recognition" else "action"
+            if reg.kind != want:
+                ctx.add(
+                    "A2-unknown-custom",
+                    "error",
+                    node.file,
+                    find_line(node.file, node.name),
+                    f"{node.name}.{key} = {name!r}，但它注册的是 {reg.kind}（{reg.file}:{reg.line}）",
+                )
+    if ctx.regs:
+        for name, reg in ctx.regs.items():
+            if name not in used:
+                ctx.add(
+                    "A2-unused-registration",
+                    "warn",
+                    reg.file,
+                    reg.line,
+                    f"注册名 {name!r} 没有被任何 pipeline 节点引用",
+                )
+
+
+def check_a3_custom_mapping(ctx: Ctx) -> None:
+    """naming.md §7：注册名 = 节点名 + Reco/Act。
+
+    只查节点自身的 custom_* 字段（内联子识别是共用识别，不按父节点名判）；
+    只报"只被一个节点引用"的注册名 —— 被多个节点共用是刻意的复用，不算改名漏改。
+    """
+    users: dict[str, list[str]] = {}
+    for node in ctx.nodes.values():
+        for key in ("custom_recognition", "custom_action"):
+            value = node.data.get(key)
+            if isinstance(value, str):
+                users.setdefault(value, []).append(node.name)
+
+    for node in ctx.nodes.values():
+        for key, suffix in (("custom_recognition", "Reco"), ("custom_action", "Act")):
+            value = node.data.get(key)
+            if not isinstance(value, str):
+                continue
+            want = node.name + suffix
+            if value == want:
+                continue
+            if len(users.get(value, [])) > 1:
+                continue
+            ctx.add(
+                "A3-custom-name-mapping",
+                "warn",
+                node.file,
+                find_line(node.file, node.name),
+                f"{node.name}.{key} = {value!r}，按 naming.md §7 应为 {want!r}",
+            )
+
+
+def check_a4_shadowed(ctx: Ctx) -> None:
+    for node in ctx.nodes.values():
+        for key, items in ref_lists(node.data):
+            for idx, item in enumerate(items):
+                name, _jump, enabled = parse_ref(item)
+                if not name or not enabled:
+                    continue
+                target = ctx.nodes.get(name)
+                if not hits_always(target):
+                    continue
+                if idx == len(items) - 1:
+                    continue
+                has_max = target.data.get("max_hit") is not None
+                ctx.add(
+                    "A4-shadowed-candidate",
+                    "warn" if has_max else "error",
+                    node.file,
+                    find_line(node.file, node.name),
+                    f"{node.name}.{key} 第 {idx + 1} 项 {name!r} 必然命中"
+                    + ("（带 max_hit，用尽后才轮到后面）" if has_max else "")
+                    + f"，其后 {len(items) - idx - 1} 项在它之前不可达",
+                )
+
+
+def check_a5_spin_trap(ctx: Ctx) -> None:
+    jump_targets: set[str] = set()
+    for node in ctx.nodes.values():
+        for _key, items in ref_lists(node.data):
+            for item in items:
+                name, jump, _enabled = parse_ref(item)
+                if jump and name:
+                    jump_targets.add(name)
+    for name in sorted(jump_targets):
+        node = ctx.nodes.get(name)
+        if not hits_always(node):
+            continue
+        if node.data.get("next"):
+            continue
+        if node.data.get("max_hit") is not None:
+            continue
+        ctx.add(
+            "A5-spin-trap",
+            "error",
+            node.file,
+            find_line(node.file, name),
+            f"{name} 是 [JumpBack] 候选、必然命中、没有 next 也没有 max_hit：弹回重扫时会再次命中自己，永久空转",
+        )
+
+
+def check_a6_complement(ctx: Ctx) -> None:
+    for node in ctx.nodes.values():
+        for key, items in ref_lists(node.data):
+            parsed = []
+            for idx, item in enumerate(items):
+                name, jump, enabled = parse_ref(item)
+                parsed.append((idx, name, jump, enabled))
+            reported = False
+            for idx, name, jump, enabled in parsed:
+                if reported or not name or not enabled:
+                    continue
+                target = ctx.nodes.get(name)
+                if target is None or target.data.get("enabled") is False:
+                    continue
+                pair = complement_of(target.data)
+                if pair is None:
+                    continue
+                for jdx, jname, jjump, jenabled in parsed:
+                    if reported:
+                        break
+                    if jname != pair or not jenabled or jump or jjump:
+                        continue
+                    cut = max(idx, jdx)
+                    if cut < len(parsed) - 1:
+                        rest = [n for _, n, _, _ in parsed[cut + 1 :]]
+                        ctx.add(
+                            "A6-complement-unreachable",
+                            "warn",
+                            node.file,
+                            find_line(node.file, node.name),
+                            f"{node.name}.{key} 里 {name!r}(第 {idx + 1} 项) 与 {pair!r}(第 {jdx + 1} 项) 严格互补，"
+                            f"其后的 {rest} 不可达",
+                        )
+                    reported = True
+
+
+def check_a7_jumpback(ctx: Ctx) -> None:
+    for node in ctx.nodes.values():
+        for key, items in ref_lists(node.data):
+            for item in items:
+                name, jump, _enabled = parse_ref(item)
+                if not jump or not name:
+                    continue
+                if name == node.name:
+                    ctx.add(
+                        "A7-jumpback-target",
+                        "error",
+                        node.file,
+                        find_line(node.file, node.name),
+                        f"{node.name}.{key} 用 [JumpBack] 指向自己；自循环应写成普通候选（结构文档 §4.3）",
+                    )
+                elif name.endswith("Loop"):
+                    ctx.add(
+                        "A7-jumpback-target",
+                        "error",
+                        node.file,
+                        find_line(node.file, node.name),
+                        f"{node.name}.{key} 用 [JumpBack] 指向工作循环 {name}（结构文档 §4.3 禁止）",
+                    )
+
+
+def check_a8_loop_guard(ctx: Ctx) -> None:
+    for node in ctx.nodes.values():
+        if node.name.endswith("Loop") and not node.data.get("recognition"):
+            ctx.add(
+                "A8-loop-guard",
+                "warn",
+                node.file,
+                find_line(node.file, node.name),
+                f"{node.name} 是工作循环但没有 recognition（页面守卫），结构文档 §3 不建议",
+            )
+
+
+def check_a9_ensure(ctx: Ctx) -> None:
+    for node in ctx.nodes.values():
+        if not ENSURE_RE.search(node.name):
+            continue
+        if node.data.get("max_hit") is not None:
+            ctx.add(
+                "A9-ensure-maxhit",
+                "warn",
+                node.file,
+                find_line(node.file, node.name),
+                f"{node.name} 带 max_hit: {node.data['max_hit']}；结构文档 §2 要求就位节点用 pre_wait_freezes + rate_limit，不要用 max_hit 卡",
+            )
+        items = to_list(node.data.get("next"))
+        if not items:
+            continue
+        names = [parse_ref(i)[0] for i in items]
+        first, last = names[0], names[-1]
+        if first and "Probe" not in first:
+            ctx.add(
+                "A9-ensure-order",
+                "warn",
+                node.file,
+                find_line(node.file, node.name),
+                f"{node.name}.next 第一项是 {first!r}；结构文档 §2 要求先放目标页面的探针（*Probe*）",
+            )
+        if last != "LoopErrorByTimes":
+            ctx.add(
+                "A9-ensure-order",
+                "warn",
+                node.file,
+                find_line(node.file, node.name),
+                f"{node.name}.next 最后一项是 {last!r}；结构文档 §2 要求以 LoopErrorByTimes 结尾",
+            )
+
+
+def check_a10_maxhit_in_loop(ctx: Ctx) -> None:
+    for node in ctx.nodes.values():
+        if not node.name.endswith("Loop"):
+            continue
+        for key, items in ref_lists(node.data):
+            for item in items:
+                name, _jump, _enabled = parse_ref(item)
+                target = ctx.nodes.get(name) if name else None
+                if target is None or target.data.get("max_hit") is None:
+                    continue
+                ctx.add(
+                    "A10-maxhit-in-loop",
+                    "warn",
+                    node.file,
+                    find_line(node.file, node.name),
+                    f"{node.name}.{key} 的候选 {name} 带 max_hit: {target.data['max_hit']}；结构文档 §5 不建议在循环自愈路径上依赖它（有意的预算可 --ignore A10）",
+                )
+
+
+def check_a11_expected(ctx: Ctx) -> None:
+    for node in ctx.nodes.values():
+        for _path, value in walk_key(node.data, "expected"):
+            for pattern in to_list(value):
+                if not isinstance(pattern, str):
+                    continue
+                try:
+                    re.compile(pattern)
+                except re.error as e:
+                    ctx.add(
+                        "A11-bad-regex",
+                        "error",
+                        node.file,
+                        find_line(node.file, node.name),
+                        f"{node.name}.expected 正则无法编译：{pattern!r}（{e}）",
+                    )
+                else:
+                    if BOUNDED_QUANTIFIER_RE.search(pattern):
+                        ctx.add(
+                            "A11-bounded-quantifier",
+                            "info",
+                            node.file,
+                            find_line(node.file, node.name),
+                            f"{node.name}.expected 用了有上限的量化：{pattern!r}（值域扩大后会漏配）",
+                        )
+
+
+def check_a12_focus(ctx: Ctx) -> None:
+    for node in ctx.nodes.values():
+        for _path, value in walk_key(node.data, "focus"):
+            if not isinstance(value, dict):
+                continue
+            for k in value:
+                if k not in FOCUS_KEYS:
+                    ctx.add(
+                        "A12-bad-focus-key",
+                        "error",
+                        node.file,
+                        find_line(node.file, node.name),
+                        f"{node.name}.focus 的键 {k!r} 不是合法的消息类型（schema 的 FocusTemplateMap）",
+                    )
+
+
+def check_a13_naming(ctx: Ctx) -> None:
+    generic = ctx.generic_nodes
+    # 每个文件接受的"任务前缀"：出现 ≥2 次的第一个 CamelCase 词
+    # （不看 entry 名，因为一个文件可能有 TaskBattleAuto / TaskBattleReplay 这类入口名）
+    prefixes: dict[Path, set[str]] = {}
+    by_file: dict[Path, list[str]] = {}
+    for name, info in ctx.nodes.items():
+        by_file.setdefault(info.file, []).append(name)
+    for file, names in by_file.items():
+        counts: dict[str, int] = {}
+        for name in names:
+            word = leading_word(name)
+            counts[word] = counts.get(word, 0) + 1
+        prefixes[file] = {p for p, c in counts.items() if c >= 2}
+
+    for name, info in ctx.nodes.items():
+        data = info.data
+        line = find_line(info.file, name)
+        # 旧前缀：所有文件（含 base.json）
+        for legacy in LEGACY_PREFIXES:
+            if re.match(legacy + r"[A-Z]", name):
+                ctx.add(
+                    "A13-legacy-prefix",
+                    "warn",
+                    info.file,
+                    line,
+                    f"{name} 用了旧前缀 {legacy}（naming.md §3：并入 Probe + 状态词）",
+                )
+                break
+        if info.file.name == "base.json" or name in generic:
+            continue
+        pset = prefixes.get(info.file, set())
+        suffixes = word_suffixes(name)
+        verb_after_prefix = any(s.startswith(v) for s in suffixes for v in VERBS)
+        prefixed = name.startswith("Task") or any(name.startswith(p) for p in pset)
+        legacy_hit = re.match(r"(?:" + "|".join(LEGACY_PREFIXES) + r")[A-Z]", name) is not None
+        if pset and not prefixed and not verb_after_prefix and not legacy_hit:
+            ctx.add(
+                "A13-missing-prefix",
+                "warn",
+                info.file,
+                line,
+                f"{name} 既不带本任务前缀（{', '.join(sorted(pset))}）也不符合 <动词><宾语> 形状，naming.md §1/§4",
+            )
+        has_action = "action" in data
+        is_probe = name.startswith("Probe") or "Probe" in name
+        if is_probe:
+            if has_action:
+                ctx.add(
+                    "A13-probe-action",
+                    "warn",
+                    info.file,
+                    line,
+                    f"{name} 是探测节点却有 action（naming.md §3：探测只探，动作拆出去）",
+                )
+            continue
+        if ENSURE_RE.search(name) or name.endswith("Loop"):
+            continue
+        if name.startswith(CLASS_SUFFIXES) or name.endswith(CLASS_SUFFIXES):
+            continue
+        if has_action and not verb_after_prefix:
+            ctx.add(
+                "A13-verb",
+                "warn",
+                info.file,
+                line,
+                f"{name} 是动作节点但名字里没有动词表里的词（naming.md §4），候选写法：<前缀><动词><宾语>",
+            )
+
+
+# --------------------------------------------------------------------------
+# B. interface / tasks
+# --------------------------------------------------------------------------
+
+
+def check_override_targets(ctx: Ctx, override, file: Path, label: str) -> None:
+    if not isinstance(override, dict):
+        return
+    for target, patch in override.items():
+        if target not in ctx.nodes and target not in DYNAMIC_NODES:
+            ctx.add(
+                "B5-bad-override-target",
+                "error",
+                file,
+                find_line(file, label) if label else None,
+                f"{label} 的 pipeline_override 目标 {target!r} 不是已定义节点（覆写静默失效）",
+            )
+        if isinstance(patch, dict):
+            for key in ("next", "on_error"):
+                for item in to_list(patch.get(key)):
+                    name, _jump, _enabled = parse_ref(item)
+                    if name and name not in ctx.nodes and name not in DYNAMIC_NODES:
+                        ctx.add(
+                            "B5-bad-override-target",
+                            "error",
+                            file,
+                            find_line(file, label) if label else None,
+                            f"{label} 覆写 {target}.{key} 指向未定义节点 {name!r}",
+                        )
+
+
+def check_option_shape(ctx: Ctx) -> None:
+    def one(name: str, data: dict, file: Path) -> None:
+        line = find_line(file, name)
+        cases = to_list(data.get("cases"))
+        default_case = data.get("default_case")
+        if default_case is not None and cases and isinstance(cases[0], dict):
+            if cases[0].get("name") != default_case:
+                ctx.add(
+                    "B7-default-case",
+                    "warn",
+                    file,
+                    line,
+                    f"option {name} 的 default_case={default_case!r} 与 cases[0]={cases[0].get('name')!r} 不一致；"
+                    "MFA 上 default_case 失效，默认项必须是 cases[0]",
+                )
+        for case in cases:
+            if not isinstance(case, dict):
+                continue
+            for opt in to_list(case.get("option")):
+                if opt not in ctx.options:
+                    ctx.add(
+                        "B3-bad-option",
+                        "error",
+                        file,
+                        line,
+                        f"option {name} 的 case {case.get('name')!r} 引用了不存在的 option {opt!r}",
+                    )
+            check_override_targets(ctx, case.get("pipeline_override"), file, name)
+        for item in to_list(data.get("inputs")):
+            if not isinstance(item, dict):
+                continue
+            verify = item.get("verify")
+            if isinstance(verify, str) and not (verify.startswith("^") and verify.endswith("$")):
+                ctx.add(
+                    "B7-verify-anchor",
+                    "warn",
+                    file,
+                    line,
+                    f"option {name} 的 verify={verify!r} 没有 ^...$ 收尾（编辑器与面板不会提醒，用户可能永远过不了校验）",
+                )
+
+    for name, opt in ctx.options.items():
+        one(name, opt.data, opt.file)
+    if ctx.interface:
+        for name, opt in (ctx.interface.get("option") or {}).items():
+            if isinstance(opt, dict):
+                one(name, opt, ctx.interface_file)
+
+
+def check_interface(ctx: Ctx) -> None:
+    iface = ctx.interface
+    if not iface or not ctx.interface_file:
+        return
+    file = ctx.interface_file
+    tasks = [t for t in to_list(iface.get("task")) if isinstance(t, dict)]
+    task_names = {t.get("name") for t in tasks}
+    group_names = {g.get("name") for g in to_list(iface.get("group")) if isinstance(g, dict)}
+
+    for task in tasks:
+        label = task.get("name") or "?"
+        line = find_line(file, label)
+        entry = task.get("entry")
+        if isinstance(entry, str) and entry not in ctx.nodes and entry not in DYNAMIC_NODES:
+            ctx.add("B1-bad-entry", "error", file, line, f"任务 {label!r} 的 entry {entry!r} 不是已定义节点")
+        for g in to_list(task.get("group")):
+            if g not in group_names:
+                ctx.add("B2-bad-group", "error", file, line, f"任务 {label!r} 引用了不存在的 group {g!r}")
+        for opt in to_list(task.get("option")):
+            if opt not in ctx.options:
+                ctx.add("B3-bad-option", "error", file, line, f"任务 {label!r} 引用了不存在的 option {opt!r}")
+        check_override_targets(ctx, task.get("pipeline_override"), file, label)
+
+    for path, preset in ctx.presets:
+        plabel = preset.get("name") or path.name
+        for t in to_list(preset.get("task")):
+            name = t.get("name") if isinstance(t, dict) else t
+            if isinstance(name, str) and name not in task_names:
+                ctx.add(
+                    "B6-bad-preset-task",
+                    "error",
+                    path,
+                    find_line(path, plabel),
+                    f"preset {plabel!r} 引用了不存在的任务 {name!r}",
+                )
+
+
+def check_interface_paths(ctx: Ctx) -> None:
+    iface = ctx.interface
+    if not iface or not ctx.interface_dir:
+        return
+    base = ctx.interface_dir
+    file = ctx.interface_file
+    for res in to_list(iface.get("resource")):
+        if not isinstance(res, dict):
+            continue
+        for p in to_list(res.get("path")):
+            if isinstance(p, str) and not (base / p).exists():
+                ctx.add("B8-bad-path", "error", file, find_line(file, res.get("name") or ""), f"resource 路径不存在：{p}")
+    for key in ("welcome", "doc"):
+        v = iface.get(key)
+        if isinstance(v, str) and v and not (base / v).exists():
+            ctx.add("B8-bad-path", "warn", file, None, f"{key} 指向的文件不存在：{v}")
+    for arg in to_list((iface.get("agent") or {}).get("child_args")):
+        if isinstance(arg, str) and arg.endswith(".py"):
+            if not any((c / arg).exists() for c in (base, ctx.repo_root)):
+                ctx.add(
+                    "B8-bad-path",
+                    "error",
+                    file,
+                    None,
+                    f"agent.child_args 的 {arg!r} 在 interface 目录与仓库根下都找不到",
+                )
+    for imp in ctx.import_files:
+        if not imp.exists():
+            ctx.add("B4-bad-import", "error", file, None, f"import 指向的文件不存在：{imp}")
+
+
+def check_tasks(ctx: Ctx) -> None:
+    check_option_shape(ctx)
+
+
+# --------------------------------------------------------------------------
+# C. image
+# --------------------------------------------------------------------------
+
+
+def collect_template_refs(ctx: Ctx) -> list[tuple[Path, str, str, int | None]]:
+    """(文件, 说明, 模板值, 行号)"""
+    refs: list[tuple[Path, str, str, int | None]] = []
+    for node in ctx.nodes.values():
+        for _path, value in walk_key(node.data, "template"):
+            for v in to_list(value):
+                if isinstance(v, str):
+                    refs.append((node.file, node.name, v, find_line(node.file, node.name)))
+    lit_re = re.compile(r"[\"']([A-Za-z0-9_][A-Za-z0-9_\-. ]*(?:/[A-Za-z0-9_\-. ]+)*/?)[\"']")
+    for path in ctx.agent_files:
+        lines = lines_of(path)
+        for i, line in enumerate(lines, 1):
+            for m in lit_re.finditer(line):
+                s = m.group(1)
+                if IMAGE_EXT_RE.search(s) or s.endswith("/"):
+                    refs.append((path, "agent 字面量", s, i))
+    return refs
+
+
+def check_images(ctx: Ctx) -> None:
+    if not ctx.image_roots:
+        return
+    refs = collect_template_refs(ctx)
+    used: set[Path] = set()
+    used_dirs: set[Path] = set()
+    for file, owner, value, line in refs:
+        hit = False
+        for root in ctx.image_roots:
+            target = root / value.rstrip("/")
+            if value.endswith("/"):
+                if target.is_dir():
+                    used.add(target)
+                    used_dirs.add(target)
+                    imgs = [p for p in target.iterdir() if p.is_file()]
+                    if not imgs:
+                        ctx.add("C4-empty-folder-template", "error", file, line, f"{owner} 的目录模板 {value!r} 里没有图片")
+                    hit = True
+                    break
+            elif target.is_file():
+                used.add(target)
+                hit = True
+                break
+        if not hit:
+            ctx.add("C1-missing-template", "error", file, line, f"{owner} 引用的模板不存在：{value!r}")
+
+    def is_used(path: Path) -> bool:
+        if path in used:
+            return True
+        return any(d in path.parents for d in used_dirs)
+
+    for path in list_images(ctx.image_roots):
+        rel = None
+        for root in ctx.image_roots:
+            try:
+                rel = path.relative_to(root)
+            except ValueError:
+                continue
+            break
+        if rel is None:
+            continue
+        if not IMAGE_EXT_RE.search(path.name):
+            ctx.add("C3-non-png", "warn", path, None, f"image 目录下有非 png 文件：{rel}")
+        if not is_used(path):
+            ctx.add("C2-unused-image", "info", path, None, f"没有被任何 pipeline/agent 引用的图片：{rel}")
+        if not re.fullmatch(r"[A-Z][A-Za-z0-9]*", path.stem):
+            ctx.add(
+                "C5-image-name",
+                "warn",
+                path,
+                None,
+                f"模板元素名不是英文 CamelCase（naming.md §8）：{rel}",
+            )
+
+
+# --------------------------------------------------------------------------
+# D. agent
+# --------------------------------------------------------------------------
+
+
+def check_agent(ctx: Ctx) -> None:
+    local = {p.stem: p for p in ctx.agent_files if p.suffix == ".py"}
+    graph: dict[str, set[str]] = {}
+    for name, path in local.items():
+        deps: set[str] = set()
+        for line in lines_of(path):
+            m = re.match(r"\s*from\s+([A-Za-z_]\w*)\s+import\b", line)
+            if m:
+                deps.add(m.group(1))
+                continue
+            m = re.match(r"\s*import\s+([A-Za-z_][\w, ]*)", line)
+            if m:
+                for part in m.group(1).split(","):
+                    deps.add(part.strip().split(" as ")[0].strip())
+        graph[name] = {d for d in deps if d in local}
+
+    reachable: set[str] = set()
+    stack = [d for d in graph.get("main", set())]
+    while stack:
+        cur = stack.pop()
+        if cur in reachable:
+            continue
+        reachable.add(cur)
+        stack.extend(graph.get(cur, set()))
+    for name, path in local.items():
+        if name == "main":
+            continue
+        if name not in reachable:
+            ctx.add(
+                "D1-unimported-module",
+                "error",
+                path,
+                None,
+                f"agent/{name}.py 没有被 main.py 导入（装饰器不执行 -> 注册不生效）",
+            )
+
+    for name, reg in ctx.regs.items():
+        want = "Reco" if reg.kind == "recognition" else "Act"
+        if not name.endswith(want):
+            ctx.add(
+                "D2-registration-suffix",
+                "warn",
+                reg.file,
+                reg.line,
+                f"注册名 {name!r} 后缀不是 {want}（naming.md §7）",
+            )
+        if reg.cls and reg.cls != name:
+            ctx.add(
+                "D2-class-name",
+                "warn",
+                reg.file,
+                reg.line,
+                f"注册名 {name!r} 与类名 {reg.cls!r} 不一致（naming.md §7）",
+            )
+
+
+# --------------------------------------------------------------------------
+# 自检
+# --------------------------------------------------------------------------
+
+
+def self_test() -> int:
+    checks = [
+        (parse_ref("[JumpBack]Foo")[:2] == ("Foo", True), "parse_ref 字符串 + JumpBack"),
+        (parse_ref({"name": "Bar", "max_hit": 1})[:2] == ("Bar", False), "parse_ref 对象"),
+        (parse_ref({"recognition": "OCR"})[0] is None, "parse_ref 内联定义"),
+        (always_hit({}) and always_hit({"recognition": "DirectHit"}), "always_hit DirectHit"),
+        (not always_hit({"recognition": "OCR"}), "always_hit 非 DirectHit"),
+        (
+            complement_of({"recognition": "And", "inverse": True, "all_of": ["Z"]}) == "Z",
+            "complement_of",
+        ),
+        (complement_of({"recognition": "And", "all_of": ["Z"]}) is None, "complement_of 非取反"),
+        (
+            strip_jsonc_comments('{"a": 1, // x\n "b": "// not comment"}')
+            == '{"a": 1, \n "b": "// not comment"}',
+            "strip_jsonc_comments",
+        ),
+        ([v for _p, v in walk_key({"x": {"template": ["a.png"]}}, "template")] == [["a.png"]], "walk_key 嵌套"),
+        (re.fullmatch(r"[A-Z][A-Za-z0-9]*", "BattleButton") is not None, "CamelCase 判定"),
+    ]
+    bad = [name for ok, name in checks if not ok]
+    if bad:
+        for name in bad:
+            print(f"self-test FAIL: {name}")
+        return 1
+    print(f"self-test ok（{len(checks)} 项）")
+    return 0
+
+
+# --------------------------------------------------------------------------
+# main
+# --------------------------------------------------------------------------
+
+
+def build_ctx(args) -> Ctx:
+    repo_root = Path(__file__).resolve().parents[1]
+    ctx = Ctx(repo_root=repo_root)
+
+    interface_path = Path(args.interface).resolve() if args.interface else repo_root / "assets" / "interface.json"
+    if interface_path.is_file():
+        ctx.interface_file = interface_path
+        ctx.interface_dir = interface_path.parent
+        try:
+            data = load_jsonc(interface_path)
+            if isinstance(data, dict):
+                ctx.interface = data
+            else:
+                ctx.add("B0-parse-error", "error", interface_path, None, "interface.json 顶层必须是对象")
+        except Exception as e:  # noqa: BLE001
+            ctx.add("B0-parse-error", "error", interface_path, None, f"JSONC 解析失败：{e}")
+    elif args.interface:
+        ctx.add("B0-parse-error", "error", Path(args.interface), None, "--interface 指定的文件不存在")
+
+    pipeline_dirs: list[Path] = []
+    task_dirs: list[Path] = []
+    image_dirs: list[Path] = []
+
+    if ctx.interface and ctx.interface_dir:
+        base = ctx.interface_dir
+        for res in to_list(ctx.interface.get("resource")):
+            if not isinstance(res, dict):
+                continue
+            for p in to_list(res.get("path")):
+                if not isinstance(p, str):
+                    continue
+                root = (base / p).resolve()
+                if (root / "pipeline").is_dir():
+                    pipeline_dirs.append(root / "pipeline")
+                if (root / "tasks").is_dir():
+                    task_dirs.append(root / "tasks")
+                if (root / "image").is_dir():
+                    image_dirs.append(root / "image")
+        for imp in to_list(ctx.interface.get("import")):
+            if isinstance(imp, str):
+                ctx.import_files.append((base / imp).resolve())
+        for arg in to_list((ctx.interface.get("agent") or {}).get("child_args")):
+            if isinstance(arg, str) and arg.endswith(".py"):
+                # 源码树里 interface 在 assets/ 下、agent 在仓库根下，打包后才同层，两个基准都试
+                for cand in (base / arg, repo_root / arg):
+                    if cand.is_file():
+                        ctx.agent_files = sorted(cand.parent.glob("*.py"))
+                        break
+                if ctx.agent_files:
+                    break
+
+    # 显式参数（追加扫描范围；同时作为"只报这些路径"的过滤条件）
+    ctx.explicit = {
+        "pipeline": [Path(p).resolve() for p in to_list(args.pipeline)],
+        "tasks": [Path(p).resolve() for p in to_list(args.tasks)],
+        "agent": [Path(p).resolve() for p in to_list(args.agent)],
+        "image": [Path(p).resolve() for p in to_list(args.image)],
+    }
+    for extra in ctx.explicit["pipeline"]:
+        pipeline_dirs.append(extra)
+    for extra in ctx.explicit["tasks"]:
+        task_dirs.append(extra)
+    for extra in ctx.explicit["image"]:
+        image_dirs.append(extra)
+    explicit_agent: list[Path] = []
+    for p in ctx.explicit["agent"]:
+        explicit_agent.extend(sorted(p.glob("*.py")) if p.is_dir() else [p])
+    if explicit_agent:
+        ctx.agent_files = explicit_agent
+
+    # 兜底默认布局
+    if not pipeline_dirs and not args.pipeline:
+        d = repo_root / "assets" / "resource" / "pipeline"
+        if d.is_dir():
+            pipeline_dirs.append(d)
+    if not task_dirs and not args.tasks:
+        d = repo_root / "assets" / "resource" / "tasks"
+        if d.is_dir():
+            task_dirs.append(d)
+    if not image_dirs and not args.image:
+        d = repo_root / "assets" / "resource" / "image"
+        if d.is_dir():
+            image_dirs.append(d)
+    if not ctx.agent_files and not args.agent:
+        d = repo_root / "agent"
+        if d.is_dir():
+            ctx.agent_files = sorted(d.glob("*.py"))
+
+    ctx.image_roots = image_dirs
+
+    # 载入
+    if pipeline_dirs or args.pipeline:
+        load_pipeline(ctx, iter_json_files(pipeline_dirs))
+    task_files = iter_json_files(task_dirs) if task_dirs else []
+    if task_files:
+        load_tasks(ctx, task_files)
+    if ctx.agent_files:
+        load_agents(ctx, ctx.agent_files)
+    return ctx
+
+
+def domain_enabled(args) -> dict[str, bool]:
+    given = {
+        "interface": args.interface is not None,
+        "pipeline": args.pipeline is not None,
+        "tasks": args.tasks is not None,
+        "agent": args.agent is not None,
+        "image": args.image is not None,
+    }
+    if not any(given.values()):
+        return {k: True for k in given}
+    return given
+
+
+def report(ctx: Ctx, fmt: str, fail_on: str, ignores: set[str]) -> int:
+    def in_scope(f: Finding) -> bool:
+        """显式给了某域的路径时，只报落在这些路径里的发现（扫描范围仍是全树，保证引用可解析）。"""
+        dom = {"A": "pipeline", "C": "image", "D": "agent"}.get(f.id[:1])
+        paths = ctx.explicit.get(dom, []) if dom else []
+        if not paths:
+            return True
+        fp = Path(f.file)
+        for p in paths:
+            if p.is_dir():
+                try:
+                    fp.relative_to(p)
+                    return True
+                except ValueError:
+                    continue
+            elif fp == p:
+                return True
+        return False
+
+    findings = [f for f in ctx.findings if f.id not in ignores and in_scope(f)]
+    findings.sort(key=lambda f: (f.file, f.line or 0, SEVERITY_ORDER.get(f.severity, 9), f.id))
+    counts = {s: 0 for s in SEVERITY_ORDER}
+    for f in findings:
+        counts[f.severity] = counts.get(f.severity, 0) + 1
+
+    if fmt == "json":
+        print(
+            json.dumps(
+                {
+                    "findings": [f.__dict__ for f in findings],
+                    "counts": counts,
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+    elif fmt == "github":
+        for f in findings:
+            level = {"error": "error", "warn": "warning", "info": "notice"}.get(f.severity, "notice")
+            loc = f"file={f.file}" + (f",line={f.line}" if f.line else "")
+            print(f"::{level} {loc},title={f.id}::{f.message}")
+        print(f"::notice::validate_refs: error {counts['error']} / warn {counts['warn']} / info {counts['info']}")
+    else:
+        cur = None
+        for f in findings:
+            if f.file != cur:
+                cur = f.file
+                print(f"\n{cur}")
+            loc = f":{f.line}" if f.line else ""
+            print(f"  [{f.severity.upper():5}] {f.id:<28}{loc} {f.message}")
+        print(f"\nerror {counts['error']} / warn {counts['warn']} / info {counts['info']}")
+
+    threshold = {"error": 0, "warn": 1, "info": 2, "none": 99}.get(fail_on, 0)
+    worst = min((SEVERITY_ORDER.get(f.severity, 9) for f in findings), default=99)
+    return 1 if worst <= threshold else 0
+
+
+def _ensure_printable_stdout() -> None:
+    """重定向（CI、管道）时按 UTF-8 输出；真控制台交给 Python 的控制台 API。
+
+    Windows 上管道默认是 GBK（`sys.stdout.encoding == "gbk"`），而读端（PowerShell 7、
+    GitHub Actions）按 UTF-8 解，会出现乱码；反过来在真控制台上强行改编码也会花。
+    """
+    if sys.stdout is None:
+        return
+    try:
+        if sys.stdout.isatty():
+            return
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def main(argv: list[str] | None = None) -> int:
+    _ensure_printable_stdout()
+
+    parser = argparse.ArgumentParser(description="资源一致性校验（跨文件名字与约定）")
+    parser.add_argument("--interface", help="interface.json 路径")
+    parser.add_argument("--pipeline", action="append", help="pipeline 目录/文件（可重复）")
+    parser.add_argument("--tasks", action="append", help="tasks 目录（可重复）")
+    parser.add_argument("--agent", action="append", help="agent 目录（可重复）")
+    parser.add_argument("--image", action="append", help="image 根目录（可重复）")
+    parser.add_argument("--format", choices=["text", "github", "json"], default="text")
+    parser.add_argument("--fail-on", choices=["error", "warn", "info", "none"], default="error")
+    parser.add_argument("--ignore", action="append", default=[], help="忽略的检查 id，逗号分隔，可重复")
+    parser.add_argument("--self-test", action="store_true", help="跑内置自检后退出")
+    args = parser.parse_args(argv)
+
+    if args.self_test:
+        return self_test()
+
+    domains = domain_enabled(args)
+    ctx = build_ctx(args)
+
+    if domains["pipeline"]:
+        check_a1_dangling(ctx)
+        check_a2_custom(ctx)
+        check_a3_custom_mapping(ctx)
+        check_a4_shadowed(ctx)
+        check_a5_spin_trap(ctx)
+        check_a6_complement(ctx)
+        check_a7_jumpback(ctx)
+        check_a8_loop_guard(ctx)
+        check_a9_ensure(ctx)
+        check_a10_maxhit_in_loop(ctx)
+        check_a11_expected(ctx)
+        check_a12_focus(ctx)
+        check_a13_naming(ctx)
+    if domains["interface"]:
+        check_interface(ctx)
+        check_interface_paths(ctx)
+    if domains["tasks"]:
+        check_tasks(ctx)
+    if domains["agent"]:
+        check_agent(ctx)
+    if domains["image"]:
+        check_images(ctx)
+
+    ignores = {i.strip() for group in args.ignore for i in group.split(",") if i.strip()}
+    return report(ctx, args.format, args.fail_on, ignores)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

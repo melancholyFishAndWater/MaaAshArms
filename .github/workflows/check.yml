@@ -44,3 +44,9 @@ jobs:
         run: |
           python -m pip install jsonschema==4.26.0 referencing==0.37.0
           python tools/validate_schema.py --schema-dir deps/tools --resource-dirs assets/resource --exclude-dirs assets/resource/announcement assets/resource/tasks --interface-files assets/interface.json --task-dirs assets/resource/tasks
+
+      # 跨文件的名字与约定（注册名/节点引用/模板引用/override 目标/命名规范）。
+      # 纯标准库，不需要装包；error 才算失败。
+      - name: Validate references and conventions
+        run: |
+          python tools/validate_refs.py --format github
