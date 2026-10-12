@@ -90,6 +90,10 @@ class TrainingGetStatusReco(CustomRecognition):
             # 追加
             done_targets.append(name)
 
+        # 日志
+        if len(done_targets) > 0:
+            log.info(f"识别到以下关卡完成: {", ".join(done_targets)}")
+
         # 校验
         if len(done_targets) != len(r.filtered_results):
             log.warn(
