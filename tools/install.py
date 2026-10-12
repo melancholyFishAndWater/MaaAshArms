@@ -254,6 +254,10 @@ def install_chores():
         working_dir / "LICENSE",
         install_path,
     )
+    shutil.copy2(
+        working_dir / "assets" / "logo.ico",
+        install_path / "logo.ico",
+    )
 
 
 def install_agent():
@@ -292,7 +296,9 @@ def strip_agent_native_runtime(installed: Path) -> None:
             shutil.rmtree(bin_dir, ignore_errors=True)
             removed.append(bin_dir)
     if not removed:
-        sys.exit("install/python 下没找到 site-packages/maa/bin：MaaFw 的 wheel 布局可能变了")
+        sys.exit(
+            "install/python 下没找到 site-packages/maa/bin：MaaFw 的 wheel 布局可能变了"
+        )
 
 
 def ensure_agent_native_plugins_dir(installed: Path) -> None:

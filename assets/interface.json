@@ -5,6 +5,7 @@
     // 示例：https://github.com/MaaXYZ/MaaFramework/blob/main/sample/interface.json
     "interface_version": 2,
     "name": "MaaAshArms",
+    "icon": "logo.ico",
     "description": "这是一个使用 MaaFramework 创建的新项目。",
     "contact": "QQ群: 1128946439",
     "license": "MIT",
