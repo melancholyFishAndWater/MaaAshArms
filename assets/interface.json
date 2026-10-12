@@ -172,7 +172,7 @@
             "pipeline_override": {
                 "BattleWinSuccess": {
                     "next": [
-                        "TrainingDailyUpdate"
+                        "TrainingBattleWin"
                     ]
                 }
             }

@@ -25,6 +25,10 @@ from base import parse_attach, parse_params, toTuple, log, DEFAULT_HIT_BOX
 _all = ["战斗演习", "狩猎行动", "拓展训练", "资源筹备"]
 # 要进行的训练所关卡名: 难度
 battle_targets: dict[str, str] = {}
+# 完成的关卡
+done_targets: list[str] = []
+# 当前关卡名
+_current_level_name: str = ""
 
 
 # ---------- Reco ----------
@@ -58,7 +62,6 @@ class TrainingGetStatusReco(CustomRecognition):
             return DEFAULT_HIT_BOX
 
         # 获取已完成的关卡
-        done_targets: list[str] = []
         for i in r.filtered_results:
             assert type(i) == TemplateMatchResult
 
@@ -110,7 +113,7 @@ class TrainingGetStatusReco(CustomRecognition):
         return DEFAULT_HIT_BOX
 
 
-# 识别目标关卡 返回box表示全部完成
+# 判断是否可以结束 返回box表示全部完成
 @AgentServer.custom_recognition("TrainingCheckEndReco")
 class TrainingCheckEndReco(CustomRecognition):
     def analyze(
@@ -123,56 +126,9 @@ class TrainingCheckEndReco(CustomRecognition):
         | tuple[int, int, int, int]
         | None
     ):
-        node_name = argv.node_name
-
-        # 识别 0/1 即没有次数、完成的关卡
-        tm_r = context.run_recognition_direct(
-            JRecognitionType.TemplateMatch,
-            JTemplateMatch(["Battle/BattleTraining/01.png"], roi=(192, 524, 900, 68)),
-            argv.image,
-        )
-        if tm_r is None or not tm_r.hit:
-            log.debug(f"{node_name} 识别 0/1 失败")
-            return
-
-        # 完成数量不够，直接返回
-        if len(tm_r.filtered_results) < len(battle_targets):
-            log.debug(
-                f"{node_name} 识别到完成关卡数量不足: {len(tm_r.filtered_results)} < {len(battle_targets)}"
-            )
-            return
-
-        # 目标关卡数足够，任务结束
-        if len(tm_r.filtered_results) == 4:
-            log.debug(f"{node_name} 识别到完成关卡已达 4 个 任务结束")
-            return DEFAULT_HIT_BOX
-
-        # 遍历识别所有没有次数的关卡 找到目标关卡
-        targets_done_count = 0
-        for i in tm_r.filtered_results:
-            assert type(i) == TemplateMatchResult
-
-            # 识别关卡名字
-            ocr_r = context.run_recognition_direct(
-                JRecognitionType.OCR,
-                JOCR(
-                    list(battle_targets.keys()),
-                    roi=toTuple(i.box),
-                    roi_offset=(-63, -243, 126, 42),
-                ),
-                argv.image,
-            )
-            if ocr_r is None or not ocr_r.hit:
-                log.debug(
-                    f"{node_name} 识别关卡名字失败 但只要不是连续4次就是符合预期的"
-                )
-                continue
-            targets_done_count += 1
-
-        # 目标关卡数足够，任务结束
-        if targets_done_count == len(battle_targets):
-            log.debug(f"{node_name} 完成关卡已达 {battle_targets} 个 任务结束")
-            return DEFAULT_HIT_BOX
+        if len(done_targets) >= len(battle_targets):
+            if all((i in done_targets for i in battle_targets)):
+                return DEFAULT_HIT_BOX
 
 
 # 识别关卡名 返回还有挑战次数的关卡名字box
@@ -185,6 +141,7 @@ class TrainingEnterOneReco(CustomRecognition):
         self, context: Context, argv: CustomRecognition.AnalyzeArg
     ) -> Rect | None:
         # 提取变量
+        global _current_level_name
         n_name = argv.node_name
 
         # 识别关卡是否还有剩余次数
@@ -223,7 +180,8 @@ class TrainingEnterOneReco(CustomRecognition):
             if name is None:
                 log.debug(f"{n_name} 识别到的关卡名无法匹配: {b_r2.text}")
                 continue
-            level = battle_targets.get(name)
+            level = battle_targets["name"]
+            _current_level_name = level
 
             # 覆写
             context.override_pipeline(
@@ -305,4 +263,17 @@ class TrainingInitAct(CustomAction):
             context.run_action_direct(JActionType.StopTask, JStopTask())
             return True
 
+        return True
+
+
+# 战斗胜利 追加完成关卡
+@AgentServer.custom_action("TrainingBattleWinAct")
+class TrainingBattleWinAct(CustomAction):
+    def run(
+        self, context: Context, argv: CustomAction.RunArg
+    ) -> CustomAction.RunResult | bool:
+        if _current_level_name not in _all:
+            log.ferror(f"{argv.node_name} 非法的关卡名字")
+            return False
+        done_targets.append(_current_level_name)
         return True

@@ -153,6 +153,14 @@
         ],
         "post_wait_freezes": 2000
     },
+    "TrainingBattleWin": {
+        "desc": "训练所战斗胜利",
+        "action": "Custom",
+        "custom_action": "TrainingBattleWinAct",
+        "next": [
+            "TrainingDailyUpdate"
+        ]
+    },
     // INFO 更新每日一次
     "TrainingDailyUpdate": {
         "desc": "更新每日一次",
