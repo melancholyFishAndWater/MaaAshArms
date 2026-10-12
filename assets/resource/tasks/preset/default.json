@@ -5,7 +5,7 @@
             "label": "默认",
             "task": [
                 {
-                    "name": "StarUp"
+                    "name": "StartUp"
                 },
                 {
                     "name": "Friend"
