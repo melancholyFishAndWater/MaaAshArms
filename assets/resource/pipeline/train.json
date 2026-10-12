@@ -392,7 +392,7 @@
         "custom_action": "TrainBusyAct"
     },
     // INFO 判断节点
-    "TrainIsInHome": {
+    "TrainIsHome": {
         "desc": "在主页面",
         "recognition": "OCR",
         "expected": "路线一览",
