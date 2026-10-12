@@ -55,8 +55,12 @@
         "custom_action": "TrainingInitAct"
     },
     "TrainingEnsureHome": {
-        "desc": "[jp][max] 确保在训练所主页面",
-        "max_hit": 3,
+        "desc": "[jp] 确保在训练所主页面",
+        "recognition": "And",
+        "all_of": [
+            "TrainingProbeHome"
+        ],
+        "inverse": true,
         "rate_limit": 2000,
         "timeout": 30000,
         "next": [
