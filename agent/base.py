@@ -74,6 +74,35 @@ def parse_params(raw: str | None, *required_keys: str) -> dict[str, Any]:
     return params
 
 
+def parse_attach(
+    context: Context,
+    argv: CustomRecognition.AnalyzeArg | CustomAction.RunArg,
+    *required_keys: str,
+) -> dict[str, Any]:
+    """获取节点自身的 attach
+
+    可选校验必填字段
+
+    Args:
+        context (Context): 上下文
+        argv (CustomRecognition.AnalyzeArg | CustomAction.RunArg): 参数
+
+    Raises:
+        ValueError: 缺少必填字段
+
+    Returns:
+        dict[str, Any]: 校验过的 attach 字典
+    """
+    attach: dict[str, str] = (context.get_node_data(argv.node_name) or {}).get(
+        "attach", {}
+    )
+    if required_keys:
+        missing = [k for k in required_keys if k not in attach]
+        if missing:
+            raise ValueError(f"缺少必填字段: {missing}")
+    return attach
+
+
 # ---------- Log ----------
 
 
