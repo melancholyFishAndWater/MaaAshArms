@@ -14,7 +14,7 @@ from maa.context import (
 from maa.pipeline import JActionType, JStopTask, JTemplateMatch, JOCR
 from numpy import ndarray, dtype
 
-from base import toTuple, log, DEFAULT_HIT_BOX
+from base import parse_attach, toTuple, log, DEFAULT_HIT_BOX
 
 # 总关卡名
 _all = ["战斗演习", "狩猎行动", "拓展训练", "资源筹备"]
@@ -215,24 +215,29 @@ class TaskTrainingAct(CustomAction):
     def run(
         self, context: Context, argv: CustomAction.RunArg
     ) -> CustomAction.RunResult | bool:
+        global battle_targets
         try:
-            # 提取参数
-            global battle_targets
-            attach: dict[str, str] = (context.get_node_data(argv.node_name) or {}).get(
-                "attach", {}
-            )
-
-            battle_targets.clear()
-            battle_targets.update({k: v for k, v in attach.items() if v != "不进行"})
-            if len(battle_targets) == 0:
-                log.info(f"{argv.node_name} 未选择任何训练所关卡，任务结束")
-                context.run_action_direct(JActionType.StopTask, JStopTask())
-                return False
-            # 设置结束需要识别的数量
-            context.override_pipeline(
-                {"TrainingEnd": {"index": len(battle_targets) - 1}}
-            )
-            return True
+            attach = parse_attach(context, argv)
         except Exception as e:
             log.error(f"{argv.node_name} 参数解析失败: {e}")
             return False
+
+        battle_targets.clear()
+        battle_targets.update({k: v for k, v in attach.items() if v != "不进行"})
+        if len(battle_targets) == 0:
+            log.info(f"{argv.node_name} 未选择任何训练所关卡，任务结束")
+            context.run_action_direct(JActionType.StopTask, JStopTask())
+            return True
+
+        # 设置结束需要识别的数量
+        times = len(battle_targets) - 1
+        r = context.override_pipeline(
+            {
+                "TrainingEnd": {"index": times},
+                "TrainingEnterOne": {"max_hit": times},
+            }
+        )
+        if not r:
+            log.error(f"{argv.node_name} 覆写失败，防止卡死任务终止")
+            return False
+        return True

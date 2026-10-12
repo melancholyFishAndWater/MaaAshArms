@@ -90,7 +90,7 @@
     "TrainingLoop": {
         "desc": "训练所主循环",
         "next": [
-            "[JumpBack]TrainingEnterOne", // TODO max_hit始终为4 
+            "[JumpBack]TrainingEnterOne",
             "TrainingEnd",
             "[JumpBack]TrainingEnterHome", // 防止返回按钮点过头
             "[JumpBack]BackButton",
