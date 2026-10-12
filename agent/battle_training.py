@@ -23,10 +23,10 @@ from base import parse_attach, parse_params, toTuple, log, DEFAULT_HIT_BOX
 
 # 总关卡名
 _all = ["战斗演习", "狩猎行动", "拓展训练", "资源筹备"]
-# 要进行的训练所关卡名: 难度
+# 要进行的训练所关卡名: 难度 存储模块使用
 battle_targets: dict[str, str] = {}
 # 完成的关卡
-done_targets: list[str] = []
+_done_targets: list[str] = []
 # 当前关卡名
 _current_level_name: str = ""
 
@@ -49,7 +49,7 @@ class TrainingGetStatusReco(CustomRecognition):
         | None
     ):
         # 提取变量
-        n_name = argv.node_name
+        node_name = argv.node_name
 
         # 识别关卡
         r = context.run_recognition_direct(
@@ -58,7 +58,7 @@ class TrainingGetStatusReco(CustomRecognition):
             argv.image,
         )
         if r is None or not r.hit:
-            log.debug(f"{n_name} 识别关卡剩余次数失败，可能未进行过战斗")
+            log.debug(f"{node_name} 识别关卡剩余次数失败，可能未进行过战斗")
             return DEFAULT_HIT_BOX
 
         # 获取已完成的关卡
@@ -76,7 +76,7 @@ class TrainingGetStatusReco(CustomRecognition):
                 argv.image,
             )
             if r2 is None or not r2.hit:
-                log.debug(f"{n_name} 识别关卡名字失败")
+                log.debug(f"{node_name} 识别关卡名字失败")
                 continue
             b_r2 = r2.best_result
             assert type(b_r2) == OCRResult
@@ -84,29 +84,29 @@ class TrainingGetStatusReco(CustomRecognition):
             # 提取关卡信息
             name = next((k for k in _all if k in b_r2.text), None)
             if name is None:
-                log.debug(f"{n_name} 识别到的关卡名无法匹配: {b_r2.text}")
+                log.debug(f"{node_name} 识别到的关卡名无法匹配: {b_r2.text}")
                 continue
 
             # 追加
-            done_targets.append(name)
+            _done_targets.append(name)
 
         # 日志
-        if len(done_targets) > 0:
-            log.info(f"识别到以下关卡完成: {", ".join(done_targets)}")
+        if len(_done_targets) > 0:
+            log.info(f"识别到以下关卡完成: {", ".join(_done_targets)}")
 
         # 校验
-        if len(done_targets) != len(r.filtered_results):
+        if len(_done_targets) != len(r.filtered_results):
             log.warn(
-                f"{n_name} 识别到的训练所关卡名数量与相应的状态数量不匹配，可能会出现非预期的情况。名字数 {len(done_targets)} / 状态数 {len(r.filtered_results)}"
+                f"{node_name} 识别到的训练所关卡名数量与相应的状态数量不匹配，可能会出现非预期的情况。名字数 {len(_done_targets)} / 状态数 {len(r.filtered_results)}"
             )
 
         # 准备写入更新 尝试覆写
-        if len(done_targets) > 0:
-            times = len([i for i in battle_targets if i not in done_targets])
+        if len(_done_targets) > 0:
+            times = len([i for i in battle_targets if i not in _done_targets])
             dic = {
                 argv.node_name: {"next": ["TrainingDailyUpdate"]},
                 "TrainingDailyUpdate": {
-                    "custom_action_param": {"name": done_targets},
+                    "custom_action_param": {"name": _done_targets},
                     "next": ["TaskStop"] if times == 0 else [],
                 },
             }
@@ -130,8 +130,8 @@ class TrainingCheckEndReco(CustomRecognition):
         | tuple[int, int, int, int]
         | None
     ):
-        if len(done_targets) >= len(battle_targets):
-            if all((i in done_targets for i in battle_targets)):
+        if len(_done_targets) >= len(battle_targets):
+            if all((i in _done_targets for i in battle_targets)):
                 return DEFAULT_HIT_BOX
 
 
@@ -146,7 +146,7 @@ class TrainingEnterOneReco(CustomRecognition):
     ) -> Rect | None:
         # 提取变量
         global _current_level_name
-        n_name = argv.node_name
+        node_name = argv.node_name
 
         # 识别关卡是否还有剩余次数
         r = context.run_recognition_direct(
@@ -155,7 +155,7 @@ class TrainingEnterOneReco(CustomRecognition):
             argv.image,
         )
         if r is None or not r.hit:
-            log.debug(f"{n_name} 识别关卡剩余次数失败")
+            log.debug(f"{node_name} 识别关卡剩余次数失败")
             return
 
         # 遍历识别还有次数的关卡名
@@ -174,7 +174,7 @@ class TrainingEnterOneReco(CustomRecognition):
                 argv.image,
             )
             if r2 is None or not r2.hit:
-                log.debug(f"{n_name} 识别关卡名字失败")
+                log.debug(f"{node_name} 识别关卡名字失败")
                 continue
             b_r2 = r2.best_result
             assert type(b_r2) == OCRResult
@@ -182,7 +182,7 @@ class TrainingEnterOneReco(CustomRecognition):
             # 提取关卡信息
             name = next((k for k in battle_targets if k in b_r2.text), None)
             if name is None:
-                log.debug(f"{n_name} 识别到的关卡名无法匹配: {b_r2.text}")
+                log.debug(f"{node_name} 识别到的关卡名无法匹配: {b_r2.text}")
                 continue
             level = battle_targets["name"]
             _current_level_name = level
@@ -279,5 +279,5 @@ class TrainingBattleWinAct(CustomAction):
         if _current_level_name not in _all:
             log.ferror(f"{argv.node_name} 非法的关卡名字")
             return False
-        done_targets.append(_current_level_name)
+        _done_targets.append(_current_level_name)
         return True
