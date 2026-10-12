@@ -162,6 +162,8 @@ class Store(Generic[T]):
     def reco(
         self, context: Context, argv: CustomRecognition.AnalyzeArg
     ) -> list[int] | None:
+        """若今日没执行过，返回非 None"""
+
         # 校验日期
         self._ensure_today()
 
