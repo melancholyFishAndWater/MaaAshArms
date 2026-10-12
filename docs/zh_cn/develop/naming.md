@@ -1,6 +1,6 @@
 # 命名规范
 
-本文约束 pipeline 节点名、agent 侧注册名与参数键的写法。改节点名、加新节点、拆分子任务时按本文执行；命名规则看第三节（动作节点）与第六节（判据节点）。
+本文约束 pipeline 节点名、agent 侧注册名与参数键的写法。改节点名、加新节点、拆分子任务时按本文执行；命名规则看第三节（动作节点）与第六节（探测节点）。
 
 本文只讲命名。节点该配哪些字段请看 [MaaFramework 文档](https://maafw.com/docs/1.1-QuickStarted)；文中引用的 `.agents/` 路径是本机开发笔记（该目录不入库），没有这些文件时按源码与本文为准。
 
@@ -18,18 +18,20 @@
 | --- | --- | --- |
 | 任务入口 | `Task<任务名>` | `TaskEntrust`、`TaskFactory`、`TaskReplays` |
 | 动作节点 | `<任务前缀><动词><宾语>` | `EscortClickOk`、`FactoryChooseNumber` |
-| 状态/判据节点 | `<任务前缀>Is<状态或页面>` / `<任务前缀>Has<元素>` | `EscortIsHome`、`TrainIsAcceptable`、`TrainingHasHomeName` |
+| 探测节点 | `<任务前缀>Probe<页面/状态/元素>` | `EscortProbeHome`、`TrainProbeAcceptable`、`TrainingProbeHomeName` |
 | 子过程入口 | `<任务前缀>Enter<页面>` / `<任务前缀>Init` | `EnterMaintenance`、`EntrustInit` |
 | 出口节点 | `<任务前缀><Exit/End/Success/Failed>` | `EscortClickOkEnd`、`FactoryGetRewardFailed` |
 | 日常门控 | `<任务前缀>CheckDaily` / `<任务前缀>DailyUpdate` | `EntrustCheckDaily`、`GiftDailyUpdate` |
 
 ## 三、动词表（动作节点）
 
+节点分两层：**探测节点**（第六节，只读、无 `action`）和**动作节点**（本节，名字以动词开头、有 `action`）。以 `Probe` 开头的节点永远是探测层，其余前缀按本节选词。
+
 动作节点名必须以本节列出的动词之一开头，宾语写界面上那个东西叫什么。`Click` / `Choose` / `Enter` 三者互斥，判定按下表从上往下走，先命中先算：
 
 | 顺序 | 判据 | 用 |
 | --- | --- | --- |
-| 1 | 点完**离开当前页面**（`next` 里出现新页面的判据节点，如 `*IsHome`） | `Enter` |
+| 1 | 点完**离开当前页面**（`next` 里出现新页面的探针，如 `*ProbeHome`） | `Enter` |
 | 2 | 点完留在本页，只改变选中态（数量、排序、选了哪一项），可反复换 | `Choose` |
 | 3 | 其余：提交、执行、领取、关闭弹窗 | `Click` |
 
@@ -76,17 +78,15 @@
 ```text
 主线篇章（EntrustEnterMainLine，OCR"主线篇章"）
 └── 章节（EntrustNextChapter，点"下一章"翻页）
-    └── 大关（EntrustIsStage，如"结晶废墟"）
-        └── 小关（EntrustIsLevel，匹配数字）
+    └── 大关（EntrustProbeStage，如"结晶废墟"）
+        └── 小关（EntrustProbeLevel，匹配数字）
 ```
 
 | 层级 | 节点名用 | 参数键用 |
 | --- | --- | --- |
 | 章节 | `Chapter`（`EntrustNextChapter`） | — |
-| 大关 | `Stage`（`EntrustIsStage`） | `stage_name` |
-| 小关 | `Level`（`EntrustIsLevel`） | `level` |
-
-代码里这两个节点的现名是 `EntrustChooseStage` / `EntrustChooseLevel`（点完会离开主页面，按第六节应改名为 `EntrustIsStage` / `EntrustIsLevel` 并补上各自的动作节点）。
+| 大关 | `Stage`（`EntrustProbeStage`） | `stage_name` |
+| 小关 | `Level`（`EntrustProbeLevel`） | `level` |
 
 新任务出现类似层级时沿用这套词：`Chapter` / `Stage` / `Level` 分别指章节、大关、小关，不要写 `Section`、`Part`、`SubLevel` 之类的同义词。
 
@@ -95,20 +95,25 @@
 - 宾语与界面文字对齐（`确认` → `ClickOk`、`取消` → `ClickCancel`、`完成` → `ClickFinish`）。
 - 同一个按钮在不同任务里叫法保持一致：`ClickOk`、`EscortClickOk`、`FactoryClickSkipOk`；不要出现 `ClickYes` 这类同义写法。
 - 循环重试节点，靠 `desc` 里的 `[Loop]` 标记，例如 `"desc": "[Loop] 点击出击按钮 即使是灰色的"`。
-- 出口/收尾节点在名字里标出性质：`*End`（链结束）、`*Success`（动作生效）、`*Failed`（失败分支）。成功探针节点用 `And all_of [<被探针节点>] + inverse` 时，名字取 `<被探针节点>Success`，例如 `EntrustClickFinishSuccess`。失败分支统一 `*Failed`（历史遗留的 `EscortClickOkFail` 可择机改）。
+- 出口/收尾节点在名字里标出性质：`*End`（链结束）、`*Success`（动作生效）、`*Failed`（失败分支）。成功探针节点用 `And all_of [<被探针节点>] + inverse` 时，名字取 `<被探针节点>Success`，例如 `EntrustClickFinishSuccess`。
 
-## 六、状态判据节点
+## 六、探测节点
 
-判据节点自身不做动作（没有 `action` 字段），名字描述它在观察什么。前缀只用两个：
+探测节点只回答"现在是不是这样"：没有 `action` 字段，不产生任何输入，行为由 `recognition` 与 `next` 决定。名字统一用 `Probe` 作前缀，后缀写它在观察什么。
 
-| 前缀 | 含义 | 例 |
-| --- | --- | --- |
-| `Is` | 当前处于某个页面或某种状态 | `BattleIsHome`、`EscortIsHome`、`TrainIsAcceptable` |
-| `Has` | 页面上存在某个元素 | `HasHelpButton`、`TrainingHasHomeName` |
+| 观察对象 | 例 |
+| --- | --- |
+| 页面 | `EscortProbeHome`、`BattleProbeBlack`、`FactoryProbeHome` |
+| 布尔状态 | `TrainProbeAcceptable`、`BattleProbeLoading`、`BattleProbeAutoLight` |
+| 页面元素 | `TrainingProbeHomeName`、`ProbeHasHelpButton`（通用元素，放 `base.json`） |
+| 可操作性 | `EntrustProbeAble`、`MaintenanceProbeRecyclable` |
+| 每日门控 | `EntrustProbeDaily`、`TrainingProbeDaily` |
 
-`Is` 是默认判据前缀，覆盖"在哪个页面"和"是不是某状态"两种。
+因为探测节点不产生输入，它天然幂等：放在 `next` 里重复评估没有副作用，命中它也不会改变游戏状态。所以一条 `next` 里可以并排放多个探针，而动作节点要考虑会不会误点、要不要 `max_hit`。
 
-判据节点需要执行动作时，不要让它同时做两件事，按第三节拆成两个：判据节点只判、用 `next` 指向动作节点；动作节点自带 `recognition` 与 `action`。因条件结束任务的情形用 `Stop` 动作节点（`action: StopTask`，提示写 `focus`），不要写进判据名里。
+旧写法都并入 `Probe` + 状态词：`In`、`Is`、`Has`、`At`、`Able` / `Unable`、`Can`，以及没有前缀的状态词（`TrainFormation` 这类）。
+
+探测节点需要执行动作时，不要让它同时做两件事，按第三节拆成两个：探测节点只探、用 `next` 指向动作节点；动作节点自带 `recognition` 与 `action`。因条件结束任务的情形用 `Stop` 动作节点（`action: StopTask`，提示写 `focus`），不要写进探测节点名字里。
 
 ## 七、agent 侧命名
 
@@ -121,7 +126,7 @@
 
 - `custom_recognition_param` / `custom_action_param` 必须使用字典。键使用 `snake_case`，值是描述真实对象的词。
 - 与层级相关的键按第四节命名。
-- 同名键在不同任务里含义必须相同；含义不同就换名字（曾经的 `chapter_name` 实际指大关，已改成 `stage_name`）。
+- 同名键在不同任务里含义必须相同；含义不同就换名字。
 - agent 侧建议使用 `parse_params(..., "<键>")` 读取，不推荐使用默认值，否则可能静默报错。
 
 ### 模块全局变量
