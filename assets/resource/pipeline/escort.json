@@ -4,7 +4,6 @@
     "TaskEscort": {
         "desc": "防卫局任务",
         "next": [
-            "[JumpBack]LoopErrorByTimesInit",
             "EscortInHome",
             "EscortEnterHome",
             "[JumpBack]ReturnMain"

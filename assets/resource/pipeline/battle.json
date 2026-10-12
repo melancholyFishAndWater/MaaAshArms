@@ -7,7 +7,6 @@
             "BattleProbeHome",
             "[JumpBack]BattleEnterHome",
             "[JumpBack]ReturnMain",
-            "[JumpBack]LoopErrorByTimesInit",
             "LoopErrorByTimes"
         ]
     },
@@ -71,8 +70,6 @@
         "all_of": [
             "BattleInFormation"
         ],
-        "action": "Custom",
-        "custom_action": "LoopErrorByTimesInitAct", // LoopErrorByTimes 初始化。因为允许一次多次重入
         "next": [
             "BattleReplayLight",
             "BattleClickReplay",
@@ -85,8 +82,6 @@
         "all_of": [
             "BattleInFormation"
         ],
-        "action": "Custom",
-        "custom_action": "LoopErrorByTimesInitAct", // LoopErrorByTimes 初始化。因为允许一次多次重入
         "next": [
             "BattleReplayLight",
             "BattleClickReplay",

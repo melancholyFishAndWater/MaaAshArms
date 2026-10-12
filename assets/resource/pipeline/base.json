@@ -277,13 +277,7 @@
         "action": "Custom",
         "custom_action": "TaskStopErrorAct"
     },
-    // INFO LoopErrorByTimes
-    "LoopErrorByTimesInit": {
-        "desc": "[once][jp] LoopErrorByTimes 初始化",
-        "action": "Custom",
-        "custom_action": "LoopErrorByTimesInitAct",
-        "max_hit": 1
-    },
+    // INFO 兜底节点
     "LoopErrorByTimes": {
         "desc": "[兜底] 当同一个next中连续识别超过指定次数后，直接报错并结束任务",
         "recognition": "Custom",

@@ -13,7 +13,6 @@
         // },
         "next": [
             "[JumpBack]TrainingCheckDaily",
-            "[JumpBack]LoopErrorByTimesInit",
             "TrainingInHome",
             "[JumpBack]ReturnTraining"
         ]

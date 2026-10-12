@@ -3,7 +3,6 @@
     "TaskMaintenance": {
         "desc": "维修会任务",
         "next": [
-            "[JumpBack]LoopErrorByTimesInit",
             "EnterMaintenance",
             "[JumpBack]ReturnMain"
         ]

@@ -3,7 +3,6 @@
     "TaskTrain": {
         "desc": "武装押运任务",
         "next": [
-            "[JumpBack]LoopErrorByTimesInit",
             "TrainClickArrow",
             "[JumpBack]ReturnMain"
         ]

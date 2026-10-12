@@ -4,7 +4,6 @@
         "desc": "自动代理任务",
         "next": [
             "[JumpBack]ReplaysInit",
-            "[JumpBack]LoopErrorByTimesInit",
             "ReplaysStartClickAttack",
             "ReplaysStartInConfirm",
             "ReplaysStartInBattle",
