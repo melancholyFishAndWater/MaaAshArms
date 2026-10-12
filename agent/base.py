@@ -449,7 +449,7 @@ class TaskStopErrorAct(CustomAction):
 # ----- LoopErrorByTimes -----
 
 _current_task_id: int = -1
-# (task_id, 父节点名) -> 连续未命中轮数
+# 父节点名 -> 连续未命中轮数
 _times_by_name: dict[str, int] = {}
 
 
