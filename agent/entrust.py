@@ -1,5 +1,3 @@
-from typing import Any
-
 from maa.agent.agent_server import AgentServer
 from maa.custom_recognition import CustomRecognition
 from maa.custom_action import CustomAction
@@ -13,7 +11,7 @@ from maa.context import (
 from maa.pipeline import JOCR
 from re import search
 
-from base import log, parse_attach, parse_params
+from base import log, parse_attach
 
 # 大关名
 stage_name: str = "结晶废墟"

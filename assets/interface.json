@@ -88,7 +88,8 @@
                 "metal"
             ],
             "option": [
-                "entrust_daily"
+                "entrust_daily",
+                "entrust_inputs"
             ],
             "pipeline_override": {
                 "MoveRight": {

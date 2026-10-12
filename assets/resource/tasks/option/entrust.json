@@ -18,6 +18,35 @@
                     }
                 }
             ]
+        },
+        "entrust_inputs": {
+            "label": "关卡信息",
+            "type": "input",
+            "inputs": [
+                {
+                    "name": "stage_name",
+                    "label": "关卡名",
+                    "default": "结晶废墟",
+                    "pipeline_type": "string",
+                    "description": "输入关卡名称"
+                },
+                {
+                    "name": "level",
+                    "label": "关卡小节",
+                    "default": "10",
+                    "pipeline_type": "int",
+                    "verify": "^([0-9]|10)$",
+                    "description": "输入0~10"
+                }
+            ],
+            "pipeline_override": {
+                "EntrustInit": {
+                    "attach": {
+                        "stage_name": "{stage_name}", // 大关名
+                        "level": "{level}" // 目标小关的数字
+                    }
+                }
+            }
         }
     }
 }
