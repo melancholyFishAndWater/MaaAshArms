@@ -39,7 +39,7 @@
         "action": "Custom",
         "custom_action": "EntrustInitAct",
         "max_hit": 1,
-        "custom_action_param": {
+        "attach": {
             // 层级：章节（"下一章"所在层）→ 大关（stage_name）→ 小关（level 匹配的数字）
             "stage_name": "结晶废墟", // 大关名
             "level": 10 // 目标小关的数字

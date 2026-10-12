@@ -13,7 +13,7 @@ from maa.context import (
 from maa.pipeline import JOCR
 from re import search
 
-from base import log, parse_params
+from base import log, parse_attach, parse_params
 
 # 大关名
 stage_name: str = "结晶废墟"
@@ -158,13 +158,13 @@ class EntrustInitAct(CustomAction):
         node_name = argv.node_name
         try:
             global stage_name, level, _max_number
-            p = parse_params(argv.custom_action_param, "stage_name", "level")
-            stage_name = p["stage_name"]
-            level = p["level"]
+            attach = parse_attach(context, argv, "stage_name", "level")
+            stage_name = attach["stage_name"]
+            level = attach["level"]
             _max_number = 0
             return True
         except Exception as e:
-            log.debug(f"{node_name} 解析param失败")
+            log.debug(f"{node_name} 解析attach失败")
             log.ferror(f"{e}")
             return False
 
