@@ -1,6 +1,6 @@
 # 命名规范
 
-本文约束 pipeline 节点名、agent 侧注册名与参数键的写法。改节点名、加新节点、拆分子任务时按本文执行。
+本文约束 pipeline 节点名、agent 侧注册名与参数键的写法。改节点名、加新节点、拆分子任务时按本文执行；命名规则看第三节（动作节点）与第六节（判据节点）。
 
 本文只讲命名。节点该配哪些字段请看 [MaaFramework 文档](https://maafw.com/docs/1.1-QuickStarted)；文中引用的 `.agents/` 路径是本机开发笔记（该目录不入库），没有这些文件时按源码与本文为准。
 
@@ -18,32 +18,42 @@
 | --- | --- | --- |
 | 任务入口 | `Task<任务名>` | `TaskEntrust`、`TaskFactory`、`TaskReplays` |
 | 动作节点 | `<任务前缀><动词><宾语>` | `EscortClickOk`、`FactoryChooseNumber` |
-| 状态/判据节点 | `<任务前缀><系动词/状态词>` | `EscortInHome`、`TrainIsAcceptable`、`TrainingHasHomeName` |
+| 状态/判据节点 | `<任务前缀>Is<状态或页面>` / `<任务前缀>Has<元素>` | `EscortIsHome`、`TrainIsAcceptable`、`TrainingHasHomeName` |
 | 子过程入口 | `<任务前缀>Enter<页面>` / `<任务前缀>Init` | `EnterMaintenance`、`EntrustInit` |
 | 出口节点 | `<任务前缀><Exit/End/Success/Failed>` | `EscortClickOkEnd`、`FactoryGetRewardFailed` |
 | 日常门控 | `<任务前缀>CheckDaily` / `<任务前缀>DailyUpdate` | `EntrustCheckDaily`、`GiftDailyUpdate` |
 
-## 三、动词表
+## 三、动词表（动作节点）
 
-### `Click`
+动作节点名必须以本节列出的动词之一开头，宾语写界面上那个东西叫什么。`Click` / `Choose` / `Enter` 三者互斥，判定按下表从上往下走，先命中先算：
 
-点一个按钮或区域，触发一次动作或提交。**页面有明显变化**。
+| 顺序 | 判据 | 用 |
+| --- | --- | --- |
+| 1 | 点完**离开当前页面**（`next` 里出现新页面的判据节点，如 `*IsHome`） | `Enter` |
+| 2 | 点完留在本页，只改变选中态（数量、排序、选了哪一项），可反复换 | `Choose` |
+| 3 | 其余：提交、执行、领取、关闭弹窗 | `Click` |
 
-例：`EscortClickOk`（确认）、`FactoryClickCancel`（取消建造）、`FactoryClickStart`（开始建造）。
-
-### `Choose`
-
-从一组同类可选项里挑一个，选项之间可以反复换。**页面无明显变化**。
-
-例：`FactoryChooseNumber`（建几个）、`GiftChooseFirstGift`（第一个礼物）、`EntrustChooseLevel`（小关）。
+第 1 条之所以落到"`next` 里有没有新页面判据"，是因为"变化是否明显"只看截图容易各说各话；页面内的显隐、展开、切页签都不算离开本页，页内翻页（点"下一章"、列表翻页）也不算——页还是那一页，只是内容换了，按第 3 条算 `Click`。
 
 ### `Enter`
 
-进/回一个页面。宾语写页面名。
+离开当前页面，进入另一个页面。宾语必须是页面名。
 
-例：`EntrustEnterMainLine`（主线页面）、`EntrustEnterRewardMainLine`（领奖页面）、`BattleEnterMainPage`等。
+例：`EntrustEnterMainLine`（主线页面）、`EntrustEnterRewardMainLine`（领奖页面）、`BattleEnterMainPage`（出击页面）、`EnterMaintenance`（维修会）。
 
-反例：页内点一个按钮切到本页的另一块内容，不算 `Enter`。
+不算 `Enter`：页内点按钮切到本页的另一块内容、展开折叠、切页签。
+
+### `Choose`
+
+不离开当前页，只改变选中态。宾语是要选的那个东西。
+
+例：`GiftChooseFirstGift`（第一个礼物）、`FactoryChooseNumber`（建造个数）。
+
+### `Click`
+
+点一个按钮或区域，提交或执行一次动作，通常伴随本页的显隐变化。宾语写界面上的按钮名。
+
+例：`EscortClickOk`（确认）、`FactoryClickStart`（开始建造）、`FactoryClickCancel`（取消订单）、`GiftClickSortConfirm`（确认排序）。
 
 ### 其他动词
 
@@ -54,6 +64,8 @@
 | `TouchDown` / `TouchUp` | 按住、松手 | `EntrustTouchDown`、`EntrustTouchUp`、`EntrustTouchUp2` |
 | `Move` | 滑动、移动列表 | `MoveUp`、`MoveRight`、`TrainInfoMover` |
 | `Close` | 关掉弹窗/页面 | `NoticeClose`、`TrainCloseStatusArrow` |
+| `Stop` | 因某个条件结束任务（`action: StopTask`，提示写 `focus`） | `StopNoMetal` |
+| `Init` | 进入某页后的初始化（清计数、读参数） | `TrainingInit`、`ReplaysInit` |
 
 ## 四、术语分层
 
@@ -64,35 +76,39 @@
 ```text
 主线篇章（EntrustEnterMainLine，OCR"主线篇章"）
 └── 章节（EntrustNextChapter，点"下一章"翻页）
-    └── 大关（EntrustChooseStage，识别大关名，如"结晶废墟"）
-        └── 小关（EntrustChooseLevel，匹配两位数字）
+    └── 大关（EntrustIsStage，如"结晶废墟"）
+        └── 小关（EntrustIsLevel，匹配数字）
 ```
 
 | 层级 | 节点名用 | 参数键用 |
 | --- | --- | --- |
 | 章节 | `Chapter`（`EntrustNextChapter`） | — |
-| 大关 | `Stage`（`EntrustChooseStage`） | `stage_name` |
-| 小关 | `Level`（`EntrustChooseLevel`） | `level` |
+| 大关 | `Stage`（`EntrustIsStage`） | `stage_name` |
+| 小关 | `Level`（`EntrustIsLevel`） | `level` |
+
+代码里这两个节点的现名是 `EntrustChooseStage` / `EntrustChooseLevel`（点完会离开主页面，按第六节应改名为 `EntrustIsStage` / `EntrustIsLevel` 并补上各自的动作节点）。
 
 新任务出现类似层级时沿用这套词：`Chapter` / `Stage` / `Level` 分别指章节、大关、小关，不要写 `Section`、`Part`、`SubLevel` 之类的同义词。
 
 ## 五、动作节点
 
-- 名字里的动词按第三节选，宾语与界面文字对齐（`确认` → `ClickOk`、`取消` → `ClickCancel`、`完成` → `ClickFinish`）。
+- 宾语与界面文字对齐（`确认` → `ClickOk`、`取消` → `ClickCancel`、`完成` → `ClickFinish`）。
 - 同一个按钮在不同任务里叫法保持一致：`ClickOk`、`EscortClickOk`、`FactoryClickSkipOk`；不要出现 `ClickYes` 这类同义写法。
 - 循环重试节点，靠 `desc` 里的 `[Loop]` 标记，例如 `"desc": "[Loop] 点击出击按钮 即使是灰色的"`。
 - 出口/收尾节点在名字里标出性质：`*End`（链结束）、`*Success`（动作生效）、`*Failed`（失败分支）。成功探针节点用 `And all_of [<被探针节点>] + inverse` 时，名字取 `<被探针节点>Success`，例如 `EntrustClickFinishSuccess`。失败分支统一 `*Failed`（历史遗留的 `EscortClickOkFail` 可择机改）。
 
 ## 六、状态判据节点
 
-判据节点自身一般不做动作，名字用系动词或状态词起头。
+判据节点自身不做动作（没有 `action` 字段），名字描述它在观察什么。前缀只用两个：
 
-| 前缀 | 含义 | 动作/next |
+| 前缀 | 含义 | 例 |
 | --- | --- | --- |
-| `Has` | 页面上存在某个元素 | 无 |
-| `In` | 当前在某个页面 | 有动作 |
-| `Is` | 布尔状态 | 都可能 |
-| `Able` / `Unable` | 可操作 / 不可操作 | 条件动作/next |
+| `Is` | 当前处于某个页面或某种状态 | `BattleIsHome`、`EscortIsHome`、`TrainIsAcceptable` |
+| `Has` | 页面上存在某个元素 | `HasHelpButton`、`TrainingHasHomeName` |
+
+`Is` 是默认判据前缀，覆盖"在哪个页面"和"是不是某状态"两种。
+
+判据节点需要执行动作时，不要让它同时做两件事，按第三节拆成两个：判据节点只判、用 `next` 指向动作节点；动作节点自带 `recognition` 与 `action`。因条件结束任务的情形用 `Stop` 动作节点（`action: StopTask`，提示写 `focus`），不要写进判据名里。
 
 ## 七、agent 侧命名
 
@@ -113,7 +129,7 @@
 - 模块级可变状态用 `_` 前缀（`_train_list`、`_finish_count`、`_max_number`），导出的配置用无前缀名（`stage_name`、`level`、`battle_targets`）。
 - 跨模块读这些变量必须写 `<模块名>.<变量名>`。
 
-## 九、文件名与目录
+## 八、文件名与目录
 
 - pipeline 片段：任务名全小写 snake_case，一个任务一个文件，公共节点进 `base.json`。
 - 选项片段：与任务同名，放 `assets/resource/tasks/option/`。
