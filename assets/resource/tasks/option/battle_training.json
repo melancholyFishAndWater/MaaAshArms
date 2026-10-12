@@ -13,7 +13,7 @@
                 {
                     "name": "No",
                     "pipeline_override": {
-                        "TaskTrainingCheckDaily": {
+                        "TrainingCheckDaily": {
                             "custom_recognition_param": {
                                 "enable": false
                             }

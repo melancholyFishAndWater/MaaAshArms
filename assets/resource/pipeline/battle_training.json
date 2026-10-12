@@ -12,21 +12,20 @@
         //     "资源筹备": "六"
         // },
         "next": [
-            "TaskTrainingCheckDaily"
-        ]
-    },
-    "TaskTrainingCheckDaily": {
-        "desc": "检测每日一次",
-        "recognition": "Custom",
-        "custom_recognition": "TaskTrainingReco",
-        "custom_recognition_param": {
-            "enable": true // 每日一次开关 覆写关闭
-        },
-        "next": [
+            "[JumpBack]TrainingCheckDaily",
             "[JumpBack]LoopErrorByTimesInit",
             "TrainingInHome",
             "[JumpBack]ReturnTraining"
         ]
+    },
+    "TrainingCheckDaily": {
+        "desc": "[once][jp] 检测每日一次",
+        "max_hit": 1,
+        "recognition": "Custom",
+        "custom_recognition": "TaskTrainingReco",
+        "custom_recognition_param": {
+            "enable": true // 每日一次开关 覆写关闭
+        }
     },
     "ReturnTraining": {
         "desc": "返回训练所页面",
