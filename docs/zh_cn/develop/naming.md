@@ -21,7 +21,7 @@
 | 状态/判据节点 | `<任务前缀><系动词/状态词>` | `EscortInHome`、`TrainIsAcceptable`、`TrainingHasHomeName` |
 | 子过程入口 | `<任务前缀>Enter<页面>` / `<任务前缀>Init` | `EnterMaintenance`、`EntrustInit` |
 | 出口节点 | `<任务前缀><Exit/End/Success/Failed>` | `EscortClickOkEnd`、`FactoryGetRewardFailed` |
-| 日常门控 | `<任务前缀>CheckDaily` / `<任务前缀>DailyUpdate` | `EntrustCheckDaily`、`GiftDailyUpdate`（仓库里仍有 `TaskTrainingCheckDaily` 这类混合写法，新增节点用上面的形式） |
+| 日常门控 | `<任务前缀>CheckDaily` / `<任务前缀>DailyUpdate` | `EntrustCheckDaily`、`GiftDailyUpdate` |
 
 ## 三、动词表
 
