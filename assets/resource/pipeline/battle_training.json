@@ -61,10 +61,10 @@
         "timeout": 30000,
         "next": [
             "TrainingProbeHome",
+            "LoopErrorByTimes",
             "[JumpBack]ProbeBlackPage",
             "[JumpBack]TrainingEnterHome",
             "[JumpBack]BackButton", // INFO 尝试返回按钮(为兼容在关卡内)
-            "LoopErrorByTimes",
             "[JumpBack]BattleEnsureHome"
         ]
     },
