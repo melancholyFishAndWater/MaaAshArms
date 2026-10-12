@@ -468,4 +468,3 @@ config
 debug
 AGENTS.md
 .agents/
-skills-lock.json
