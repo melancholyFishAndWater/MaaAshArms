@@ -8,7 +8,7 @@
             "enable": true // 每日一次开关 覆写关闭
         },
         "next": [
-            "TaskFactoryNext",
+            "TaskFactoryInHome",
             "[JumpBack]ReturnFactory"
         ]
     },
@@ -52,7 +52,7 @@
         ]
     },
     // INFO 工厂任务
-    "TaskFactoryNext": {
+    "TaskFactoryInHome": {
         "desc": "订单厂任务",
         "recognition": "OCR",
         "expected": "订单工厂",

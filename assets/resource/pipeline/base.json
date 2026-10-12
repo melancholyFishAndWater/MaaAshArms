@@ -224,7 +224,7 @@
             "k": 3 // 连续不变次数 太低可能移动卡顿也识别成功了
         }
     },
-    "InServerMaintenance": {
+    "IsServerMaintenance": {
         "desc": "游戏维护中",
         "recognition": "OCR",
         "expected": ".+维护中.+",
