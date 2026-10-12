@@ -279,7 +279,7 @@
     },
     // INFO LoopErrorByTimes
     "LoopErrorByTimesInit": {
-        "desc": "LoopErrorByTimes 初始化。不允许重入",
+        "desc": "[once][jp] LoopErrorByTimes 初始化",
         "action": "Custom",
         "custom_action": "LoopErrorByTimesInitAct",
         "max_hit": 1
