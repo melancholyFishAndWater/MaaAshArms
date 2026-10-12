@@ -1,23 +1,38 @@
 {
+    // INFO 使用命名规范版本 v1.1 校验年月日 26/10/12
     // INFO 训练所任务
     "TaskTraining": {
         "desc": "训练所任务",
-        "action": "Custom",
-        "custom_action": "TaskTrainingAct",
-        // 示例
-        // "attach": {
-        //     "战斗演习": "六",
-        //     "狩猎行动": "六",
-        //     "拓展训练": "六",
-        //     "资源筹备": "六"
-        // },
+        "timeout": 60000,
         "next": [
-            "[JumpBack]TrainingCheckDaily",
-            "TrainingInHome",
-            "[JumpBack]ReturnTraining"
+            "[JumpBack]TrainingProbeDaily",
+            "[JumpBack]TrainingInit",
+            "TrainingLoop", // INFO 在训练所
+            "[JumpBack]TrainingEnsureHome",
+            "LoopErrorByTimes"
         ]
     },
-    "TrainingCheckDaily": {
+    // INFO 判断与初始化
+    "TrainingProbeHome": {
+        "desc": "[end] 在训练所主页面",
+        "recognition": "And",
+        "all_of": [
+            "TrainingProbeHomeName",
+            "HasHelpButton"
+        ]
+    },
+    "TrainingProbeHomeName": {
+        "desc": "[end] 有训练所文字",
+        "recognition": "OCR",
+        "expected": "训练所",
+        "roi": [
+            109,
+            13,
+            208,
+            49
+        ]
+    },
+    "TrainingProbeDaily": {
         "desc": "[once][jp] 检测每日一次",
         "max_hit": 1,
         "recognition": "Custom",
@@ -26,19 +41,36 @@
             "enable": true // 每日一次开关 覆写关闭
         }
     },
-    "ReturnTraining": {
-        "desc": "返回训练所页面",
-        "max_hit": 2,
-        "timeout": 600000,
+    "TrainingInit": {
+        "desc": "[once][jp] 训练所初始化",
+        "max_hit": 1,
+        // INFO 调试默认值
+        "attach": {
+            "战斗演习": "不进行",
+            "狩猎行动": "六",
+            "拓展训练": "六",
+            "资源筹备": "六"
+        },
+        "action": "Custom",
+        "custom_action": "TrainingInitAct"
+    },
+    "TrainingEnsureHome": {
+        "desc": "[jp][max] 确保在训练所主页面",
+        "max_hit": 3,
+        "rate_limit": 2000,
+        "timeout": 30000,
         "next": [
-            "TrainingInHome",
-            "TrainingEnterHome",
-            "[JumpBack]ReturnBattleMainPage"
+            "TrainingProbeHome",
+            "[JumpBack]ProbeBlackPage",
+            "[JumpBack]TrainingEnterHome",
+            "[JumpBack]BackButton", // INFO 尝试返回按钮(为兼容在关卡内)
+            "LoopErrorByTimes",
+            "[JumpBack]BattleEnsureHome"
         ]
     },
     // INFO 训练所页面
     "TrainingEnterHome": {
-        "desc": "进入训练所",
+        "desc": "[jp] 进入训练所",
         "recognition": "OCR",
         "expected": "训练所",
         "roi": [
@@ -51,68 +83,48 @@
         "pre_wait_freezes": 1000,
         "rate_limit": 1500,
         "next": [
-            "TrainingInHome",
+            "TrainingLoop",
+            "LoopErrorByTimes",
             "TrainingEnterHome"
         ]
     },
-    "TrainingInHome": {
-        "desc": "在训练所主界面",
+    "TrainingLoop": {
+        "desc": "[Loop] 训练所条件主循环",
         "recognition": "And",
         "all_of": [
-            "TrainingHasHomeName",
-            "HasHelpButton"
+            "TrainingProbeHome"
         ],
         "next": [
-            "[JumpBack]TrainingInit",
-            "TrainingLoop"
-        ]
-    },
-    "TrainingHasHomeName": {
-        "desc": "有训练所文字",
-        "recognition": "OCR",
-        "expected": "训练所",
-        "roi": [
-            109,
-            13,
-            208,
-            49
-        ]
-    },
-    "TrainingInit": {
-        "desc": "训练所初始化", // 此初始化只影响每日一次的识别效果
-        "recognition": "Custom",
-        "custom_recognition": "TrainingInitReco",
-        "max_hit": 1
-    },
-    // INFO 训练所主循环
-    "TrainingLoop": {
-        "desc": "训练所主循环",
-        "next": [
+            "[JumpBack]TrainingGetStatus",
             "[JumpBack]TrainingEnterOne",
-            "TrainingEnd",
-            "[JumpBack]TrainingEnterHome", // 防止返回按钮点过头
-            "[JumpBack]BackButton",
-            "[JumpBack]ReturnBattleMainPage"
+            "TrainingCheckEnd",
+            "[JumpBack]TrainingEnsureHome",
+            "LoopErrorByTimes"
             // TODO 自律战斗失败的逻辑、不可代理的逻辑
         ]
     },
-    "TrainingEnd": {
-        "desc": "无战斗次数",
-        "recognition": "TemplateMatch",
-        "template": "Battle/BattleTraining/01.png",
-        "roi": [
-            192,
-            524,
-            900,
-            68
-        ],
-        "index": 3
+    "TrainingGetStatus": {
+        "desc": "[once][jp] 获取关卡完成状态",
+        "recognition": "Custom",
+        "custom_recognition": "TrainingGetStatusReco",
+        "max_hit": 1
+    },
+    "TrainingCheckEnd": {
+        "desc": "[end] 检测是否无战斗次数",
+        "recognition": "And",
+        "all_of": [
+            "TrainingProbeHome",
+            {
+                "recognition": "Custom",
+                "custom_recognition": "TrainingCheckEndReco"
+            }
+        ]
     },
     // INFO 关卡选择页面
     "TrainingEnterOne": {
-        "desc": "进入其中一个训练所关卡选择页面",
+        "desc": "[jp] 进入其中一个训练所关卡选择页面",
         "recognition": "Custom",
-        "custom_recognition": "TrainingEnterOneRepo",
+        "custom_recognition": "TrainingEnterOneReco",
         "max_hit": 4,
         "action": "Click",
         "next": [
@@ -124,14 +136,16 @@
     "TrainingEnterFormation": {
         "desc": "进入编队页面",
         "recognition": "Custom",
-        "custom_recognition": "TrainingEnterFormationRepo",
-        "custom_recognition_param": "unknow", // 覆写传递关卡难度数
+        "custom_recognition": "TrainingEnterFormationReco",
+        "custom_recognition_param": {
+            "level": "六"
+        },
         "action": "Click",
         "rate_limit": 2000,
         "next": [
             "TaskBattleReplay",
             "LoopErrorByTimes",
-            "[JumpBack]BattleInBlack"
+            "[JumpBack]ProbeBlackPage"
         ],
         "post_wait_freezes": 2000
     },

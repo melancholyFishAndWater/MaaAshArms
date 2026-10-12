@@ -1,4 +1,9 @@
-import json
+"""
+训练所 agent 模块
+
+INFO 使用命名规范版本 v1.1 校验年月日 26/10/12
+"""
+
 from typing import Any
 
 from maa.agent.agent_server import AgentServer
@@ -14,7 +19,7 @@ from maa.context import (
 from maa.pipeline import JActionType, JStopTask, JTemplateMatch, JOCR
 from numpy import ndarray, dtype
 
-from base import parse_attach, toTuple, log, DEFAULT_HIT_BOX
+from base import parse_attach, parse_params, toTuple, log, DEFAULT_HIT_BOX
 
 # 总关卡名
 _all = ["战斗演习", "狩猎行动", "拓展训练", "资源筹备"]
@@ -25,9 +30,9 @@ battle_targets: dict[str, str] = {}
 # ---------- Reco ----------
 
 
-# 初始化识别，识别所有已完成关卡的关卡名
-@AgentServer.custom_recognition("TrainingInitReco")
-class TrainingInitReco(CustomRecognition):
+# 识别所有已完成关卡的关卡名
+@AgentServer.custom_recognition("TrainingGetStatusReco")
+class TrainingGetStatusReco(CustomRecognition):
 
     def analyze(
         self, context: Context, argv: CustomRecognition.AnalyzeArg
@@ -88,24 +93,91 @@ class TrainingInitReco(CustomRecognition):
                 f"{n_name} 识别到的训练所关卡名数量与相应的状态数量不匹配，可能会出现非预期的情况。名字数 {len(done_targets)} / 状态数 {len(r.filtered_results)}"
             )
 
-        # 条件覆写和返回
+        # 准备写入更新 尝试覆写
         if len(done_targets) > 0:
-            result = context.override_pipeline(
-                {"TrainingDailyUpdate": {"custom_action_param": {"name": done_targets}}}
-            )
-            if not result:
-                log.warn("训练所任务覆写传参失败")
-                return DEFAULT_HIT_BOX
+            times = len([i for i in battle_targets if i not in done_targets])
+            dic = {
+                argv.node_name: {"next": ["TrainingDailyUpdate"]},
+                "TrainingDailyUpdate": {
+                    "custom_action_param": {"name": done_targets},
+                    "next": ["TaskStop"] if times == 0 else [],
+                },
+            }
+            ov_r2 = context.override_pipeline(dic)
+            if not ov_r2:
+                log.warn(f"更新训练所每日状态失败")
 
-            result2 = context.override_next(argv.node_name, ["TrainingDailyUpdate"])
-            if not result2:
-                log.warn("训练所任务覆写next失败")
         return DEFAULT_HIT_BOX
 
 
+# 识别目标关卡 返回box表示全部完成
+@AgentServer.custom_recognition("TrainingCheckEndReco")
+class TrainingCheckEndReco(CustomRecognition):
+    def analyze(
+        self, context: Context, argv: CustomRecognition.AnalyzeArg
+    ) -> (
+        CustomRecognition.AnalyzeResult
+        | Rect
+        | list[int]
+        | ndarray[tuple[Any, ...], dtype[Any]]
+        | tuple[int, int, int, int]
+        | None
+    ):
+        node_name = argv.node_name
+
+        # 识别 0/1 即没有次数、完成的关卡
+        tm_r = context.run_recognition_direct(
+            JRecognitionType.TemplateMatch,
+            JTemplateMatch(["Battle/BattleTraining/01.png"], roi=(192, 524, 900, 68)),
+            argv.image,
+        )
+        if tm_r is None or not tm_r.hit:
+            log.debug(f"{node_name} 识别 0/1 失败")
+            return
+
+        # 完成数量不够，直接返回
+        if len(tm_r.filtered_results) < len(battle_targets):
+            log.debug(
+                f"{node_name} 识别到完成关卡数量不足: {len(tm_r.filtered_results)} < {len(battle_targets)}"
+            )
+            return
+
+        # 目标关卡数足够，任务结束
+        if len(tm_r.filtered_results) == 4:
+            log.debug(f"{node_name} 识别到完成关卡已达 4 个 任务结束")
+            return DEFAULT_HIT_BOX
+
+        # 遍历识别所有没有次数的关卡 找到目标关卡
+        targets_done_count = 0
+        for i in tm_r.filtered_results:
+            assert type(i) == TemplateMatchResult
+
+            # 识别关卡名字
+            ocr_r = context.run_recognition_direct(
+                JRecognitionType.OCR,
+                JOCR(
+                    list(battle_targets.keys()),
+                    roi=toTuple(i.box),
+                    roi_offset=(-63, -243, 126, 42),
+                ),
+                argv.image,
+            )
+            if ocr_r is None or not ocr_r.hit:
+                log.debug(
+                    f"{node_name} 识别关卡名字失败 但只要不是连续4次就是符合预期的"
+                )
+                continue
+            targets_done_count += 1
+
+        # 目标关卡数足够，任务结束
+        if targets_done_count == len(battle_targets):
+            log.debug(f"{node_name} 完成关卡已达 {battle_targets} 个 任务结束")
+            return DEFAULT_HIT_BOX
+
+
 # 识别关卡名 返回还有挑战次数的关卡名字box
-@AgentServer.custom_recognition("TrainingEnterOneRepo")
-class TrainingEnterOneRepo(CustomRecognition):
+@AgentServer.custom_recognition("TrainingEnterOneReco")
+class TrainingEnterOneReco(CustomRecognition):
     # TODO 当前已有难度
     # _level = ["一", "二", "三", "四", "五", "六"]
 
@@ -160,7 +232,7 @@ class TrainingEnterOneRepo(CustomRecognition):
                         "focus": {"Node.Action.Starting": f"进入{name}"}
                     },
                     "TrainingEnterFormation": {
-                        "custom_recognition_param": level,
+                        "custom_recognition_param": {"level": level},
                         "focus": {"Node.Action.Starting": f"选择{name} 难度{level}"},
                     },
                     "TrainingDailyUpdate": {"custom_action_param": {"name": [name]}},
@@ -172,8 +244,8 @@ class TrainingEnterOneRepo(CustomRecognition):
 
 
 # 识别关卡难度 返回匹配难度的出击按钮box
-@AgentServer.custom_recognition("TrainingEnterFormationRepo")
-class TrainingEnterFormationRepo(CustomRecognition):
+@AgentServer.custom_recognition("TrainingEnterFormationReco")
+class TrainingEnterFormationReco(CustomRecognition):
     def analyze(
         self, context: Context, argv: CustomRecognition.AnalyzeArg
     ) -> (
@@ -185,9 +257,13 @@ class TrainingEnterFormationRepo(CustomRecognition):
         | None
     ):
         # 提取变量
-        n_name = argv.node_name
-        s = argv.custom_recognition_param
-        level: str = json.loads(s) if s is not None else "不进行"
+        node_name = argv.node_name
+        level = "六"
+        try:
+            p = parse_params(argv.custom_recognition_param, "level")
+            level: str = p["level"]
+        except Exception as e:
+            log.warn(f"{node_name} 解析param失败: {e}")
 
         # 识别难度
         result = context.run_recognition_direct(
@@ -196,7 +272,7 @@ class TrainingEnterFormationRepo(CustomRecognition):
             argv.image,
         )
         if not result or not result.hit:
-            log.debug(f"{n_name} 识别难度失败")
+            log.debug(f"{node_name} 识别难度失败")
             return
 
         # 遍历判断关卡难度
@@ -210,8 +286,8 @@ class TrainingEnterFormationRepo(CustomRecognition):
 
 
 # 初始化
-@AgentServer.custom_action("TaskTrainingAct")
-class TaskTrainingAct(CustomAction):
+@AgentServer.custom_action("TrainingInitAct")
+class TrainingInitAct(CustomAction):
     def run(
         self, context: Context, argv: CustomAction.RunArg
     ) -> CustomAction.RunResult | bool:
@@ -229,15 +305,4 @@ class TaskTrainingAct(CustomAction):
             context.run_action_direct(JActionType.StopTask, JStopTask())
             return True
 
-        # 设置结束需要识别的数量
-        times = len(battle_targets) - 1
-        r = context.override_pipeline(
-            {
-                "TrainingEnd": {"index": times},
-                "TrainingEnterOne": {"max_hit": times},
-            }
-        )
-        if not r:
-            log.error(f"{argv.node_name} 覆写失败，防止卡死任务终止")
-            return False
         return True
