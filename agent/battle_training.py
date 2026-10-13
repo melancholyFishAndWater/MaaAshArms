@@ -184,11 +184,11 @@ class TrainingEnterOneReco(CustomRecognition):
             if name is None:
                 log.debug(f"{node_name} 识别到的关卡名无法匹配: {b_r2.text}")
                 continue
-            level = battle_targets["name"]
+            level = battle_targets[name]
             _current_level_name = level
 
             # 覆写
-            context.override_pipeline(
+            ov_r = context.override_pipeline(
                 {
                     "TrainingEnterOne": {
                         "focus": {"Node.Action.Starting": f"进入{name}"}
@@ -200,6 +200,8 @@ class TrainingEnterOneReco(CustomRecognition):
                     "TrainingDailyUpdate": {"custom_action_param": {"name": [name]}},
                 }
             )
+            if not ov_r:
+                log.debug(f"{node_name} 覆写提示日志失败")
 
             # 返回文字位置
             return b_r2.box

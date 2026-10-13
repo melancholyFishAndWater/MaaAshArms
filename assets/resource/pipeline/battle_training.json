@@ -5,8 +5,8 @@
         "desc": "训练所任务",
         "timeout": 60000,
         "next": [
-            "[JumpBack]TrainingProbeDaily",
             "[JumpBack]TrainingInit",
+            "[JumpBack]TrainingProbeDaily",
             "TrainingLoop", // INFO 在训练所
             "[JumpBack]TrainingEnsureHome",
             "LoopErrorByTimes"
