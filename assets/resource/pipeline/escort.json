@@ -1,16 +1,80 @@
 {
-    // TODO 判断物品价值、刷新
+    // INFO 使用命名规范版本 v1.2 校验年月日 26/10/13
     // INFO 防卫局任务
+    // TODO 判断物品价值、刷新
     "TaskEscort": {
         "desc": "防卫局任务",
         "next": [
-            "EscortInHome",
-            "EscortEnterHome",
-            "[JumpBack]ReturnMain"
+            "EscortLoopReward",
+            "[JumpBack]EscortEnsureHome",
+            "LoopErrorByTimes"
         ]
     },
+    // INFO 探测
+    "EscortProbeHomeName": {
+        "desc": "[end] 有防卫局名字 可能有获得一览页面",
+        "recognition": "OCR",
+        "expected": ".+防卫生产局",
+        "roi": [
+            990,
+            437,
+            282,
+            55
+        ]
+    },
+    "EscortProbeAccept": {
+        "desc": "[end] 选择成员页面",
+        "recognition": "OCR",
+        "expected": "指派委托成员",
+        "roi": [
+            66,
+            46,
+            303,
+            71
+        ]
+    },
+    // INFO 动作-确保在防卫局
+    "EscortEnsureHome": {
+        "desc": "[jp] 确保在防卫局主页面",
+        "recognition": "And",
+        "all_of": [
+            "EscortProbeHomeName"
+        ],
+        "inverse": true,
+        "next": [
+            "EscortProbeHomeName",
+            "[JumpBack]ProbeBlackPage",
+            "[JumpBack]EscortBackFromChoose",
+            "[JumpBack]EscortEnterHome",
+            "[JumpBack]ReturnMain",
+            "LoopErrorByTimes"
+        ]
+    },
+    "EscortBackFromChoose": {
+        "desc": "[jp] 从选择页面返回",
+        "recognition": "And",
+        "all_of": [
+            "EscortProbeAccept"
+        ],
+        "next": [
+            "EscortClickCancel"
+        ]
+    },
+    "EscortClickCancel": {
+        "desc": "[end] 点击取消接取任务按钮",
+        "recognition": "OCR",
+        "expected": "取消",
+        "roi": [
+            826,
+            521,
+            82,
+            41
+        ],
+        "action": "Click",
+        "post_wait_freezes": 1000
+    },
     "EscortEnterHome": {
-        "desc": "从主页进入防卫局",
+        "desc": "[jp] 从主页进入防卫局",
         "recognition": "TemplateMatch",
         "template": "Escort/EnterButton.png",
         "roi": [
@@ -20,37 +84,32 @@
             150
         ],
         "action": "Click",
+        "post_wait_freezes": 1000
+    },
+    // INFO 工作-领取奖励
+    "EscortLoopReward": {
+        "desc": "[Loop] 领取奖励",
+        "recognition": "Or",
+        "any_of": [
+            "EscortProbeHomeName",
+            "ProbeReward"
+        ],
+        "rate_limit": 2000,
         "next": [
-            "EscortInHome",
-            "EscortEnterHome"
+            "[JumpBack]ProbeBlackPage",
+            "[JumpBack]IsGetReward",
+            "[JumpBack]EscortClickDelivery",
+            "EscortLoopFind",
+            "LoopErrorByTimes"
         ]
     },
-    "EscortInHome": {
-        "desc": "在防卫局界面",
-        "recognition": "OCR",
-        "expected": ".+防卫生产局",
-        "roi": [
-            990,
-            437,
-            282,
-            55
-        ],
-        "next": [
-            "[JumpBack]IsGetReward",
-            "[JumpBack]EscortDelivery",
-            "EscortFindToAccept"
-        ],
-        "post_wait_freezes": 3000 // 延迟太短会导致右滑，错过最右边的任务
-    },
-    // INFO 领取奖励
-    "EscortDelivery": {
+    "EscortClickDelivery": {
         "desc": "一键交付",
         "recognition": "TemplateMatch",
         "template": "Escort/EscortDelivery.png",
         "method": 10001,
         "action": "Click",
         "max_hit": 2,
-        "timeout": 5000,
         "roi": [
             280,
             599,
@@ -59,19 +118,27 @@
         ],
         "post_wait_freezes": 2000
     },
-    // INFO 接取
-    "EscortFindToAccept": {
+    // INFO 工作-找到并接取任务
+    "EscortLoopFind": {
         "desc": "[Loop] 右滑直到接取所有任务",
+        "recognition": "And",
+        "all_of": [
+            "EscortProbeHomeName"
+        ],
         "timeout": -1,
         "next": [
-            "[JumpBack]EscortAccept",
+            "[JumpBack]EscortChooseCharacter",
+            "[JumpBack]EscortEnterAccept",
             "IsFreezes",
-            "LoopErrorByTimes",
-            "[JumpBack]MoveRight"
+            "[JumpBack]MoveRight", // INFO 滑动到底部后画面上面部分无变化
+            "LoopErrorByTimes"
+        ],
+        "on_error": [
+            "EscortClickOkFailed"
         ]
     },
-    "EscortAccept": {
-        "desc": "接取任务",
+    "EscortEnterAccept": {
+        "desc": "[jp] 进入接取页面",
         "recognition": "TemplateMatch",
         "template": "Escort/CanEscort.png",
         "roi": [
@@ -80,37 +147,14 @@
             813,
             61
         ],
-        "action": "Click",
         "index": -1,
-        "next": [
-            "EscortInChoose",
-            "EscortAccept"
-        ],
+        "action": "Click",
         "post_wait_freezes": 3000 // 太短容易点到角色
     },
-    "EscortInChoose": {
-        "desc": "在选择界面",
-        "recognition": "OCR",
-        "expected": "指派委托成员",
-        "roi": [
-            36,
-            1,
-            371,
-            160
-        ],
-        "action": "Custom",
-        "custom_action": "EscortInChooseAct", // 清空大循环 EscortChooseCharacter 的 hit
-        "next": [
-            "EscortChooseCharacter",
-            "EscortInChoose"
-        ]
-    },
-    // 选择角色页面
     "EscortChooseCharacter": {
-        "desc": "[Loop] 点击一键推荐按钮",
+        "desc": "[jp] 点击一键推荐按钮",
         "recognition": "TemplateMatch",
         "template": "Escort/RecommendButton.png",
-        "max_hit": 3,
         "roi": [
             575,
             457,
@@ -122,15 +166,18 @@
             -10,
             -20,
             -20
-        ], // 缩小点击框，防止点到边缘，游戏不识别
+        ], // INFO 缩小点击框，防止点到边缘，游戏不识别
         "action": "Click",
         "next": [
             "EscortClickOk"
         ],
-        "pre_wait_freezes": 1000
+        "pre_wait_freezes": 1500,
+        "on_error": [
+            "EscortClickOkFailed"
+        ]
     },
     "EscortClickOk": {
-        "desc": "[Loop] 点击确认按钮执行任务",
+        "desc": "[end] 点击确认按钮执行任务",
         "recognition": "OCR",
         "expected": "确认",
         "roi": [
@@ -141,38 +188,11 @@
         ],
         "action": "Click",
         "post_wait_freezes": 1500,
-        "next": [
-            "EscortClickOkEnd",
-            "EscortChooseCharacter", // 大循环
-            "EscortClickCancel",
-            "LoopErrorByTimes"
-        ],
         "on_error": [
-            "EscortClickOkFail"
+            "EscortClickOkFailed"
         ]
     },
-    "EscortClickOkEnd": {
-        "desc": "[end] 点击确认结束",
-        "recognition": "And",
-        "all_of": [
-            "EscortInHome"
-        ]
-    },
-    "EscortClickCancel": {
-        "desc": "[end] 点击取消接收按钮",
-        "recognition": "OCR",
-        "expected": "取消",
-        "max_hit": 3,
-        "roi": [
-            826,
-            521,
-            82,
-            41
-        ],
-        "action": "Click",
-        "post_wait_freezes": 1000
-    },
-    "EscortClickOkFail": {
+    "EscortClickOkFailed": {
         "desc": "[end] 接取任务失败 尝试点击取消(防卡死)",
         "recognition": "And",
         "all_of": [

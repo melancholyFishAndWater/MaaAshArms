@@ -157,18 +157,6 @@
             53
         ]
     },
-    "ProbeNoReward": {
-        "desc": "[end] 不在获得一览",
-        "recognition": "OCR",
-        "expected": "获得一览",
-        "roi": [
-            525,
-            154,
-            174,
-            53
-        ],
-        "inverse": true
-    },
     // INFO 条件执行节点
     "BackButton": {
         "desc": "点击返回按钮",
