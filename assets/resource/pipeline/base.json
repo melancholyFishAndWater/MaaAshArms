@@ -159,9 +159,13 @@
     },
     "ProbeNoReward": {
         "desc": "[end] 不在获得一览",
-        "recognition": "And",
-        "all_of": [
-            "ProbeReward"
+        "recognition": "OCR",
+        "expected": "获得一览",
+        "roi": [
+            525,
+            154,
+            174,
+            53
         ],
         "inverse": true
     },
