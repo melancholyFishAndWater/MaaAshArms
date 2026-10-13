@@ -1,7 +1,15 @@
 # 更新公告
 
-本软件仍然处于测试中，暂无公测版本。
+## 本软件仍然处于测试中，暂无公测版本
 
-启用遥测以帮助测试，这对我们来说有很大的帮助。
+## **内测版本**，请务必修改更新设置
 
-更多更新详情请看最新 [Release](https://github.com/melancholyFishAndWater/MaaAshArms/releases/)
+- 资源更新渠道：`内测版`
+
+- 开启 自动检测更新
+
+- 开启 自动更新资源
+
+- 启用遥测以帮助测试，这样可以节约您遇到问题时，提交 `issues` 的时间。
+
+更多更新详情请看最新 [Release](https://github.com/melancholyFishAndWater/MaaAshArms/releases/latest)
