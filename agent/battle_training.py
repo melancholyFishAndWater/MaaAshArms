@@ -1,7 +1,7 @@
 """
 训练所 agent 模块
 
-INFO 使用命名规范版本 v1.1 校验年月日 26/10/12
+INFO 使用命名规范版本 v1.2 校验年月日 26/10/13
 """
 
 from typing import Any
