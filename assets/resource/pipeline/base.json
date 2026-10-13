@@ -121,7 +121,7 @@
         ],
         "post_wait_freezes": 500
     },
-    // INFO 判断节点
+    // INFO 探测
     "HomeFlagFirst": {
         "desc": "在游戏主页",
         "recognition": "TemplateMatch",
@@ -145,6 +145,25 @@
             143,
             106
         ]
+    },
+    "ProbeReward": {
+        "desc": "[end] 在获得一览",
+        "recognition": "OCR",
+        "expected": "获得一览",
+        "roi": [
+            525,
+            154,
+            174,
+            53
+        ]
+    },
+    "ProbeNoReward": {
+        "desc": "[end] 不在获得一览",
+        "recognition": "And",
+        "all_of": [
+            "ProbeReward"
+        ],
+        "inverse": true
     },
     // INFO 条件执行节点
     "BackButton": {
@@ -179,13 +198,9 @@
     },
     "IsGetReward": {
         "desc": "领取奖励",
-        "recognition": "OCR",
-        "expected": "获得一览",
-        "roi": [
-            525,
-            154,
-            174,
-            53
+        "recognition": "And",
+        "all_of": [
+            "ProbeReward"
         ],
         "action": "Click",
         "target": [
