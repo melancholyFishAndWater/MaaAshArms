@@ -1,0 +1,26 @@
+{
+    "target": "5e4d413b64a7/python",
+    "project_prefix": "MaaAshArms",
+    "release_pattern": "MaaAshArms@v?(\\d+)\\.(\\d+)\\.(\\d+)(?:-(alpha|beta|rc)\\.(\\d+))?",
+    "task_run_spans": [
+        "mfa.task_run"
+    ],
+    "ignored_prefixes": [
+        "mfa."
+    ],
+    "ignored_suffixes": [
+        ".task_run"
+    ],
+    "min_release_unique_users": 1,
+    "min_samples": 10,
+    "system_labels": {
+        "连接": "连接",
+        "开始前脚本": "开始前脚本",
+        "性能基准": "性能基准",
+        "结束后脚本": "结束后脚本"
+    },
+    "ignored_descriptions": [
+        "connection_failed",
+        "controller_initialization_failed"
+    ]
+}

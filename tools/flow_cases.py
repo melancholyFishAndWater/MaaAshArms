@@ -1,0 +1,396 @@
+#!/usr/bin/env python
+"""把一个"证据包"渲染成流程图，产出统一落到 temp/flow/。
+
+证据包指的是"排一次失败所要看的那些东西"：
+
+  * 本机安装根：`<安装根>/debug/`（含 `maafw.log`、`on_error/`、`vision/`）；
+  * MFA 手动导出包：`log_20261014_003000.zip`。超过 23.75 MB 会分成
+    `…-part01.zip` / `…-part02.zip` 多卷，本工具把它们当**同一棵逻辑目录树**处理，
+    所以多卷要一起传给 --case；
+  * 遥测工件解出来的目录（Sentry 失败附件只含 `maafw.log` 的 tail 与 `on_error/`
+    图片，**没有 `vision/`** —— 这是物理限制，见 tools/sentry/README.md）。
+
+与 `tools/flow_from_log.py` 的分工：那个文件是**渲染器**（解析 + 布局，唯一的实现处），
+本文件只做**编排**（找证据、跑批量、记 manifest、保证幂等），不复制任何渲染逻辑。
+
+用法示例：
+  # 本机跑某个 task
+  python tools/flow_cases.py --case D:/MaaAshArms/debug --task-id 200000118
+
+  # 别人给的多卷导出包
+  python tools/flow_cases.py --case log_20261014-part01.zip log_20261014-part02.zip \\
+      --task-id 200000118 --from "2026-10-14 00:30:00" --to "2026-10-14 00:32:00"
+
+  # 只列一遍有哪些证据包，不画
+  python tools/flow_cases.py --case D:/MaaAshArms/debug --list-cases
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import io
+import json
+import os
+import re
+import sys
+import zipfile
+from dataclasses import dataclass, field
+from datetime import datetime
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from flow_from_log import (  # noqa: E402
+    DEFAULT_OUTDIR,
+    FlowOptions,
+    FlowResult,
+    MediaResolver,
+    parse_time,
+    render_flow,
+)
+from flow_from_log import _is_zip  # noqa: PLC2701 - 同目录内部工具，共用同一份魔数判据
+
+MANIFEST_NAME = "manifest.json"
+LOG_NAMES = ("maafw.log", "maa.log")
+# MFA 分卷命名：`<名字>-partNN.zip`；分组时按去掉这一段的名字归并
+PART_RE = re.compile(r"-part\d+$", re.IGNORECASE)
+
+
+@dataclass
+class Case:
+    """一个证据包：日志正文 + 图片证据（可为归档或目录）。"""
+
+    label: str
+    log_text: str | None = None       # 归档来源：日志正文
+    log_path: str | None = None       # 目录来源：日志文件路径
+    packages: list[str] = field(default_factory=list)   # 归档来源：全部卷路径
+    root: str | None = None           # 目录来源的根
+    bad_packages: list[str] = field(default_factory=list)
+
+    def log_source(self):
+        return self.log_text if self.log_text is not None else self.log_path
+
+    def _zip_subdir(self, name: str):
+        """归档里 `.../on_error/...` 这类子目录 → 内存索引；延迟解压由 MediaResolver 负责。"""
+        if not self.packages:
+            return None
+        entries: list[tuple[str, object]] = []
+        for package in self.packages:
+            try:
+                with zipfile.ZipFile(package) as zf:
+                    for info in sorted(zf.infolist(), key=lambda i: i.filename):
+                        if info.is_dir():
+                            continue
+                        if f"/{name}/" in info.filename.replace("\\", "/"):
+                            entries.append((info.filename, _LazyMember(package, info.filename)))
+            except (OSError, zipfile.BadZipFile):
+                continue
+        return MediaResolver(members=entries) if entries else None
+
+    def vision(self):
+        if self.root:
+            sub = os.path.join(self.root, "vision")
+            return MediaResolver(sub) if os.path.isdir(sub) else None
+        return self._zip_subdir("vision")
+
+    def on_error(self):
+        if self.root:
+            sub = os.path.join(self.root, "on_error")
+            return MediaResolver(sub) if os.path.isdir(sub) else None
+        return self._zip_subdir("on_error")
+
+    def describe(self) -> str:
+        if self.root:
+            return self.root
+        return f"归档 {len(self.packages)} 卷"
+
+
+@dataclass(frozen=True)
+class _LazyMember:
+    """归档条目：真正要画时才解压，避免把整包图片一次性读进内存。"""
+
+    package: str
+    member: str
+
+    def read(self) -> bytes:
+        with zipfile.ZipFile(self.package) as zf:
+            return zf.read(self.member)
+
+
+def _read_log_from_zips(packages: list[str]) -> tuple[str | None, list[str]]:
+    """从归档（可多卷）里取日志正文。先看条目名，再按需只解压那一条。"""
+    bad: list[str] = []
+    candidates: list[tuple[int, str, str]] = []   # (日志名优先级, package, member)；排序后用最低优先级那条
+    for package in sorted(packages):
+        try:
+            with zipfile.ZipFile(package) as zf:
+                for info in zf.infolist():
+                    if info.is_dir():
+                        continue
+                    base = os.path.basename(info.filename).lower()
+                    for rank, name in enumerate(LOG_NAMES):
+                        if base == name:
+                            candidates.append((rank, package, info.filename))
+        except (OSError, zipfile.BadZipFile) as exc:
+            bad.append(f"{package}: {exc}")
+    if not candidates:
+        return None, bad
+    candidates.sort()
+    _rank, package, member = candidates[0]
+    try:
+        with zipfile.ZipFile(package) as zf:
+            return zf.read(member).decode("utf-8", errors="replace"), bad
+    except (OSError, zipfile.BadZipFile, KeyError) as exc:
+        bad.append(f"{package}!{member}: {exc}")
+        return None, bad
+
+
+def load_case(case_arg: list[str]) -> Case:
+    """把 --case 的入参变成 Case：目录、一个/多个归档、或单份日志文件。"""
+    items = [str(p) for p in case_arg]
+    dirs = [p for p in items if os.path.isdir(p)]
+    zips = [p for p in items if os.path.isfile(p) and _is_zip(p)]
+    rest = [p for p in items if p not in dirs and p not in zips]
+
+    if dirs and (zips or rest):
+        raise ValueError("--case 不能把目录和归档混在一起；一个 case 只对应一处证据。")
+    if len(dirs) > 1:
+        raise ValueError(f"--case 只接受一个目录，收到 {len(dirs)} 个：{dirs}")
+
+    if dirs:
+        root = dirs[0]
+        for name in LOG_NAMES:
+            cand = os.path.join(root, name)
+            if os.path.isfile(cand):
+                return Case(label=os.path.basename(os.path.normpath(root)) or "case",
+                            log_path=cand, root=root)
+        raise FileNotFoundError(
+            f"{root} 下找不到 {' / '.join(LOG_NAMES)}。给它 debug/ 那一层，"
+            "或直接把日志文件路径当 --case 传。"
+        )
+
+    if zips:
+        log_text, bad = _read_log_from_zips(zips)
+        if log_text is None:
+            raise FileNotFoundError(
+                f"{len(zips)} 个归档里都没有 {' / '.join(LOG_NAMES)}（读不了的卷：{bad or '无'}）。"
+            )
+        label = PART_RE.sub("", os.path.splitext(os.path.basename(sorted(zips)[0]))[0])
+        return Case(label=label or "archive", log_text=log_text,
+                    packages=sorted(zips), bad_packages=bad)
+
+    if len(rest) == 1 and os.path.isfile(rest[0]):
+        only = rest[0]
+        return Case(label=os.path.splitext(os.path.basename(only))[0], log_path=only)
+
+    missing = [p for p in items if not os.path.exists(p)]
+    raise FileNotFoundError(f"--case 指向的路径既不是目录也不是归档：{missing or items}")
+
+
+def discover_cases(root: str) -> list[Case]:
+    """列出 root 下的候选证据包（只读，不画图、不写盘）。
+
+    多卷导出包的每一卷都会被识别成独立候选，这里**不自动归并**——归并需要知道
+    用户想画哪一段，猜错会画出一张看着合理但缺卷的图。多卷请显式一起传 --case。
+    """
+    found: list[Case] = []
+    if not os.path.isdir(root):
+        return found
+    if any(os.path.isfile(os.path.join(root, n)) for n in LOG_NAMES):
+        found.append(load_case([root]))
+        return found
+    for name in sorted(os.listdir(root)):
+        sub = os.path.join(root, name)
+        if os.path.isdir(sub):
+            if any(os.path.isfile(os.path.join(sub, n)) for n in LOG_NAMES):
+                found.append(load_case([sub]))
+        elif os.path.isfile(sub) and _is_zip(sub):
+            try:
+                found.append(load_case([sub]))
+            except (FileNotFoundError, ValueError) as exc:
+                print(f"跳过 {sub}：{exc}", file=sys.stderr)
+    return found
+
+
+def log_digest(case: Case) -> str:
+    """日志内容的短指纹：manifest 用它判断"是不是同一份输入"。"""
+    if case.log_text is not None:
+        data = case.log_text.encode("utf-8", errors="replace")
+        return hashlib.sha256(data).hexdigest()[:16]
+    if case.log_path is None:
+        # load_case 保证二者必有一个；这里显式报错，避免 `open(None)` 那种看不出原因的崩溃。
+        raise ValueError(f"证据包 {case.label} 既没有日志正文也没有日志路径，无法计算指纹。")
+    hasher = hashlib.sha256()
+    with open(case.log_path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            hasher.update(chunk)
+    return hasher.hexdigest()[:16]
+
+
+def out_filename(case: Case, options: FlowOptions) -> str:
+    """确定性文件名：同一份日志 + 同一套参数 → 同一个名字，这是幂等的依据。"""
+    bits = [case.label, log_digest(case), f"task{options.task_id}" if options.task_id else "all"]
+    if options.t_from:
+        bits.append(options.t_from.strftime("%m%d-%H%M%S"))
+    if options.t_to:
+        bits.append(options.t_to.strftime("%m%d-%H%M%S"))
+    safe = "".join(c if c.isalnum() or c in "-_" else "-" for c in "_".join(bits))
+    return f"flow_{safe}.png"
+
+
+def load_manifest(outdir: str) -> dict:
+    path = os.path.join(outdir, MANIFEST_NAME)
+    if not os.path.isfile(path):
+        return {"schema": 1, "cases": {}}
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"提示：{path} 读不了（{exc}），本次当作空 manifest。", file=sys.stderr)
+        return {"schema": 1, "cases": {}}
+    if not isinstance(data, dict) or not isinstance(data.get("cases"), dict):
+        return {"schema": 1, "cases": {}}
+    return data
+
+
+def save_manifest(outdir: str, manifest: dict) -> None:
+    os.makedirs(outdir, exist_ok=True)
+    path = os.path.join(outdir, MANIFEST_NAME)
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(manifest, fh, ensure_ascii=False, indent=2)
+        fh.write("\n")
+
+
+def run_case(case: Case, options: FlowOptions, *, outdir: str, mermaid: bool,
+             force: bool, manifest: dict) -> FlowResult | None:
+    """渲染一个 case；命中 manifest 且产物还在就跳过（幂等）。"""
+    name = out_filename(case, options)
+    target = os.path.join(outdir, name)
+    vision, on_error = case.vision(), case.on_error()
+    fingerprint = {
+        "log": log_digest(case),
+        "options": options.summary(),
+        "source": case.describe(),
+        "has_vision": bool(vision),
+        "has_on_error": bool(on_error),
+    }
+    recorded = manifest["cases"].get(name)
+    if not force and recorded and recorded.get("fingerprint") == fingerprint and os.path.isfile(target):
+        print(f"跳过（已画过）: {target}")
+        return None
+
+    result = render_flow(
+        case.log_source(),
+        vision=vision,
+        on_error=on_error,
+        out=target,
+        options=options,
+        mermaid=mermaid,
+    )
+    assert isinstance(result, FlowResult)
+    manifest["cases"][name] = {
+        "fingerprint": fingerprint,
+        "path": result.path,
+        "mermaid": result.mermaid,
+        "width": result.width,
+        "height": result.height,
+        "steps": result.steps,
+        "boxes": result.boxes,
+        "rounds": result.rounds,
+        "truncated_start": result.truncated_start,
+        "rendered_at": datetime.now().isoformat(timespec="seconds"),
+    }
+    print(f"步骤 {result.steps}（折叠后 {result.boxes} 个框）/ 轮次 {result.rounds}"
+          f" → {result.path}  ({result.width}×{result.height})")
+    if result.mermaid:
+        print(f"mermaid → {result.mermaid}")
+    if result.truncated_start:
+        print("提示：日志第一行晚于 --from，这份日志只含窗口后半段（遥测附件只带 tail）",
+              file=sys.stderr)
+    if case.bad_packages:
+        print(f"警告：以下卷读不了，结果可能不完整：{case.bad_packages}", file=sys.stderr)
+    return result
+
+
+def create_argument_parser(prog: str | None = None) -> argparse.ArgumentParser:
+    ap = argparse.ArgumentParser(
+        prog=prog,
+        description="把一个证据包（debug 目录 / MFA 导出 zip / 多卷）渲染成流程图，产出落到 temp/flow/",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    ap.add_argument("--case", nargs="+", required=True,
+                    help="证据包：一个 debug 目录、一个/多个归档（多卷一起给）、或一份日志文件")
+    ap.add_argument("--outdir", default=DEFAULT_OUTDIR, help=f"输出目录（默认 {DEFAULT_OUTDIR}）")
+    ap.add_argument("--from", dest="t_from", default=None, help="起始时间")
+    ap.add_argument("--to", dest="t_to", default=None, help="结束时间")
+    ap.add_argument("--task-id", type=int, default=None, help="只看某个 task_id")
+    ap.add_argument("--cut-on", default=None, help="手动指定分轮节点（逗号分隔）")
+    ap.add_argument("--max-rounds", type=int, default=40, help="最多画多少轮（默认 40）")
+    ap.add_argument("--collapse", type=int, default=3, help="连续同名节点折叠阈值（默认 3）")
+    ap.add_argument("--no-thumbs", dest="thumbs", action="store_false", help="不贴截图")
+    ap.add_argument("--mermaid", action="store_true", help="额外输出 .mmd")
+    ap.add_argument("--force", action="store_true", help="忽略 manifest，强制重画")
+    ap.add_argument("--list-cases", action="store_true", help="只列出发现的证据包，不画")
+    ap.set_defaults(thumbs=True)
+    return ap
+
+
+def main(argv: list[str] | None = None, prog: str | None = None) -> int:
+    for stream in (sys.stdout, sys.stderr):
+        # reconfigure() 定义在 io.TextIOWrapper 上，而 sys.stdout 的静态类型是 typing.TextIO
+        if isinstance(stream, io.TextIOWrapper):
+            stream.reconfigure(errors="replace")
+
+    args = create_argument_parser(prog).parse_args(argv)
+    try:
+        t_from, t_to = parse_time(args.t_from), parse_time(args.t_to)
+    except SystemExit as exc:
+        print(f"错误：{exc}", file=sys.stderr)
+        return 1
+
+    options = FlowOptions(
+        t_from=t_from, t_to=t_to, task_id=args.task_id, cut_on=args.cut_on,
+        max_rounds=args.max_rounds, collapse=args.collapse, thumbs=args.thumbs,
+    )
+
+    single = args.case[0]
+    whole_dir = len(args.case) == 1 and os.path.isdir(single) and not any(
+        os.path.isfile(os.path.join(single, n)) for n in LOG_NAMES)
+    try:
+        cases = discover_cases(single) if whole_dir else [load_case(args.case)]
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"错误：{exc}", file=sys.stderr)
+        return 1
+
+    if not cases:
+        print(f"错误：{single} 下没找到带日志的证据包。", file=sys.stderr)
+        return 1
+
+    if args.list_cases:
+        for case in cases:
+            print(f"{case.label}\t{case.describe()}")
+        return 0
+
+    os.makedirs(args.outdir, exist_ok=True)
+    manifest = load_manifest(args.outdir)
+    drawn = skipped = failed = 0
+    for case in cases:
+        try:
+            result = run_case(case, options, outdir=args.outdir, mermaid=args.mermaid,
+                              force=args.force, manifest=manifest)
+        except (FileNotFoundError, ValueError, OSError) as exc:
+            failed += 1
+            print(f"错误：{case.label}: {exc}", file=sys.stderr)
+            continue
+        drawn += result is not None
+        skipped += result is None
+    save_manifest(args.outdir, manifest)
+    tail = f"，失败 {failed}" if failed else ""
+    print(f"\n完成：绘制 {drawn} 个，跳过 {skipped} 个{tail}；"
+          f"manifest → {os.path.join(args.outdir, MANIFEST_NAME)}")
+    return 1 if failed and not drawn else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
