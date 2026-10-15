@@ -30,6 +30,11 @@ jobs:
         with:
           node-version: 22
 
+      # 纯标准库，不装任何包：先拦住语法错、悬空的工具路径引用、__doc__ 直取、仓库根定位算错。
+      - name: Static checks on Python tooling
+        run: |
+          python tools/validation/check_python.py --format github
+
       - name: Run maa-checker
         run: |
           npm ci
@@ -43,10 +48,10 @@ jobs:
       - name: Validate JSON Schema
         run: |
           python -m pip install jsonschema==4.26.0 referencing==0.37.0
-          python tools/validate_schema.py --schema-dir deps/tools --resource-dirs assets/resource --exclude-dirs assets/resource/announcement assets/resource/tasks --interface-files assets/interface.json --task-dirs assets/resource/tasks
+          python tools/validation/validate_schema.py --schema-dir deps/tools --resource-dirs assets/resource --exclude-dirs assets/resource/announcement assets/resource/tasks --interface-files assets/interface.json --task-dirs assets/resource/tasks
 
       # 跨文件的名字与约定（注册名/节点引用/模板引用/override 目标/命名规范）。
       # 纯标准库，不需要装包；error 才算失败。
       - name: Validate references and conventions
         run: |
-          python tools/validate_refs.py --format github
+          python tools/validation/validate_refs.py --format github
