@@ -22,7 +22,7 @@
                 {
                     "label": "Ensure 就位节点",
                     "body": {
-                        "desc": "$1",
+                        "desc": "[jp] $1",
                         "recognition": "And",
                         "all_of": [
                             "$2"
