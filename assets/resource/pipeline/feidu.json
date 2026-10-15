@@ -1,24 +1,53 @@
 {
+    /*
+    废都
+    */
     "TaskFeiduReward": {
         "desc": "领取资源任务",
         "next": [
             "FeiduRewardOne",
-            "[JumpBack]ReturnFeidu"
+            "[JumpBack]FeiduEnsureHome",
+            "LoopErrorByTimes"
         ]
     },
-    // 返回废都
-    "ReturnFeidu": {
-        "desc": "返回废都主页",
-        "max_hit": 2,
-        "timeout": 600000,
+    // INFO 探测
+    "FeiduProbeHome": {
+        "desc": "[end] 在废都页面",
+        "recognition": "And",
+        "all_of": [
+            "FeiduProbeHomeName",
+            "HasHelpButton"
+        ]
+    },
+    "FeiduProbeHomeName": {
+        "desc": "[end] 有废都重建标题",
+        "recognition": "OCR",
+        "expected": "废都重建",
+        "roi": [
+            117,
+            12,
+            176,
+            45
+        ]
+    },
+    // INFO 就位-废都主页
+    "FeiduEnsureHome": {
+        "desc": "[jp] 确保在废都主页",
+        "recognition": "And",
+        "all_of": [
+            "FeiduProbeHome"
+        ],
+        "inverse": true,
+        "rate_limit": 2000,
+        "timeout": 30000,
         "next": [
-            "FeiduInHome",
-            "FeiduEnterMainPage",
+            "FeiduProbeHome",
+            "[JumpBack]FeiduEnterHome",
             "[JumpBack]ReturnMain"
         ]
     },
-    "FeiduEnterMainPage": {
-        "desc": "从主页进入废都",
+    "FeiduEnterHome": {
+        "desc": "[jp] 从主页进入废都",
         "recognition": "OCR",
         "expected": "废都重建",
         "action": "Click",
@@ -28,35 +57,20 @@
             115,
             39
         ],
-        "next": [
-            "FeiduInHome",
-            "FeiduEnterMainPage"
-        ],
         "post_wait_freezes": 2000
-    },
-    "FeiduInHome": {
-        "desc": "在废都标志",
-        "recognition": "OCR",
-        "expected": "废都重建",
-        "roi": [
-            107,
-            9,
-            195,
-            55
-        ]
     },
     // 领取
     "FeiduRewardOne": {
         "desc": "领取资源",
         "recognition": "And",
         "all_of": [
-            "FeiduInHome"
+            "FeiduProbeHome"
         ],
         "next": [
             "[JumpBack]FeiduGetMoney",
             "[JumpBack]FeiduGetPart",
             "[JumpBack]FeiduGetMetal",
-            "FeiduInHome"
+            "FeiduProbeHome"
         ]
     },
     "FeiduGetMoney": {

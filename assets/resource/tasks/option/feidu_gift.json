@@ -11,7 +11,7 @@
                 {
                     "name": "No",
                     "pipeline_override": {
-                        "TaskGift": {
+                        "GiftProbeDaily": {
                             "custom_recognition_param": {
                                 "enable": false
                             }

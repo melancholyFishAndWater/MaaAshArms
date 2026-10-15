@@ -1,46 +1,205 @@
 {
-    // INFO 赠礼任务
+    /*
+    INFO 使用命名规范版本 v1.3 校验年月日 26/10/15
+    
+    INFO 赠礼
+    */
     "TaskGift": {
         "desc": "赠礼任务",
-        "recognition": "Custom",
-        "custom_recognition": "TaskGiftReco",
-        "custom_recognition_param": {
-            "enable": true // 每日一次开关 覆写关闭
-        },
+        "timeout": 30000,
         "next": [
-            "GiftEnterTavern",
-            "[JumpBack]ReturnFeidu"
+            "[JumpBack]GiftProbeDaily",
+            "[JumpBack]GiftLoopChoose",
+            "GiftLoopGive",
+            "[JumpBack]GiftEnsureHome",
+            "LoopErrorByTimes"
         ]
     },
-    // INFO 任务流程
+    // INFO 探测
+    "GiftProbeDaily": {
+        "desc": "[once][jp] 检查每日一次",
+        "max_hit": 1,
+        "recognition": "Custom",
+        "custom_recognition": "GiftProbeDailyReco",
+        "custom_recognition_param": {
+            "enable": true
+        }
+    },
+    "GiftProbeHome": {
+        "desc": "[end] 在赠礼主页面",
+        "recognition": "Or",
+        "any_of": [
+            "GiftProbeCharacters",
+            "GiftProbeCharacter",
+            "GiftProbeGifts"
+        ]
+    },
+    "GiftProbeCharacters": {
+        "desc": "[end] 在选择邀请页面",
+        "recognition": "OCR",
+        "expected": "请选择邀请的.+",
+        "roi": [
+            161,
+            97,
+            333,
+            51
+        ]
+    },
+    "GiftProbeCharacter": {
+        "desc": "[end] 在角色页面",
+        "recognition": "OCR",
+        "expected": "赠礼",
+        "roi": [
+            1169,
+            659,
+            80,
+            40
+        ]
+    },
+    // TODO 选择礼物用
+    "GiftProbeGifts": {
+        "desc": "[end] 在选择礼物页面",
+        "recognition": "OCR",
+        "expected": "赠礼",
+        "roi": [
+            1001,
+            113,
+            203,
+            165
+        ]
+    },
+    "GiftProbeTavern": {
+        "desc": "[end] 在酒馆夜话页面",
+        "recognition": "OCR",
+        "expected": "深入交流",
+        "roi": [
+            516,
+            203,
+            187,
+            59
+        ]
+    },
+    "GiftProbeRules": {
+        "desc": "[end] 在排序规则页面",
+        "recognition": "OCR",
+        "expected": "基础排序",
+        "roi": [
+            300,
+            150,
+            95,
+            32
+        ]
+    },
+    "GiftProbeMaxFavorability": {
+        "desc": "[end] 是满好感角色",
+        "recognition": "And",
+        "all_of": [
+            "GiftProbeHome",
+            {
+                "recognition": "OCR",
+                "expected": "5",
+                "roi": [
+                    133,
+                    113,
+                    54,
+                    29
+                ]
+            }
+        ]
+    },
+    "GiftProbeNoMaxFavorability": {
+        "desc": "[end] 不是满好感角色",
+        "recognition": "And",
+        "all_of": [
+            "GiftProbeHome",
+            {
+                "recognition": "OCR",
+                "expected": "[0-4]",
+                "roi": [
+                    133,
+                    113,
+                    54,
+                    29
+                ]
+            }
+        ]
+    },
+    // INFO 就位-在酒馆页面
+    "GiftEnsureTavern": {
+        "desc": "[jp] 确保在酒馆页面",
+        "recognition": "And",
+        "all_of": [
+            "GiftProbeTavern"
+        ],
+        "inverse": true,
+        "rate_limit": 2000,
+        "timeout": 30000,
+        "next": [
+            "GiftProbeTavern",
+            "[JumpBack]GiftEnterTavern",
+            "[JumpBack]FeiduEnsureHome"
+        ]
+    },
     "GiftEnterTavern": {
-        "desc": "进入酒馆页面",
+        "desc": "[jp] 进入酒馆页面",
         "recognition": "OCR",
         "expected": "酒馆夜话",
-        "action": "Click",
-        "next": [
-            "GiftEnterHome",
-            "GiftEnterTavern"
+        "roi": [
+            807,
+            577,
+            473,
+            143
         ],
-        "post_wait_freezes": 500
+        "action": "Click",
+        "post_wait_freezes": 1000
+    },
+    // INFO 就位-在赠礼主页面
+    "GiftEnsureHome": {
+        "desc": "[jp] 确保在赠礼主页面",
+        "recognition": "And",
+        "all_of": [
+            "GiftProbeHome"
+        ],
+        "inverse": true,
+        "rate_limit": 2000,
+        "timeout": 30000,
+        "next": [
+            "GiftProbeHome",
+            "[JumpBack]GiftEnterHome",
+            "[JumpBack]GiftEnsureTavern"
+        ]
     },
     "GiftEnterHome": {
-        "desc": "进入深入交流页面(赠礼页面)",
-        "recognition": "TemplateMatch",
-        "template": [
-            "Feidu/TavernButton1.png"
+        "desc": "[jp] 进入赠礼页面",
+        "recognition": "OCR",
+        "expected": "深入交流",
+        "roi": [
+            516,
+            203,
+            187,
+            59
         ],
         "action": "Click",
-        "next": [
-            "GiftClickToChoose",
-            "GiftClickSortRule",
-            "GiftEnterHome"
-        ],
-        "post_wait_freezes": 1500
+        "post_wait_freezes": 1000
     },
-    // INFO 赠礼页面
-    "GiftClickToChoose": {
-        "desc": "点击切换DOLLS",
+    // INFO 就位-在选择角色页面
+    "GiftEnsureCharacters": {
+        "desc": "[jp] 确保在选择角色页面",
+        "recognition": "And",
+        "all_of": [
+            "GiftProbeCharacters"
+        ],
+        "inverse": true,
+        "rate_limit": 2000,
+        "timeout": 30000,
+        "next": [
+            "GiftProbeCharacters",
+            "[JumpBack]GiftEnterCharactersPage",
+            "[JumpBack]GiftEnsureHome"
+        ]
+    },
+    "GiftEnterCharactersPage": {
+        "desc": "[jp] 点击切换DOLLS",
         "recognition": "OCR",
         "expected": "切换.+",
         "roi": [
@@ -50,25 +209,63 @@
             36
         ],
         "action": "Click",
-        "next": [
-            "GiftClickSortRule"
-        ],
         "post_wait_freezes": 2000
     },
-    "GiftClickSortRule": {
-        "desc": "点击排序按钮",
+    // INFO 就位-在排序页面
+    "GiftEnsureRules": {
+        "desc": "[jp] 确保在排序页面",
+        "recognition": "And",
+        "all_of": [
+            "GiftProbeRules"
+        ],
+        "inverse": true,
+        "rate_limit": 2000,
+        "timeout": 30000,
+        "next": [
+            "GiftProbeRules",
+            "[JumpBack]GiftEnterRules",
+            "[JumpBack]GiftEnsureCharacters"
+        ]
+    },
+    "GiftEnterRules": {
+        "desc": "[jp] 进入排序页面",
         "recognition": "OCR",
         "expected": "排序",
-        "action": "Click",
-        "next": [
-            "GiftClickFavorability"
+        "roi": [
+            703,
+            15,
+            131,
+            54
         ],
+        "action": "Click",
         "post_wait_freezes": 2000
     },
-    "GiftClickFavorability": {
-        "desc": "点击好感度按钮",
+    // INFO 工作
+    "GiftLoopChoose": {
+        "desc": "[Loop][jp] 选择好感度最低的角色 循环",
+        "recognition": "Or",
+        "any_of": [
+            "GiftProbeCharacters",
+            "GiftProbeMaxFavorability"
+        ],
+        "rate_limit": 2000,
+        "next": [
+            "GiftProbeNoMaxFavorability",
+            "[JumpBack]GiftChooseFavorability",
+            "[JumpBack]GiftEnsureRules",
+            "LoopErrorByTimes"
+        ]
+    },
+    "GiftChooseFavorability": {
+        "desc": "[jp] 点击好感度按钮",
         "recognition": "OCR",
         "expected": "好感度",
+        "roi": [
+            302,
+            184,
+            674,
+            314
+        ],
         "action": "Click",
         "next": [
             "GiftClickSortConfirm"
@@ -79,21 +276,23 @@
         "desc": "点击确认按钮",
         "recognition": "OCR",
         "expected": "确认",
+        "roi": [
+            699,
+            524,
+            105,
+            46
+        ],
         "action": "Click",
         "next": [
-            "GiftClickReverse"
+            "GiftChooseReverse"
         ],
         "post_wait_freezes": 2000
     },
-    "GiftClickReverse": {
+    "GiftChooseReverse": {
         "desc": "点击反转排序",
         "recognition": "TemplateMatch",
         "template": [
             "Feidu/SortButton.png"
-        ],
-        "action": "Click",
-        "next": [
-            "GiftClickFirstcharacter"
         ],
         "roi": [
             1055,
@@ -101,23 +300,38 @@
             61,
             60
         ],
-        "post_wait_freezes": 2000
-    },
-    "GiftClickFirstcharacter": {
-        "desc": "点击第一个角色",
-        "recognition": "DirectHit",
         "action": "Click",
-        "target": [
-            216,
-            230,
-            43,
-            48
-        ],
         "next": [
-            "GiftClickShowGift",
             "GiftClickFirstcharacter"
         ],
         "post_wait_freezes": 2000
+    },
+    "GiftClickFirstcharacter": {
+        "desc": "[end] 点击第一个角色",
+        "recognition": "OCR",
+        "expected": "\\d?\\d",
+        "roi": [
+            201,
+            292,
+            74,
+            37
+        ],
+        "action": "Click",
+        "post_wait_freezes": 2000
+    },
+    // INFO 工作-赠礼
+    "GiftLoopGive": {
+        "desc": "[Loop] 赠礼礼物 循环",
+        "recognition": "And",
+        "all_of": [
+            "GiftProbeHome"
+        ],
+        "rate_limit": 2000,
+        "next": [
+            "GiftClickShowGift",
+            "[JumpBack]GiftEnsureHome",
+            "LoopErrorByTimes"
+        ]
     },
     "GiftClickShowGift": {
         "desc": "点击赠礼按钮",
@@ -137,32 +351,39 @@
         ],
         "post_wait_freezes": 2000
     },
+    // TODO 找到最喜欢的礼物
     "GiftChooseFirstGift": {
-        "desc": "点击第一个礼物",
-        "recognition": "DirectHit",
-        "action": "Click",
-        "target": [
-            136,
-            610,
-            25,
-            25
+        "desc": "点击当前页面可送的礼物",
+        "recognition": "OCR",
+        "expected": "[1-9]",
+        "roi": [
+            99,
+            645,
+            1022,
+            26
         ],
+        "target_offset": [
+            6,
+            -31,
+            -28,
+            -12
+        ],
+        "action": "Click",
         "next": [
-            "GiftGiveThree"
+            "GiftClickGiveThrice"
         ],
         "post_wait_freezes": 2000
     },
-    "GiftGiveThree": {
-        "desc": "给三次礼物",
-        "recognition": "TemplateMatch",
-        "template": [
-            "Feidu/GiveGiftButton.png"
-        ],
+    // XXX 没有验证是否赠送成功/够
+    "GiftClickGiveThrice": {
+        "desc": "赠送三次礼物",
+        "recognition": "OCR",
+        "expected": "赠送",
         "roi": [
-            1078,
-            428,
-            99,
-            102
+            1052,
+            408,
+            177,
+            143
         ],
         "action": "Click",
         "repeat": 3,
@@ -176,7 +397,7 @@
         "action": "Custom",
         "custom_action": "GiftDailyUpdateAct"
     }
-    // TEST
+    // TODO
     // "找非满好感角色": {
     //     "enabled": false,
     //     "recognition": "TemplateMatch",

@@ -205,8 +205,8 @@ class Store(Generic[T]):
 _gift = Store[bool]("daily_gift.json")
 
 
-@AgentServer.custom_recognition("TaskGiftReco")
-class TaskGiftReco(CustomRecognition):
+@AgentServer.custom_recognition("GiftProbeDailyReco")
+class GiftProbeDailyReco(CustomRecognition):
     def analyze(
         self, context: Context, argv: CustomRecognition.AnalyzeArg
     ) -> list[int] | None:
