@@ -7,7 +7,7 @@
 ## 功能取舍
 
 | 不做 | 为什么 | 要它怎么办 |
-|---|---|---|
+| --- | --- | --- |
 | 格式化、自动修 | 目的只是"判对错"；会改文件的工具不该混进 CI 的校验步骤 | 各自编辑器/formatter，或单独提一个 PR |
 | 把 `ruff` 默认规则集当门槛 | 默认集里大量是本仓库从未采纳的风格偏好（`TRY004`、`PERF402`、`SIM102` 等 178 条），当门槛只会训练人无视它 | 只把"真实缺陷"类当门槛（`F401`/`F841`/`E722`/`FURB162`/`S110`/`BLE001`/`PLW1510`/`RUF100`），现为零；要全量看就 `uvx ruff check tools`（受限沙箱下 `uv` 自己的三个目录都在工作区外、会被拒写，先 `UV_CACHE_DIR` / `UV_TOOL_DIR` / `UV_TOOL_BIN_DIR` 指进 `temp/`；`--no-cache` 不够，装工具那一步仍要写 `%APPDATA%\uv\tools`） |
 | 把 `pyright` 写进 `package.json` | 两份 lockfile（`package-lock.json` 与 `pnpm-lock.yaml`）都是入库文件，加一个带平台二进制的依赖要重新生成两份 | 走 `npx`（`check_pyright.mjs`），首次需要网络 |
@@ -53,7 +53,7 @@ node tools/validation/check_pyright.mjs
 四类，都是**别的工具查不出来**的仓库特有约定：
 
 | 检查 | 拦的是什么 |
-|---|---|
+| --- | --- |
 | `syntax` | `ast.parse` 失败的文件 |
 | `tool-path` | 文档/工作流/脚本里写了不存在的 `tools/...` 路径。2026-10 把脚本收进子目录时，靠它兜住了十几处漏改的引用 |
 | `doc-access` | `__doc__.splitlines()` 这种直取：`__doc__` 可为 `None`，直接用抛 `AttributeError`；用 `report_common.module_summary(__doc__)` |
@@ -72,7 +72,7 @@ node tools/validation/check_pyright.mjs
 规范和脚本必须对齐，否则"这几条没查"会和"查了没问题"看起来一样：
 
 | 发现 | 什么时候报 | 怎么办 |
-|---|---|---|
+| --- | --- | --- |
 | `E1-spec-missing`（error） | 找不到 `docs/zh_cn/develop/node-naming.md`，或文档里没有「版本号: vX.Y」 | 检查文档路径与头部版本号；改名要同步脚本里的 `NAMING_SPEC` |
 | `E2-spec-version`（warn） | 文档的版本号与 `NAMING_SPEC_VERSION` 不一致（两个方向都报）；写法模板 `tools/vscode/pipeline.snippets.schema.json` 的 `$comment` 与它不一致也报 | 复核新规则要不要收进脚本，收完把 `NAMING_SPEC_VERSION` 与文档版本一起改 |
 | `E3-stale-annotation`（info） | 某个 pipeline/tasks/agent 文件头部写着「使用命名规范版本 vX.Y 校验年月日 YY/MM/DD」，且 vX.Y 低于当前版本 | 按当前规范重看那个文件，然后把版本号改成当前值 |

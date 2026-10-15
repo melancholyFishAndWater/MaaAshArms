@@ -13,7 +13,7 @@
 ## 功能取舍
 
 | 不做 | 为什么 | 要它怎么办 |
-|---|---|---|
+| --- | --- | --- |
 | 失败率、趋势、跨版本对比 | 目的只画单次执行顺序；把多次运行混进一张图，图的含义就变了 | `python -m tools.sentry.cli task-failure` / `task-trend` |
 | 自己去 Sentry 下载日志与附件 | 画图必须有本地图片；而 Sentry 失败附件跳过 `vision/`、图片包上限 5 MiB，在那边画不出画面格 | `python -m tools.sentry.cli evidence --issue <ID>`：把现场图与那次运行的日志一起拉到 `temp/evidence/<ID>/debug/`，并打印 `flow --case` 命令 |
 | 证据包没带 `vision/` 时"补"出画面格 | 只画日志与图片里确实有的东西；没有就留空，不合成 | 让对方手动导出（勾「包含 vision 图片」），把导出包喂 `--case` |
@@ -72,7 +72,7 @@ python tools/drawing/whiteboard_images.py --dry-run   # 报告将要做什么，
 `--from/--to/--task-id` 写错、路径写错、窗口落在日志时间范围外，报的话各不相同，且都会报出
 **看到了什么**（行数、日志的时间范围、被过滤掉的是哪一类）：
 
-```
+```text
 错误：入参像路径但磁盘上没有这个文件：D:/MaaAshArms/debug/vision；它也不含任何一行日志正文
 错误：窗口内没有日志行：日志时间范围 2026-10-13 14:52:37.678 ~ 2026-10-14 00:35:24.413；请求的窗口 2027-01-01 00:00:00.000 ~ 2027-01-01 01:00:00.000
 错误：窗口内 20 行里属于本 task（--task-id=999999）的节点级记录一条都没有，有 1 行是其他 task_id 的
@@ -81,7 +81,7 @@ python tools/drawing/whiteboard_images.py --dry-run   # 报告将要做什么，
 ## 三个脚本的分工
 
 | 文件 | 角色 |
-|---|---|
+| --- | --- |
 | `flow_from_log.py` | **渲染器**：解析 + 布局，唯一定义处。也能 `import` 调用 —— `render_flow(log, vision=…, on_error=…, out=…, options=FlowOptions(…))` 返回 `FlowResult` |
 | `flow_cases.py` | **编排**：找证据、跑批量、写 `temp/flow/manifest.json`、幂等跳过。**不复制渲染逻辑** |
 | `whiteboard_images.py` | 白板体系的图片格式统一（见 `.agents/canvas.md`） |
