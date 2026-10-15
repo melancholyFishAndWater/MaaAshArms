@@ -87,6 +87,6 @@
 
 ## 编码约定
 
-新增或重命名 pipeline 节点、`custom_*` 注册名、任务参数键前，请先读 [命名规范](./naming.md)；搭任务链、写页面入口与循环、决定 `[JumpBack]` 和 `max_hit` 前，请先读 [任务链结构](./pipeline-structure.md)。
+新增或重命名 pipeline 节点、`custom_*` 注册名、任务参数键前，请先读 [节点命名与分类](./node-naming.md)；搭任务链、写页面入口与循环、决定 `[JumpBack]` 和 `max_hit` 前，请先读 [任务链结构](./pipeline-structure.md)。
 
-改完跑一遍 `python tools/validate_refs.py`：它按上面两份文档与 `interface.json` 的接线，检查跨文件的名字一致性（注册名 ↔ 节点名、节点引用、模板引用、`pipeline_override` 目标、preset/option、命名分类），只读、纯标准库。`--pipeline` / `--tasks` / `--agent` / `--image` / `--interface` 可只查某一域，`--ignore` 可忽略单条规则 id。
+改完跑一遍 `python tools/validation/validate_refs.py`：它按上面两份文档与 `interface.json` 的接线，检查跨文件的名字一致性（注册名 ↔ 节点名、节点引用、模板引用、`pipeline_override` 目标、preset/option、命名分类），只读、纯标准库。`--pipeline` / `--tasks` / `--agent` / `--image` / `--interface` 可只查某一域，`--ignore` 可忽略单条规则 id。
