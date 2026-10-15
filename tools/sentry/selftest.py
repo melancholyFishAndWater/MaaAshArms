@@ -827,12 +827,12 @@ def check_evidence() -> list[str]:
     # 6) 命令里必须带上 failure.task_id；没日志时不给 flow 的命令
     issue = ev.Issue(short_id="PYTHON-14", title="", count=2, last_seen="", event_id="e",
                      trace_id="t", evidence=ctx)
-    hints = ev.build_hints(_Path("temp/evidence/PYTHON-14"), issue, has_log=True, has_images=True)
+    hints = ev.build_hints(_Path("temp/evidence/PYTHON-14"), issue, log_rel="debug/maafw.log", has_images=True)
     _eq(len(hints), 2, "有图有日志时给两条命令")
     for hint in hints:
         _contains(hint, "--task-id 200000062", "命令里的 task_id")
     _contains(hints[0], "--case temp/evidence/PYTHON-14/debug", "目录 case 命令")
-    _eq(ev.build_hints(_Path("temp/evidence/PYTHON-14"), issue, has_log=False, has_images=True), [],
+    _eq(ev.build_hints(_Path("temp/evidence/PYTHON-14"), issue, log_rel=None, has_images=True), [],
         "没有日志就没有可画的东西")
 
     # 7) 状态表：一眼看出哪些有图、哪些只有日志
@@ -845,8 +845,137 @@ def check_evidence() -> list[str]:
             f"（schema {ev.EVIDENCE_SCHEMA}）"]
 
 
-CHECKS: tuple[tuple[str, Callable[[], list[str]]], ...] = (
-    ("release 解析", check_release_parsing),
+def check_evidence_disk_agreement() -> list[str]:
+    """清单与磁盘必须一致：磁盘上还留着的日志/现场图必须记进 `written`，hints 也要跟着给。
+
+    对应踩过的坑：`evidence --issue X --force --no-log` 之后清单写着"没有日志、画不出图"，
+    而 `debug/maafw.log` 就在旁边（工具不删旧文件）。这里在 `temp/selftest-evidence/` 下造一棵
+    最小的证据树直接断言，不联网、不碰真实的 `temp/evidence/<ID>/`。
+    """
+    import sys
+    from pathlib import Path as _Path
+
+    root = _Path(__file__).resolve().parents[2]
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    from tools.sentry import evidence as ev
+
+    scratch = root / DEFAULT_ARTIFACT_DIR / "selftest-evidence"
+    if scratch.exists():
+        shutil.rmtree(scratch, ignore_errors=True)
+    directory = scratch / "PYTHON-14"
+    try:
+        # 只有半截断头，检验 record 记的是"文件在不在"而不是"内容完不完整"
+        (directory / "debug" / "on_error").mkdir(parents=True, exist_ok=True)
+        log_bytes = "tail(512KB)\n".encode()
+        blank = bytes.fromhex("89504e470d0a1a0a")
+        (directory / "debug" / "maafw.log").write_bytes(log_bytes)
+        (directory / "debug" / "on_error" / "2026.10.14-19.20.37.889_EntrustEnterMainLine.png").write_bytes(blank)
+        (directory / "debug" / "on_error" / "readme.txt").write_text("不是现场图", encoding="utf-8")
+
+        log_rel, images = ev.existing_artifacts(directory)
+        _eq(log_rel, "debug/maafw.log", "扫到磁盘上的日志")
+        _eq(images, ["debug/on_error/2026.10.14-19.20.37.889_EntrustEnterMainLine.png"],
+            "只算 on_error/*.png")
+
+        # 本次没下任何东西（--force --no-log）：磁盘上有的都要补进清单并给出提示
+        written: dict[str, Any] = {"log": None, "log_bytes": 0, "images": [], "zip_bytes": 0}
+        notes: list[str] = []
+        ev.reconcile_written(directory, written, log_rel, images, notes)
+        _eq(written["log"], "debug/maafw.log", "磁盘上的日志进了 written")
+        _eq(written["log_bytes"], len(log_bytes), "原有日志记了真实字节数")
+        _eq(len(written["images"]), 1, "磁盘上的现场图进了 written")
+        _contains(notes[0], "原有的", "记清楚了是原有的、不是本次下的")
+
+        issue = ev.Issue(short_id="PYTHON-14", title="", count=1, last_seen="", event_id="e", trace_id="t")
+        hints = ev.build_hints(directory, issue, log_rel=str(written["log"]),
+                               has_images=bool(written["images"]))
+        _eq(len(hints), 2, "补进 written 后就有可复制的绘图命令")
+        _contains(hints[0], "--case", "目录 case 那条命令")
+        _contains(hints[1], "--on-error", "有现场图就带 --on-error")
+        _eq(ev.build_hints(directory, issue, log_rel=None, has_images=False), [],
+            "没有日志就没有可画的东西")
+
+        # 本次下了日志：保留本次的字节数，不拿磁盘上的旧值盖掉，也不重复记图片
+        again: dict[str, Any] = {"log": "debug/maafw.log", "log_bytes": 999, "images": [images[0]],
+                                 "zip_bytes": 1}
+        more: list[str] = []
+        ev.reconcile_written(directory, again, log_rel, images, more)
+        _eq((again["log_bytes"], len(again["images"]), more), (999, 1, []), "本次下过就不动它")
+
+        # 空目录：不能凭空记出东西来
+        empty = scratch / "empty"
+        empty.mkdir(parents=True, exist_ok=True)
+        blank_written: dict[str, Any] = {"log": None, "log_bytes": 0, "images": [], "zip_bytes": 0}
+        ev.reconcile_written(empty, blank_written, *ev.existing_artifacts(empty), [])
+        _eq((blank_written["log"], blank_written["images"]), (None, []), "空目录不补任何东西")
+        _eq(ev.existing_artifacts(empty), (None, []), "空目录扫出来是空的")
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
+
+    return ["磁盘上留着的日志/现场图会补进清单（`--force --no-log` 不再把清单写坏）"]
+
+
+def check_report_lock() -> list[str]:
+    """并发锁的判据：活着才提示、已退出就清掉；读不出 pid 时按旧行为提示（宁多勿漏）。"""
+    import os as _os
+    import subprocess as _subprocess
+    from pathlib import Path as _Path
+
+    root = _Path(__file__).resolve().parents[2]
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    from tools.sentry import report_common as rc
+
+    scratch = root / DEFAULT_ARTIFACT_DIR / "selftest-lock"
+    scratch.mkdir(parents=True, exist_ok=True)
+    lock = scratch / rc.REPORT_LOCK_NAME
+    try:
+        _eq(rc.lock_owner_alive(lock), None, "锁文件不存在时不猜")
+        lock.write_text("", encoding="utf-8")
+        _eq(rc.lock_owner_alive(lock), None, "空锁文件不猜")
+
+        # 已退出的进程：Windows 上 `os.kill(pid, 0)` 对它是安静的，所以这里顺带钉住判据是退出码
+        child = _subprocess.Popen([sys.executable, "-c", "pass"])
+        child.wait()
+        dead = child.pid
+        del child
+        lock.write_text(str(dead), encoding="utf-8")
+        _eq(rc.lock_owner_alive(lock), False, f"已退出的 pid（{dead}）判成不在了")
+        buffer = io.StringIO()
+        previous, sys.stderr = sys.stderr, buffer
+        try:
+            with rc.report_run_guard(lock):
+                inside = (buffer.getvalue(), lock.read_text(encoding="utf-8"))
+        finally:
+            sys.stderr = previous
+        warning, held = inside
+        _eq(warning, "", "残留锁不再打「另一个报告正在运行」")
+        _eq(held, str(_os.getpid()), "持锁期间锁文件写的是自己的 pid")
+        _eq(lock.is_file(), False, "退出时清掉自己的锁")
+        # 活着的进程：仍然要提示（提示是建议性的，不该因为这次改动消失）
+        alive = _subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+        try:
+            lock.write_text(str(alive.pid), encoding="utf-8")
+            _eq(rc.lock_owner_alive(lock), True, f"活着的 pid（{alive.pid}）判成还在")
+            buffer = io.StringIO()
+            previous, sys.stderr = sys.stderr, buffer
+            try:
+                with rc.report_run_guard(lock):
+                    pass
+            finally:
+                sys.stderr = previous
+            _contains(buffer.getvalue(), "另一个 Sentry 报告正在运行", "真并发仍然提示")
+        finally:
+            alive.kill()
+            alive.wait()
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
+
+    return ["残留锁（持锁进程已退出）不提示且自动清掉；真并发仍提示"]
+
+
+CHECKS: tuple[tuple[str, Callable[[], list[str]]], ...] = (    ("release 解析", check_release_parsing),
     ("版本排序", check_ordering),
     ("Wilson 区间", check_wilson),
     ("任务表与失败标记分流", check_task_rows),
@@ -860,6 +989,8 @@ CHECKS: tuple[tuple[str, Callable[[], list[str]]], ...] = (
     ("流程图诊断（回跳/仅事件/截断/空窗口）", check_flow_diagnostics),
     ("Explore CSV 提取", check_explore_csv),
     ("失败证据的纯逻辑", check_evidence),
+    ("证据清单与磁盘一致", check_evidence_disk_agreement),
+    ("并发锁的持有者判据", check_report_lock),
 )
 
 

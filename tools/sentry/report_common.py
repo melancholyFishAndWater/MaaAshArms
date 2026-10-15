@@ -144,12 +144,74 @@ def report_lock_path() -> Path:
     return repo_root() / DEFAULT_ARTIFACT_DIR / REPORT_LOCK_NAME
 
 
+def _pid_is_running(pid: int) -> bool | None:
+    """进程还活着吗：True 活着 / False 已退出 / None 没权限、问不出来。
+
+    Windows 上不能用 `os.kill(pid, 0)`——实测对**已经退出**的进程它同样不报错（进程对象还在时不回收 pid），
+    拿它做判据会把"刚跑完"永远当成"正在跑"，等于没修。所以这里读退出码：
+    `GetExitCodeProcess` 给 `STILL_ACTIVE`（259）才算活着。
+    """
+    if os.name != "nt":
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        except OSError:
+            return None
+        return True
+
+    import ctypes
+    from ctypes import wintypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.GetExitCodeProcess.argtypes = (wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD))
+    kernel32.GetExitCodeProcess.restype = wintypes.BOOL
+    kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+    kernel32.CloseHandle.restype = wintypes.BOOL
+
+    process_query_limited_information = 0x1000
+    still_active = 259
+    error_access_denied = 5
+
+    handle = kernel32.OpenProcess(process_query_limited_information, False, pid)
+    if not handle:
+        # 进程不存在时 OpenProcess 就失败；权限不足则存在但问不出来
+        return None if ctypes.get_last_error() == error_access_denied else False
+    try:
+        code = wintypes.DWORD()
+        if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
+            return None
+        return code.value == still_active
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+def lock_owner_alive(lock_path: Path) -> bool | None:
+    """锁文件里记的进程还活着吗：True 活着 / False 已退出 / None 读不出 pid。
+
+    锁文件里写的是写入者的 pid（见 `report_run_guard`）。**光看 mtime 分不出"正在跑"和"刚跑完"**——
+    前一条报告刚退出时锁文件的 mtime 还是新的，于是下一条会收到"已进行约 0s"的假并发提示。
+    """
+    try:
+        raw = lock_path.read_text(encoding="utf-8").strip()
+    except (OSError, UnicodeDecodeError):
+        return None
+    if not raw.isdigit():
+        return None
+    return _pid_is_running(int(raw))
+
+
 @contextmanager
 def report_run_guard(lock_path: Path | None = None) -> Generator[None]:
     """报告运行期间持有一个建议性锁，并在检测到并发报告时提醒一次。
 
     Sentry explore 的瓶颈是单次请求延迟而非吞吐，并发跑多个报告只会互相拖慢，
-    因此这里不做互斥，只在发现另一个报告时向 stderr 提示。残留锁按 mtime 判定过期。
+    因此这里不做互斥，只在发现另一个**活着**的报告时向 stderr 提示。
+    持锁进程已退出（含 mtime 未过期的残留）时不提示、顺手把残留锁删掉，免得下一条报告又白提示一次。
     """
     lock = lock_path or report_lock_path()
     try:
@@ -157,12 +219,20 @@ def report_run_guard(lock_path: Path | None = None) -> Generator[None]:
     except OSError:
         age_seconds = None
     if age_seconds is not None and age_seconds < REPORT_LOCK_STALE_SECONDS:
-        print(
-            f"[提示] 检测到另一个 Sentry 报告正在运行（已进行约 {age_seconds:.0f}s）。"
-            "并发运行多个报告会互相拖慢，建议等它结束。",
-            file=sys.stderr,
-            flush=True,
-        )
+        alive = lock_owner_alive(lock)
+        if alive is False:
+            try:
+                lock.unlink()
+            except OSError:
+                pass
+        else:
+            # 活着，或读不出 pid（旧版本工具写的锁）：照旧提示
+            print(
+                f"[提示] 检测到另一个 Sentry 报告正在运行（已进行约 {age_seconds:.0f}s，"
+                f"锁文件 {lock.name} 里的进程还活着）。并发运行多个报告会互相拖慢，建议等它结束。",
+                file=sys.stderr,
+                flush=True,
+            )
 
     owner = str(os.getpid())
     try:
@@ -178,7 +248,7 @@ def report_run_guard(lock_path: Path | None = None) -> Generator[None]:
             # 只清理本次运行写入的锁，避免把后来者的锁删掉。
             if lock.read_text(encoding="utf-8") == owner:
                 lock.unlink()
-        except OSError:
+        except (OSError, UnicodeDecodeError):
             pass
 
 

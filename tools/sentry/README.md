@@ -20,6 +20,7 @@
 | 搬运 M9A 的 `SKILL.md` | `.agents/` 被 gitignore，技能文件无法入库 | 等价内容就是本文档 |
 | 把 `trace logs` 翻页取全 | Sentry CLI 限死 `--limit ≤ 1000` 且没有游标；把 newest 与 oldest 拼起来会在中间留洞，比截断更误导 | 默认取 `newest`（失败在运行末尾），`has_more` 写进 `evidence.json` |
 | 枚举同一 issue 的其它事件 | `sentry issue view` 只给最近一次，`sentry issue events --json` 是精简视图、没有 context（拿不到 `attachment.*`），也没有批量接口 | 用 `evidence --event <event-id>` 直接指 |
+| 把 Sentry CLI 的缓存库自动搬到可写目录 | 那等于由工具替人复制 OAuth 凭据（`cli.db` 里有 token 与 refresh_token），凭据会散落到 `temp/` 且不会自己清掉；而这个问题只需在受限沙箱下处理一次 | 照「前置条件」手动两条命令；报错时 `report_common.authority_error_hint()` 会把这两条打出来 |
 | 让画图脚本直接吃 Explore CSV | 导出的正文是**按块切碎**的（每格约 3.3 KB，块首块尾都丢头去尾），格子顺序也不是时间顺序，直接拼会拼出假行 | 先过 `python -m tools.sentry.cli explore-csv <csv>`，再拿它产出的日志正文去画 |
 | 还原被截断的行、猜丢失的内容 | 导出按字节裁过（实测 53 条 reco/action/node-done 读不出、104 行断头、1080 块碎片），猜出来的内容会变成假事实 | 只统计并提示；要完整证据用本机 `debug/` 目录 |
 | 合并 `!!!OnEventNotify!!!` 与 `ctx_event_sink` 两份记录 | 同一次识别在日志里有两行，按行计数会翻倍；两份的字段也不完全一样 | 只计数，需要去重时按 `reco_id`（且注意它是进程内计数） |
@@ -151,6 +152,11 @@ python -m tools.sentry.cli evidence [--period 7d] [--limit 20] [--issue PYTHON-1
 
 `evidence.json` 里还有 `failure.*` 那组字段（`task_id` / `node_id` / `message` / `duration_ms`）：**这就是
 "失败卡在哪个节点"**——spans 上的 `failure.node` 恒为空（见「功能取舍」），但事件 context 里有，工具顺手记了下来。
+
+**`evidence.json` 记的是"这个目录里有什么"，不是"本次下了什么"**（`written` 与 `hints` 都按这个口径）：
+工具不删旧文件，所以 `--force --no-log` / `--force --no-images` 只重下一半时，上一趟的
+`debug/maafw.log`、`debug/on_error/*.png` 仍在原地，清单会把它们一并记上并注明"原有的"。
+换句话说，**照着清单里的 `hints` 走就一定画得出来**——清单说没有日志时才是真的没有。
 
 ## Explore CSV：浏览器导出的那份怎么用
 
@@ -408,8 +414,10 @@ python tools/validation/check_sentry_offline.py    # 同一套断言 + 渲染一
 自检覆盖 release 解析、任务表与失败标记分流、Δpp 方向、工件往返、三种渲染，以及
 **流程图解析器的文本入参**与**诊断行为**（时间戳回跳重排、只有识别事件时的合成、导出截断的行、
 空窗口的三种说法、`--task-id` 严格过滤与任务判定窗口），再加 **Explore CSV 提取**（块边界接续、
-五分类计数、任务可画性、截断按类型拆、入口报错）与**失败证据的纯逻辑**（解包白名单、附件名取 task_id、
-去重、扁平 context 键、失败标记、可复制命令）——远程日志没有本地文件、只有正文，这几条都在遥测路径上。
+五分类计数、任务可画性、截断按类型拆、入口报错）、**失败证据的纯逻辑**（解包白名单、附件名取 task_id、
+去重、扁平 context 键、失败标记、可复制命令）、**证据清单与磁盘一致**（`--force --no-log` 留下的
+日志/现场图仍进 `written` 与 `hints`）与**并发锁的持有者判据**（残留锁不提示且自动清掉、真并发仍提示）——
+远程日志没有本地文件、只有正文，这几条都在遥测路径上。
 它不需要 Pillow——画图才需要；也不需要网络与登录。
 
 > 画图（`flow`）依赖 Pillow，而**发布包自带的解释器不含它**（`.python-runtime/` 与包内
@@ -433,3 +441,7 @@ python -m tools.sentry.cli fetch --name probe \
   读报告时若看到某天失败数暴增，先确认是不是一次启动失败后队列继续跑出一串失败。
 - **受限沙箱下 `sentry` 一律 `Fatal: Error: unable to open database file`**（连 `--version` 也一样）：
   照「前置条件」把 `cli.db` 复制到可写目录并设 `SENTRY_CONFIG_DIR`。`evidence` 走的是同一个 CLI，同样需要它。
+- **并发提示看锁文件里的 pid 还活不活**（`report_common.lock_owner_alive()`）：报告会往
+  `temp/telemetry/report.lock` 写自己的 pid，下一条报告只在那个进程**还在**时才提示并发。
+  持锁进程已退出（或锁是旧版本工具写的、读不出 pid）时：前者顺手删掉残留锁，后者照旧提示——
+  这条锁只是建议性的，不做互斥，也不会拦截任何命令。

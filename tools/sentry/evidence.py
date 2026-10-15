@@ -37,6 +37,11 @@
 对目录要求根下有 `maafw.log`/`maa.log`——直接把解出来的目录喂 `--case` 会报"找不到 maafw.log"。
 工具把 `trace logs` 写进 `debug/maafw.log`，这条目录才成为完整的证据包。
 
+**清单说的是目录里有什么，不是本次下了什么**（`written` 与 `hints` 都按这个口径）：工具不删旧文件，
+所以 `--force` 配 `--no-log` / `--no-images` 只重下一半时，`collect()` 会先扫目录
+（`existing_artifacts()`）再把磁盘上还在的文件补进清单（`reconcile_written()`）——否则清单写着
+"没有日志"，而 `debug/maafw.log` 就在旁边放着，照清单走的人会以为画不了图。
+
 **不做**：不翻页（CLI 没有游标）、不把 newest+oldest 拼起来（中间有洞比截断更误导）、不下载 vision 帧
 （附件里没有）、不自动画图（只打印命令）、不打印也不落盘 token。
 """
@@ -340,8 +345,15 @@ def marker_lines(lines: Sequence[str], limit: int = 8) -> list[str]:
     return found
 
 
-def build_hints(outdir: Path, issue: Issue, *, has_log: bool, has_images: bool) -> list[str]:
-    """可复制的下一步命令（相对仓库根，命令都在仓库根跑）。"""
+def build_hints(outdir: Path, issue: Issue, *, log_rel: str | None, has_images: bool) -> list[str]:
+    """可复制的下一步命令（相对仓库根，命令都在仓库根跑）。
+
+    `log_rel` / `has_images` 说的是**磁盘上有没有**（`existing_artifacts()` 的结论），不是本次下没下：
+    清单里写着日志就一定能画，别再让"本次没下"把可用的命令藏掉。文件名也照磁盘上那个来
+    （`LOG_NAMES` 里可能是 `maa.log`），别硬写 `maafw.log` 指到不存在的文件。
+    """
+    if not log_rel:
+        return []
     root = report_common.repo_root()
     try:
         shown = outdir.relative_to(root).as_posix()
@@ -351,14 +363,54 @@ def build_hints(outdir: Path, issue: Issue, *, has_log: bool, has_images: bool) 
     hints: list[str] = []
     task = issue.evidence.get("failure_task_id")
     task_arg = f" --task-id {task}" if task else ""
-    if has_log:
-        hints.append(f"python -m tools.sentry.cli flow --case {case_dir}{task_arg}")
-        if has_images:
-            hints.append(f"python tools/drawing/flow_from_log.py {case_dir}/maafw.log "
-                         f"--on-error {case_dir}/on_error{task_arg}")
-        else:
-            hints.append(f"python tools/drawing/flow_from_log.py {case_dir}/maafw.log{task_arg} --no-thumbs")
+    hints.append(f"python -m tools.sentry.cli flow --case {case_dir}{task_arg}")
+    if has_images:
+        hints.append(f"python tools/drawing/flow_from_log.py {shown}/{log_rel} "
+                     f"--on-error {case_dir}/on_error{task_arg}")
+    else:
+        hints.append(f"python tools/drawing/flow_from_log.py {shown}/{log_rel}{task_arg} --no-thumbs")
     return hints
+
+
+def existing_artifacts(directory: Path) -> tuple[str | None, list[str]]:
+    """扫一眼证据目录里已经有什么，返回 (日志相对路径, 现场图相对路径列表)。
+
+    清单记的是**目录里有什么**，不是"本次下了什么"：`--force` 配合 `--no-log` / `--no-images` 只下一半时，
+    上一趟留下的文件仍在原地（工具不删旧文件），清单必须照实写，否则照清单走的人会以为画不了图。
+    """
+    log_name = next((name for name in LOG_NAMES if (directory / "debug" / name).is_file()), None)
+    log_rel = f"debug/{log_name}" if log_name else None
+    on_error = directory / "debug" / "on_error"
+    images = sorted(f"debug/on_error/{item.name}" for item in on_error.glob("*.png")) if on_error.is_dir() else []
+    return log_rel, images
+
+
+def reconcile_written(directory: Path, written: dict[str, Any], log_rel: str | None,
+                      images: Sequence[str], notes: list[str]) -> None:
+    """把磁盘上已有的证据补进 `written`，并记一条"哪来的"。
+
+    补齐后再让 `written` 走一遍：清单与磁盘不一致的地方在这里收敛。
+    日志只补"本次没写"的情况——本次写了就留着本次的字节数。
+    """
+    log_added = log_rel if written.get("log") is None else None
+    if log_added is not None:
+        written["log"] = log_added
+        try:
+            written["log_bytes"] = (directory / log_added).stat().st_size
+        except OSError:
+            written["log_bytes"] = 0
+    existing_images = list(written.get("images") or [])
+    image_added = [name for name in images if name not in existing_images]
+    if image_added:
+        written["images"] = existing_images + image_added
+    if not (log_added or image_added):
+        return
+    parts = []
+    if log_added is not None:
+        parts.append("日志")
+    if image_added:
+        parts.append(f"{len(image_added)} 张现场图")
+    notes.append(f"{'、'.join(parts)}是目录里原有的（本次没下，工具不删旧文件），已一并记进清单")
 
 
 # --------------------------------------------------------------------------- #
@@ -394,7 +446,11 @@ class Evidence:
 def collect(sentry: str, issue: Issue, *, outdir: Path, token: str | None, do_images: bool,
             do_log: bool, log_limit: int, log_sort: str, force: bool, keep_duplicates: bool,
             verbose: bool, timeout: float) -> Evidence:
-    """把一个 issue 的证据落盘；已经下过就直接返回（`--force` 重新下）。"""
+    """把一个 issue 的证据落盘；已经下过就直接返回（`--force` 重新下）。
+
+    清单里 `written` 说的是**这个证据目录里有什么**，不是"本次下了什么"：本次没下但磁盘上还在的
+    文件（`--force` 配 `--no-log` / `--no-images`）照样记进去，`written` 与 `hints` 才对得上磁盘。
+    """
     directory = outdir / issue.short_id
     manifest_path = directory / "evidence.json"
     if manifest_path.is_file() and not force:
@@ -403,13 +459,24 @@ def collect(sentry: str, issue: Issue, *, outdir: Path, token: str | None, do_im
         except (OSError, json.JSONDecodeError):
             recorded = {}
         if recorded.get("event", {}).get("id") == issue.event_id:
+            # 上一趟记的清单也可能与磁盘脱节（旧版本工具写的、或文件被手工删过）：按磁盘复查一遍
+            log_rel, images = existing_artifacts(directory)
+            stale: list[str] = []
+            disk_written = recorded.get("written")
+            if not isinstance(disk_written, dict):
+                disk_written = {"log": None, "log_bytes": 0, "images": [], "zip_bytes": 0}
+                recorded["written"] = disk_written
+            reconcile_written(directory, disk_written, log_rel, images, stale)
             return Evidence(directory=directory, inventory=recorded,
-                            hints=list(recorded.get("hints") or []),
-                            notes=["已存在（--force 重新下载）"])
+                            hints=build_hints(directory, issue, log_rel=log_rel,
+                                              has_images=bool(images)),
+                            notes=["已存在（--force 重新下载）", *stale])
 
     written: dict[str, Any] = {"log": None, "log_bytes": 0, "images": [], "zip_bytes": 0}
     trace_meta: dict[str, Any] = {}
     notes: list[str] = []
+    # 上一趟留下的文件（`--force` 只重下一半时它们仍在原地）：先记下来，免得清单与磁盘脱节
+    existing_log, existing_images = existing_artifacts(directory)
 
     if do_images and issue.images:
         attachments = list_attachments(sentry, CONFIG.target, issue.event_id,
@@ -473,7 +540,12 @@ def collect(sentry: str, issue: Issue, *, outdir: Path, token: str | None, do_im
     elif do_log:
         notes.append(f"没有日志（logs.status={issue.evidence.get('logs_status') or '未知'}）")
 
-    hints = build_hints(directory, issue, has_log=written["log"] is not None,
+    # 清单记的是"目录里有什么"：本次没下但磁盘上还在的（`--force` 配 `--no-log`/`--no-images`）也补进来
+    reconcile_written(directory, written, existing_log, existing_images, notes)
+
+    has_log = written["log"] is not None
+    hints = build_hints(directory, issue,
+                        log_rel=str(written["log"]) if has_log else None,
                         has_images=bool(written["images"]))
     if not hints:
         notes.append("既没有日志也没有现场图：画不出流程图（画图必须有日志）")
@@ -563,7 +635,8 @@ def create_argument_parser(prog: str | None = None) -> argparse.ArgumentParser:
     parser.add_argument("--event", action="append", help="只处理这个事件 id（可重复；issue 的历史事件用这条）")
     parser.add_argument("--outdir", default=DEFAULT_OUTDIR, help=f"产出目录（默认 {DEFAULT_OUTDIR}）")
     parser.add_argument("--list", action="store_true", help="只报告证据状态，不下载")
-    parser.add_argument("--force", action="store_true", help="已经下过也重新下")
+    parser.add_argument("--force", action="store_true",
+                        help="已经下过也重新下（只补本次允许下的那些；旧文件不删，仍会记进清单）")
     parser.add_argument("--no-images", action="store_true", help="不下载现场图")
     parser.add_argument("--no-log", action="store_true", help="不取日志")
     parser.add_argument("--log-limit", type=int, default=DEFAULT_LOG_LIMIT,
