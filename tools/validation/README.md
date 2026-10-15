@@ -9,7 +9,7 @@
 | 不做 | 为什么 | 要它怎么办 |
 |---|---|---|
 | 格式化、自动修 | 目的只是"判对错"；会改文件的工具不该混进 CI 的校验步骤 | 各自编辑器/formatter，或单独提一个 PR |
-| 把 `ruff` 默认规则集当门槛 | 默认集里大量是本仓库从未采纳的风格偏好（`TRY004`、`PERF402`、`SIM102` 等 178 条），当门槛只会训练人无视它 | 只把"真实缺陷"类当门槛（`F401`/`F841`/`E722`/`FURB162`/`S110`/`BLE001`/`PLW1510`/`RUF100`），现为零；要全量看就 `uvx ruff check tools` |
+| 把 `ruff` 默认规则集当门槛 | 默认集里大量是本仓库从未采纳的风格偏好（`TRY004`、`PERF402`、`SIM102` 等 178 条），当门槛只会训练人无视它 | 只把"真实缺陷"类当门槛（`F401`/`F841`/`E722`/`FURB162`/`S110`/`BLE001`/`PLW1510`/`RUF100`），现为零；要全量看就 `uvx ruff check tools`（受限沙箱下 `uv` 自己的三个目录都在工作区外、会被拒写，先 `UV_CACHE_DIR` / `UV_TOOL_DIR` / `UV_TOOL_BIN_DIR` 指进 `temp/`；`--no-cache` 不够，装工具那一步仍要写 `%APPDATA%\uv\tools`） |
 | 把 `pyright` 写进 `package.json` | 两份 lockfile（`package-lock.json` 与 `pnpm-lock.yaml`）都是入库文件，加一个带平台二进制的依赖要重新生成两份 | 走 `npx`（`check_pyright.mjs`），首次需要网络 |
 | 扫 vendored 目录 | `.python-runtime*/`、`install/`、`build/`、`node_modules/` 里有几千个第三方文件，查它们只会淹没真问题 | 只扫 `tools/**`、`agent/**`、`scripts/**` |
 | 校验资源语义（数值范围、图片内容） | 那是 schema 与 maa-tools 的职责，本目录只查"引用与命名对不对得上" | `validate_schema.py`、`npx @nekosu/maa-tools check` |
