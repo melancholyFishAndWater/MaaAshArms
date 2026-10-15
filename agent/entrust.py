@@ -1,3 +1,5 @@
+from typing import Literal
+
 from maa.agent.agent_server import AgentServer
 from maa.custom_recognition import CustomRecognition
 from maa.custom_action import CustomAction
@@ -11,7 +13,7 @@ from maa.context import (
 from maa.pipeline import JOCR
 from re import search
 
-from base import log, parse_attach
+from base import DEFAULT_HIT_BOX, log, parse_attach
 
 # 大关名
 stage_name: str = "结晶废墟"
@@ -183,3 +185,71 @@ class EntrustEnableDailyUpdateAct(CustomAction):
         self, context: Context, argv: CustomAction.RunArg
     ) -> CustomAction.RunResult | bool:
         return context.override_pipeline({"EntrustDailyUpdate": {"enabled": True}})
+
+
+# ----- EntrustMover -----
+
+# 移动方向 默认右滑
+_move: Literal["MoveRight", "MoveLeft"] = "MoveRight"
+
+
+# 识别画面 并修改移动方向
+@AgentServer.custom_recognition("EntrustMoverReco")
+class EntrustMoverReco(CustomRecognition):
+    def analyze(
+        self, context: Context, argv: CustomRecognition.AnalyzeArg
+    ) -> Rect | list[int] | None:
+        global _move
+        node_name = argv.node_name
+
+        # 识别
+        r = get_level_ocr(context, argv)
+        if r is None:
+            log.debug(f"{node_name} 识别关卡数字失败")
+            return
+
+        # 遍历提取
+        numbers = []
+        for i in r.filtered_results:
+            assert type(i) == OCRResult
+
+            try:
+                numbers.append(int(i.text))
+            except ValueError:
+                log.debug(f"{node_name} 将识别结果转为数字失败")
+                continue
+
+        # 校验提取
+        if len(numbers) == 0:
+            log.debug(f"{node_name} 未提取到有效数字")
+            return
+
+        # 右滑取最小 左滑取最大
+        number = min(numbers) if _move == "MoveRight" else max(numbers)
+
+        # 校验数字
+        if number <= 0:
+            log.debug(f"{node_name} 识别到当前画面关卡数字不为正数: {number}")
+            return
+
+        # 修改移动方向
+        if number >= level:
+            log.debug(f"{node_name} 设置移动方式为右滑")
+            _move = "MoveRight"
+        else:
+            log.debug(f"{node_name} 设置移动方式为左滑")
+            _move = "MoveLeft"
+
+        return DEFAULT_HIT_BOX
+
+
+# 移动画面
+@AgentServer.custom_action("EntrustMoverAct")
+class EntrustMoverAct(CustomAction):
+    def run(
+        self, context: Context, argv: CustomAction.RunArg
+    ) -> CustomAction.RunResult | bool:
+        r = context.run_action(_move)
+        if r is not None and r.success:
+            return True
+        return False

@@ -90,12 +90,21 @@
         ],
         "max_hit": 8
     },
+    // TODO 关卡未解锁
     "EntrustMoveToFind": {
         "desc": "移动画面直到找到目标关卡",
         "next": [
             "EntrustChooseLevel",
-            "[JumpBack]MoveRight"
+            "[JumpBack]EntrustMover"
         ]
+    },
+    "EntrustMover": {
+        "desc": "[jp] 识别并移动直到找到关卡",
+        "recognition": "Custom",
+        "custom_recognition": "EntrustMoverReco",
+        "action": "Custom",
+        "custom_action": "EntrustMoverAct",
+        "post_wait_freezes": 1000
     },
     "EntrustChooseLevel": {
         "desc": "选择关卡",
