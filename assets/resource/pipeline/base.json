@@ -288,14 +288,30 @@
     },
     // INFO 执行节点
     "ReturnMain": {
-        "desc": "返回主界面",
-        "max_hit": 3,
+        "desc": "确保在主页面",
+        "recognition": "And",
+        "all_of": [
+            "HomeFlagFirst"
+        ],
+        "inverse": true,
+        "rate_limit": 2000,
+        "timeout": 30000,
         "next": [
             "HomeFlagFirst",
             "[JumpBack]HomeButton",
             "[JumpBack]BackButton",
             "[JumpBack]ClickUpperRight"
-        ]
+        ],
+        "focus": {
+            "Node.NextList.Failed": {
+                "content": "严重错误 返回游戏主页面失败 task_id: {task_id}",
+                "display": [
+                    "log",
+                    "notification",
+                    "modal"
+                ]
+            }
+        }
     },
     "TaskStop": {
         "desc": "无条件结束任务",
