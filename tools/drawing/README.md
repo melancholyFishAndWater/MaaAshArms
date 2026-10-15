@@ -15,7 +15,7 @@
 | 不做 | 为什么 | 要它怎么办 |
 |---|---|---|
 | 失败率、趋势、跨版本对比 | 目的只画单次执行顺序；把多次运行混进一张图，图的含义就变了 | `python -m tools.sentry.cli task-failure` / `task-trend` |
-| 自己去 Sentry 下载日志与附件 | 画图必须有本地图片；而 Sentry 失败附件跳过 `vision/`、图片包上限 5 MiB，在那边画不出画面格 | `python -m tools.sentry.cli flow --case <证据包>` |
+| 自己去 Sentry 下载日志与附件 | 画图必须有本地图片；而 Sentry 失败附件跳过 `vision/`、图片包上限 5 MiB，在那边画不出画面格 | `python -m tools.sentry.cli evidence --issue <ID>`：把现场图与那次运行的日志一起拉到 `temp/evidence/<ID>/debug/`，并打印 `flow --case` 命令 |
 | 证据包没带 `vision/` 时"补"出画面格 | 只画日志与图片里确实有的东西；没有就留空，不合成 | 让对方手动导出（勾「包含 vision 图片」），把导出包喂 `--case` |
 | 从事件总线行取数（`!!!OnEventNotify!!!`、`ctx_event_sink`、`Node.*`） | 同一次识别在日志里有两行副本，按行计数会翻倍；`reco [result=]` 已经带完整识别明细与 `reco_id` | 手工按行计数时按 `reco_id` 去重（注意它是**进程内**计数，一份装了多次运行的日志里会重复） |
 | 还原被导出截断的行 | 截断的 JSON 猜出来的内容会变成图上的假事实 | 用完整 `maafw.log` / `debug` 目录；工具会统计并提示跳过了多少条 |
@@ -60,9 +60,10 @@ python tools/drawing/whiteboard_images.py --dry-run   # 报告将要做什么，
   能取到该 task 的起始行就夹住范围，取不到会印一行提示。
 - **`--task-id` 严格过滤 + 任务判定窗口**：`steps` 与事件都按 `task_id` 过滤；框架级事件
   （`Task timeout` / `invalid node id` / `node not completed`，没有 `task_id`）改用**判定窗口**
-  归属——下界是本任务第一步，上界是**本任务最后一步之后、别的任务的第一步**（没有就不设上界）。
-  未命中聚合（`reco` 行同样没有 `task_id`）用同一个窗口。这样一份装了多次运行的日志不会把
-  23:59 那趟训练的未命中画进 13:11 那趟维修的末轮；而"最后一步之后"的失败标记仍留在图上
+  归属——下界是本任务第一步，上界优先取**它自己的 `task end`**（任务失败后框架不再为它记东西），
+  没有 `task end` 时退回"本任务最后一步之后、别的任务的第一步"。未命中聚合（`reco` 行同样没有
+  `task_id`）用同一个窗口。这样一份装了多次运行的日志不会把 23:59 那趟训练的未命中画进 13:11 那趟维修的末轮，
+  也不会把同一运行里后一个任务的超时画进前一个任务的图上；而"最后一步之后"的失败标记仍留在图上
   （任务失败恰恰发生在最后一步之后）。被排掉的条数会印出来。
 - **诊断注记**：由上面这些事实构成的注记印在图第二行（琥珀色）并同时打到 stderr，别只看 stdout。
 
@@ -116,3 +117,5 @@ python tools/drawing/whiteboard_images.py --dry-run   # 报告将要做什么，
   框架自己会轮转日志（`debug/` 下有 `maafw.bak.<日期>.log`），不需要为它做流式裁剪。
 - **`RENDERER_VERSION`**：改动会影响产物内容时（版面、注记、解析口径）必须 +1，
   否则 `flow_cases` 会命中旧的 `manifest.json` 直接"跳过（已画过）"，渲染改了却不重画。
+- **一份证据包里的日志常覆盖整次运行**（多个任务）：`evidence` 拉下来的 `maafw.log` 就是这样，
+  必须配 `--task-id`；同一条 trace 上的多个 issue 会共用同一份日志。

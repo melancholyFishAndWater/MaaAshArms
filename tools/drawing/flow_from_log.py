@@ -68,8 +68,8 @@ from typing import Any
 
 # 渲染器版本：只要改动会影响产物内容（版面、注记、解析口径）就 +1。
 # flow_cases 把它写进 manifest 指纹——不 bump 的话同一个证据包会命中旧记录直接"跳过（已画过）"，
-# 渲染器改了却不重画。
-RENDERER_VERSION = 2
+# 渲染器改了却不重画。（3：任务判定窗口的右端改用本任务自己的 task end。）
+RENDERER_VERSION = 3
 
 # --------------------------------------------------------------------------- #
 # 日志解析
@@ -955,20 +955,23 @@ def task_span(parsed: ParsedLog, task_id: int | None) -> tuple[datetime, datetim
     未命中与失败事件算进这一轮——实测 13:11 那次维修的末轮里混进了 23:59 那趟训练的
     `未命中 ×9/×10` 与 `node not completed`（那是 task 200000056 的事）。
 
-    右端取**本任务最后一步之后、别的任务的第一步**，不取"自己最后一步"：任务失败时框架级事件
-    恰恰发生在最后一步之后（`Task timeout` → `invalid node id` → `task end`），按自己最后一步切
-    会把它们一起剪掉——自检里那条 00:35:02 的 `invalid node id` 就是这么被抓出来的。
-    别的任务的步骤时间来自 `stats.other_task_ts`（被 `--task-id` 过滤掉的那些，`steps` 里已经没有了），
-    取"最后一次自己步骤之后"最早的一个，这样两个任务交错跑时也不会把本任务的收尾剪掉。
-    没有别的任务的步骤时右端取 `datetime.max`（等于不设右界，与改动前一致）。
+    右端优先取**该任务自己的 `task end`**：任务失败后框架不再为它记任何东西，所以它之后出现的
+    框架级事件一定属于别的任务（实测 200000054 的图里混进了同一运行里 200000062 的
+    `Task timeout EntrustEnterMainLine` 与 `invalid node id`——那两条是 28 秒后另一个任务的事）。
+    日志里没有它的 `task end` 时退回"本任务最后一步之后、别的任务的第一步"（自检里那条 00:35:02 的
+    `invalid node id` 就是这么保住的：任务失败恰恰发生在最后一步之后，按自己最后一步切会剪掉它）；
+    也没有别的任务的步骤时右端取 `datetime.max`（等于不设右界，与改动前一致）。
     """
     if task_id is None:
         return None
     own = [s.ts for s in parsed.steps if s.task_id == task_id]
     if not own:
         return None
-    lo, hi = min(own), max(own)
-    later = [ts for ts in parsed.stats.other_task_ts if ts > hi]
+    lo, last_step = min(own), max(own)
+    ends = [ts for ts, _entry, tid, _ret in parsed.task_ends if tid == task_id]
+    if ends:
+        return lo, max(last_step, max(ends))
+    later = [ts for ts in parsed.stats.other_task_ts if ts > last_step]
     return lo, min(later) if later else datetime.max
 
 
