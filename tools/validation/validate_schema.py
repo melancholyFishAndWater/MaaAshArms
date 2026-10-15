@@ -1,23 +1,24 @@
 #!/usr/bin/env python3
+import argparse
 import json
 import sys
 import tempfile
-import argparse
+from importlib.util import find_spec
 from pathlib import Path
+
 from jsonschema import Draft7Validator, Draft202012Validator
-from jsonschema.exceptions import ValidationError
 
-try:
+# referencing 是可选依赖：没装就退回 jsonschema 自带的 RefResolver。
+# 用 find_spec 探测而不是 `import referencing.retrieval`——后者只为可用性判定而 import，
+# 读代码的人会以为 retrieval 被用到了（ruff F401 也会报它）。
+HAS_REFERENCING = find_spec("referencing") is not None
+
+if HAS_REFERENCING:
     from referencing import Registry, Resource
-    from referencing.jsonschema import DRAFT202012, DRAFT7
-    import referencing.retrieval
-
-    HAS_REFERENCING = True
-except ImportError:
-    # 如果没有 referencing 库，回退到旧的 RefResolver
+    from referencing.jsonschema import DRAFT7, DRAFT202012
+else:
+    # 没有 referencing 库时，回退到旧的 RefResolver
     from jsonschema import RefResolver
-
-    HAS_REFERENCING = False
 
 
 def strip_jsonc_comments(text):
@@ -132,8 +133,10 @@ def find_line_number(file_path, json_path):
             if pattern.search(line):
                 return i + 1  # 行号从1开始
 
-    except:
-        pass
+    except (OSError, UnicodeDecodeError) as exc:
+        # 不裸吞：读不了文件时要留一句，否则"报错没有行号"会被当成 JSON 结构问题。
+        print(f"[提示] 找不到 {file_path} 里 \"{'.'.join(parts)}\" 的行号：{type(exc).__name__}: {exc}",
+              file=sys.stderr)
 
     return None
 
@@ -165,7 +168,7 @@ def validate_file(file_path, validator):
 
         print(f"✓ {file_path}")
         return True
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - schema 校验可能抛很多种异常，这里统一报成一条校验失败并继续跑下一个文件
         print(f"\n❌ Error validating {file_path}: {e}")
         # 输出GitHub Actions格式的错误注解
         print(f"::error file={file_path},title=Validation Error::{e}")
@@ -266,7 +269,7 @@ def main():
             schema_store[file_uri] = schema
             schema_store[relative_path] = schema
             schema_store[absolute_path] = schema
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - 单个 schema 读坏不该让整轮校验停摆，跳过并继续
             print(f"Warning: Failed to load schema {schema_file}: {e}")
 
     # 加载并创建 pipeline validator

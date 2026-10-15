@@ -2,20 +2,20 @@
 """资源一致性校验：跨文件的名字与约定。
 
 分工：
-  * 字段类型 / schema          -> tools/validate_schema.py
+  * 字段类型 / schema          -> tools/validation/validate_schema.py
   * 引用图的通用错误            -> npx @nekosu/maa-tools check
   * 跨文件的名字与命名/结构约定 -> 本脚本
 
 五个可选域（都不给 = 全开，路径由 interface.json 推导）：
   --interface   interface.json：entry / option / group / preset / pipeline_override 接线
   --pipeline    节点引用完整性、自定义名与 agent 注册名、静态可达性陷阱、
-                命名规范（docs/zh_cn/develop/naming.md）与任务链结构（pipeline-structure.md）约定
+                命名规范（docs/zh_cn/develop/node-naming.md）与任务链结构（pipeline-structure.md）约定
   --tasks       tasks/ 片段：option 形状、case.option、pipeline_override 目标、preset 任务名
   --agent       agent/*.py：模块是否被 main.py 导入、注册名唯一性与后缀
   --image       image/：模板引用存在性（含 agent 里的模板字面量）、未引用图片、非 png
 
 只读，不修改任何文件。纯标准库：本机装不上 jsonschema（.agents/project.md），
-所以这里不 import tools/validate_schema.py。
+所以这里不 import tools/validation/validate_schema.py。
 """
 
 from __future__ import annotations
@@ -26,6 +26,7 @@ import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TypeGuard
 
 # --------------------------------------------------------------------------
 # JSONC
@@ -33,7 +34,7 @@ from pathlib import Path
 
 
 def strip_jsonc_comments(text: str) -> str:
-    """移除 JSONC 注释，保持结构（与 tools/validate_schema.py:23-70 同源）。"""
+    """移除 JSONC 注释，保持结构（与 tools/validation/validate_schema.py:23-70 同源）。"""
     result: list[str] = []
     state = 0  # 0=正常, 1=字符串中, 2=转义
     i = 0
@@ -109,7 +110,7 @@ FOCUS_KEYS = frozenset(
     }
 )
 
-# naming.md §4 动词表
+# node-naming.md §4 动词表
 VERBS = (
     "TouchDown",
     "TouchUp",
@@ -123,10 +124,58 @@ VERBS = (
     "Init",
     "Get",
 )
-# naming.md §2 里已成类的后缀，不按动词表判
+# node-naming.md §2 里已成类的后缀，不按动词表判
 CLASS_SUFFIXES = ("DailyUpdate", "Success", "Failed", "Init", "End", "Loop")
-# naming.md §3：旧写法（并入 Probe + 状态词）
+# node-naming.md §3：旧写法（并入 Probe + 状态词）
 LEGACY_PREFIXES = ("Is", "Has", "In", "At", "Can", "Able", "Unable")
+
+# 同义写法（§6 要求同一个按钮在各任务里叫法一致）：只在真的见过有人写成这样时才列进来，
+# 不做"猜同义词"。`GiftClickSortConfirm` 这类宾语本身就是"排序确认"的不算。
+CLICK_SYNONYMS = ("ClickYes", "ClickNo", "ClickSure")
+
+# --------------------------------------------------------------------------
+# 规范版本
+# --------------------------------------------------------------------------
+
+# 本脚本按哪一版《节点命名与分类》实现。文档头部写着「版本号: vX.Y」；改了收录的规则就同步 +0.1。
+# 不一致时报 E2，提醒人复核新规则要不要收进脚本——版本号只印在输出里而没人对，等于没有。
+NAMING_SPEC_VERSION = "v1.3"
+NAMING_SPEC = Path("docs/zh_cn/develop/node-naming.md")
+# 编辑器里在用的写法模板：新节点的字段骨架从它来（`$comment` 上写着对应规范版本）
+PIPELINE_SNIPPETS = Path("tools/vscode/pipeline.snippets.schema.json")
+# 文件头部注释的写法由命名规范自己的「版本号」一节规定
+ANNOTATION_RE = re.compile(r"使用命名规范版本\s*v(\d+\.\d+)\s*校验年月日\s*(\d{2}/\d{2}/\d{2})")
+DOC_VERSION_RE = re.compile(r"版本号\s*[:：]\s*v(\d+\.\d+)")
+ANY_VERSION_RE = re.compile(r"v(\d+\.\d+)")
+# Ensure 的骨架候选，不算"业务 Loop 混进 next"（node-naming.md §3 的节点内部顺序里有它）
+ENSURE_SKELETON_REFS = frozenset({"LoopErrorByTimes"})
+
+
+def version_tuple(text: str) -> tuple[int, int]:
+    """'v1.3' → (1, 3)，用来比大小。"""
+    major, _, minor = text.lstrip("v").partition(".")
+    return int(major), int(minor)
+
+
+def version_finding(found: str | None, current: str = NAMING_SPEC_VERSION) -> tuple[str, str] | None:
+    """比对"文档/模板写的版本"与"脚本实现的版本"，返回 `(finding_id, 说明)` 或 None。
+
+    抽成纯函数是为了自检能试它——自检不写文件（受限沙箱下系统临时目录不可写）。
+    """
+    if found is None:
+        return ("E1-spec-missing", "找不到「版本号: vX.Y」")
+    if f"v{found}" == current:
+        return None
+    if version_tuple(f"v{found}") > version_tuple(current):
+        return (
+            "E2-spec-version",
+            f"文档已到 v{found}，脚本按 {current} 实现："
+            f"复核新规则要不要收进脚本，收完把 NAMING_SPEC_VERSION 一起改",
+        )
+    return (
+        "E2-spec-version",
+        f"文档是 v{found}，脚本按 {current} 实现：两边要一致，改文档版本号或改 NAMING_SPEC_VERSION",
+    )
 
 # 由 agent 在运行时注入的节点名（override_pipeline / override_next 里出现、
 # pipeline 文件里没有定义的）。目前为空：本仓库注入的名字都已在 pipeline 里定义。
@@ -326,8 +375,12 @@ BUILTIN_ACTIONS = frozenset(
 )
 
 
-def hits_always(target: "Node | None") -> bool:
-    """候选目标的识别是否必然命中（并考虑 enabled: false 与内置输入动作）。"""
+def hits_always(target: Node | None) -> TypeGuard[Node]:
+    """候选目标的识别是否必然命中（并考虑 enabled: false 与内置输入动作）。
+
+    返回 `TypeGuard[Node]`：True 的时候 `target` 一定不是 None，调用方在
+    `if not hits_always(x): continue` 之后可以直接用 `x.data` / `x.file`。
+    """
     if target is None:
         return False
     if target.data.get("enabled") is False:
@@ -567,7 +620,7 @@ def check_a2_custom(ctx: Ctx) -> None:
 
 
 def check_a3_custom_mapping(ctx: Ctx) -> None:
-    """naming.md §7：注册名 = 节点名 + Reco/Act。
+    """node-naming.md §7：注册名 = 节点名 + Reco/Act。
 
     只查节点自身的 custom_* 字段（内联子识别是共用识别，不按父节点名判）；
     只报"只被一个节点引用"的注册名 —— 被多个节点共用是刻意的复用，不算改名漏改。
@@ -594,7 +647,7 @@ def check_a3_custom_mapping(ctx: Ctx) -> None:
                 "warn",
                 node.file,
                 find_line(node.file, node.name),
-                f"{node.name}.{key} = {value!r}，按 naming.md §7 应为 {want!r}",
+                f"{node.name}.{key} = {value!r}，按 node-naming.md §7 应为 {want!r}",
             )
 
 
@@ -843,7 +896,7 @@ def check_a13_naming(ctx: Ctx) -> None:
                     "warn",
                     info.file,
                     line,
-                    f"{name} 用了旧前缀 {legacy}（naming.md §3：并入 Probe + 状态词）",
+                    f"{name} 用了旧前缀 {legacy}（node-naming.md §3：并入 Probe + 状态词）",
                 )
                 break
         if info.file.name == "base.json" or name in generic:
@@ -859,7 +912,7 @@ def check_a13_naming(ctx: Ctx) -> None:
                 "warn",
                 info.file,
                 line,
-                f"{name} 既不带本任务前缀（{', '.join(sorted(pset))}）也不符合 <动词><宾语> 形状，naming.md §1/§4",
+                f"{name} 既不带本任务前缀（{', '.join(sorted(pset))}）也不符合 <动词><宾语> 形状，node-naming.md §1/§4",
             )
         has_action = "action" in data
         is_probe = name.startswith("Probe") or "Probe" in name
@@ -870,9 +923,35 @@ def check_a13_naming(ctx: Ctx) -> None:
                     "warn",
                     info.file,
                     line,
-                    f"{name} 是探测节点却有 action（naming.md §3：探测只探，动作拆出去）",
+                    f"{name} 是探测节点却有 action（node-naming.md §3：探测只探，动作拆出去）",
+                )
+            if to_list(data.get("next")):
+                ctx.add(
+                    "A13-probe-next",
+                    "warn",
+                    info.file,
+                    line,
+                    f"{name} 是探测节点却有 next（node-naming.md §3：探测不做行为，是终点节点）",
                 )
             continue
+        for synonym in CLICK_SYNONYMS:
+            if synonym in name:
+                ctx.add(
+                    "A13-click-synonym",
+                    "warn",
+                    info.file,
+                    line,
+                    f"{name} 用了同义写法 {synonym}（node-naming.md §6：统一 ClickOk / ClickCancel / ClickFinish）",
+                )
+                break
+        if name.endswith("Loop") and not to_list(data.get("next")):
+            ctx.add(
+                "A13-loop-next",
+                "warn",
+                info.file,
+                line,
+                f"{name} 是工作循环却没有 next（node-naming.md §3：业务候选排在里面）",
+            )
         if ENSURE_RE.search(name) or name.endswith("Loop"):
             continue
         if name.startswith(CLASS_SUFFIXES) or name.endswith(CLASS_SUFFIXES):
@@ -883,8 +962,123 @@ def check_a13_naming(ctx: Ctx) -> None:
                 "warn",
                 info.file,
                 line,
-                f"{name} 是动作节点但名字里没有动词表里的词（naming.md §4），候选写法：<前缀><动词><宾语>",
+                f"{name} 是动作节点但名字里没有动词表里的词（node-naming.md §4），候选写法：<前缀><动词><宾语>",
             )
+
+
+def check_a13_references(ctx: Ctx) -> None:
+    """就位层的引用规则与片段/参数键的写法（node-naming.md §3/§7/§8）。
+
+    这几条都是**今天一条都不报**的护栏：写它们是为了以后别写错，不是为了现在挑错。
+    判定只看结构，不看语义，所以规则本身也有限——见 README「功能取舍」。
+    """
+    ensure_nodes = {n for n in ctx.nodes if ENSURE_RE.search(n)}
+
+    # §3 就位：被引用时必须带 [JumpBack]——不带的话点了没进去就被弹回，页面保证不住
+    for name, info in ctx.nodes.items():
+        for key, items in ref_lists(info.data):
+            for item in items:
+                target, jump, enabled = parse_ref(item)
+                if target in ensure_nodes and not jump:
+                    ctx.add(
+                        "A13-ensure-jumpback",
+                        "warn",
+                        info.file,
+                        find_line(info.file, name),
+                        f"{name}.{key} 引用了就位节点 {target} 却没带 [JumpBack]（node-naming.md §3）",
+                    )
+                if (ENSURE_RE.search(name) and key == "next" and target
+                        and target.endswith("Loop") and target not in ENSURE_SKELETON_REFS):
+                    ctx.add(
+                        "A13-ensure-loop-next",
+                        "warn",
+                        info.file,
+                        find_line(info.file, name),
+                        f"{name}.next 里放了工作循环 {target}（node-naming.md §3：Loop 在 Task* 入口命中）",
+                    )
+
+    # §7 参数键用 snake_case（键名进 agent，改名要动两处，所以越早拦住越省事）
+    def custom_keys(data, where: str) -> None:
+        if isinstance(data, dict):
+            for key, value in data.items():
+                if key in ("custom_recognition_param", "custom_action_param") and isinstance(value, dict):
+                    for k in value:
+                        if not re.fullmatch(r"[a-z][a-z0-9_]*", k):
+                            ctx.add(
+                                "A13-key-case",
+                                "warn",
+                                where,
+                                find_line(Path(where), k),
+                                f"{k} 不是 snake_case（node-naming.md §7：参数键用 snake_case）",
+                            )
+                custom_keys(value, where)
+        elif isinstance(data, list):
+            for item in data:
+                custom_keys(item, where)
+
+    for _name, info in ctx.nodes.items():
+        custom_keys(info.data, str(info.file))
+    for _name, opt in ctx.options.items():
+        custom_keys(opt.data, str(opt.file))
+
+    # §8 pipeline 片段文件名：任务名全小写 snake_case
+    for path in ctx.pipeline_files:
+        if path.name == "base.json":
+            continue
+        if not re.fullmatch(r"[a-z][a-z0-9_]*\.json", path.name):
+            ctx.add(
+                "A13-file-case",
+                "warn",
+                path,
+                None,
+                f"pipeline 片段文件名 {path.name} 不是小写 snake_case（node-naming.md §8）",
+            )
+
+
+def check_spec_version(ctx: Ctx) -> None:
+    """规范版本落地：脚本按哪版实现、文档到哪版、哪些文件还没按当前版本重看过。
+
+    判据是文档头部的「版本号: vX.Y」与各文件头部注释里的
+    「使用命名规范版本 vX.Y 校验年月日 YY/MM/DD」——两者都是命名规范自己规定的写法。
+    """
+    doc = ctx.repo_root / NAMING_SPEC
+    if not doc.is_file():
+        ctx.add("E1-spec-missing", "error", doc, None,
+                f"找不到命名规范文档 {NAMING_SPEC}（本脚本按 {NAMING_SPEC_VERSION} 实现）")
+    else:
+        m = DOC_VERSION_RE.search(doc.read_text(encoding="utf-8"))
+        verdict = version_finding(m.group(1) if m else None)
+        if verdict:
+            severity = "error" if verdict[0] == "E1-spec-missing" else "warn"
+            ctx.add(verdict[0], severity, doc, find_line(doc, "版本号"), verdict[1])
+
+    snippets = ctx.repo_root / PIPELINE_SNIPPETS
+    if snippets.is_file():
+        sm = ANY_VERSION_RE.search(snippets.read_text(encoding="utf-8"))
+        if sm:
+            verdict = version_finding(sm.group(1))
+            if verdict:
+                ctx.add(verdict[0], "warn", snippets, find_line(snippets, "$comment"),
+                        f"写法模板写着 v{sm.group(1)}，脚本按 {NAMING_SPEC_VERSION} 实现：两处版本要一起对")
+
+    # 头部注解落后的文件：没有注解的不报（老文件太多，报了等于噪音），只报"看过的"。
+    for path in (*ctx.pipeline_files, *ctx.task_files, *ctx.agent_files):
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        am = ANNOTATION_RE.search(text)
+        if not am or version_tuple(f"v{am.group(1)}") >= version_tuple(NAMING_SPEC_VERSION):
+            continue
+        line = next((i for i, l in enumerate(lines_of(path), 1) if ANNOTATION_RE.search(l)), None)
+        ctx.add(
+            "E3-stale-annotation",
+            "info",
+            path,
+            line,
+            f"头部标注按命名规范 v{am.group(1)}（{am.group(2)}）校验过，文档已到 {NAMING_SPEC_VERSION}："
+            f"重看一遍后把版本号改成 {NAMING_SPEC_VERSION}",
+        )
 
 
 # --------------------------------------------------------------------------
@@ -961,7 +1155,7 @@ def check_option_shape(ctx: Ctx) -> None:
 
     for name, opt in ctx.options.items():
         one(name, opt.data, opt.file)
-    if ctx.interface:
+    if ctx.interface and ctx.interface_file:
         for name, opt in (ctx.interface.get("option") or {}).items():
             if isinstance(opt, dict):
                 one(name, opt, ctx.interface_file)
@@ -1006,7 +1200,9 @@ def check_interface(ctx: Ctx) -> None:
 
 def check_interface_paths(ctx: Ctx) -> None:
     iface = ctx.interface
-    if not iface or not ctx.interface_dir:
+    # `iface` 与 `interface_file` 只可能一起被赋值，但类型上是两个独立可选字段；
+    # 显式一起判，省得靠"实现上不会为 None"的推断。
+    if not iface or not ctx.interface_dir or not ctx.interface_file:
         return
     base = ctx.interface_dir
     file = ctx.interface_file
@@ -1114,7 +1310,7 @@ def check_images(ctx: Ctx) -> None:
                 "warn",
                 path,
                 None,
-                f"模板元素名不是英文 CamelCase（naming.md §8）：{rel}",
+                f"模板元素名不是英文 CamelCase（node-naming.md §8）：{rel}",
             )
 
 
@@ -1167,7 +1363,7 @@ def check_agent(ctx: Ctx) -> None:
                 "warn",
                 reg.file,
                 reg.line,
-                f"注册名 {name!r} 后缀不是 {want}（naming.md §7）",
+                f"注册名 {name!r} 后缀不是 {want}（node-naming.md §7）",
             )
         if reg.cls and reg.cls != name:
             ctx.add(
@@ -1175,7 +1371,7 @@ def check_agent(ctx: Ctx) -> None:
                 "warn",
                 reg.file,
                 reg.line,
-                f"注册名 {name!r} 与类名 {reg.cls!r} 不一致（naming.md §7）",
+                f"注册名 {name!r} 与类名 {reg.cls!r} 不一致（node-naming.md §7）",
             )
 
 
@@ -1203,7 +1399,66 @@ def self_test() -> int:
         ),
         ([v for _p, v in walk_key({"x": {"template": ["a.png"]}}, "template")] == [["a.png"]], "walk_key 嵌套"),
         (re.fullmatch(r"[A-Z][A-Za-z0-9]*", "BattleButton") is not None, "CamelCase 判定"),
+        (version_tuple("v1.10") > version_tuple("v1.3"), "版本号按数字比大小"),
+        (
+            ANNOTATION_RE.search("// INFO 使用命名规范版本 v1.2 校验年月日 26/10/13").group(1) == "1.2",  # type: ignore[union-attr]
+            "头部注解版本号",
+        ),
+        (DOC_VERSION_RE.search("版本号: v1.3").group(1) == "1.3", "文档版本号"),  # type: ignore[union-attr]
     ]
+
+    # 新增的护栏规则：合成一棵最小的节点树，确认真的会响（也为"别误报"留反例）
+    def synth_ctx(nodes: dict[str, dict], files: tuple[str, ...] = ("p.json",)) -> Ctx:
+        ctx = Ctx(repo_root=Path("."))
+        ctx.nodes = {n: Node(n, d, Path("p.json")) for n, d in nodes.items()}
+        ctx.pipeline_files = [Path(f) for f in files]
+        return ctx
+
+    ref_ctx = synth_ctx({
+        "TaskX": {"next": ["XEnterHome"]},
+        "XEnterHome": {"action": "Click", "next": ["XEnsureHome"]},
+        "XEnsureHome": {"next": ["XLoop"]},
+        "XLoop": {"next": ["XEnsureHome", "LoopErrorByTimes"]},
+    })
+    check_a13_references(ref_ctx)
+    ref_ids = {f.id for f in ref_ctx.findings}
+    checks += [
+        ("A13-ensure-jumpback" in ref_ids, "引用就位节点未带 [JumpBack] 会被拦"),
+        ("A13-ensure-loop-next" in ref_ids, "就位节点的 next 里放 Loop 会被拦"),
+        (not any("LoopErrorByTimes" in f.message for f in ref_ctx.findings), "LoopErrorByTimes 属骨架，不误报"),
+    ]
+
+    naming_ctx = synth_ctx({
+        "TaskY": {"next": ["YProbeHome", "YClickYes", "YLoop", "YEnterHome"]},
+        "YProbeHome": {"next": ["YEnterHome"]},
+        "YClickYes": {"action": "Click"},
+        "YLoop": {"action": "Click"},
+        "YEnterHome": {"action": "Click", "custom_action_param": {"badKey": 1}},
+    }, files=("BadName.json",))
+    check_a13_naming(naming_ctx)
+    check_a13_references(naming_ctx)
+    naming_ids = {f.id for f in naming_ctx.findings}
+    checks += [
+        ("A13-probe-next" in naming_ids, "探测节点带 next 会被拦"),
+        ("A13-click-synonym" in naming_ids, "ClickYes 这类同义写法会被拦"),
+        ("A13-loop-next" in naming_ids, "工作循环没有 next 会被拦"),
+        ("A13-key-case" in naming_ids, "参数键非 snake_case 会被拦"),
+        ("A13-file-case" in naming_ids, "pipeline 片段文件名不符会被拦"),
+    ]
+
+    # 规范版本：文档/模板与脚本不一致就要报，一致时不报（自检不写文件，只试纯函数）
+    def vf_id(found: str | None) -> str:
+        verdict = version_finding(found)
+        return verdict[0] if verdict else ""
+
+    checks += [
+        (vf_id("1.9") == "E2-spec-version", "文档版本更高 → 报 E2"),
+        (vf_id("1.2") == "E2-spec-version", "文档版本更低 → 也报 E2"),
+        (vf_id(NAMING_SPEC_VERSION.lstrip("v")) == "", "版本一致 → 不报"),
+        (vf_id(None) == "E1-spec-missing", "找不到版本号 → E1"),
+        (version_tuple("v1.2") < version_tuple(NAMING_SPEC_VERSION), "旧注解比当前版本低"),
+    ]
+
     bad = [name for ok, name in checks if not ok]
     if bad:
         for name in bad:
@@ -1219,7 +1474,8 @@ def self_test() -> int:
 
 
 def build_ctx(args) -> Ctx:
-    repo_root = Path(__file__).resolve().parents[1]
+    # 仓库根 = tools/validation/ 上溯两级；改目录层级要同步改这里。
+    repo_root = Path(__file__).resolve().parents[2]
     ctx = Ctx(repo_root=repo_root)
 
     interface_path = Path(args.interface).resolve() if args.interface else repo_root / "assets" / "interface.json"
@@ -1361,6 +1617,9 @@ def report(ctx: Ctx, fmt: str, fail_on: str, ignores: set[str]) -> int:
         print(
             json.dumps(
                 {
+                    # 报告自己声明按哪一版规范算的：结论会随规范版本变，读报告的人要能看到
+                    "spec_version": NAMING_SPEC_VERSION,
+                    "spec": NAMING_SPEC.as_posix(),
                     "findings": [f.__dict__ for f in findings],
                     "counts": counts,
                 },
@@ -1373,8 +1632,10 @@ def report(ctx: Ctx, fmt: str, fail_on: str, ignores: set[str]) -> int:
             level = {"error": "error", "warn": "warning", "info": "notice"}.get(f.severity, "notice")
             loc = f"file={f.file}" + (f",line={f.line}" if f.line else "")
             print(f"::{level} {loc},title={f.id}::{f.message}")
-        print(f"::notice::validate_refs: error {counts['error']} / warn {counts['warn']} / info {counts['info']}")
+        print(f"::notice::validate_refs: 命名规范 {NAMING_SPEC_VERSION} / error {counts['error']} / "
+              f"warn {counts['warn']} / info {counts['info']}")
     else:
+        print(f"命名规范 {NAMING_SPEC_VERSION}（本脚本实现的版本；文档 {NAMING_SPEC.as_posix()}）")
         cur = None
         for f in findings:
             if f.file != cur:
@@ -1400,11 +1661,11 @@ def _ensure_printable_stdout() -> None:
     try:
         if sys.stdout.isatty():
             return
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001, S110 - 探测 isatty 失败就当"不是终端"，继续往下改编码
         pass
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001, S110 - 老解释器/被包装过的 stdout 没有 reconfigure，保持原样即可
         pass
 
 
@@ -1443,6 +1704,9 @@ def main(argv: list[str] | None = None) -> int:
         check_a11_expected(ctx)
         check_a12_focus(ctx)
         check_a13_naming(ctx)
+        check_a13_references(ctx)
+    # 规范版本与注解新鲜度：不属于任何域，给了 --pipeline 之类也要报
+    check_spec_version(ctx)
     if domains["interface"]:
         check_interface(ctx)
         check_interface_paths(ctx)

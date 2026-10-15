@@ -24,7 +24,7 @@ const targetDir = "deps/tools";
 const baseUrl = `https://raw.githubusercontent.com/${upstreamRepo}/${upstreamRef}/tools`;
 
 // 上游 tools/ 下这 6 个文件，deps/tools/ 本地都有副本；interface_config.schema.json 与
-// 两个 custom.*.schema.json 虽然不被 tools/validate_schema.py 的 --schema 入口直接使用，
+// 两个 custom.*.schema.json 虽然不被 tools/validation/validate_schema.py 的 --schema 入口直接使用，
 // 但它们会进 schema_store 参与 $ref 解析，所以必须同版本。
 const schemas = [
     {

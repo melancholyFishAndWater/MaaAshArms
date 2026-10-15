@@ -1,9 +1,8 @@
-from pathlib import Path
-
 import argparse
 import io
 import shutil
 import sys
+from pathlib import Path
 
 # Windows runner 的控制台编码是 cp1252，Python 默认拿它当 stdout/stderr 编码，print 中文就
 # UnicodeEncodeError（本机 cp936 不复现，CI 的 windows 档会撞）。只调 errors 不动 encoding：
