@@ -241,6 +241,8 @@ python tools/drawing/flow_cases.py --case D:/MaaAshArms/debug --list-cases
 取回**整次运行**的日志（实测一趟 523 条 / 5951 行，含 24 条 `PipelineTask node done` 与失败标记），
 写进 `temp/evidence/<issue>/debug/maafw.log`，于是"节点循环 + 失败现场图"能一次拿齐。
 限制是 `--limit ≤ 1000` 且没有游标：超长运行只能取最新那段（失败在末尾）。
+这份日志里还带着 `Node.NextList` 事件，所以画出来的图上**每一步的父节点（本轮派发者）与它的候选表**也有
+（见 [`tools/drawing` 的「解析口径」](../drawing/README.md#解析口径读图前先看这里)）——不需要本机 `debug/` 才能看父子链。
 
 ## 统计口径
 

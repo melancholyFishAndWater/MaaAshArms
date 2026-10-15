@@ -342,6 +342,8 @@ def create_argument_parser(prog: str | None = None) -> argparse.ArgumentParser:
     ap.add_argument("--max-rounds", type=int, default=40, help="最多画多少轮（默认 40）")
     ap.add_argument("--collapse", type=int, default=3, help="连续同名节点折叠阈值（默认 3）")
     ap.add_argument("--no-thumbs", dest="thumbs", action="store_false", help="不贴截图")
+    ap.add_argument("--no-parents", dest="parents", action="store_false",
+                    help="框里不写父节点那一行（父节点 = 本轮的派发者，来自 Node.NextList 事件）")
     ap.add_argument("--mermaid", action="store_true", help="额外输出 .mmd")
     ap.add_argument("--force", action="store_true", help="忽略 manifest，强制重画")
     ap.add_argument("--list-cases", action="store_true", help="只列出发现的证据包，不画")
@@ -365,6 +367,7 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
     options = FlowOptions(
         t_from=t_from, t_to=t_to, task_id=args.task_id, cut_on=args.cut_on,
         max_rounds=args.max_rounds, collapse=args.collapse, thumbs=args.thumbs,
+        parents=args.parents,
     )
 
     single = args.case[0]

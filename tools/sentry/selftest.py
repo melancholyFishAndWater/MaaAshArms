@@ -536,6 +536,10 @@ def check_flow_parser() -> list[str]:
     from tools.drawing.flow_from_log import _first_log_ts, _open_log_lines, parse_log
 
     sample = "\n".join([
+        "[2026-10-14 00:30:00.050][INF][Px1][Tx1][Utils/EventDispatcher.hpp][L65][A::notify] "
+        '!!!OnEventNotify!!! [handle=true] [msg=Node.NextList.Starting] '
+        '[details={"focus":null,"list":[{"anchor":false,"jump_back":false,"name":"BattleNow"},'
+        '{"anchor":false,"jump_back":true,"name":"BattleEnter"}],"name":"BattleLoop","task_id":200000118}] ',
         "[2026-10-14 00:30:00.100][INF][Px1][Tx1][Recognizer.cpp][L1][A::b] "
         'recognize_list [cur_node_=BattleNow] [list=[{name=BattleNow}]]',
         "[2026-10-14 00:30:00.200][INF][Px1][Tx1][Recognizer.cpp][L2][A::c] "
@@ -556,17 +560,24 @@ def check_flow_parser() -> list[str]:
     _eq([s.name for s in from_stream.steps], ["BattleNow"], "文本流输入的节点")
     _eq(from_text.steps[0].texts, ["接管作战"], "文本输入抓到的 OCR 文本")
     _eq(from_text.steps[0].action, "Click", "文本输入抓到的动作")
+    # 同一份日志里的 NextList 事件要认出来（小写 + 行尾那个 `]` 都实测踩过）
+    _eq(from_text.stats.nextlist_seen, 1, "NextList 事件计数")
+    _eq(from_text.steps[0].parent, "BattleLoop", "父节点从 NextList 的 name 来")
+    _eq(from_text.steps[0].candidates, ["BattleNow", "BattleEnter"], "候选表按 list 顺序")
+    _eq(from_text.steps[0].jumps, ["BattleEnter"], "带 [JumpBack] 的候选")
+    _eq(from_text.steps[0].parent_source, "nextlist", "父节点来源")
     # `_first_log_ts` 可能返回 None（不是 maafw.log 的文本），直接 .strftime 会抛
     # AttributeError 而不是可读的断言失败，所以先判 None。
     first_ts = _first_log_ts(sample)
     if first_ts is None:
         raise CheckFailure("_first_log_ts 没解析出首行时间戳")
-    _eq(first_ts.strftime("%H:%M:%S.%f")[:-3], "00:30:00.100", "_first_log_ts 取首行时间戳")
+    _eq(first_ts.strftime("%H:%M:%S.%f")[:-3], "00:30:00.050", "_first_log_ts 取首行时间戳")
 
     # 路径输入路径仍要可用（本地工具的主用法）
     lines = list(_open_log_lines(sample))
-    _eq(len(lines), 5, "文本按行切分")
-    return [f"  文本 / 文本流 / 路径 三种入参一致（{len(from_text.steps)} 步）"]
+    _eq(len(lines), 6, "文本按行切分")
+    return [f"  文本 / 文本流 / 路径 三种入参一致（{len(from_text.steps)} 步，"
+            f"父节点={from_text.steps[0].parent}）"]
 
 
 def check_flow_diagnostics() -> list[str]:
@@ -975,7 +986,139 @@ def check_report_lock() -> list[str]:
     return ["残留锁（持锁进程已退出）不提示且自动清掉；真并发仍提示"]
 
 
-CHECKS: tuple[tuple[str, Callable[[], list[str]]], ...] = (    ("release 解析", check_release_parsing),
+def check_flow_parents() -> list[str]:
+    """父节点（派发者）的归属规则：候选命中、自循环、跨 task 隔离、几种退回。
+
+    `Node.NextList.*` 是父子链的唯一来源（`[cur_node_=X]` 只知道派发者、不知道候选表）。
+    全用合成日志，不联网、不写文件；真实日志上那条链另有验收（`.agents/project.md` 记了结论）。
+    """
+    import sys
+    from datetime import datetime
+    from pathlib import Path as _Path
+
+    root = _Path(__file__).resolve().parents[2]
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    from tools.drawing.flow_from_log import (
+        FlowOptions,
+        build_notes,
+        parent_groups,
+        parse_log,
+        parse_nextlist,
+        resolve_parent,
+    )
+
+    def line(ts: str, msg: str, px: str = "Px1") -> str:
+        return f"[2026-10-14 {ts}][INF][{px}][Tx1][Unit.cpp][L1][MaaNS::T] {msg}"
+
+    def nextlist(ts: str, name: str, names: list[str], tid: int, jumps: tuple[str, ...] = (),
+                 px: str = "Px1") -> str:
+        entries = ",".join(
+            '{"anchor":false,"jump_back":%s,"name":"%s"}' % ("true" if n in jumps else "false", n)
+            for n in names)
+        return line(ts, '!!!OnEventNotify!!! [handle=true] [msg=Node.NextList.Starting] '
+                        f'[details={{"focus":null,"list":[{entries}],"name":"{name}","task_id":{tid}}}] ', px)
+
+    def done(ts: str, name: str, tid: int, px: str = "Px1") -> str:
+        return line(ts, 'PipelineTask node done [result={"name":"%s","node_id":1,"reco_id":1,'
+                        '"action_id":1,"completed":true}] [task_id_=%d]' % (name, tid), px)
+
+    # 1) 候选表里同时有本步与别的候选：父节点 = 派发者，候选表与 [JumpBack] 照抄
+    text = "\n".join([
+        nextlist("00:00:01.000", "TrainingLoop", ["TrainingGetStatus", "TrainingEnterOne"], 100),
+        done("00:00:02.000", "TrainingEnterOne", 100),
+    ])
+    step = parse_log(text, None, None, 100, False).steps[0]
+    _eq(step.parent, "TrainingLoop", "父节点 = 派发者")
+    _eq(step.candidates, ["TrainingGetStatus", "TrainingEnterOne"], "候选表原样带上")
+    _eq(step.parent_detail(), "候选：TrainingGetStatus ・ √TrainingEnterOne",
+        "框里那一行（派发者名字在分组框角标里，这一行只写候选）")
+
+    # 2) 自循环 / 入口合成轮：list 里含自己 → 不画成父子，写成"自派发/自循环"
+    text = "\n".join([
+        nextlist("00:00:01.000", "BattleWin", ["IsGetReward", "BattleWin"], 100),
+        done("00:00:02.000", "BattleWin", 100),
+    ])
+    step = parse_log(text, None, None, 100, False).steps[0]
+    _eq(step.dispatched, True, "自己派发自己")
+    _eq(step.parent_detail(), "父 BattleWin（自派发/自循环）", "自循环的说法")
+
+    # 3) 候选多于 PARENT_CHOICE_LIMIT 项：框里折成"另 N 项"；--list 用 full=True 给全
+    text = "\n".join([nextlist("00:00:01.000", "Hub", ["A", "B", "C", "D", "E"], 100),
+                      done("00:00:02.000", "D", 100)])
+    step = parse_log(text, None, None, 100, False).steps[0]
+    _contains(step.parent_detail(), "另 3 项", "框里折起来的候选数")
+    _eq(step.parent_detail().count("√"), 0, "被折掉的那个不在框里")
+    _contains(step.parent_detail(full=True), "√D", "全量时标出本次跑的那个")
+    _eq(step.parent_detail(full=True).count("・"), 4, "全量时五个候选都在")
+
+    # 4) 跨 task 隔离：同名公共节点出现在别的任务的候选表里，不能认成它的父节点
+    text = "\n".join([
+        nextlist("00:00:01.000", "EntrustLoop", ["EntrustTouchDown", "MoveUp"], 200),
+        nextlist("00:00:01.500", "BattleLoop", ["BattleNow", "MoveUp"], 100),
+        done("00:00:02.000", "MoveUp", 100),
+    ])
+    _eq(parse_log(text, None, None, 100, False).steps[0].parent, "BattleLoop", "只认同 task 的派发记录")
+
+    # 5) 退回顺序：没有候选记录时用 [cur_node_=X]；连它也没有时留空（图上写"未记录"）
+    text = "\n".join([
+        line("00:00:01.000", "recognize_list [cur_node_=BattleLoop] [list=[{name=BattleNow}]]"),
+        done("00:00:02.000", "BattleNow", 100),
+    ])
+    step = parse_log(text, None, None, 100, False).steps[0]
+    _eq((step.parent, step.parent_source, step.candidates), ("BattleLoop", "walk", []), "退回 cur_node_")
+    step = parse_log(done("00:00:02.000", "BattleNow", 100), None, None, 100, False).steps[0]
+    _eq((step.parent, step.parent_source, step.parent_detail()), ("", "none", "父 未记录"), "取不到就留空")
+
+    # 6) agent 进程那种形态（`details_json`）**不能**用来判父节点：它的载荷只有 focus + list，
+    #    没有 name / task_id（实测本机日志 16 条全是这样）→ 必须返回 None，不能猜。
+    agent_line = ('[2026-10-14 00:00:01.000][TRC][Px2][Tx1][AgentClient.cpp][L1]'
+                  '[MaaNS::A::ctx_event_sink] [handle=true] [message=Node.NextList.Starting] '
+                  '[details_json={"focus":null,"list":[{"anchor":false,"jump_back":false,"name":"X"}]}] ')
+    _eq(parse_nextlist(agent_line, datetime(2026, 10, 14, 0, 0, 1), "Px2"), None,
+        "没有 name 的 details_json 不参与父节点归属")
+    # 但行尾那个 `]` 与大小写要认：同一个正则也得吃下 details_json 里带 name 的写法
+    named = agent_line.replace('"focus":null', '"focus":null,"name":"Hub","task_id":7')
+    record = parse_nextlist(named, datetime(2026, 10, 14, 0, 0, 1), "Px2")
+    if record is None:
+        raise CheckFailure("带 name 的 details_json 形态没解析出来")
+    _eq((record.name, record.task_id, record.candidates), ("Hub", 7, ("X",)), "details_json 形态")
+
+    # 7) 时间上限：几十分钟前那条派发记录不再算这一步的父节点
+    stale = parse_nextlist(nextlist("00:00:01.000", "Hub", ["A"], 100),
+                           datetime(2026, 10, 14, 0, 0, 1), "Px1")
+    if stale is None:
+        raise CheckFailure("合成的 NextList 行没解析出来")
+    _eq(resolve_parent([stale], 100, "A", datetime(2026, 10, 14, 1, 0, 1))[0], None,
+        "超过 NEXTLIST_MAX_GAP_SECONDS 的派发记录不认")
+
+    # 8) 账按**进图的步骤**算，不按解析过的所有记录（`--task-id` 会滤掉别的任务的步骤）
+    only_done = parse_log(done("00:00:02.000", "BattleNow", 100), None, None, 100, False)
+    _eq((only_done.stats.parent_unknown, only_done.stats.parent_resolved), (1, 0), "未归属计数")
+    _contains(" ".join(build_notes(only_done, FlowOptions(task_id=100))), "父节点只能留空",
+              "没有 NextList 事件时的注记")
+
+    # 9) 分组（图上套框 + 左上角标）：连续同父才算一组，父节点自己 / 未记录 / 任务起止都不入组
+    def step(name: str, parent: str, kind: str = "hit", candidates: tuple[str, ...] = ("x",)) -> Any:
+        from tools.drawing.flow_from_log import Step as _Step
+        return _Step(ts=datetime(2026, 10, 14, 0, 0, 1), name=name, completed=True, kind=kind,
+                     dispatcher=parent, candidates=list(candidates) if parent != name else [])
+
+    column = [
+        step("TaskA", "TaskA", kind="task"),          # 任务起始：不入组
+        step("A1", "Hub"), step("A2", "Hub"),         # 同一个父节点连着两步 → 一组
+        step("Hub", "Hub"),                           # 自派发（父就是自己）→ 不入组，自己隔开
+        step("B1", "A2"),                             # 父换了 → 新组
+        step("none1", ""),                            # 父未记录 → 不入组
+        step("C1", "A2"),                             # 与 B1 不连续 → 另起一组（同父不同组）
+    ]
+    _eq(parent_groups(column), [("Hub", 1, 2), ("A2", 4, 4), ("A2", 6, 6)],
+        "连续同父才成组；自派发/未记录/任务起止不入组")
+    return ["候选命中 / 跨 task 隔离 / 自循环 / 折行 / 三种退回 / 时间上限 / 计数口径 / 分组 各自有断言"]
+
+
+CHECKS: tuple[tuple[str, Callable[[], list[str]]], ...] = (
+    ("release 解析", check_release_parsing),
     ("版本排序", check_ordering),
     ("Wilson 区间", check_wilson),
     ("任务表与失败标记分流", check_task_rows),
@@ -991,6 +1134,7 @@ CHECKS: tuple[tuple[str, Callable[[], list[str]]], ...] = (    ("release 解析"
     ("失败证据的纯逻辑", check_evidence),
     ("证据清单与磁盘一致", check_evidence_disk_agreement),
     ("并发锁的持有者判据", check_report_lock),
+    ("流程图的父节点（派发者）", check_flow_parents),
 )
 
 
