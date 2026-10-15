@@ -23,7 +23,7 @@ from collections.abc import Generator, Iterable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, TextIO
 from urllib.parse import quote
@@ -104,8 +104,10 @@ def period_days(period: str) -> float | None:
     if range_match is None:
         return None
     try:
-        start = datetime.fromisoformat(range_match.group(1).replace("Z", "+00:00"))
-        end = datetime.fromisoformat(range_match.group(2).replace("Z", "+00:00"))
+        # Python 3.11+ 的 fromisoformat 原生认 `Z`（实测与手写 `.replace("Z", "+00:00")`
+        # 结果逐字段相同），所以不必再手工替换。
+        start = datetime.fromisoformat(range_match.group(1))
+        end = datetime.fromisoformat(range_match.group(2))
         span = end - start
     except (TypeError, ValueError):
         return None
@@ -544,12 +546,12 @@ def artifact_to_dict(artifact: Artifact) -> dict[str, Any]:
 
 
 def utc_now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def default_artifact_path(target: str, period: str, now: datetime | None = None) -> Path:
     """默认落盘路径 temp/telemetry/<project>-<period>-<时间戳>.json。"""
-    stamp = (now or datetime.now(timezone.utc)).strftime("%Y%m%dT%H%M%SZ")
+    stamp = (now or datetime.now(UTC)).strftime("%Y%m%dT%H%M%SZ")
     project = target.rpartition("/")[2] or "project"
     safe_period = re.sub(r"[^0-9A-Za-z]+", "-", period).strip("-") or "period"
     return repo_root() / DEFAULT_ARTIFACT_DIR / f"{project}-{safe_period}-{stamp}.json"
@@ -758,7 +760,7 @@ def select_latest_reported_release(
         if version is None:
             continue
         try:
-            release_time = datetime.fromisoformat(released_at.replace("Z", "+00:00"))
+            release_time = datetime.fromisoformat(released_at)
         except ValueError:
             continue
         candidates.append((release_time, version, release))

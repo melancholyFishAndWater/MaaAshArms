@@ -4,7 +4,7 @@
 静默出错的恰恰是**纯逻辑部分**——release 双 ``@`` 拼接解析、任务表与失败标记分流、
 Δpp 方向、工件往返。这些不需要网络，用固定输入断言固定输出即可。
 
-被 ``cli.py selftest`` 与 CI 的 ``tools/ci/check_sentry_offline.py`` 共用，
+被 ``cli.py selftest`` 与 CI 的 ``tools/validation/check_sentry_offline.py`` 共用，
 后者额外渲染一次 console / markdown / json 报告并断言包含关键行。
 """
 
@@ -393,15 +393,6 @@ def check_trend() -> list[str]:
 def check_artifact_roundtrip() -> list[str]:
     """工件写盘 → 读回 → 报告内容必须与直接喂行完全一致。"""
     lines: list[str] = []
-    artifact = Artifact(
-        target=CONFIG.target,
-        period="7d",
-        measurements={
-            name: Measurement(name=name, rows=rows, fields=("span.description", "count_unique(trace)"))
-            for name, rows in MEASUREMENTS.items()
-        },
-        generated_at="2026-01-01T00:00:00Z",
-    )
     # 刻意不用 TemporaryDirectory：DSH 沙箱下系统临时目录的删除会被拒，
     # 于是「测试通过但清理失败」变成 PermissionError。写进工作区里 gitignore 的 temp/。
     scratch = repo_root() / DEFAULT_ARTIFACT_DIR / "_selftest"
@@ -413,19 +404,22 @@ def check_artifact_roundtrip() -> list[str]:
         for name, rows in MEASUREMENTS.items():
             _eq(loaded.get(name), rows, f"读回后的 measurement {name}")
 
+        # 走一遍真正的离线路径（collect_report 吃工件），而不是只比 build_report 的输出——
+        # 报告命令的 `--input` 分支就在那条路上，从没被执行到的话它坏了也发现不了。
+        offline = task_failure_report.collect_report(
+            sentry_command=None, release=RELEASE_D38, target=CONFIG.target, period="7d",
+            artifact=loaded, sort="failures", reverse=False, limit=None, fresh=True,
+            timeout_seconds=1.0, verbose=False, quiet=True,
+        )
         direct = task_failure_report.build_report(
             MEASUREMENTS, release=RELEASE_D38, period="7d", provenance="direct"
         )
-        from_file = task_failure_report.build_report(
-            {name: loaded.get(name) for name in MEASUREMENTS},
-            release=RELEASE_D38,
-            period="7d",
-            provenance="file",
-        )
-        _eq(from_file.tasks, direct.tasks, "工件路径与直连路径的任务表")
-        _eq(from_file.runs, direct.runs, "工件路径与直连路径的运行失败率")
-        _eq(from_file.context, direct.context, "工件路径与直连路径的环境分布")
-        lines.append(f"  往返一致：{len(direct.tasks)} 个任务 / {len(direct.runs)} 条 release")
+        _eq(offline.tasks, direct.tasks, "工件路径与直连路径的任务表")
+        _eq(offline.runs, direct.runs, "工件路径与直连路径的运行失败率")
+        _eq(offline.context, direct.context, "工件路径与直连路径的环境分布")
+        if loaded.path is None or loaded.path.name not in offline.provenance:
+            raise CheckFailure(f"离线路径的 provenance 没带上工件路径：{offline.provenance}")
+        lines.append(f"  往返一致：{len(direct.tasks)} 个任务 / {len(direct.runs)} 条 release；collect_report 离线路径可用")
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
 
@@ -539,7 +533,7 @@ def check_flow_parser() -> list[str]:
     root = _Path(__file__).resolve().parents[2]
     if str(root) not in sys.path:
         sys.path.insert(0, str(root))
-    from tools.flow_from_log import _first_log_ts, _open_log_lines, parse_log
+    from tools.drawing.flow_from_log import _first_log_ts, _open_log_lines, parse_log
 
     sample = "\n".join([
         "[2026-10-14 00:30:00.100][INF][Px1][Tx1][Recognizer.cpp][L1][A::b] "
@@ -575,6 +569,204 @@ def check_flow_parser() -> list[str]:
     return [f"  文本 / 文本流 / 路径 三种入参一致（{len(from_text.steps)} 步）"]
 
 
+def check_flow_diagnostics() -> list[str]:
+    """流程图解析的诊断行为：每种"画不出来/画得不全"的输入都要有自己的说法。
+
+    这几条都是真实踩过的：Explore 导出的 CSV 时间戳会回跳（原来的提前 break 会把窗口内
+    的记录整段丢掉）、Sentry 导出的日志只有识别事件没有 `PipelineTask node done`、
+    导出按字节裁剪会把行尾切掉一半、路径写错与"窗口内没有记录"原来报同一句话。
+    只解析不画图，不依赖 Pillow。
+    """
+    import sys
+    from pathlib import Path as _Path
+
+    root = _Path(__file__).resolve().parents[2]
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    from tools.drawing.flow_from_log import (
+        FlowOptions,
+        build_notes,
+        describe_empty_window,
+        parse_log,
+        round_steps,
+    )
+
+    def raw(ts: str, msg: str, px: str = "Px1") -> str:
+        return f"[2026-10-14 {ts}][INF][{px}][Tx1][PipelineTask.cpp][L1][MaaNS::T] {msg}"
+
+    def done(ts: str, name: str, tid: int = 100, px: str = "Px1") -> str:
+        return raw(ts, f'PipelineTask node done [result={{"name":"{name}","node_id":1,'
+                       f'"reco_id":1,"completed":true}}] [task_id_={tid}]', px=px)
+
+    def reco(ts: str, name: str, box: str = "[1,2,3,4]") -> str:
+        return raw(ts, f'reco [result={{"name":"{name}","algorithm":"OCR","box":{box},'
+                       f'"reco_id":1,"detail":{{}}}}]')
+
+    out: list[str] = []
+
+    # 1) 时间戳回跳：行要按时间重排，两条都要在
+    shuffled = "\n".join([done("00:30:02.000", "Second"), done("00:30:01.000", "First")])
+    parsed = parse_log(shuffled, None, None, None, False)
+    _eq(parsed.stats.out_of_order, 1, "回跳行数")
+    _eq([s.name for s in parsed.steps], ["First", "Second"], "回跳后按时间重排的顺序")
+    _contains("".join(build_notes(parsed, FlowOptions())), "已按时间重排", "回跳注记")
+
+    # 2) 只有识别事件：用识别记录合成步骤，不再抛"没有解析到任何节点执行记录"
+    only_events = "\n".join([reco("00:31:01.000", "EntrustChooseLevel", box="null")] * 4)
+    parsed = parse_log(only_events, None, None, None, False)
+    _eq(parsed.derived_from, "attempts", "仅事件模式的来源")
+    _eq(len(parsed.steps), 4, "合成出的步骤数")
+    _eq(len(round_steps(parsed, FlowOptions(collapse=3))), 1, "--collapse 3 折成一格")
+    _eq(len(round_steps(parsed, FlowOptions(collapse=1))), 4, "--collapse 1 每次一格")
+    _contains("".join(build_notes(parsed, FlowOptions())), "由识别记录还原", "仅事件模式注记")
+
+    # 3) 行尾被截断的 Task timeout：仍要出现，并标明数字不全
+    truncated = raw("00:32:00.000", "Task timeout [pretask.name=EntrustMoveToFind] "
+                                    "[duration_since(start_")
+    parsed = parse_log(truncated, None, None, None, False)
+    _eq([e.name for e in parsed.events], ["Task timeout EntrustMoveToFind"], "截断超时事件")
+    _contains(parsed.events[0].action, "行尾被截断", "截断超时的说明")
+    _eq(parsed.stats.truncated_kept, 1, "截断但保留的条数")
+
+    # 4) 行尾被截断的 reco：读不出就计数，不能抛
+    parsed = parse_log(raw("00:33:00.000", 'reco [result={"name":"A","box":null'), None, None, None, False)
+    _eq(parsed.stats.truncated_skipped, 1, "截断被跳过的条数")
+
+    # 5) 路径写错：必须是"没有这个文件"，不能混进"窗口内没有记录"
+    opts = FlowOptions()
+    missing = "no/such/dir/vision"
+    message = describe_empty_window(parse_log(missing, None, None, None, False), opts, missing)
+    _contains(message, "磁盘上没有这个文件", "路径写错的说法")
+    _contains(message, "日志正文", "路径写错的说法")
+
+    # 6) 窗口落在日志时间范围外：报出日志自己的时间范围
+    elsewhere = done("00:34:00.000", "Only")
+    from datetime import datetime as _dt
+    opts = FlowOptions(t_from=_dt(2030, 1, 1), t_to=_dt(2030, 1, 2))
+    message = describe_empty_window(parse_log(elsewhere, opts.t_from, opts.t_to, None, False),
+                                    opts, elsewhere)
+    _contains(message, "2026-10-14 00:34:00.000", "空窗口时的日志时间范围")
+
+    # 7) --task-id 严格过滤：别的任务的失败收尾不能进图，框架级事件要留
+    mixed = "\n".join([
+        done("00:35:00.000", "Mine", tid=100),
+        raw("00:35:01.000", 'task end: [cb_detail={"entry":"Other","task_id":999}] [ret=false]'),
+        raw("00:35:02.000", "invalid node id, handle error [node.name=Mine]"),
+    ])
+    parsed = parse_log(mixed, None, None, 100, False)
+    _eq([e.name for e in parsed.events], ["invalid node id"], "别的任务的失败收尾被排掉")
+    _eq(parsed.stats.events_dropped, 1, "被排掉的失败事件数")
+    _contains("".join(build_notes(parsed, FlowOptions(task_id=100))), "已排除其他 task", "排掉事件的注记")
+
+    # 8) 窗口内全是别的 task：说法要指向 task_id，而不是"窗口内没有记录"
+    other = done("00:36:00.000", "Theirs", tid=999)
+    opts = FlowOptions(task_id=100)
+    message = describe_empty_window(parse_log(other, None, None, 100, False), opts, other)
+    _contains(message, "其他 task_id", "全是别人的 task 时的说法")
+
+    # 9) 任务判定窗口：框架级事件没有 task_id，"下一个别的任务的第一步"之外的那些要排掉
+    #    （实测：一份装了多次运行的导出把 23:59 那趟训练的 node not completed 画进了 13:11 的图上）
+    span_log = "\n".join([
+        done("00:40:00.000", "Mine", tid=100),
+        done("00:40:05.000", "Mine", tid=100),
+        raw("00:40:06.000", "invalid node id, handle error [node.name=Mine]"),      # 自己的失败标记：留
+        done("01:10:00.000", "Theirs", tid=200),                                    # 别的任务开始了：右界
+        raw("01:10:05.000", "node not completed, handle error [node.name=Theirs]"),  # 别的运行的：排掉
+    ])
+    parsed = parse_log(span_log, None, None, 100, False)
+    _eq([e.name for e in parsed.events], ["invalid node id"], "自己的失败标记留、别的运行的排掉")
+    _eq(parsed.stats.events_dropped, 1, "窗口外被排掉的事件数")
+    _eq(parsed.span is not None, True, "选中任务的判定窗口")
+    _eq(len(parsed.steps), 2, "窗口只影响事件与未命中聚合，不动步骤")
+
+    out.append("  回跳重排 / 仅事件模式（4 条识别合成步骤）/ 截断行 / 三类空窗口 / 严格 task 过滤 / "
+               "任务区间 各自有说法")
+    return out
+
+
+def check_explore_csv() -> list[str]:
+    """Explore CSV → 日志正文 + 清单：块边界接续、五分类、任务可画性、截断计数、入口报错。
+
+    合成一份最小 CSV（用 `csv.writer` 写，保证引号与内嵌换行是真的 CSV），覆盖实测形状：
+    每格首行是半截行、有一处能接回来的跨格断行、一条被裁断的 reco、一条 MFA 面板行。
+    全程不写文件（`read_cells` 接受正文），所以受限沙箱下也能跑。
+    """
+    import csv as _csv
+    import io as _io
+    import sys
+    from pathlib import Path as _Path
+
+    root = _Path(__file__).resolve().parents[2]
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    from tools.sentry import explore_csv
+
+    def maafw(ts: str, msg: str, px: str = "Px1") -> str:
+        return f"[2026-10-14 {ts}][INF][{px}][Tx1][PipelineTask.cpp][L1][MaaNS::T] {msg}"
+
+    node_a = maafw("00:01:00.000", 'PipelineTask node done [result={"name":"TaskA","node_id":1,'
+                                   '"reco_id":11,"completed":true}] [task_id_=111]')
+    node_b = maafw("00:05:00.000", 'PipelineTask node done [result={"name":"TaskB","node_id":2,'
+                                   '"reco_id":21,"completed":true}] [task_id_=222]')
+    head = "[2026-10-14 00:04:00.000][INF][Px1][Tx1"          # 第一格末行：断头（下一格接着）
+    tail = "][Utils/EventDispatcher.hpp][L65][MaaNS::EventDispatcher::notify] !!!OnEventNotify!!!"
+    dangling = "[2026-10-14 00:06:00.000][INF][Px1][Tx1"      # 第二格末行：没人接的断头
+    cell_one = "\n".join([
+        'ls={"focus":null,"list":[]}',                        # 碎片（没有时间戳）
+        node_a,
+        maafw("00:03:00.000", 'reco [result={"name":"A","algorithm":"OCR","box":null'),   # 被裁断
+        head,
+    ])
+    cell_two = "\n".join([
+        tail,                                                  # 接上第一格的断头
+        node_b,
+        "[2026-10-14 00:00:50.306][WRN] [cfg=Default] 实时画面为空：截图方式=EmulatorExtras",
+        dangling,
+    ])
+    buffer = _io.StringIO()
+    writer = _csv.writer(buffer, lineterminator="\r\n")
+    writer.writerow(["timestamp", "message"])
+    writer.writerow(["2026-10-14T00:06:07+00:00", cell_one])
+    writer.writerow(["2026-10-14T00:06:07+00:00", cell_two])
+    text = buffer.getvalue()
+
+    result = explore_csv.extract(text)
+    recovered, parse = result.inventory["recovered"], result.inventory["parse"]
+    _eq(result.inventory["source"]["csv_rows"], 2, "数据行数")
+    _eq(recovered["boundaries_joined"], 1, "接回的跨格断行数")
+    _eq(recovered["lines_complete"], 4, "结构完整的行（两条 node done + 接回的那条 + 被裁断的 reco）")
+    _eq(recovered["lines_panel"], 1, "面板行数")
+    _eq(recovered["lines_head_cut"], 1, "断头行数（没人接的那条）")
+    _eq(recovered["lines_fragment"], 1, "碎片行数")
+    _contains(result.log_text, tail, "接回来的那行进了正文")
+    _eq(parse["steps"], 2, "两条 node done")
+    _eq(parse["truncated_skipped"], 1, "被裁断的记录数")
+    _eq(parse["truncated_by_head"], {"reco [result=": 1}, "截断记录按类型拆")
+    _eq([task["task_id"] for task in result.tasks], [111, 222], "清单里的任务")
+    _eq([task["drawable"] for task in result.tasks], [True, True], "两个任务都可画")
+    _eq(result.inventory["panel_lines"]["count"], 1, "面板行计数")
+    _contains(result.inventory["panel_lines"]["samples"][0]["text"], "实时画面为空", "面板行样例")
+    _eq(result.inventory["images"], False, "导出不含图片")
+
+    # 列不对 / 路径不对要报清楚，不能混成"解析出 0 行"
+    try:
+        explore_csv.extract("trace,span.op\n1,db")
+    except ValueError as error:
+        _contains(str(error), "没有 message 列", "缺 message 列的报错")
+    else:
+        raise CheckFailure("缺 message 列时没有报错")
+    try:
+        explore_csv.extract("no/such/explore.csv")
+    except FileNotFoundError as error:
+        _contains(str(error), "没有这个文件", "路径写错的报错")
+    else:
+        raise CheckFailure("路径写错时没有报错")
+
+    return [f"  2 格 CSV → {recovered['lines']} 行（完整 {recovered['lines_complete']} / 面板 "
+            f"{recovered['lines_panel']}），接回 {recovered['boundaries_joined']} 处断行，"
+            f"{len(result.tasks)} 个任务可画"]
+
+
 CHECKS: tuple[tuple[str, Callable[[], list[str]]], ...] = (
     ("release 解析", check_release_parsing),
     ("版本排序", check_ordering),
@@ -587,6 +779,8 @@ CHECKS: tuple[tuple[str, Callable[[], list[str]]], ...] = (
     ("版本过滤报错文案", check_version_filter_messages),
     ("报告渲染", check_renderers),
     ("流程图解析（文本入参）", check_flow_parser),
+    ("流程图诊断（回跳/仅事件/截断/空窗口）", check_flow_diagnostics),
+    ("Explore CSV 提取", check_explore_csv),
 )
 
 

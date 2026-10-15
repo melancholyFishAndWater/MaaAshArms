@@ -12,8 +12,8 @@
 
 from __future__ import annotations
 
-import io
 import argparse
+import io
 import sys
 from collections.abc import Sequence
 from dataclasses import dataclass

@@ -15,8 +15,8 @@
 
 from __future__ import annotations
 
-import io
 import argparse
+import io
 import json
 import math
 import sys
@@ -235,6 +235,27 @@ def discover_versions(
     return keys_to_labels(fallback[: count + 1], version_labels)
 
 
+def resolve_task_name(task_filter: str, candidates: Iterable[str]) -> str:
+    """把用户给的任务筛选片段解析成真实的节点名，用于报告标题与表格过滤。
+
+    规则与 `build_trend_rows` 里的一致，这里是**唯一实现**：先精确匹配（忽略大小写），
+    再唯一子串匹配，命中多个就抛错并列出候选，都没命中就原样返回（让调用方拿到空表）。
+
+    单独抽出来的原因：报告标题要回显解析后的名字，而这件事不需要构造行集合。
+    """
+    pool = sorted(set(candidates))
+    exact = next((task for task in pool if task.lower() == task_filter.lower()), None)
+    if exact is not None:
+        return exact
+    fuzzy = [task for task in pool if task_filter.lower() in task.lower()]
+    if len(fuzzy) == 1:
+        return fuzzy[0]
+    if len(fuzzy) > 1:
+        listed = "、".join(f"'{match}'" for match in fuzzy)
+        raise ValueError(f"任务筛选 '{task_filter}' 匹配到多个候选：{listed}。请指定更精确的名称。")
+    return task_filter
+
+
 def build_trend_rows(
     totals: Iterable[dict[str, Any]],
     statuses: Iterable[dict[str, Any]],
@@ -284,21 +305,9 @@ def build_trend_rows(
         all_tasks.update(task_failures[version].keys())
 
     detailed_stats: list[VersionTaskStat] | None = None
-    resolved_task_filter = task_filter
     if task_filter:
-        exact_match = next((task for task in sorted(all_tasks) if task.lower() == task_filter.lower()), None)
-        if exact_match is not None:
-            target_task = exact_match
-        else:
-            fuzzy_matches = [task for task in sorted(all_tasks) if task_filter.lower() in task.lower()]
-            if len(fuzzy_matches) == 1:
-                target_task = fuzzy_matches[0]
-            elif len(fuzzy_matches) > 1:
-                candidates = "、".join(f"'{match}'" for match in fuzzy_matches)
-                raise ValueError(f"任务筛选 '{task_filter}' 匹配到多个候选：{candidates}。请指定更精确的名称。")
-            else:
-                target_task = task_filter
-        resolved_task_filter = target_task
+        # 解析规则只实现一次，见 resolve_task_name（报告标题也用同一个函数）
+        target_task = resolve_task_name(task_filter, all_tasks)
         detailed_stats = []
         for index, version in enumerate(versions):
             total = task_totals[version].get(target_task, 0)
@@ -413,13 +422,19 @@ def build_report(
     period: str,
     provenance: str,
     task_filter: str | None = None,
+    resolved_task_filter: str | None = None,
     min_latest_runs: int = DEFAULT_MIN_LATEST_RUNS,
     sort: str = "runs",
     reverse: bool = False,
     limit: int | None = None,
     min_samples: int | None = None,
 ) -> TrendReport:
-    """纯函数：从 measurement 行集合构造趋势报告，不碰网络也不碰磁盘。"""
+    """纯函数：从 measurement 行集合构造趋势报告，不碰网络也不碰磁盘。
+
+    ``task_filter`` 是过滤用的原始输入；``resolved_task_filter`` 是**显示**用的名字
+    （模糊匹配命中的真实节点名）。不传后者时这里自己解析一次——`resolve_task_name`
+    与 `build_trend_rows` 里用的是同一个实现，不会出现两套规则。
+    """
     totals = measurements.get("task_total", [])
     statuses = measurements.get("task_status", [])
     rows, detailed = build_trend_rows(
@@ -433,11 +448,16 @@ def build_report(
         reverse=reverse,
         limit=limit,
     )
+    shown = resolved_task_filter or task_filter
+    if task_filter and resolved_task_filter is None:
+        # 候选池来自过滤前的全量任务名，不能从 rows 取——rows 是过滤后的结果。
+        pool = {str(row["description"]) for row in (*totals, *statuses) if isinstance(row.get("description"), str)}
+        shown = resolve_task_name(task_filter, pool)
     return TrendReport(
         versions=list(versions),
         period=period,
         rows=rows,
-        task_filter=task_filter,
+        task_filter=shown,
         detailed_task_stats=detailed,
         provenance=provenance,
         min_samples=CONFIG.min_samples if min_samples is None else min_samples,

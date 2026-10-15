@@ -8,35 +8,41 @@
 - ``task-failure``  单版本任务失败率深度体检
 - ``task-trend``    跨版本失败率趋势与 Δpp
 - ``context``       只看运行环境（os / environment）分布
+- ``explore-csv``   把浏览器导出的 Explore CSV 还原成日志正文 + 清单
 - ``flow``          把本地日志证据包渲染成流程图（产出落到 temp/flow/）
 - ``selftest``      零网络的纯逻辑自检（校验 release 解析与统计口径）
 
 前置条件：装好并登录 Sentry CLI（``pnpm add -g sentry`` 后执行一次 ``sentry auth login``）。
-``flow`` 是唯一不联网的子命令（读本地证据），与遥测共用同一个 temp/flow 产出目录。
+``explore-csv`` 与 ``flow`` 不联网：前者读浏览器下载的 CSV，后者读本地证据，两者共用 ``temp/flow`` 产出目录
+（``explore-csv`` 产出的日志正文正是 ``flow``/``flow_from_log.py`` 的输入）。
 """
 
 from __future__ import annotations
 
-import io
 import argparse
+import io
 import os
 import sys
 from collections.abc import Callable, Sequence
 
-_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if _ROOT not in sys.path:
-    sys.path.insert(0, _ROOT)
+# 兄弟模块在本目录；`tools.drawing` 的绝对 import 需要仓库根（tools/ 上溯一级）。
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_ROOT = os.path.dirname(os.path.dirname(_HERE))
+for _path in (_HERE, _ROOT):
+    if _path not in sys.path:
+        sys.path.insert(0, _path)
 
 try:
-    from . import fetch, report_common, task_failure_report, task_trend_report
+    from . import explore_csv, fetch, report_common, task_failure_report, task_trend_report
 except ImportError:
+    import explore_csv  # type: ignore[no-redef]
     import fetch  # type: ignore[no-redef]
     import report_common  # type: ignore[no-redef]
     import task_failure_report  # type: ignore[no-redef]
     import task_trend_report  # type: ignore[no-redef]
 
 try:
-    from tools import flow_cases
+    from tools.drawing import flow_cases
 except ImportError:
     import flow_cases  # type: ignore[no-redef]
 
@@ -47,6 +53,7 @@ REPORTS: dict[str, tuple[str, ReportMain]] = {
     "task-failure": ("单版本任务失败率深度体检", task_failure_report.main),
     "task-trend": ("跨版本失败率趋势与 Δpp 对比", task_trend_report.main),
     "context": ("只看运行环境分布（os / environment）", task_failure_report.main),
+    "explore-csv": ("把 Explore 导出的 CSV 还原成日志正文 + 清单", explore_csv.main),
     "flow": ("把本地证据包（日志 + 图片）渲染成流程图", flow_cases.main),
 }
 

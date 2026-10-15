@@ -17,8 +17,8 @@
 
 from __future__ import annotations
 
-import io
 import argparse
+import io
 import json
 import math
 import sys
