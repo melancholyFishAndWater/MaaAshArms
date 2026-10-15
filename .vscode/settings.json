@@ -1,6 +1,6 @@
 {
     "json.schemas": [
-        {
+        { // 与下一个字典共用 fileMatch
             "fileMatch": [
                 "/assets/resource/pipeline/**/*.json",
                 "/assets/resource/config/**/*.json",
@@ -16,6 +16,23 @@
                 "/install/resource/model/**/*.jsonc"
             ],
             "url": "/deps/tools/pipeline.schema.json"
+        },
+        { // 与上一个字典共用 fileMatch
+            "fileMatch": [
+                "/assets/resource/pipeline/**/*.json",
+                "/assets/resource/config/**/*.json",
+                "/assets/resource/model/**/*.json",
+                "/install/resource/pipeline/**/*.json",
+                "/install/resource/config/**/*.json",
+                "/install/resource/model/**/*.json",
+                "/assets/resource/pipeline/**/*.jsonc",
+                "/assets/resource/config/**/*.jsonc",
+                "/assets/resource/model/**/*.jsonc",
+                "/install/resource/pipeline/**/*.jsonc",
+                "/install/resource/config/**/*.jsonc",
+                "/install/resource/model/**/*.jsonc"
+            ],
+            "url": "/tools/vscode/pipeline.snippets.schema.json"
         },
         {
             "fileMatch": [

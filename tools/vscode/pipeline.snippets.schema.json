@@ -1,0 +1,75 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "$comment": "使用命名规范 v1.3",
+    "patternProperties": {
+        "^(?!\\$).*": {
+            "defaultSnippets": [
+                {
+                    "label": "<> 空节点",
+                    "body": {
+                        "desc": "$0"
+                    }
+                },
+                {
+                    "label": "Probe 探测节点",
+                    "body": {
+                        "desc": "[end] $1",
+                        "recognition": "$0",
+                        "roi": []
+                    }
+                },
+                {
+                    "label": "Ensure 就位节点",
+                    "body": {
+                        "desc": "$1",
+                        "recognition": "And",
+                        "all_of": [
+                            "$2"
+                        ],
+                        "inverse": true,
+                        "rate_limit": 2000,
+                        "timeout": 30000,
+                        "next": [
+                            "$0"
+                        ]
+                    }
+                },
+                {
+                    "label": "Loop 工作节点",
+                    "body": {
+                        "desc": "[Loop] $1 循环",
+                        "recognition": "And",
+                        "all_of": [
+                            "$2"
+                        ],
+                        "rate_limit": 2000,
+                        "next": [
+                            "$0",
+                            "LoopErrorByTimes"
+                        ]
+                    }
+                },
+                {
+                    "label": "<动作> 动作节点",
+                    "body": {
+                        "desc": "$1",
+                        "action": "$0",
+                        "post_wait_freezes": 1000
+                    }
+                },
+                {
+                    "label": "Task 任务入口",
+                    "body": {
+                        "desc": "$1任务",
+                        "timeout": 30000,
+                        "next": [
+                            "$0",
+                            "LoopErrorByTimes"
+                        ]
+                    }
+                }
+            ]
+        }
+    }
+}
