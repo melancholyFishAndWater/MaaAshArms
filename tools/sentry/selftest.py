@@ -679,6 +679,17 @@ def check_flow_diagnostics() -> list[str]:
     _eq(parsed.span is not None, True, "选中任务的判定窗口")
     _eq(len(parsed.steps), 2, "窗口只影响事件与未命中聚合，不动步骤")
 
+    # 10) 有 task end 时右端就是它自己：别的任务连步骤都没有也不能漏进来
+    #     （实测 200000054 的图里混进过同一运行里 200000062 的 Task timeout 与 invalid node id）
+    ended_log = "\n".join([
+        done("00:50:00.000", "Mine", tid=100),
+        raw("00:50:09.000", 'task end: [cb_detail={"entry":"TaskMine","task_id":100}] [ret=false]'),
+        raw("00:50:37.000", "invalid node id, handle error [node.name=Later]"),
+    ])
+    parsed = parse_log(ended_log, None, None, 100, False)
+    _eq([e.name for e in parsed.events], ["任务结束 TaskMine 失败"], "自己的 task end 之外的框架事件被排掉")
+    _eq(parsed.stats.events_dropped, 1, "task end 之外被排掉的事件数")
+
     out.append("  回跳重排 / 仅事件模式（4 条识别合成步骤）/ 截断行 / 三类空窗口 / 严格 task 过滤 / "
                "任务区间 各自有说法")
     return out
@@ -767,6 +778,73 @@ def check_explore_csv() -> list[str]:
             f"{len(result.tasks)} 个任务可画"]
 
 
+def check_evidence() -> list[str]:
+    """失败证据的纯逻辑：解包白名单、附件名取 task_id、去重、扁平 context 键、可复制命令。
+
+    只测不联网、不写文件的部分（取附件与取日志要 Sentry 登录，属于 `evidence` 的手工验收）。
+    """
+    import io as _io
+    import sys
+    from pathlib import Path as _Path
+
+    root = _Path(__file__).resolve().parents[2]
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    from tools.sentry import evidence as ev
+
+    # 1) 解包白名单：zip slip 与绝对路径都丢掉，`debug/…` 保留
+    names = ["debug/on_error/2026.10.14-19.20.00.789_TrainingBattleWin.png", "../evil.txt",
+             "/abs.png", "C:\\abs.png", "debug/", ""]
+    _eq(ev.safe_members(names), ["debug/on_error/2026.10.14-19.20.00.789_TrainingBattleWin.png"],
+        "解包白名单")
+
+    # 2) 附件名 → task_id（`--task-id` 就是靠它拼出来的）
+    _eq(ev.parse_task_id("mfa-task-failure-3204f818b4e04a3494b29d911ec47724-200000062-screenshots.zip"),
+        200000062, "附件名里的 task_id")
+    _eq(ev.parse_task_id("log_20261014-part01.zip"), None, "非附件名不瞎猜")
+
+    # 3) 逐字节相同的行要合并（MFA 续写的 64 KB 前缀重叠）
+    _eq(ev.dedupe_lines(["a", "b", "a", "c", "b"]), (["a", "b", "c"], 2), "重复行合并")
+
+    # 4) context 的键名点号是字符串的一部分，不是层级
+    ctx = ev.issue_context({"context": {"attachment.status": "attached", "logs.status": "captured",
+                                        "failure.task_id": 200000062, "instance.task_count": 11}})
+    _eq(ctx["attachment_status"], "attached", "attachment.status 取值")
+    _eq(ctx["failure_task_id"], 200000062, "failure.task_id 取值")
+    _eq(ev.wants_images(ctx), True, "attached 才下图")
+    _eq(ev.wants_log(ctx), True, "captured 才下日志")
+
+    # 5) 失败标记认得出节点名
+    markers = ev.marker_lines([
+        "[2026-10-14 19:20:37.887][WRN][Px1][Tx1][PipelineTask.cpp][L155][MaaNS::T] "
+        "Task timeout [pretask.name=EntrustEnterMainLine] [duration_since(start_clock)=20410ms] "
+        "[pretask.reco_timeout=20000ms]",
+        "[2026-10-14 19:20:37.888][WRN][Px1][Tx1][PipelineTask.cpp][L83][MaaNS::T] "
+        "invalid node id, handle error [node.name=EntrustEnterMainLine]",
+    ])
+    _contains(" ".join(markers), "EntrustEnterMainLine", "失败标记的节点名")
+
+    # 6) 命令里必须带上 failure.task_id；没日志时不给 flow 的命令
+    issue = ev.Issue(short_id="PYTHON-14", title="", count=2, last_seen="", event_id="e",
+                     trace_id="t", evidence=ctx)
+    hints = ev.build_hints(_Path("temp/evidence/PYTHON-14"), issue, has_log=True, has_images=True)
+    _eq(len(hints), 2, "有图有日志时给两条命令")
+    for hint in hints:
+        _contains(hint, "--task-id 200000062", "命令里的 task_id")
+    _contains(hints[0], "--case temp/evidence/PYTHON-14/debug", "目录 case 命令")
+    _eq(ev.build_hints(_Path("temp/evidence/PYTHON-14"), issue, has_log=False, has_images=True), [],
+        "没有日志就没有可画的东西")
+
+    # 7) 状态表：一眼看出哪些有图、哪些只有日志
+    buffer = _io.StringIO()
+    ev.format_survey([issue], buffer)
+    _contains(buffer.getvalue(), "图 + 日志", "状态表的标记")
+
+    _eq(ev.MAX_LOG_LIMIT, 1000, "trace logs 的 limit 上限")
+    return [f"解包白名单 / 附件名取 task_id / 去重 / 扁平 context / 失败标记 / 命令 各自有断言"
+            f"（schema {ev.EVIDENCE_SCHEMA}）"]
+
+
 CHECKS: tuple[tuple[str, Callable[[], list[str]]], ...] = (
     ("release 解析", check_release_parsing),
     ("版本排序", check_ordering),
@@ -781,6 +859,7 @@ CHECKS: tuple[tuple[str, Callable[[], list[str]]], ...] = (
     ("流程图解析（文本入参）", check_flow_parser),
     ("流程图诊断（回跳/仅事件/截断/空窗口）", check_flow_diagnostics),
     ("Explore CSV 提取", check_explore_csv),
+    ("失败证据的纯逻辑", check_evidence),
 )
 
 

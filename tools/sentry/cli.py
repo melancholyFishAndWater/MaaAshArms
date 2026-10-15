@@ -8,13 +8,14 @@
 - ``task-failure``  单版本任务失败率深度体检
 - ``task-trend``    跨版本失败率趋势与 Δpp
 - ``context``       只看运行环境（os / environment）分布
+- ``evidence``      把失败现场图与那次运行的日志拉到本地（不画图，只打印命令）
 - ``explore-csv``   把浏览器导出的 Explore CSV 还原成日志正文 + 清单
 - ``flow``          把本地日志证据包渲染成流程图（产出落到 temp/flow/）
 - ``selftest``      零网络的纯逻辑自检（校验 release 解析与统计口径）
 
 前置条件：装好并登录 Sentry CLI（``pnpm add -g sentry`` 后执行一次 ``sentry auth login``）。
-``explore-csv`` 与 ``flow`` 不联网：前者读浏览器下载的 CSV，后者读本地证据，两者共用 ``temp/flow`` 产出目录
-（``explore-csv`` 产出的日志正文正是 ``flow``/``flow_from_log.py`` 的输入）。
+``explore-csv`` 与 ``flow`` 不联网：前者读浏览器下载的 CSV，后者读本地证据；``evidence`` 要联网
+（它反过来把遥测侧的图片与日志拉到本地，交给前两者）。三者的产出都在 ``temp/`` 下。
 """
 
 from __future__ import annotations
@@ -33,8 +34,9 @@ for _path in (_HERE, _ROOT):
         sys.path.insert(0, _path)
 
 try:
-    from . import explore_csv, fetch, report_common, task_failure_report, task_trend_report
+    from . import evidence, explore_csv, fetch, report_common, task_failure_report, task_trend_report
 except ImportError:
+    import evidence  # type: ignore[no-redef]
     import explore_csv  # type: ignore[no-redef]
     import fetch  # type: ignore[no-redef]
     import report_common  # type: ignore[no-redef]
@@ -53,6 +55,7 @@ REPORTS: dict[str, tuple[str, ReportMain]] = {
     "task-failure": ("单版本任务失败率深度体检", task_failure_report.main),
     "task-trend": ("跨版本失败率趋势与 Δpp 对比", task_trend_report.main),
     "context": ("只看运行环境分布（os / environment）", task_failure_report.main),
+    "evidence": ("把失败现场图与那次运行的日志拉到本地", evidence.main),
     "explore-csv": ("把 Explore 导出的 CSV 还原成日志正文 + 清单", explore_csv.main),
     "flow": ("把本地证据包（日志 + 图片）渲染成流程图", flow_cases.main),
 }

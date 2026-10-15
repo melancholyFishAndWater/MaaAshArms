@@ -12,12 +12,14 @@
 
 | 不做 | 为什么 | 要它怎么办 |
 |---|---|---|
-| 失败报告里自动画流程图 | 报告要能在 `--input` 工件上离线复现，而画图必须读本地证据（`maafw.log` + 图片），两者不能捆在一起 | 报告末尾会给出线索，手动 `python -m tools.sentry.cli flow --case …` |
+| 失败报告里自动画流程图 | 报告要能在 `--input` 工件上离线复现，而画图必须读本地证据（`maafw.log` + 图片），两者不能捆在一起 | 报告末尾会给出线索；`evidence` 拉完证据会打印可复制的 `flow` 命令 |
 | 取失败附件的 vision 识别帧 | MFA 的 `TaskDiagnostics.EnumerateEvidenceFiles` 显式跳过 `vision/`，图片包有 `MaxImageBundleBytes = 5 MiB` 硬顶（本机 `debug/vision` 是 1078 张 / 248.6 MB），硬塞会让整包被丢弃 | 让复现的人手动导出（勾「包含 vision 图片」，可按「最近 24 小时」限流），把导出包喂给 `flow --case` |
 | 用 spans 上的 `failure.node` / `failure.stage` | 这两个字段只作为 Sentry Issue 事件的 tag 存在，在 spans 上恒为空 | `sentry issue list <target> --sort freq` + `sentry issue view <SHORT-ID>` |
 | 定时上报 / 常驻监控 / 自动报警 | 工具只在人调用时运行；采集侧不受这里控制 | 看 MFA 面板与 Sentry 自己的 alert 规则 |
 | 保留历史工件 | `fetch` 不删旧文件，也不缓存 Sentry 侧的历史 | 自己清 `temp/telemetry/`；窗口上限见「统计口径」第 6 条 |
 | 搬运 M9A 的 `SKILL.md` | `.agents/` 被 gitignore，技能文件无法入库 | 等价内容就是本文档 |
+| 把 `trace logs` 翻页取全 | Sentry CLI 限死 `--limit ≤ 1000` 且没有游标；把 newest 与 oldest 拼起来会在中间留洞，比截断更误导 | 默认取 `newest`（失败在运行末尾），`has_more` 写进 `evidence.json` |
+| 枚举同一 issue 的其它事件 | `sentry issue view` 只给最近一次，`sentry issue events --json` 是精简视图、没有 context（拿不到 `attachment.*`），也没有批量接口 | 用 `evidence --event <event-id>` 直接指 |
 | 让画图脚本直接吃 Explore CSV | 导出的正文是**按块切碎**的（每格约 3.3 KB，块首块尾都丢头去尾），格子顺序也不是时间顺序，直接拼会拼出假行 | 先过 `python -m tools.sentry.cli explore-csv <csv>`，再拿它产出的日志正文去画 |
 | 还原被截断的行、猜丢失的内容 | 导出按字节裁过（实测 53 条 reco/action/node-done 读不出、104 行断头、1080 块碎片），猜出来的内容会变成假事实 | 只统计并提示；要完整证据用本机 `debug/` 目录 |
 | 合并 `!!!OnEventNotify!!!` 与 `ctx_event_sink` 两份记录 | 同一次识别在日志里有两行，按行计数会翻倍；两份的字段也不完全一样 | 只计数，需要去重时按 `reco_id`（且注意它是进程内计数） |
@@ -62,6 +64,7 @@ Python 侧零第三方依赖——只用标准库和 `sentry` 命令行。
 | `task-failure` | 单版本任务失败率深度体检 | `7d` |
 | `task-trend` | 跨版本失败率趋势与 Δpp 对比 | `30d` |
 | `context` | 只看运行环境（os / environment）分布 | `7d` |
+| `evidence` | 把失败现场图与**那次运行**的日志拉到本地（联网；不画图，只打印命令） | `7d` |
 | `explore-csv` | 把浏览器导出的 Explore CSV 还原成日志正文 + 清单（不联网） | — |
 | `flow` | 把本地日志证据包渲染成流程图（不联网） | — |
 | `selftest` | 零网络的纯逻辑自检 | — |
@@ -92,7 +95,62 @@ python -m tools.sentry.cli flow --case D:/MaaAshArms/debug --task-id 200000118
 # 7. 只有浏览器导出的 Explore CSV 时：先还原成日志正文，再画
 python -m tools.sentry.cli explore-csv D:/Downloads/Explore_2026-October-15_190806.csv
 python tools/drawing/flow_from_log.py temp/flow/Explore_2026-October-15_190806.log --task-id 200000039
+
+# 8. 某个失败要现场图：联网把证据拉下来（图 + 那次运行的日志），再照它打印的命令画
+python -m tools.sentry.cli evidence --list                  # 先看哪些 issue 真有证据
+python -m tools.sentry.cli evidence --issue PYTHON-14
+python -m tools.sentry.cli flow --case temp/evidence/PYTHON-14/debug --task-id 200000062
 ```
+
+## 失败现场图与那次运行的日志（`evidence`）
+
+`fetch` / `task-failure` / `task-trend` 只读聚合数据，附件与日志要单独取——`evidence` 就是这一步，
+它把证据落到 `temp/evidence/<issue>/`，并打印能直接跑的绘图命令（**不自己画图**，与"报告不自动画图"一致）。
+
+**两道 Sentry 侧的闸门，先看再下**（`--list` 只报告不下载）：
+
+| 闸门 | 取值 | 含义 |
+|---|---|---|
+| `attachment.status` | `attached` / `no_evidence` | 有没有失败现场图。实测 2026-10-13~15 的 12 个 issue 里**只有 2 个**是 `attached` |
+| `logs.status` | `captured` / … | 有没有**那次运行**的日志。实测 **12 个全是 `captured`**——所以没有附件的 issue 也能画，只是没有画面格 |
+
+这两个字段在 `sentry issue view <ID> --json` 的 `event.context` 里，键名是**扁平的**
+`attachment.status`（点号是字符串的一部分，不是层级）。没有批量接口，只能逐个 issue 看，
+实测一次 ~7 s，扫 12 个约 90 s（所以有进度输出，也可以 `--issue` 指定）。
+
+**产出刻意照真机 `debug/` 那棵树**（`flow --case` 与 `flow_from_log` 两条路都认）：
+
+```
+temp/evidence/PYTHON-14/
+  debug/maafw.log                      ← sentry trace logs 拼出来的那次运行日志
+  debug/on_error/2026.10.14-19.20.37.889_EntrustEnterMainLine.png   ← 附件 zip 里的原成员
+  evidence.json                        ← 账目：两道闸门的状态、失败字段、重复行数、写了什么、可复制命令
+```
+
+```bash
+python -m tools.sentry.cli evidence [--period 7d] [--limit 20] [--issue PYTHON-14] [--event <event-id>]
+    [--outdir temp/evidence] [--list] [--force] [--no-images] [--no-log]
+    [--log-limit 1000] [--sort newest|oldest] [--keep-duplicates] [--verbose] [--timeout 180]
+```
+
+三个把路子堵住的 CLI 事实（都实测过，工具已经绕开）：
+
+- **`sentry api` 打不出二进制**（下载端点加 `--silent` 也是空 stdout）→ 工具自己带 Bearer
+  `GET /api/0/projects/<org>/<project>/events/<event_id>/attachments/<id>/?download=1`；
+  token 用 `sentry auth token --json` 拿（输出的是**裸 JSON 字符串**），**不必去读 `cli.db` 的 `auth` 表**。
+- **`sentry trace logs` 的 `--limit` 上限 1000，且没有游标** → 长运行一次拿不全。失败发生在运行末尾，
+  所以默认 `--sort newest` 只取最新那段；`--sort` 只认 `newest` / `oldest`（`-timestamp` 在 Windows 上会被当成参数别名报错）。
+  拿到的条数、有没有更多（`has_more`）都写进 `evidence.json`。
+- **批次之间有逐字节相同的行**（实测 5951 行里 1366 行重复，其中 737 行是 maafw 原生行：24 条 `node done` 里有 6 条是重复的）。
+  来源是 MFA 续写日志时带的 `LogPreludeBytes = 64 KB` 前缀重叠，不去重会把图上未命中次数灌水 → 默认去重并记账，`--keep-duplicates` 可关。
+
+**附件里只有 `debug/on_error/*.png`，没有 `maafw.log`**——而 `flow --case <目录>` 要求根下有 `maafw.log`，
+所以直接解包喂 `--case` 会报"找不到 maafw.log"。工具把 `trace logs` 写进 `debug/maafw.log`，这条目录才成为完整证据包。
+同一条 trace 可能同时挂着多个 issue（实测 PYTHON-14 与 PYTHON-16 就是同一趟运行的两次失败），
+日志是**整个运行**的，所以标记可能来自同一运行里的别的任务——按 `--task-id <failure.task_id>` 才只看本次那个。
+
+`evidence.json` 里还有 `failure.*` 那组字段（`task_id` / `node_id` / `message` / `duration_ms`）：**这就是
+"失败卡在哪个节点"**——spans 上的 `failure.node` 恒为空（见「功能取舍」），但事件 context 里有，工具顺手记了下来。
 
 ## Explore CSV：浏览器导出的那份怎么用
 
@@ -170,9 +228,13 @@ python tools/drawing/flow_cases.py --case D:/MaaAshArms/debug --list-cases
 只能有**节点循环 + `on_error` 失败现场图**，识别时的画面格是空的。要看识别帧得让复现的人手动导出
 （导出对话框的"包含 vision 图片"**默认不勾**，可按"最近 24 小时"限流），再把导出包喂给 `flow --case`。
 
-同理，附件里的 `maafw.log` 只有 **512 KB tail**（每文件；总计 1 MB），`sentry log list <trace-id>`
-拿到的也是同一份 tail 文本。窗口起点早于日志首行时工具会标注「注意：日志仅含尾部」并印在图上，
-别把那种图当成完整过程来读。
+同理，附件里的 `maafw.log` 只有 **512 KB tail**（每文件；总计 1 MB）。窗口起点早于日志首行时工具会标注
+「注意：日志仅含尾部」并印在图上，别把那种图当成完整过程来读。
+
+**但日志不只有附件那一条路**：`evidence` 用 `sentry trace logs <org>/<project>/<trace-id> --json`
+取回**整次运行**的日志（实测一趟 523 条 / 5951 行，含 24 条 `PipelineTask node done` 与失败标记），
+写进 `temp/evidence/<issue>/debug/maafw.log`，于是"节点循环 + 失败现场图"能一次拿齐。
+限制是 `--limit ≤ 1000` 且没有游标：超长运行只能取最新那段（失败在末尾）。
 
 ## 统计口径
 
@@ -346,8 +408,9 @@ python tools/validation/check_sentry_offline.py    # 同一套断言 + 渲染一
 自检覆盖 release 解析、任务表与失败标记分流、Δpp 方向、工件往返、三种渲染，以及
 **流程图解析器的文本入参**与**诊断行为**（时间戳回跳重排、只有识别事件时的合成、导出截断的行、
 空窗口的三种说法、`--task-id` 严格过滤与任务判定窗口），再加 **Explore CSV 提取**（块边界接续、
-五分类计数、任务可画性、截断按类型拆、入口报错）——远程日志没有本地文件、只有正文，这几条都在遥测路径上。
-它不需要 Pillow——画图才需要。
+五分类计数、任务可画性、截断按类型拆、入口报错）与**失败证据的纯逻辑**（解包白名单、附件名取 task_id、
+去重、扁平 context 键、失败标记、可复制命令）——远程日志没有本地文件、只有正文，这几条都在遥测路径上。
+它不需要 Pillow——画图才需要；也不需要网络与登录。
 
 > 画图（`flow`）依赖 Pillow，而**发布包自带的解释器不含它**（`.python-runtime/` 与包内
 > `python/` 都 `import PIL` 失败）。用装了 Pillow 的系统 Python 跑即可；绘图不进发布包。
@@ -366,5 +429,7 @@ python -m tools.sentry.cli fetch --name probe \
 
 - **时间窗口受 Sentry 限制**：超过约 30 天绝对计数不可用；更早的数据由 Sentry 端保留策略决定，
   脚本不缓存历史（「功能取舍」里有对应条目）。
-- **配额**：失败附件每个约 384 KB（`failure_attachments_sample_rate: 1`）。读报告时若看到
-  某天失败数暴增，先确认是不是一次启动失败后队列继续跑出一串失败。
+- **配额**：失败附件实测 0.97 / 1.24 MB（`failure_attachments_sample_rate: 1`），12 个 issue 里只有 2 个带附件。
+  读报告时若看到某天失败数暴增，先确认是不是一次启动失败后队列继续跑出一串失败。
+- **受限沙箱下 `sentry` 一律 `Fatal: Error: unable to open database file`**（连 `--version` 也一样）：
+  照「前置条件」把 `cli.db` 复制到可写目录并设 `SENTRY_CONFIG_DIR`。`evidence` 走的是同一个 CLI，同样需要它。
