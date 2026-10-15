@@ -10,19 +10,19 @@
   * 遥测工件解出来的目录（Sentry 失败附件只含 `maafw.log` 的 tail 与 `on_error/`
     图片，**没有 `vision/`** —— 这是物理限制，见 tools/sentry/README.md）。
 
-与 `tools/flow_from_log.py` 的分工：那个文件是**渲染器**（解析 + 布局，唯一的实现处），
+与 `tools/drawing/flow_from_log.py` 的分工：那个文件是**渲染器**（解析 + 布局，唯一的实现处），
 本文件只做**编排**（找证据、跑批量、记 manifest、保证幂等），不复制任何渲染逻辑。
 
 用法示例：
   # 本机跑某个 task
-  python tools/flow_cases.py --case D:/MaaAshArms/debug --task-id 200000118
+  python tools/drawing/flow_cases.py --case D:/MaaAshArms/debug --task-id 200000118
 
   # 别人给的多卷导出包
-  python tools/flow_cases.py --case log_20261014-part01.zip log_20261014-part02.zip \\
+  python tools/drawing/flow_cases.py --case log_20261014-part01.zip log_20261014-part02.zip \\
       --task-id 200000118 --from "2026-10-14 00:30:00" --to "2026-10-14 00:32:00"
 
   # 只列一遍有哪些证据包，不画
-  python tools/flow_cases.py --case D:/MaaAshArms/debug --list-cases
+  python tools/drawing/flow_cases.py --case D:/MaaAshArms/debug --list-cases
 """
 
 from __future__ import annotations
@@ -39,17 +39,23 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
+# 兄弟模块与本包都在同一目录：先把这里加进 sys.path，`from flow_from_log import ...` 才成立。
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+# 仓库根 = tools/drawing/ 上溯两级；`tools.sentry` 的 import 靠它。
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
-from flow_from_log import (  # noqa: E402
+from flow_from_log import (
     DEFAULT_OUTDIR,
+    RENDERER_VERSION,
     FlowOptions,
     FlowResult,
     MediaResolver,
+    _is_zip,
     parse_time,
     render_flow,
 )
-from flow_from_log import _is_zip  # noqa: PLC2701 - 同目录内部工具，共用同一份魔数判据
 
 MANIFEST_NAME = "manifest.json"
 LOG_NAMES = ("maafw.log", "maa.log")
@@ -274,6 +280,8 @@ def run_case(case: Case, options: FlowOptions, *, outdir: str, mermaid: bool,
         "source": case.describe(),
         "has_vision": bool(vision),
         "has_on_error": bool(on_error),
+        # 渲染器版本：解析口径/版面改了必须换指纹，否则同一个证据包会一直命中旧记录"跳过"
+        "renderer": RENDERER_VERSION,
     }
     recorded = manifest["cases"].get(name)
     if not force and recorded and recorded.get("fingerprint") == fingerprint and os.path.isfile(target):
@@ -299,6 +307,9 @@ def run_case(case: Case, options: FlowOptions, *, outdir: str, mermaid: bool,
         "boxes": result.boxes,
         "rounds": result.rounds,
         "truncated_start": result.truncated_start,
+        "derived_from": result.derived_from,
+        "out_of_order": result.out_of_order,
+        "notes": list(result.notes),
         "rendered_at": datetime.now().isoformat(timespec="seconds"),
     }
     print(f"步骤 {result.steps}（折叠后 {result.boxes} 个框）/ 轮次 {result.rounds}"
@@ -308,6 +319,8 @@ def run_case(case: Case, options: FlowOptions, *, outdir: str, mermaid: bool,
     if result.truncated_start:
         print("提示：日志第一行晚于 --from，这份日志只含窗口后半段（遥测附件只带 tail）",
               file=sys.stderr)
+    for note in result.notes:
+        print(f"提示：{note}", file=sys.stderr)
     if case.bad_packages:
         print(f"警告：以下卷读不了，结果可能不完整：{case.bad_packages}", file=sys.stderr)
     return result

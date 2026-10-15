@@ -25,7 +25,7 @@
   * --vision / --on-error 既能指目录本身，也能指它们的父目录（例如 `debug/`），子目录自动识别。
 
 用法示例：
-  python tools/flow_from_log.py D:/MaaAshArms/debug/maafw.log \
+  python tools/drawing/flow_from_log.py D:/MaaAshArms/debug/maafw.log \
       --vision D:/MaaAshArms/debug/vision \
       --from "2026-10-11 21:39:56" --to "2026-10-11 21:43:29" \
       --out flow_escort.png
@@ -36,7 +36,7 @@
 
 作为库调用（遥测侧就这么用——远程没有本地日志文件，只有 Sentry 取回的日志正文）：
 
-  from tools.flow_from_log import FlowOptions, MediaResolver, render_flow
+  from tools.drawing.flow_from_log import FlowOptions, MediaResolver, render_flow
 
   # 日志正文可以直接传字符串；图片证据可以是目录、zip/多卷、或内存里的字节
   res = render_flow(log_text,
@@ -44,7 +44,7 @@
                     options=FlowOptions(t_from=t0, t_to=t1, task_id=200000118))
   print(res.path, res.width, res.height, res.steps)
 
-批量与幂等（同一个证据包重跑会跳过）用 `python tools/flow_cases.py`，
+批量与幂等（同一个证据包重跑会跳过）用 `python tools/drawing/flow_cases.py`，
 经 `python -m tools.sentry.cli flow` 也能调用，产出目录一致。
 
 **远程遥测拿不到 vision 识别帧**：MFA 的失败附件显式跳过 `vision/`，且图片包上限
@@ -61,9 +61,15 @@ import os
 import re
 import sys
 import zipfile
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Iterable, Iterator
+from typing import Any
+
+# 渲染器版本：只要改动会影响产物内容（版面、注记、解析口径）就 +1。
+# flow_cases 把它写进 manifest 指纹——不 bump 的话同一个证据包会命中旧记录直接"跳过（已画过）"，
+# 渲染器改了却不重画。
+RENDERER_VERSION = 2
 
 # --------------------------------------------------------------------------- #
 # 日志解析
@@ -72,7 +78,7 @@ from typing import Any, Iterable, Iterator
 LINE_RE = re.compile(
     r"^\[(?P<ts>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3,6})\]"
     r"\[(?P<lvl>[A-Z]{3})\]"
-    r"\[Px\d+\]\[Tx\d+\]"
+    r"\[(?P<px>Px\d+)\]\[Tx\d+\]"
     r"\[(?P<src>[^\]]+)\]\[L\d+\]\[(?P<func>[^\]]*)\]\s?(?P<msg>.*)$"
 )
 JSON_TAIL_RE = re.compile(r"(\{.*\})\s*$")
@@ -84,11 +90,21 @@ TASK_END_RE = re.compile(r"task end: \[cb_detail=(\{.*\})\] \[ret=(\w+)\]\s*$")
 JUMPBACK_RE = re.compile(r"(push|pop) jumpback_stack: (\S+)\s*$")
 WALK_RE = re.compile(r"\[cur_node_=([^\]]+)\] \[list=(\[.*\])\]")
 TIMEOUT_RE = re.compile(
-    r"Task timeout \[pretask\.name=([^\]]+)\] \[duration_since\(start_clock\)=(\d+)ms\]"
-    r" \[pretask\.reco_timeout=(\d+)ms\]"
+    r"Task timeout \[pretask\.name=(?P<name>[^\]]+)\]"
+    r"(?: \[duration_since\(start_clock\)=(?P<dur>\d+)(?P<dur_ms>ms)?\])?"
+    r"(?: \[pretask\.reco_timeout=(?P<tout>\d+)(?P<tout_ms>ms)?\])?"
 )
 INVALID_RE = re.compile(r"invalid node id, handle error \[node\.name=([^\]]+)\]")
 NOT_COMPLETED_RE = re.compile(r"node not completed, handle error \[node\.name=([^\]]+)\]")
+
+# 这些行整条匹配才算完整；只对上"头部"说明导出按字节裁过（Explore CSV 的常见下场）
+TRUNCATION_HEADS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("reco [result=", RECO_RE),
+    ("action [i=", ACTION_RE),
+    ("PipelineTask node done", NODE_DONE_RE),
+    ("task start:", TASK_START_RE),
+    ("task end:", TASK_END_RE),
+)
 
 INTERNAL_NAME_RE = re.compile(r"^recognition/(OCR|TemplateMatch|ColorMatch|FeatureMatch)/[0-9a-f\-]+$")
 
@@ -143,7 +159,7 @@ class Step:
     def detail(self) -> str:
         bits: list[str] = []
         if self.kind == "miss":
-            bits.append(f"未命中 ×{self.run_len}")
+            bits.append(f"未命中 ×{self.run_len}" if self.run_len > 1 else "未命中")
         elif self.kind == "event":
             bits.append(self.action or "")
         else:
@@ -160,6 +176,31 @@ class Step:
 
 
 @dataclass
+class ParseStats:
+    """解析计数。
+
+    存在的理由：一句话"窗口内没有解析到任何节点执行记录"曾经盖住三种完全不同的病因
+    （时间戳不单调、输入本来就没有节点级记录、`--from/--to/--task-id` 写错），
+    排查的人只能自己切日志试。这些计数让报错能说清"到底看到了什么"。
+    """
+
+    source_kind: str = ""            # file | path-missing | text | stream | other
+    source_name: str = ""            # 入参的短写，只进报错文案
+    lines_total: int = 0             # 匹配 LINE_RE 的行（与窗口无关）
+    lines_in_window: int = 0
+    lines_other_task: int = 0        # node done 但 task_id 不是要看的那个
+    lines_internal_skipped: int = 0  # recognition/OCR/... 这类内部识别，默认过滤
+    out_of_order: int = 0            # 时间戳回跳的行数（>0 说明日志不是按时间追加的）
+    truncated_skipped: int = 0       # 头对得上、整条读不出，已丢弃
+    truncated_kept: int = 0          # 读出来了但尾部缺字段，已标注
+    events_dropped: int = 0          # 被 --task-id 排掉的其他任务事件
+    # 被 task 过滤掉的步骤时间：判定窗口要用"下一个别的任务的第一步"当右界，而 steps 里只剩本任务的
+    other_task_ts: list[datetime] = field(default_factory=list)
+    first_ts: datetime | None = None
+    last_ts: datetime | None = None
+
+
+@dataclass
 class ParsedLog:
     steps: list[Step] = field(default_factory=list)
     attempts: list[Step] = field(default_factory=list)  # 含未命中
@@ -167,6 +208,13 @@ class ParsedLog:
     tasks: list[tuple[datetime, str, int, str]] = field(default_factory=list)  # start
     task_ends: list[tuple[datetime, str, int, bool]] = field(default_factory=list)
     window: tuple[datetime, datetime] | None = None
+    stats: ParseStats = field(default_factory=ParseStats)
+    # 非空表示 steps 是由识别记录（attempts）合成的：这份日志没有 PipelineTask node done
+    derived_from: str = ""
+    derived_clamped: bool = False   # 合成时按目标 task 的起始时间夹住了范围
+    # 选中任务的起止（`--task-id` 且日志里有它的步骤时才有）：
+    # 未命中聚合与事件挂载都靠它把窗口夹在任务自己的活动区间内，见 task_span()
+    span: tuple[datetime, datetime] | None = None
 
 
 def _open_log_lines(source) -> Iterator[str]:
@@ -176,12 +224,17 @@ def _open_log_lines(source) -> Iterator[str]:
     前者是文本流（含 StringIO、stdin）；中间那步用 ``os.path.isfile`` 而不是"含不含换行"，
     因为**单行日志正文也不含换行**，按换行判会把它当路径去 ``open()``，
     抛的是 `OSError Invalid argument`（不是 FileNotFoundError），很难看出原因。
+
+    路径写错时会在 ``parse_log`` 的统计里表现为"一行都没匹配上"，
+    由 ``describe_empty_window`` 报"既不是文件也不是日志正文"——不再混进"窗口内没有记录"。
     """
     if hasattr(source, "read"):
         for line in source:
             yield line.rstrip("\n")
         return
 
+    if isinstance(source, os.PathLike):
+        source = os.fspath(source)
     if not isinstance(source, str):
         raise TypeError(f"日志入参只接受路径、文本或文本流，收到 {type(source).__name__}")
 
@@ -197,36 +250,122 @@ def _open_log_lines(source) -> Iterator[str]:
         yield line.rstrip("\n")
 
 
+def source_kind_of(source: Any) -> str:
+    """入参形态，只用于报错文案：file / path-missing / text / stream / other。"""
+    if hasattr(source, "read"):
+        return "stream"
+    text: Any = os.fspath(source) if isinstance(source, os.PathLike) else source
+    if not isinstance(text, str):
+        return "other"
+    if os.path.isfile(text):
+        return "file"
+    if "\n" not in text and "\r" not in text and len(text) <= 4096:
+        return "path-missing"
+    return "text"
+
+
+def _source_label(source: Any) -> str:
+    """入参的短写，只进报错文案：路径给路径，正文给前 60 字。"""
+    if hasattr(source, "read"):
+        return f"<文本流 {type(source).__name__}>"
+    text: Any = os.fspath(source) if isinstance(source, os.PathLike) else source
+    if not isinstance(text, str):
+        return f"<{type(source).__name__}>"
+    if os.path.isfile(text) or ("\n" not in text and len(text) <= 260):
+        return text
+    return text[:60].replace("\n", " ") + "…"
+
+
+def _read_lines(source: Any, stats: ParseStats) -> list[str]:
+    """读全部行；时间戳回跳就直接把行按时间重排。
+
+    为什么要读全量与重排：`--from/--to` 原来是"遇到第一条晚于 --to 的行就 break"，
+    这在按时间追加的 maafw.log 上没问题；但 Explore 导出的 CSV 是**分块拼接**的，
+    块与块之间时间会回跳，于是窗口里的记录（实测 11 步 + 30 条识别）全被跳过，
+    还报成"窗口内没有解析到任何节点执行记录"。
+    排序只按时间戳、稳定排序，未带时间戳的行排在末尾（它们本来也会被跳过），
+    与手工"先排序再喂工具"的结果逐字段一致。
+    """
+    lines: list[str] = []
+    keys: list[datetime | None] = []
+    last: datetime | None = None
+    for raw in _open_log_lines(source):
+        lines.append(raw)
+        m = LINE_RE.match(raw.rstrip("\n"))
+        ts = parse_ts(m.group("ts")) if m else None
+        keys.append(ts)
+        if ts is not None:
+            if last is not None and ts < last:
+                stats.out_of_order += 1
+            if last is None or ts > last:
+                last = ts
+    if stats.out_of_order:
+        order = sorted(range(len(lines)), key=lambda i: (keys[i] is None, keys[i] or datetime.min, i))
+        lines = [lines[i] for i in order]
+    return lines
+
+
+def _count_truncated(msg: str, stats: ParseStats) -> None:
+    """行首对上了但整条对不上 → 导出按字节裁过，这条记录读不出来。"""
+    for head, pattern in TRUNCATION_HEADS:
+        if head in msg and not pattern.search(msg):
+            stats.truncated_skipped += 1
+            return
+
+
 def parse_log(path, t_from: datetime | None, t_to: datetime | None,
               task_id: int | None, keep_internal: bool) -> ParsedLog:
-    """解析日志。`path` 可以是文件路径、日志正文，或任何可逐行的文本流。"""
+    """解析日志。`path` 可以是文件路径、日志正文，或任何可逐行的文本流。
+
+    全量读入（不再在第一条晚于 `--to` 的行上提前结束），时间戳回跳时先按时间重排行；
+    `steps` 为空而 `attempts` 非空时，用识别记录合成步骤（"仅事件模式"）。
+    """
     out = ParsedLog()
-    recl_by_id: dict[int, dict] = {}
-    act_by_id: dict[int, dict] = {}
-    dispatcher = ""
+    stats = out.stats
+    stats.source_kind = source_kind_of(path)
+    stats.source_name = _source_label(path)
+    # 键带进程号：reco_id / action_id 是**每个进程各自**的计数器，一个装了多次运行的
+    # maafw.log 里会重复（本机实测 930 个 reco_id 有 142 个重复，全部跨进程）。
+    # 只按 id 作键会把别的运行的识别结果贴到这一步上。
+    recl_by_id: dict[tuple[str, int], dict] = {}
+    act_by_id: dict[tuple[str, int], dict] = {}
+    # 派发者（`[cur_node_=X]`）同样按进程存：多会话日志里两个进程都会写这种行
+    # （本机 maafw.log 是 106 / 248 条），共用一个变量会让别的进程的派发者粘到本进程的步骤上，
+    # 进而把 roles() → 分轮算错。
+    dispatcher_by_px: dict[str, str] = {}
     task_names: dict[int, str] = {}
 
-    for raw in _open_log_lines(path):
+    for raw in _read_lines(path, stats):
         m = LINE_RE.match(raw.rstrip("\n"))
         if not m:
             continue
         ts = parse_ts(m.group("ts"))
+        stats.lines_total += 1
+        if stats.first_ts is None:
+            stats.first_ts = ts
+        stats.last_ts = ts
         if t_from and ts < t_from:
             continue
         if t_to and ts > t_to:
-            break
+            continue
+        stats.lines_in_window += 1
+        px = m.group("px")
         msg = m.group("msg")
 
         # 当前在走谁的 next 表
         w = WALK_RE.search(msg)
         if w:
-            dispatcher = w.group(1).strip()
+            dispatcher_by_px[px] = w.group(1).strip()
             continue
 
         # 任务起止
         ms = TASK_START_RE.search(msg)
         if ms:
-            d = json.loads(ms.group(1))
+            try:
+                d = json.loads(ms.group(1))
+            except json.JSONDecodeError:
+                stats.truncated_skipped += 1
+                continue
             task_names[int(d.get("task_id", 0))] = d.get("entry", "")
             out.tasks.append((ts, d.get("entry", ""), int(d.get("task_id", 0)), d.get("hash", "")))
             out.events.append(Step(ts=ts, name=f"任务开始 {d.get('entry','')}", completed=True,
@@ -235,7 +374,11 @@ def parse_log(path, t_from: datetime | None, t_to: datetime | None,
             continue
         me = TASK_END_RE.search(msg)
         if me:
-            d = json.loads(me.group(1))
+            try:
+                d = json.loads(me.group(1))
+            except json.JSONDecodeError:
+                stats.truncated_skipped += 1
+                continue
             ret = me.group(2) == "true"
             out.task_ends.append((ts, d.get("entry", ""), int(d.get("task_id", 0)), ret))
             out.events.append(Step(ts=ts, name=f"任务结束 {d.get('entry','')} {'成功' if ret else '失败'}",
@@ -249,12 +392,14 @@ def parse_log(path, t_from: datetime | None, t_to: datetime | None,
             try:
                 j = json.loads(mr.group(1))
             except json.JSONDecodeError:
+                stats.truncated_skipped += 1
                 continue
             rid = j.get("reco_id")
             if isinstance(rid, int):
-                recl_by_id[rid] = j
+                recl_by_id[(px, rid)] = j
             name = j.get("name", "")
             if INTERNAL_NAME_RE.match(name) and not keep_internal:
+                stats.lines_internal_skipped += 1
                 continue
             texts: list[str] = []
             collect_texts(j.get("detail"), texts)
@@ -262,7 +407,7 @@ def parse_log(path, t_from: datetime | None, t_to: datetime | None,
                 ts=ts, name=name, completed=bool(j.get("box")),
                 reco_id=rid if isinstance(rid, int) else None,
                 algorithm=j.get("algorithm", ""), box=j.get("box"), texts=texts,
-                dispatcher=dispatcher, kind="hit" if j.get("box") else "miss",
+                dispatcher=dispatcher_by_px.get(px, ""), kind="hit" if j.get("box") else "miss",
             ))
             continue
 
@@ -272,10 +417,11 @@ def parse_log(path, t_from: datetime | None, t_to: datetime | None,
             try:
                 j = json.loads(ma.group(1))
             except json.JSONDecodeError:
+                stats.truncated_skipped += 1
                 continue
             aid = j.get("action_id")
             if isinstance(aid, int):
-                act_by_id[aid] = j
+                act_by_id[(px, aid)] = j
             continue
 
         # 节点执行完毕（主流程的一步）
@@ -284,15 +430,19 @@ def parse_log(path, t_from: datetime | None, t_to: datetime | None,
             try:
                 j = json.loads(md.group(1))
             except json.JSONDecodeError:
+                stats.truncated_skipped += 1
                 continue
             tid = int(md.group(2))
             name = j.get("name", "")
             if INTERNAL_NAME_RE.match(name) and not keep_internal:
+                stats.lines_internal_skipped += 1
                 continue
             if task_id is not None and tid != task_id:
+                stats.lines_other_task += 1
+                stats.other_task_ts.append(ts)
                 continue
-            reco = recl_by_id.get(j.get("reco_id"), {})
-            act = act_by_id.get(j.get("action_id"), {})
+            reco = recl_by_id.get((px, j.get("reco_id")), {})
+            act = act_by_id.get((px, j.get("action_id")), {})
             texts: list[str] = []
             collect_texts(reco.get("detail"), texts)
             out.steps.append(Step(
@@ -301,16 +451,31 @@ def parse_log(path, t_from: datetime | None, t_to: datetime | None,
                 node_id=j.get("node_id"), task_id=tid,
                 algorithm=reco.get("algorithm", ""), box=reco.get("box"), texts=texts,
                 action=act.get("action", ""), action_ok=act.get("success"),
-                dispatcher=dispatcher,
+                dispatcher=dispatcher_by_px.get(px, ""),
             ))
             continue
 
         # 异常
         mt = TIMEOUT_RE.search(msg)
         if mt:
+            dur, tout = mt.group("dur"), mt.group("tout")
+            dur_ok = bool(dur and mt.group("dur_ms"))
+            tout_ok = bool(tout and mt.group("tout_ms"))
+            if dur_ok and tout_ok:
+                detail = f"{dur}ms > timeout {tout}ms"
+            else:
+                # 导出按字节裁剪会把行尾的两个字段切掉一半（本机实测 1 条）。
+                # 如实标注，不猜数字、也不把这条超时事件整条丢掉。
+                stats.truncated_kept += 1
+                seen = []
+                if dur:
+                    seen.append(f"duration_since(start_clock)={dur}{'ms' if dur_ok else '(截断)'}")
+                if tout:
+                    seen.append(f"reco_timeout={tout}{'ms' if tout_ok else '(截断)'}")
+                detail = "行尾被截断" + ("，" + "  ".join(seen) if seen else "，两个数字都缺失")
             out.events.append(Step(
-                ts=ts, name=f"Task timeout {mt.group(1)}", completed=False, kind="event",
-                action=f"{mt.group(2)}ms > timeout {mt.group(3)}ms"))
+                ts=ts, name=f"Task timeout {mt.group('name')}", completed=False, kind="event",
+                action=detail))
             continue
         mi = INVALID_RE.search(msg)
         if mi:
@@ -323,9 +488,57 @@ def parse_log(path, t_from: datetime | None, t_to: datetime | None,
                                    kind="event", action=mn.group(1)))
             continue
 
+        # 上面全不匹配：可能是被导出裁断的记录
+        _count_truncated(msg, stats)
+
     if task_id is not None:
-        out.events = [e for e in out.events if e.task_id in (None, task_id)] or out.events
+        # 严格过滤，不回退成"保留全部事件"：兜底会把别的任务的失败收尾画进单任务图里。
+        # 框架级事件（task_id=None：Task timeout / invalid node id / node not completed）本身没法
+        # 归属，改用**选中任务的活动区间**排掉别的运行——装了多次运行的日志里它们的 task_id 全是空，
+        # 只按 task_id 过滤会漏。
+        # 只记"本来会画进图里"的那些（进图的只有失败事件），否则正常窗口也会刷一条提示。
+        out.span = task_span(out, task_id)
+        kept: list[Step] = []
+        dropped = 0
+        for event in out.events:
+            owned = event.task_id in (None, task_id)
+            inside = not out.span or event.task_id is not None or (
+                out.span[0] <= event.ts <= out.span[1])
+            if owned and inside:
+                kept.append(event)
+            elif not event.completed:
+                dropped += 1
+        stats.events_dropped = dropped
+        out.events = kept
+
+    _synthesize_steps(out, task_id)
     return out
+
+
+def _synthesize_steps(out: ParsedLog, task_id: int | None) -> None:
+    """没有 `PipelineTask node done` 时，用识别记录合成步骤（"仅事件模式"）。
+
+    这种日志真实存在：MFA 的 Sentry 导出里只有 `Node.*` 事件与 `reco [result=]`，
+    `PipelineTask node done` 一条没有。以前直接抛"窗口内没有解析到任何节点执行记录"，
+    而同一批识别记录已经足够还原"卡在哪个节点、连续多少次没命中"。
+    合成出来的框就是识别记录本身，所以 `compose_columns` 不再另做未命中聚合（会画重）。
+    """
+    if out.steps or not out.attempts:
+        return
+    attempts = out.attempts
+    if task_id is not None:
+        # reco 行里没有 task_id，只能用该 task 自己的起始行夹住范围（取不到就不夹）。
+        starts = [t for t, _entry, tid, _hash in out.tasks if tid == task_id]
+        if starts:
+            lo = max(starts)
+            ends = [t for t, _entry, tid, _ret in out.task_ends if tid == task_id and t >= lo]
+            hi = min(ends) if ends else None
+            attempts = [a for a in attempts if a.ts >= lo and (hi is None or a.ts <= hi)]
+            out.derived_clamped = True
+    if not attempts:
+        return
+    out.steps = [Step(**a.__dict__) for a in attempts]
+    out.derived_from = "attempts"
 
 
 # --------------------------------------------------------------------------- #
@@ -342,7 +555,7 @@ def collapse_runs(steps: list[Step], collapse: int) -> list[Step]:
             out[-1].run_len += 1
             out[-1].texts = list(dict.fromkeys(out[-1].texts + s.texts))
             continue
-        out.append(Step(**{**s.__dict__}))
+        out.append(Step(**s.__dict__))
     return out
 
 
@@ -360,9 +573,7 @@ def build_rounds(steps: list[Step], min_len: int, cut_on: set[str] | None = None
     hard = hard_cut or set()
     for s in steps:
         cut = False
-        if s.name in hard and cur:
-            cut = True
-        elif s.name in seen and len(cur) >= min_len and (cut_on is None or s.name in cut_on):
+        if s.name in hard and cur or s.name in seen and len(cur) >= min_len and (cut_on is None or s.name in cut_on):
             cut = True
         if cut:
             rounds.append(cur)
@@ -395,6 +606,19 @@ def roles(steps: list[Step], repeat_threshold: int) -> tuple[set[str], set[str]]
     important = {n for n, c in counts.items() if c >= repeat_threshold}
     parents = {s.dispatcher for s in steps if s.dispatcher}
     return parents, important
+
+
+def round_steps(parsed: ParsedLog, opts: FlowOptions) -> list[Step]:
+    """要分轮的步骤。
+
+    仅事件模式下 `steps` 本身就是识别记录，每列只有一步，`compose_columns` 里的折叠
+    （`--collapse`）永远不会生效——用户会以为这个开关坏了。所以这里先折一次：
+    默认把连续同节点的识别并成一格（`未命中 ×N`），`--collapse 1` 保留每次识别各占一列
+    （要看每次失败的时间点就用它）。普通日志原样返回。
+    """
+    if parsed.derived_from:
+        return collapse_runs(parsed.steps, opts.collapse)
+    return parsed.steps
 
 
 def anchor_of(steps: list[Step], rounds: list[list[Step]]) -> str:
@@ -628,6 +852,13 @@ class OnErrorIndex:
 # --------------------------------------------------------------------------- #
 
 
+try:                                  # pill​ow 只为取一个异常类型，缺了也不该 import 就炸
+    from PIL import UnidentifiedImageError as _UnidentifiedImage
+except ImportError:                   # pragma: no cover - 没装 Pillow 时走到这里
+    class _UnidentifiedImage(Exception):  # type: ignore[no-redef]
+        """Pillow 缺失时的占位：真正画图时会在别处报出"需要 Pillow"。"""
+
+
 def load_font(size: int, bold: bool = False):
     from PIL import ImageFont
 
@@ -644,6 +875,48 @@ def load_font(size: int, bold: bool = False):
             except OSError:
                 continue
     return ImageFont.load_default()
+
+
+def text_width(font: Any, text: str) -> float:
+    """字体测宽。FreeType 字体用 getlength；退回位图字体（没有这个方法）时按字符数估算。"""
+    try:
+        return float(font.getlength(text))
+    except AttributeError:
+        return len(text) * 10.0
+
+
+def _wrap_notes(notes: list[str], font, maxw: int) -> list[str]:
+    """把诊断注记折成若干行。
+
+    先按注记边界换行、单条本身超宽再按字符硬折：这些字是"这份图不是完整过程"的前提，
+    超出画布右边被裁掉就等于没说。
+    """
+    if not notes:
+        return []
+    sep = "   |   "
+    packed: list[str] = []
+    cur = ""
+    for note in notes:
+        piece = f"注：{note}" if not cur else note
+        cand = f"{cur}{sep}{piece}" if cur else piece
+        if not cur or text_width(font, cand) <= maxw:
+            cur = cand
+            continue
+        packed.append(cur)
+        cur = piece
+    if cur:
+        packed.append(cur)
+
+    lines: list[str] = []
+    for line in packed:
+        while text_width(font, line) > maxw and len(line) > 1:
+            cut = len(line) - 1
+            while cut > 1 and text_width(font, line[:cut]) > maxw:
+                cut -= 1
+            lines.append(line[:cut])
+            line = "    " + line[cut:]
+        lines.append(line)
+    return [line for line in lines if line.strip()]
 
 
 PALETTE = {
@@ -673,14 +946,46 @@ def classify(step: Step) -> str:
     return "hit"
 
 
+def task_span(parsed: ParsedLog, task_id: int | None) -> tuple[datetime, datetime] | None:
+    """选中任务的**判定窗口** `[起, 止]`；没给 `--task-id`、或日志里没有它的步骤时返回 None。
+
+    存在的理由：识别记录（`reco [result=]`）里没有 `task_id`，框架级事件（`Task timeout` /
+    `invalid node id` / `node not completed`）也没有，于是未命中聚合与事件挂载只能用时间窗。
+    时间窗右端原来是"整份日志最后一个动作/事件"，一份装了多次运行的导出就会把**别的任务**的
+    未命中与失败事件算进这一轮——实测 13:11 那次维修的末轮里混进了 23:59 那趟训练的
+    `未命中 ×9/×10` 与 `node not completed`（那是 task 200000056 的事）。
+
+    右端取**本任务最后一步之后、别的任务的第一步**，不取"自己最后一步"：任务失败时框架级事件
+    恰恰发生在最后一步之后（`Task timeout` → `invalid node id` → `task end`），按自己最后一步切
+    会把它们一起剪掉——自检里那条 00:35:02 的 `invalid node id` 就是这么被抓出来的。
+    别的任务的步骤时间来自 `stats.other_task_ts`（被 `--task-id` 过滤掉的那些，`steps` 里已经没有了），
+    取"最后一次自己步骤之后"最早的一个，这样两个任务交错跑时也不会把本任务的收尾剪掉。
+    没有别的任务的步骤时右端取 `datetime.max`（等于不设右界，与改动前一致）。
+    """
+    if task_id is None:
+        return None
+    own = [s.ts for s in parsed.steps if s.task_id == task_id]
+    if not own:
+        return None
+    lo, hi = min(own), max(own)
+    later = [ts for ts in parsed.stats.other_task_ts if ts > hi]
+    return lo, min(later) if later else datetime.max
+
+
 def compose_columns(parsed: ParsedLog, rounds: list[list[Step]], miss_min: int,
                     collapse: int = 1, miss_max: int = 8) -> list[list[Step]]:
     """每轮 = 该轮命中步骤（按需折叠 ×N）+ 该轮内的"连续未命中"聚合框；异常事件挂到所属轮末尾。"""
     tail = max([a.ts for a in parsed.attempts] + [e.ts for e in parsed.events] + [rounds[-1][-1].ts])
+    span = None if parsed.derived_from else parsed.span
 
     def miss_rows(i: int) -> list[Step]:
+        if parsed.derived_from:
+            # 仅事件模式下 steps 本身就是识别记录，再聚合一次同一批未命中会画重
+            return []
         lo = rounds[i][0].ts
         hi = rounds[i + 1][0].ts if i + 1 < len(rounds) else tail
+        if span:
+            lo, hi = max(lo, span[0]), min(hi, span[1])
         agg: dict[tuple[str, str], list[Step]] = {}
         for a in parsed.attempts:
             if a.kind != "miss" or not (lo <= a.ts < hi):
@@ -709,7 +1014,7 @@ def compose_columns(parsed: ParsedLog, rounds: list[list[Step]], miss_min: int,
     return columns
 
 
-def draw_flow(parsed: ParsedLog, options: "FlowOptions", out_path: str) -> tuple[int, int, int, int, int]:
+def draw_flow(parsed: ParsedLog, options: FlowOptions, out_path: str) -> tuple[int, int, int, int, int]:
     from PIL import Image, ImageDraw
 
     f_name = load_font(max(11, int(options.font_size * options.scale)), bold=True)
@@ -717,7 +1022,7 @@ def draw_flow(parsed: ParsedLog, options: "FlowOptions", out_path: str) -> tuple
     f_title = load_font(int((options.font_size + 8) * options.scale), bold=True)
     f_leg = load_font(max(10, int((options.font_size - 2) * options.scale)))
 
-    raw = parsed.steps
+    raw = round_steps(parsed, options)
     if not raw:
         raise SystemExit("窗口内没有解析到任何节点执行记录，检查 --from/--to/--task-id")
 
@@ -737,6 +1042,8 @@ def draw_flow(parsed: ParsedLog, options: "FlowOptions", out_path: str) -> tuple
     # 每轮末尾追加该轮内"连续未命中"的聚合框；窗口右端延伸到下一轮开始（末轮延伸到最后一个动作/事件）
     columns = compose_columns(parsed, rounds, options.miss_min, options.collapse, options.miss_max)
     steps = [s for r in rounds for s in r]
+    # 仅事件模式下 raw 已经折过：图上报的步数要按识别记录条数算，与"折叠后 N 个框"对齐
+    total_steps = len(parsed.steps) if parsed.derived_from else len(steps)
 
     # ---- 先把每个框要贴的图解析出来（决定框高：有无图）----
     box_w = int(options.box_width * options.scale)
@@ -749,7 +1056,6 @@ def draw_flow(parsed: ParsedLog, options: "FlowOptions", out_path: str) -> tuple
     gap_err = int(options.gap_error * options.scale)
     gap_x = int(options.gap_x * options.scale)
     margin = int(34 * options.scale)
-    title_h = int(64 * options.scale)
     header_h = int(34 * options.scale)
     cols_per_band = max(1, options.cols_per_band) if options.cols_per_band else len(columns)
 
@@ -757,6 +1063,9 @@ def draw_flow(parsed: ParsedLog, options: "FlowOptions", out_path: str) -> tuple
     on_err = OnErrorIndex(options.on_error) if options.on_error else None
     # (列, 行) -> (证据条目, 是否该节点自己的识别图, 角标文字)
     thumb_of: dict[tuple[int, int], tuple[MediaEntry, bool, str]] = {}
+    # 贴图失败的记录与打印上限：读图失败要能看见，但不能刷满屏幕
+    thumb_errors: list[str] = []
+    WARN_THUMB_LIMIT = 5
     if slot_h:
         for ci, col in enumerate(columns):
             for ri, st in enumerate(col):
@@ -789,6 +1098,12 @@ def draw_flow(parsed: ParsedLog, options: "FlowOptions", out_path: str) -> tuple
     bands: list[list[int]] = [list(range(i, min(i + cols_per_band, len(columns))))
                              for i in range(0, len(columns), cols_per_band)]
 
+    # 画布宽度只由列数与版式决定，先算出来：诊断注记要在定标题高度之前折行
+    width = margin * 2 + max(len(b) for b in bands) * (box_w + gap_x)
+    width = max(width, int(900 * options.scale))
+    note_lines = _wrap_notes(options.notes, f_leg, width - margin * 2)
+    title_h = int(64 * options.scale) + len(note_lines) * int(20 * options.scale)
+
     def box_height_for(ci: int, ri: int) -> int:
         return box_h if (ci, ri) in thumb_of else event_h
 
@@ -818,8 +1133,6 @@ def draw_flow(parsed: ParsedLog, options: "FlowOptions", out_path: str) -> tuple
         y_band = max(probe[ci] for ci in band) + int(96 * options.scale)
 
     height = y_band + int(64 * options.scale)
-    width = margin * 2 + max(len(b) for b in bands) * (box_w + gap_x)
-    width = max(width, int(900 * options.scale))
 
     img = Image.new("RGB", (width, height), (250, 251, 253))
     d = ImageDraw.Draw(img)
@@ -829,7 +1142,7 @@ def draw_flow(parsed: ParsedLog, options: "FlowOptions", out_path: str) -> tuple
     t1 = rounds[-1][-1].ts if rounds and rounds[-1] else None
     title = options.title or f"执行流程  ·  {os.path.basename(options.log)}"
     sub = f"{t0.strftime('%Y-%m-%d %H:%M:%S') if t0 else '?'} → {t1.strftime('%H:%M:%S') if t1 else '?'}"
-    sub += f"   |   {len(steps)} 步 / {len(rounds)} 轮"
+    sub += f"   |   {total_steps} 步 / {len(rounds)} 轮"
     if anchor:
         sub += f"   |   循环锚点 {anchor}"
     if options.task_id:
@@ -840,6 +1153,11 @@ def draw_flow(parsed: ParsedLog, options: "FlowOptions", out_path: str) -> tuple
         sub += "   |   注意：日志仅含尾部"
     d.text((margin, int(14 * options.scale)), title, font=f_title, fill=(20, 26, 40))
     d.text((margin, int(40 * options.scale)), sub, font=f_leg, fill=(96, 104, 122))
+    # 诊断注记单独一行：由识别记录还原、时间戳已重排、多少条被裁断——这些是读图前提，
+    # 挤在副标题里会被一起读过去（也可能超出画布右边被裁掉）
+    for i, note in enumerate(note_lines):
+        d.text((margin, int(58 * options.scale) + i * int(20 * options.scale)), note,
+               font=f_leg, fill=(168, 112, 30))
 
     # ---- 每列的框位置 + 列底色/表头 ----
     pos: dict[int, list[tuple[int, int, int, int]]] = {}
@@ -991,10 +1309,17 @@ def draw_flow(parsed: ParsedLog, options: "FlowOptions", out_path: str) -> tuple
             if got:
                 try:
                     draw_thumb(st, got[0], got[1], got[2], x, y, w, h)
-                except Exception:
-                    pass
+                except (OSError, ValueError, _UnidentifiedImage) as exc:
+                    # 不吞异常：图贴不上必须能看出来（遥测的证据包可能是被截断的分卷、
+                    # 也可能图片已被 log_dir 的 7 天清理删掉，两种都表现为读图失败）。
+                    # 但有界——一次几百张图读不了时不能刷满屏幕。
+                    thumb_errors.append(f"{got[0].member}: {type(exc).__name__}: {exc}")
+                    if len(thumb_errors) <= WARN_THUMB_LIMIT:
+                        print(f"[警告] 贴图失败 {thumb_errors[-1]}", file=sys.stderr)
 
     # ---- 图例 ----
+    if len(thumb_errors) > WARN_THUMB_LIMIT:
+        print(f"[警告] 另有 {len(thumb_errors) - WARN_THUMB_LIMIT} 张贴图失败（已省略）", file=sys.stderr)
     lx = margin
     ly = height - int(46 * options.scale)
     d.text((lx, ly), "图例：", font=f_leg, fill=(60, 66, 80))
@@ -1009,15 +1334,16 @@ def draw_flow(parsed: ParsedLog, options: "FlowOptions", out_path: str) -> tuple
 
     img.save(out_path)
     shown = sum(1 for c in columns for s in c if s.kind == "hit")
-    return img.width, img.height, len(steps), shown, len(rounds)
+    return img.width, img.height, total_steps, shown, len(rounds)
 
 
 # --------------------------------------------------------------------------- #
 # 可复用的调用接口
 # --------------------------------------------------------------------------- #
 
-# 仓库根：tools/flow_from_log.py 上溯两级。默认输出目录挂在它下面，避免写到日志旁边。
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# 仓库根：tools/drawing/flow_from_log.py 上溯**三级**（改了目录层级就要同步改这里，
+# 否则默认产出会悄悄落到 tools/drawing/temp/flow）。默认输出目录挂在它下面，避免写到日志旁边。
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DEFAULT_OUTDIR = os.path.join(REPO_ROOT, "temp", "flow")
 
 
@@ -1047,6 +1373,9 @@ class FlowOptions:
     log: str = ""
     # 日志只剩尾部（第一行晚于请求的 --from）：会印在图的副标题上，别省成"完整日志"
     truncated_start: bool = False
+    # 诊断注记（由 render_flow 填好并印在图上的第二行）：由识别记录还原、时间戳回跳已重排、
+    # 有多少记录被导出裁断……读图的人必须先知道这些，否则会把图当作完整过程
+    notes: list[str] = field(default_factory=list)
     # 版面
     thumbs: bool = True
     thumb_height: int = 132
@@ -1061,7 +1390,9 @@ class FlowOptions:
 
     def summary(self) -> dict[str, Any]:
         """可序列化的选项摘要，用于 manifest 判断"同一份输入 + 同一套参数"。"""
-        skip = {"vision", "on_error", "t_from", "t_to"}
+        # notes 由 render_flow 按输入填写，同一份 options 会在多个 case 之间复用，
+        # 留在摘要里会把上一个 case 的注记带进下一个 case 的指纹。
+        skip = {"vision", "on_error", "t_from", "t_to", "notes"}
         return {
             k: (v.isoformat() if isinstance(v, datetime) else v)
             for k, v in self.__dict__.items()
@@ -1081,6 +1412,9 @@ class FlowResult:
     boxes: int
     rounds: int
     truncated_start: bool = False   # 日志只剩尾巴：第一行晚于请求的 --from
+    notes: list[str] = field(default_factory=list)      # 与图上第二行相同的诊断注记
+    derived_from: str = ""          # 非空 = 步骤由识别记录合成（仅事件模式）
+    out_of_order: int = 0           # 时间戳回跳的行数（>0 表示已按时间重排）
 
 
 def _log_basename(log: Any) -> str:
@@ -1149,13 +1483,73 @@ def _first_log_ts(log: Any) -> datetime | None:
     return None
 
 
+def _fmt_ts(ts: datetime | None) -> str:
+    return ts.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3] if ts else "?"
+
+
+def describe_empty_window(parsed: ParsedLog, opts: FlowOptions, source: Any) -> str:
+    """窗口内画不出东西时，按实际原因给不同的话。
+
+    这句话曾经只有一种写法（"窗口内没有解析到任何节点执行记录，检查 --from/--to/--task-id"），
+    实际盖住三种病因：日志时间戳不单调、输入本来就没有节点级记录、参数真写错了。
+    前两种现在分别由"按时间重排"和"用识别记录合成"处理掉了，剩下能走到这里的都能说清原因，
+    所以文案必须报出**看到了什么**（行数、时间范围、被过滤掉的是什么），而不是继续让人猜。
+    """
+    st = parsed.stats
+    window = f"请求的窗口 {_fmt_ts(opts.t_from)} ~ {_fmt_ts(opts.t_to)}"
+    if st.lines_total == 0:
+        if st.source_kind == "path-missing":
+            return (f"入参像路径但磁盘上没有这个文件：{st.source_name}；"
+                    f"它也不含任何一行日志正文")
+        if st.source_kind == "file":
+            return (f"文件读到了，但没有一行匹配日志格式（不是 maafw.log？）：{st.source_name}")
+        return f"入参里没有一行匹配日志格式，不是日志正文：{st.source_name}"
+    if st.lines_in_window == 0:
+        return (f"窗口内没有日志行：日志时间范围 {_fmt_ts(st.first_ts)} ~ {_fmt_ts(st.last_ts)}；"
+                f"{window}")
+    if st.lines_other_task:
+        return (f"窗口内 {st.lines_in_window} 行里属于本 task（--task-id={opts.task_id}）的节点级记录"
+                f"一条都没有，有 {st.lines_other_task} 行是其他 task_id 的："
+                f"这个 task 在窗口内没跑过，或 task_id 写错了。{window}")
+    if st.lines_internal_skipped:
+        return (f"窗口内 {st.lines_in_window} 行只有内部识别记录（{st.lines_internal_skipped} 条，"
+                f"形如 recognition/OCR/<uuid>），默认过滤掉了；加 --keep-internal 可以看")
+    extra = f"，其中 {st.truncated_skipped} 条因导出截断读不出" if st.truncated_skipped else ""
+    return (f"窗口内 {st.lines_in_window} 行里没有节点级记录（PipelineTask node done），"
+            f"也没有可用的识别结果（reco [result=...]）{extra}。{window}")
+
+
+def build_notes(parsed: ParsedLog, opts: FlowOptions) -> list[str]:
+    """图上第二行与终端提示共用的诊断注记。
+
+    只用中文字符：`⚠` 这类符号在 msyh 里没有字形，会画成方框。
+    """
+    st = parsed.stats
+    notes: list[str] = []
+    if parsed.derived_from:
+        notes.append("由识别记录还原（日志没有 PipelineTask node done）")
+        if parsed.derived_clamped:
+            notes.append("识别范围已按该 task 的起始时间夹住")
+        elif opts.task_id:
+            notes.append("识别记录里没有 task_id，同窗口其他任务可能混入")
+    if st.out_of_order:
+        notes.append(f"日志时间戳有回跳，已按时间重排（{st.out_of_order} 行）")
+    if st.truncated_skipped:
+        notes.append(f"{st.truncated_skipped} 条记录因导出截断读不出，已跳过")
+    if st.truncated_kept:
+        notes.append(f"{st.truncated_kept} 条记录尾部被截断，数字可能不全")
+    if st.events_dropped:
+        notes.append(f"已排除其他 task 的 {st.events_dropped} 条失败事件（本会画进图里）")
+    return notes
+
+
 def render_flow(log,
                 *,
                 vision: Any = None,
                 on_error: Any = None,
                 out: str | None = None,
                 outdir: str | None = None,
-                options: "FlowOptions | None" = None,
+                options: FlowOptions | None = None,
                 mermaid: bool = False,
                 list_only: bool = False) -> FlowResult | str:
     """解析日志并画流程图；库调用入口，与命令行共用同一实现。
@@ -1177,9 +1571,11 @@ def render_flow(log,
                     break
 
     parsed = parse_log(log, opts.t_from, opts.t_to, opts.task_id, opts.keep_internal)
-    raw = parsed.steps
+    raw = round_steps(parsed, opts)
     if not raw:
-        raise ValueError("窗口内没有解析到任何节点执行记录，检查 --from/--to/--task-id")
+        raise ValueError(describe_empty_window(parsed, opts, log))
+
+    notes = build_notes(parsed, opts)
 
     truncated_start = False
     if opts.t_from is not None:
@@ -1202,8 +1598,11 @@ def render_flow(log,
             for s in col:
                 tag = {"miss": "[未命中]", "event": "[事件]"}.get(s.kind, "")
                 lines.append(f"  {s.ts.strftime('%H:%M:%S.%f')[:-3]}  {s.name:<28}{tag} {s.detail}")
-        lines.append(f"\n共 {len(raw)} 步 / {len(rounds)} 轮；锚点={opts.anchor or anchor_of(raw, rounds)}；"
+        lines.append(f"\n共 {len(parsed.steps)} 步 / {len(rounds)} 轮；"
+                     f"锚点={opts.anchor or anchor_of(raw, rounds)}；"
                      f"分轮节点={','.join(sorted(cut))}")
+        for note in notes:
+            lines.append(f"提示：{note}")
         return "\n".join(lines)
 
     if out:
@@ -1216,6 +1615,7 @@ def render_flow(log,
 
     opts.vision, opts.on_error = vision, on_error
     opts.truncated_start = truncated_start
+    opts.notes = notes
     opts.log = str(log) if isinstance(log, str) and "\n" not in log else _log_basename(log) + ".log"
     try:
         w, h, n, _shown, nr = draw_flow(parsed, opts, target)
@@ -1250,7 +1650,9 @@ def render_flow(log,
                     fh.write(f"  n{i - 1}_{len(rounds[i - 1]) - 1} --> n{i}_0\n")
 
     return FlowResult(path=target, mermaid=mermaid_path, width=w, height=h,
-                      steps=n, boxes=boxes, rounds=nr, truncated_start=truncated_start)
+                      steps=n, boxes=boxes, rounds=nr, truncated_start=truncated_start,
+                      notes=list(notes), derived_from=parsed.derived_from,
+                      out_of_order=parsed.stats.out_of_order)
 
 
 # --------------------------------------------------------------------------- #
@@ -1383,6 +1785,9 @@ def main(argv: list[str] | None = None) -> int:
     if result.truncated_start:
         print("提示：日志第一行晚于 --from，这份日志只包含了窗口的后半段（遥测附件只带 tail），"
               "窗口开头的过程不在图里", file=sys.stderr)
+    for note in result.notes:
+        # 与图上第二行同一批注记：终端里再打一遍，免得只看 stdout 的人漏掉读图前提
+        print(f"提示：{note}", file=sys.stderr)
     if result.mermaid:
         print(f"mermaid → {result.mermaid}")
     return 0

@@ -13,9 +13,9 @@ log_dir 会递归删掉该目录下 mtime 超过 7 天的 `*.png` / `*.jpg` / `*
 删了没有版本历史可恢复。真要换回去用 `--format webp`（无损，体积约为 png 的 1/2–1/4）。
 
 用法：
-    python tools/whiteboard_images.py            # 转换 + 改写引用（输出 png）
-    python tools/whiteboard_images.py --check    # 只报告，发现非目标格式即 exit 1
-    python tools/whiteboard_images.py --dry-run  # 报告将要做什么，不改动
+    python tools/drawing/whiteboard_images.py            # 转换 + 改写引用（输出 png）
+    python tools/drawing/whiteboard_images.py --check    # 只报告，发现非目标格式即 exit 1
+    python tools/drawing/whiteboard_images.py --dry-run  # 报告将要做什么，不改动
 其他参数：
     --dir      # 扫描范围，默认 docs/白板（含各子白板文件夹）
     --format   # 目标格式：png（默认）/ webp / jpeg
@@ -162,7 +162,8 @@ def main() -> int:
     vault_root = (
         Path(args.root).resolve()
         if args.root
-        else Path(__file__).resolve().parent.parent
+        # 仓库根 = tools/drawing/ 上溯两级；改目录层级要同步改这里。
+        else Path(__file__).resolve().parents[2]
     )
     scan_dir = (vault_root / args.dir).resolve()
 
@@ -184,7 +185,7 @@ def main() -> int:
         for p in targets:
             print(f"  {p.relative_to(vault_root)}")
         print(
-            f"跑一次 python tools/whiteboard_images.py --format {args.format} 即可转换。"
+            f"跑一次 python tools/drawing/whiteboard_images.py --format {args.format} 即可转换。"
         )
         return 1
 
