@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import http.client
+import io
 import json
 import os
 import re
@@ -27,12 +29,10 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import time
 import urllib.error
 import urllib.request
 import zipfile
-import http.client
-import io
-import time
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
@@ -415,8 +415,7 @@ def extract_tar_manual(archive: Path, dest: Path) -> int:
             if strip_root:
                 name = name.split("/", 1)[1]
             for prefix in ("python/", "install/"):
-                if name.startswith(prefix):
-                    name = name[len(prefix) :]
+                name = name.removeprefix(prefix)
             if not name or name.endswith("/"):
                 continue
             lowered = name.lower()
@@ -493,6 +492,7 @@ def can_execute(exe: Path) -> bool:
             [str(exe), "--version"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
+            check=False,   # 非 0 退出就是"跑不起来"，由下面的 returncode 判定，不要抛异常
         )
     except OSError:
         return False
