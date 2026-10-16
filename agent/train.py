@@ -18,9 +18,9 @@ from maa.context import (
 )
 from maa.pipeline import JTarget, JTemplateMatch, JOCR, JSwipe
 
-from shared.agentlog import log
-from shared.rect import DEFAULT_HIT_BOX, toTuple
-from shared.params import parse_params
+from agentlog import log
+from rect import DEFAULT_HIT_BOX, toTuple
+from params import parse_params
 
 _TrainStatus = Literal["acceptable", "rewardable", "busy"]
 

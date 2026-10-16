@@ -13,9 +13,9 @@ from maa.context import (
 )
 from maa.pipeline import JOCR
 
-from shared.agentlog import log
-from shared.params import parse_attach
-from shared.rect import DEFAULT_HIT_BOX
+from agentlog import log
+from params import parse_attach
+from rect import DEFAULT_HIT_BOX
 
 # 大关名
 stage_name: str = "结晶废墟"

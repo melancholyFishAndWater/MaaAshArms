@@ -22,13 +22,13 @@ maafw_paths.ensure_maafw_binary_path()
 from maa.agent.agent_server import AgentServer
 from maa.tasker import Tasker
 
-from shared.pienv import pi_check_maafw_version, pi_log_snapshot
+from pienv import pi_check_maafw_version, pi_log_snapshot
 import battle_replays
 import battle_training
 import entrust
 import factory_fast
 import factory
-import shared.generic
+import generic
 import parent_tracker
 import startup
 import store

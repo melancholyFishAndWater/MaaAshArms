@@ -145,7 +145,9 @@ NAMING_SPEC = Path("docs/zh_cn/develop/node-naming.md")
 # 编辑器里在用的写法模板：新节点的字段骨架从它来（`$comment` 上写着对应规范版本）
 PIPELINE_SNIPPETS = Path("tools/vscode/pipeline.snippets.schema.json")
 # 文件头部注释的写法由命名规范自己的「版本号」一节规定
-ANNOTATION_RE = re.compile(r"使用命名规范版本\s*v(\d+\.\d+)\s*校验年月日\s*(\d{2}/\d{2}/\d{2})")
+ANNOTATION_RE = re.compile(
+    r"使用命名规范版本\s*v(\d+\.\d+)\s*校验年月日\s*(\d{2}/\d{2}/\d{2})"
+)
 DOC_VERSION_RE = re.compile(r"版本号\s*[:：]\s*v(\d+\.\d+)")
 ANY_VERSION_RE = re.compile(r"v(\d+\.\d+)")
 # Ensure 的骨架候选，不算"业务 Loop 混进 next"（node-naming.md §3 的节点内部顺序里有它）
@@ -158,7 +160,9 @@ def version_tuple(text: str) -> tuple[int, int]:
     return int(major), int(minor)
 
 
-def version_finding(found: str | None, current: str = NAMING_SPEC_VERSION) -> tuple[str, str] | None:
+def version_finding(
+    found: str | None, current: str = NAMING_SPEC_VERSION
+) -> tuple[str, str] | None:
     """比对"文档/模板写的版本"与"脚本实现的版本"，返回 `(finding_id, 说明)` 或 None。
 
     抽成纯函数是为了自检能试它——自检不写文件（受限沙箱下系统临时目录不可写）。
@@ -177,6 +181,7 @@ def version_finding(found: str | None, current: str = NAMING_SPEC_VERSION) -> tu
         "E2-spec-version",
         f"文档是 v{found}，脚本按 {current} 实现：两边要一致，改文档版本号或改 NAMING_SPEC_VERSION",
     )
+
 
 # 由 agent 在运行时注入的节点名（override_pipeline / override_next 里出现、
 # pipeline 文件里没有定义的）。目前为空：本仓库注入的名字都已在 pipeline 里定义。
@@ -247,7 +252,9 @@ class Ctx:
     explicit: dict[str, list[Path]] = field(default_factory=dict)
     findings: list[Finding] = field(default_factory=list)
 
-    def add(self, id_: str, severity: str, file: Path | str, line: int | None, message: str) -> None:
+    def add(
+        self, id_: str, severity: str, file: Path | str, line: int | None, message: str
+    ) -> None:
         self.findings.append(Finding(id_, severity, str(file), line, message))
 
     # ---- 派生 ----
@@ -473,7 +480,9 @@ def load_pipeline(ctx: Ctx, paths: list[Path]) -> None:
             ctx.add("A0-parse-error", "error", path, None, f"JSONC 解析失败：{e}")
             continue
         if not isinstance(data, dict):
-            ctx.add("A0-parse-error", "error", path, None, "pipeline 文件的顶层必须是对象")
+            ctx.add(
+                "A0-parse-error", "error", path, None, "pipeline 文件的顶层必须是对象"
+            )
             continue
         ctx.pipeline_files.append(path)
         for name, node in data.items():
@@ -524,14 +533,18 @@ def load_tasks(ctx: Ctx, paths: list[Path]) -> None:
 
 
 def load_agents(ctx: Ctx, files: list[Path]) -> None:
-    reg_pat = re.compile(r"@AgentServer\.custom_(recognition|action)\(\s*[\"']([^\"']+)[\"']")
+    reg_pat = re.compile(
+        r"@AgentServer\.custom_(recognition|action)\(\s*[\"']([^\"']+)[\"']"
+    )
     cls_pat = re.compile(r"^\s*class\s+(\w+)")
     # 注意：不能 append 到 ctx.agent_files —— 传进来的往往就是它，会边遍历边长。
     ctx.agent_files = list(files)
     for path in ctx.agent_files:
         lines = lines_of(path)
         for i, line in enumerate(lines):
-            code = line.split("#", 1)[0]  # 注释掉的注册（如 train.py 的 TrainAcceptReco）不算
+            code = line.split("#", 1)[
+                0
+            ]  # 注释掉的注册（如 train.py 的 TrainAcceptReco）不算
             m = reg_pat.search(code)
             if not m:
                 continue
@@ -550,7 +563,13 @@ def load_agents(ctx: Ctx, files: list[Path]) -> None:
                 ctx.regs[name] = reg
     for name, regs in ctx.reg_dups.items():
         where = ", ".join(f"{r.file}:{r.line}" for r in regs)
-        ctx.add("D2-duplicate-registration", "error", regs[-1].file, regs[-1].line, f"注册名 {name} 重复：{where}")
+        ctx.add(
+            "D2-duplicate-registration",
+            "error",
+            regs[-1].file,
+            regs[-1].line,
+            f"注册名 {name} 重复：{where}",
+        )
 
 
 def list_images(roots: list[Path]) -> list[Path]:
@@ -906,7 +925,9 @@ def check_a13_naming(ctx: Ctx) -> None:
         suffixes = word_suffixes(name)
         verb_after_prefix = any(s.startswith(v) for s in suffixes for v in VERBS)
         prefixed = name.startswith("Task") or any(name.startswith(p) for p in pset)
-        legacy_hit = re.match(r"(?:" + "|".join(LEGACY_PREFIXES) + r")[A-Z]", name) is not None
+        legacy_hit = (
+            re.match(r"(?:" + "|".join(LEGACY_PREFIXES) + r")[A-Z]", name) is not None
+        )
         if pset and not prefixed and not verb_after_prefix and not legacy_hit:
             ctx.add(
                 "A13-missing-prefix",
@@ -988,8 +1009,13 @@ def check_a13_references(ctx: Ctx) -> None:
                         find_line(info.file, name),
                         f"{name}.{key} 引用了就位节点 {target} 却没带 [JumpBack]（node-naming.md §3）",
                     )
-                if (ENSURE_RE.search(name) and key == "next" and target
-                        and target.endswith("Loop") and target not in ENSURE_SKELETON_REFS):
+                if (
+                    ENSURE_RE.search(name)
+                    and key == "next"
+                    and target
+                    and target.endswith("Loop")
+                    and target not in ENSURE_SKELETON_REFS
+                ):
                     ctx.add(
                         "A13-ensure-loop-next",
                         "warn",
@@ -1002,7 +1028,10 @@ def check_a13_references(ctx: Ctx) -> None:
     def custom_keys(data, where: str) -> None:
         if isinstance(data, dict):
             for key, value in data.items():
-                if key in ("custom_recognition_param", "custom_action_param") and isinstance(value, dict):
+                if key in (
+                    "custom_recognition_param",
+                    "custom_action_param",
+                ) and isinstance(value, dict):
                     for k in value:
                         if not re.fullmatch(r"[a-z][a-z0-9_]*", k):
                             ctx.add(
@@ -1044,8 +1073,13 @@ def check_spec_version(ctx: Ctx) -> None:
     """
     doc = ctx.repo_root / NAMING_SPEC
     if not doc.is_file():
-        ctx.add("E1-spec-missing", "error", doc, None,
-                f"找不到命名规范文档 {NAMING_SPEC}（本脚本按 {NAMING_SPEC_VERSION} 实现）")
+        ctx.add(
+            "E1-spec-missing",
+            "error",
+            doc,
+            None,
+            f"找不到命名规范文档 {NAMING_SPEC}（本脚本按 {NAMING_SPEC_VERSION} 实现）",
+        )
     else:
         m = DOC_VERSION_RE.search(doc.read_text(encoding="utf-8"))
         verdict = version_finding(m.group(1) if m else None)
@@ -1059,8 +1093,13 @@ def check_spec_version(ctx: Ctx) -> None:
         if sm:
             verdict = version_finding(sm.group(1))
             if verdict:
-                ctx.add(verdict[0], "warn", snippets, find_line(snippets, "$comment"),
-                        f"写法模板写着 v{sm.group(1)}，脚本按 {NAMING_SPEC_VERSION} 实现：两处版本要一起对")
+                ctx.add(
+                    verdict[0],
+                    "warn",
+                    snippets,
+                    find_line(snippets, "$comment"),
+                    f"写法模板写着 v{sm.group(1)}，脚本按 {NAMING_SPEC_VERSION} 实现：两处版本要一起对",
+                )
 
     # 头部注解落后的文件：没有注解的不报（老文件太多，报了等于噪音），只报"看过的"。
     for path in (*ctx.pipeline_files, *ctx.task_files, *ctx.agent_files):
@@ -1069,9 +1108,14 @@ def check_spec_version(ctx: Ctx) -> None:
         except OSError:
             continue
         am = ANNOTATION_RE.search(text)
-        if not am or version_tuple(f"v{am.group(1)}") >= version_tuple(NAMING_SPEC_VERSION):
+        if not am or version_tuple(f"v{am.group(1)}") >= version_tuple(
+            NAMING_SPEC_VERSION
+        ):
             continue
-        line = next((i for i, l in enumerate(lines_of(path), 1) if ANNOTATION_RE.search(l)), None)
+        line = next(
+            (i for i, l in enumerate(lines_of(path), 1) if ANNOTATION_RE.search(l)),
+            None,
+        )
         ctx.add(
             "E3-stale-annotation",
             "info",
@@ -1145,7 +1189,9 @@ def check_option_shape(ctx: Ctx) -> None:
             if not isinstance(item, dict):
                 continue
             verify = item.get("verify")
-            if isinstance(verify, str) and not (verify.startswith("^") and verify.endswith("$")):
+            if isinstance(verify, str) and not (
+                verify.startswith("^") and verify.endswith("$")
+            ):
                 ctx.add(
                     "B7-verify-anchor",
                     "warn",
@@ -1169,20 +1215,44 @@ def check_interface(ctx: Ctx) -> None:
     file = ctx.interface_file
     tasks = [t for t in to_list(iface.get("task")) if isinstance(t, dict)]
     task_names = {t.get("name") for t in tasks}
-    group_names = {g.get("name") for g in to_list(iface.get("group")) if isinstance(g, dict)}
+    group_names = {
+        g.get("name") for g in to_list(iface.get("group")) if isinstance(g, dict)
+    }
 
     for task in tasks:
         label = task.get("name") or "?"
         line = find_line(file, label)
         entry = task.get("entry")
-        if isinstance(entry, str) and entry not in ctx.nodes and entry not in DYNAMIC_NODES:
-            ctx.add("B1-bad-entry", "error", file, line, f"任务 {label!r} 的 entry {entry!r} 不是已定义节点")
+        if (
+            isinstance(entry, str)
+            and entry not in ctx.nodes
+            and entry not in DYNAMIC_NODES
+        ):
+            ctx.add(
+                "B1-bad-entry",
+                "error",
+                file,
+                line,
+                f"任务 {label!r} 的 entry {entry!r} 不是已定义节点",
+            )
         for g in to_list(task.get("group")):
             if g not in group_names:
-                ctx.add("B2-bad-group", "error", file, line, f"任务 {label!r} 引用了不存在的 group {g!r}")
+                ctx.add(
+                    "B2-bad-group",
+                    "error",
+                    file,
+                    line,
+                    f"任务 {label!r} 引用了不存在的 group {g!r}",
+                )
         for opt in to_list(task.get("option")):
             if opt not in ctx.options:
-                ctx.add("B3-bad-option", "error", file, line, f"任务 {label!r} 引用了不存在的 option {opt!r}")
+                ctx.add(
+                    "B3-bad-option",
+                    "error",
+                    file,
+                    line,
+                    f"任务 {label!r} 引用了不存在的 option {opt!r}",
+                )
         check_override_targets(ctx, task.get("pipeline_override"), file, label)
 
     for path, preset in ctx.presets:
@@ -1212,7 +1282,13 @@ def check_interface_paths(ctx: Ctx) -> None:
             continue
         for p in to_list(res.get("path")):
             if isinstance(p, str) and not (base / p).exists():
-                ctx.add("B8-bad-path", "error", file, find_line(file, res.get("name") or ""), f"resource 路径不存在：{p}")
+                ctx.add(
+                    "B8-bad-path",
+                    "error",
+                    file,
+                    find_line(file, res.get("name") or ""),
+                    f"resource 路径不存在：{p}",
+                )
     for key in ("welcome", "doc"):
         v = iface.get(key)
         if isinstance(v, str) and v and not (base / v).exists():
@@ -1229,7 +1305,9 @@ def check_interface_paths(ctx: Ctx) -> None:
                 )
     for imp in ctx.import_files:
         if not imp.exists():
-            ctx.add("B4-bad-import", "error", file, None, f"import 指向的文件不存在：{imp}")
+            ctx.add(
+                "B4-bad-import", "error", file, None, f"import 指向的文件不存在：{imp}"
+            )
 
 
 def check_tasks(ctx: Ctx) -> None:
@@ -1248,8 +1326,12 @@ def collect_template_refs(ctx: Ctx) -> list[tuple[Path, str, str, int | None]]:
         for _path, value in walk_key(node.data, "template"):
             for v in to_list(value):
                 if isinstance(v, str):
-                    refs.append((node.file, node.name, v, find_line(node.file, node.name)))
-    lit_re = re.compile(r"[\"']([A-Za-z0-9_][A-Za-z0-9_\-. ]*(?:/[A-Za-z0-9_\-. ]+)*/?)[\"']")
+                    refs.append(
+                        (node.file, node.name, v, find_line(node.file, node.name))
+                    )
+    lit_re = re.compile(
+        r"[\"']([A-Za-z0-9_][A-Za-z0-9_\-. ]*(?:/[A-Za-z0-9_\-. ]+)*/?)[\"']"
+    )
     for path in ctx.agent_files:
         lines = lines_of(path)
         for i, line in enumerate(lines, 1):
@@ -1276,7 +1358,13 @@ def check_images(ctx: Ctx) -> None:
                     used_dirs.add(target)
                     imgs = [p for p in target.iterdir() if p.is_file()]
                     if not imgs:
-                        ctx.add("C4-empty-folder-template", "error", file, line, f"{owner} 的目录模板 {value!r} 里没有图片")
+                        ctx.add(
+                            "C4-empty-folder-template",
+                            "error",
+                            file,
+                            line,
+                            f"{owner} 的目录模板 {value!r} 里没有图片",
+                        )
                     hit = True
                     break
             elif target.is_file():
@@ -1284,7 +1372,13 @@ def check_images(ctx: Ctx) -> None:
                 hit = True
                 break
         if not hit:
-            ctx.add("C1-missing-template", "error", file, line, f"{owner} 引用的模板不存在：{value!r}")
+            ctx.add(
+                "C1-missing-template",
+                "error",
+                file,
+                line,
+                f"{owner} 引用的模板不存在：{value!r}",
+            )
 
     def is_used(path: Path) -> bool:
         if path in used:
@@ -1302,9 +1396,17 @@ def check_images(ctx: Ctx) -> None:
         if rel is None:
             continue
         if not IMAGE_EXT_RE.search(path.name):
-            ctx.add("C3-non-png", "warn", path, None, f"image 目录下有非 png 文件：{rel}")
+            ctx.add(
+                "C3-non-png", "warn", path, None, f"image 目录下有非 png 文件：{rel}"
+            )
         if not is_used(path):
-            ctx.add("C2-unused-image", "info", path, None, f"没有被任何 pipeline/agent 引用的图片：{rel}")
+            ctx.add(
+                "C2-unused-image",
+                "info",
+                path,
+                None,
+                f"没有被任何 pipeline/agent 引用的图片：{rel}",
+            )
         if not re.fullmatch(r"[A-Z][A-Za-z0-9]*", path.stem):
             ctx.add(
                 "C5-image-name",
@@ -1321,27 +1423,27 @@ def check_images(ctx: Ctx) -> None:
 
 
 def import_targets(line: str) -> set[str]:
-    """一行源码里 import 的模块名（带点的原名，如 `shared.rect`）。
+    """一行源码里 import 的模块名（带点的原名，如 `rect`）。
 
     只做文本匹配，不建 AST；`from __future__ import ...` 与字符串里的内容不会命中。
     """
     out: set[str] = set()
     m = re.match(r"\s*from\s+([A-Za-z_][\w.]*)\s+import\b", line)
     if m:
-        return {m.group(1)}                      # from a.b import c  → a.b
+        return {m.group(1)}  # from a.b import c  → a.b
     m = re.match(r"\s*import\s+([A-Za-z_][\w., ]*)", line)
     if m:
         for part in m.group(1).split(","):
             name = part.strip().split(" as ")[0].strip()
             if name:
-                out.add(name)                    # import a, b.c  → a / b.c
+                out.add(name)  # import a, b.c  → a / b.c
     return out
 
 
 def local_module(name: str, local: dict[str, Path]) -> str | None:
     """把 import 名解析成已发现的模块名。
 
-    先整名匹配（`shared.rect`），再取最左段（`shared`）与所有模块的顶层段比（`rect`）——
+    先整名匹配（`rect`），再取最左段（`shared`）与所有模块的顶层段比（`rect`）——
     后者是兄弟式 import：`from rect import ...` 里的 rect 没有点，靠 agent/main.py 把
     agent/shared/ 注入 sys.path 才能解析，这里按"某个子目录里有 rect.py"认。
     """
@@ -1351,7 +1453,7 @@ def local_module(name: str, local: dict[str, Path]) -> str | None:
     if top in local:
         return top
     for known in local:
-        # 子目录里的模块：`from rect import ...` 要靠 `shared.rect` 认出来。
+        # 子目录里的模块：`from rect import ...` 要靠 `rect` 认出来。
         # 比的是点分段（不是子串），免得 `abc` 误配 `x.abc.y`。
         if top in known.split("."):
             return known
@@ -1361,7 +1463,7 @@ def local_module(name: str, local: dict[str, Path]) -> str | None:
 def agent_module_root(files: list[Path]) -> Path:
     """这些 agent 源文件所属的根目录（= 公共父目录，正常是 `<仓库根>/agent`）。
 
-    公共父目录正好把 `agent/shared/rect.py` 还原成模块名 `shared.rect`，与 main.py 的
+    公共父目录正好把 `agent/shared/rect.py` 还原成模块名 `rect`，与 main.py 的
     sys.path 注入（agent/ 与 agent/shared/ 各自入 path）对得上。
     """
     if not files:
@@ -1371,12 +1473,12 @@ def agent_module_root(files: list[Path]) -> Path:
         # 只有一个文件时 commonpath 就是文件本身，要退到它的目录。
         common = Path(os.path.commonpath([str(p) for p in files]))
         return common if common.is_dir() else common.parent
-    except ValueError:      # 跨盘符（Windows）等极端情况
+    except ValueError:  # 跨盘符（Windows）等极端情况
         return files[0].parent
 
 
 def check_agent(ctx: Ctx) -> None:
-    # 模块名是"相对 agent/ 的点分名"：顶层 base.py → base，子目录 agent/shared/rect.py → shared.rect。
+    # 模块名是"相对 agent/ 的点分名"：顶层 base.py → base，子目录 agent/shared/rect.py → rect。
     root = agent_module_root([p for p in ctx.agent_files if p.suffix == ".py"])
     local: dict[str, Path] = {}
     for p in ctx.agent_files:
@@ -1446,23 +1548,43 @@ def check_agent(ctx: Ctx) -> None:
 
 def self_test() -> int:
     checks = [
-        (parse_ref("[JumpBack]Foo")[:2] == ("Foo", True), "parse_ref 字符串 + JumpBack"),
-        (parse_ref({"name": "Bar", "max_hit": 1})[:2] == ("Bar", False), "parse_ref 对象"),
+        (
+            parse_ref("[JumpBack]Foo")[:2] == ("Foo", True),
+            "parse_ref 字符串 + JumpBack",
+        ),
+        (
+            parse_ref({"name": "Bar", "max_hit": 1})[:2] == ("Bar", False),
+            "parse_ref 对象",
+        ),
         (parse_ref({"recognition": "OCR"})[0] is None, "parse_ref 内联定义"),
-        (always_hit({}) and always_hit({"recognition": "DirectHit"}), "always_hit DirectHit"),
+        (
+            always_hit({}) and always_hit({"recognition": "DirectHit"}),
+            "always_hit DirectHit",
+        ),
         (not always_hit({"recognition": "OCR"}), "always_hit 非 DirectHit"),
         (
-            complement_of({"recognition": "And", "inverse": True, "all_of": ["Z"]}) == "Z",
+            complement_of({"recognition": "And", "inverse": True, "all_of": ["Z"]})
+            == "Z",
             "complement_of",
         ),
-        (complement_of({"recognition": "And", "all_of": ["Z"]}) is None, "complement_of 非取反"),
+        (
+            complement_of({"recognition": "And", "all_of": ["Z"]}) is None,
+            "complement_of 非取反",
+        ),
         (
             strip_jsonc_comments('{"a": 1, // x\n "b": "// not comment"}')
             == '{"a": 1, \n "b": "// not comment"}',
             "strip_jsonc_comments",
         ),
-        ([v for _p, v in walk_key({"x": {"template": ["a.png"]}}, "template")] == [["a.png"]], "walk_key 嵌套"),
-        (re.fullmatch(r"[A-Z][A-Za-z0-9]*", "BattleButton") is not None, "CamelCase 判定"),
+        (
+            [v for _p, v in walk_key({"x": {"template": ["a.png"]}}, "template")]
+            == [["a.png"]],
+            "walk_key 嵌套",
+        ),
+        (
+            re.fullmatch(r"[A-Z][A-Za-z0-9]*", "BattleButton") is not None,
+            "CamelCase 判定",
+        ),
         (version_tuple("v1.10") > version_tuple("v1.3"), "版本号按数字比大小"),
         (
             ANNOTATION_RE.search("// INFO 使用命名规范版本 v1.2 校验年月日 26/10/13").group(1) == "1.2",  # type: ignore[union-attr]
@@ -1478,27 +1600,35 @@ def self_test() -> int:
         ctx.pipeline_files = [Path(f) for f in files]
         return ctx
 
-    ref_ctx = synth_ctx({
-        "TaskX": {"next": ["XEnterHome"]},
-        "XEnterHome": {"action": "Click", "next": ["XEnsureHome"]},
-        "XEnsureHome": {"next": ["XLoop"]},
-        "XLoop": {"next": ["XEnsureHome", "LoopErrorByTimes"]},
-    })
+    ref_ctx = synth_ctx(
+        {
+            "TaskX": {"next": ["XEnterHome"]},
+            "XEnterHome": {"action": "Click", "next": ["XEnsureHome"]},
+            "XEnsureHome": {"next": ["XLoop"]},
+            "XLoop": {"next": ["XEnsureHome", "LoopErrorByTimes"]},
+        }
+    )
     check_a13_references(ref_ctx)
     ref_ids = {f.id for f in ref_ctx.findings}
     checks += [
         ("A13-ensure-jumpback" in ref_ids, "引用就位节点未带 [JumpBack] 会被拦"),
         ("A13-ensure-loop-next" in ref_ids, "就位节点的 next 里放 Loop 会被拦"),
-        (not any("LoopErrorByTimes" in f.message for f in ref_ctx.findings), "LoopErrorByTimes 属骨架，不误报"),
+        (
+            not any("LoopErrorByTimes" in f.message for f in ref_ctx.findings),
+            "LoopErrorByTimes 属骨架，不误报",
+        ),
     ]
 
-    naming_ctx = synth_ctx({
-        "TaskY": {"next": ["YProbeHome", "YClickYes", "YLoop", "YEnterHome"]},
-        "YProbeHome": {"next": ["YEnterHome"]},
-        "YClickYes": {"action": "Click"},
-        "YLoop": {"action": "Click"},
-        "YEnterHome": {"action": "Click", "custom_action_param": {"badKey": 1}},
-    }, files=("BadName.json",))
+    naming_ctx = synth_ctx(
+        {
+            "TaskY": {"next": ["YProbeHome", "YClickYes", "YLoop", "YEnterHome"]},
+            "YProbeHome": {"next": ["YEnterHome"]},
+            "YClickYes": {"action": "Click"},
+            "YLoop": {"action": "Click"},
+            "YEnterHome": {"action": "Click", "custom_action_param": {"badKey": 1}},
+        },
+        files=("BadName.json",),
+    )
     check_a13_naming(naming_ctx)
     check_a13_references(naming_ctx)
     naming_ids = {f.id for f in naming_ctx.findings}
@@ -1520,7 +1650,10 @@ def self_test() -> int:
         (vf_id("1.2") == "E2-spec-version", "文档版本更低 → 也报 E2"),
         (vf_id(NAMING_SPEC_VERSION.lstrip("v")) == "", "版本一致 → 不报"),
         (vf_id(None) == "E1-spec-missing", "找不到版本号 → E1"),
-        (version_tuple("v1.2") < version_tuple(NAMING_SPEC_VERSION), "旧注解比当前版本低"),
+        (
+            version_tuple("v1.2") < version_tuple(NAMING_SPEC_VERSION),
+            "旧注解比当前版本低",
+        ),
     ]
 
     bad = [name for ok, name in checks if not ok]
@@ -1542,7 +1675,11 @@ def build_ctx(args) -> Ctx:
     repo_root = Path(__file__).resolve().parents[2]
     ctx = Ctx(repo_root=repo_root)
 
-    interface_path = Path(args.interface).resolve() if args.interface else repo_root / "assets" / "interface.json"
+    interface_path = (
+        Path(args.interface).resolve()
+        if args.interface
+        else repo_root / "assets" / "interface.json"
+    )
     if interface_path.is_file():
         ctx.interface_file = interface_path
         ctx.interface_dir = interface_path.parent
@@ -1551,11 +1688,25 @@ def build_ctx(args) -> Ctx:
             if isinstance(data, dict):
                 ctx.interface = data
             else:
-                ctx.add("B0-parse-error", "error", interface_path, None, "interface.json 顶层必须是对象")
+                ctx.add(
+                    "B0-parse-error",
+                    "error",
+                    interface_path,
+                    None,
+                    "interface.json 顶层必须是对象",
+                )
         except Exception as e:  # noqa: BLE001
-            ctx.add("B0-parse-error", "error", interface_path, None, f"JSONC 解析失败：{e}")
+            ctx.add(
+                "B0-parse-error", "error", interface_path, None, f"JSONC 解析失败：{e}"
+            )
     elif args.interface:
-        ctx.add("B0-parse-error", "error", Path(args.interface), None, "--interface 指定的文件不存在")
+        ctx.add(
+            "B0-parse-error",
+            "error",
+            Path(args.interface),
+            None,
+            "--interface 指定的文件不存在",
+        )
 
     pipeline_dirs: list[Path] = []
     task_dirs: list[Path] = []
@@ -1674,7 +1825,9 @@ def report(ctx: Ctx, fmt: str, fail_on: str, ignores: set[str]) -> int:
         return False
 
     findings = [f for f in ctx.findings if f.id not in ignores and in_scope(f)]
-    findings.sort(key=lambda f: (f.file, f.line or 0, SEVERITY_ORDER.get(f.severity, 9), f.id))
+    findings.sort(
+        key=lambda f: (f.file, f.line or 0, SEVERITY_ORDER.get(f.severity, 9), f.id)
+    )
     counts = {s: 0 for s in SEVERITY_ORDER}
     for f in findings:
         counts[f.severity] = counts.get(f.severity, 0) + 1
@@ -1695,13 +1848,19 @@ def report(ctx: Ctx, fmt: str, fail_on: str, ignores: set[str]) -> int:
         )
     elif fmt == "github":
         for f in findings:
-            level = {"error": "error", "warn": "warning", "info": "notice"}.get(f.severity, "notice")
+            level = {"error": "error", "warn": "warning", "info": "notice"}.get(
+                f.severity, "notice"
+            )
             loc = f"file={f.file}" + (f",line={f.line}" if f.line else "")
             print(f"::{level} {loc},title={f.id}::{f.message}")
-        print(f"::notice::validate_refs: 命名规范 {NAMING_SPEC_VERSION} / error {counts['error']} / "
-              f"warn {counts['warn']} / info {counts['info']}")
+        print(
+            f"::notice::validate_refs: 命名规范 {NAMING_SPEC_VERSION} / error {counts['error']} / "
+            f"warn {counts['warn']} / info {counts['info']}"
+        )
     else:
-        print(f"命名规范 {NAMING_SPEC_VERSION}（本脚本实现的版本；文档 {NAMING_SPEC.as_posix()}）")
+        print(
+            f"命名规范 {NAMING_SPEC_VERSION}（本脚本实现的版本；文档 {NAMING_SPEC.as_posix()}）"
+        )
         cur = None
         for f in findings:
             if f.file != cur:
@@ -1709,7 +1868,9 @@ def report(ctx: Ctx, fmt: str, fail_on: str, ignores: set[str]) -> int:
                 print(f"\n{cur}")
             loc = f":{f.line}" if f.line else ""
             print(f"  [{f.severity.upper():5}] {f.id:<28}{loc} {f.message}")
-        print(f"\nerror {counts['error']} / warn {counts['warn']} / info {counts['info']}")
+        print(
+            f"\nerror {counts['error']} / warn {counts['warn']} / info {counts['info']}"
+        )
 
     threshold = {"error": 0, "warn": 1, "info": 2, "none": 99}.get(fail_on, 0)
     worst = min((SEVERITY_ORDER.get(f.severity, 9) for f in findings), default=99)
@@ -1727,11 +1888,15 @@ def _ensure_printable_stdout() -> None:
     try:
         if sys.stdout.isatty():
             return
-    except Exception:  # noqa: BLE001, S110 - 探测 isatty 失败就当"不是终端"，继续往下改编码
+    except (
+        Exception
+    ):  # noqa: BLE001, S110 - 探测 isatty 失败就当"不是终端"，继续往下改编码
         pass
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
-    except Exception:  # noqa: BLE001, S110 - 老解释器/被包装过的 stdout 没有 reconfigure，保持原样即可
+    except (
+        Exception
+    ):  # noqa: BLE001, S110 - 老解释器/被包装过的 stdout 没有 reconfigure，保持原样即可
         pass
 
 
@@ -1740,13 +1905,21 @@ def main(argv: list[str] | None = None) -> int:
 
     parser = argparse.ArgumentParser(description="资源一致性校验（跨文件名字与约定）")
     parser.add_argument("--interface", help="interface.json 路径")
-    parser.add_argument("--pipeline", action="append", help="pipeline 目录/文件（可重复）")
+    parser.add_argument(
+        "--pipeline", action="append", help="pipeline 目录/文件（可重复）"
+    )
     parser.add_argument("--tasks", action="append", help="tasks 目录（可重复）")
-    parser.add_argument("--agent", action="append", help="agent 目录（可重复；目录递归扫描）")
+    parser.add_argument(
+        "--agent", action="append", help="agent 目录（可重复；目录递归扫描）"
+    )
     parser.add_argument("--image", action="append", help="image 根目录（可重复）")
     parser.add_argument("--format", choices=["text", "github", "json"], default="text")
-    parser.add_argument("--fail-on", choices=["error", "warn", "info", "none"], default="error")
-    parser.add_argument("--ignore", action="append", default=[], help="忽略的检查 id，逗号分隔，可重复")
+    parser.add_argument(
+        "--fail-on", choices=["error", "warn", "info", "none"], default="error"
+    )
+    parser.add_argument(
+        "--ignore", action="append", default=[], help="忽略的检查 id，逗号分隔，可重复"
+    )
     parser.add_argument("--self-test", action="store_true", help="跑内置自检后退出")
     args = parser.parse_args(argv)
 
@@ -1783,7 +1956,9 @@ def main(argv: list[str] | None = None) -> int:
     if domains["image"]:
         check_images(ctx)
 
-    ignores = {i.strip() for group in args.ignore for i in group.split(",") if i.strip()}
+    ignores = {
+        i.strip() for group in args.ignore for i in group.split(",") if i.strip()
+    }
     return report(ctx, args.format, args.fail_on, ignores)
 
 

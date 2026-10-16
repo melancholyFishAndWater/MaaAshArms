@@ -7,6 +7,10 @@
         "**/node_modules",
         "**/__pycache__"
     ],
+    "python.analysis.extraPaths": [
+        "agent",
+        "agent/shared"
+    ],
     "typeCheckingMode": "basic",
     "reportMissingImports": "warning",
     "reportMissingTypeStubs": "none"

@@ -114,5 +114,8 @@
         "node_modules": true,
         "docs/node_modules": true,
         "**/__pycache__": true
-    }
+    },
+    "python.analysis.extraPaths": [
+        "./agent/shared"
+    ]
 }

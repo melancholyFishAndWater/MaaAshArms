@@ -14,9 +14,9 @@ from maa.custom_recognition import CustomRecognition
 from maa.custom_action import CustomAction
 from maa.context import Context
 
-from shared.agentlog import log
-from shared.params import parse_params
-from shared.rect import DEFAULT_HIT_BOX
+from agentlog import log
+from params import parse_params
+from rect import DEFAULT_HIT_BOX
 
 import factory
 import battle_training

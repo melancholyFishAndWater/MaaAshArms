@@ -6,7 +6,7 @@ from maa.agent.agent_server import AgentServer
 from maa.custom_recognition import CustomRecognition
 from maa.custom_action import CustomAction
 from maa.context import Context, Rect
-from shared.rect import DEFAULT_HIT_BOX
+from rect import DEFAULT_HIT_BOX
 
 # ---------- reco ----------
 

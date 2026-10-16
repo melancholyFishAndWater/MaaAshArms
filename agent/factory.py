@@ -15,8 +15,8 @@ from maa.context import (
 )
 from maa.pipeline import JTemplateMatch, JOCR
 
-from shared.agentlog import log
-from shared.rect import DEFAULT_HIT_BOX, toTuple
+from agentlog import log
+from rect import DEFAULT_HIT_BOX, toTuple
 
 # 建造次数
 build_times: int = 0

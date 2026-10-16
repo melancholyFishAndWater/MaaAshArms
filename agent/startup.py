@@ -2,8 +2,8 @@ from maa.agent.agent_server import AgentServer
 from maa.custom_action import CustomAction
 from maa.context import Context
 
-from shared.agentlog import log
-from shared.params import parse_params
+from agentlog import log
+from params import parse_params
 
 
 @AgentServer.custom_action("StartUpFailedAct")

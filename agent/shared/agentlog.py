@@ -50,6 +50,8 @@ _console_handler: logging.Handler | None = None
 
 def _build_logger() -> logging.Logger:
     logger = logging.getLogger("maasharms")
+    if logger.handlers:
+        return logger
     logger.setLevel(TRACE)
     logger.propagate = False
 

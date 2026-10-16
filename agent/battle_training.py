@@ -13,9 +13,9 @@ from maa.context import (
 )
 from maa.pipeline import JActionType, JStopTask, JTemplateMatch, JOCR
 
-from shared.agentlog import log
-from shared.params import parse_attach, parse_params
-from shared.rect import DEFAULT_HIT_BOX, toTuple
+from agentlog import log
+from params import parse_attach, parse_params
+from rect import DEFAULT_HIT_BOX, toTuple
 
 # 总关卡名
 _all = ["战斗演习", "狩猎行动", "拓展训练", "资源筹备"]
