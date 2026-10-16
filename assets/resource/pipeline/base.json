@@ -216,7 +216,7 @@
         ]
     },
     "IsFreezes": {
-        "desc": "若画面冻结则结束任务 注意覆写roi",
+        "desc": "若画面连续k次冻结则识别成功 注意覆写roi",
         "recognition": "Custom",
         "custom_recognition": "IsFreezesReco",
         "roi": [
