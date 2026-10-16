@@ -1,6 +1,7 @@
-import time, json
+import time
 from re import search
-from typing import Any, TypedDict
+from typing import Any
+from numpy import ndarray, dtype
 
 from maa.agent.agent_server import AgentServer
 from maa.custom_recognition import CustomRecognition
@@ -10,19 +11,12 @@ from maa.context import (
     JRecognitionType,
     Rect,
     TemplateMatchResult,
-    RecognitionDetail,
     OCRResult,
 )
-from maa.pipeline import (
-    JActionType,
-    JClick,
-    JStopTask,
-    JTemplateMatch,
-    JOCR,
-    JColorMatch,
-)
-from numpy import ndarray, dtype
-from base import DEFAULT_HIT_BOX, addListToTuple, toTuple, log
+from maa.pipeline import JTemplateMatch, JOCR
+
+from shared.agentlog import log
+from shared.rect import DEFAULT_HIT_BOX, toTuple
 
 # 建造次数
 build_times: int = 0

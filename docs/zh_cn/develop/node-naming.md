@@ -175,7 +175,7 @@
 ### 参数键
 
 - `custom_recognition_param` / `custom_action_param` 必须使用字典，键使用 `snake_case`，值是描述真实对象的词
-  （怎么读见 `agent/base.py:parse_params` 与 [MaaFramework 文档](https://maafw.com/docs/1.1-QuickStarted)）。
+  （怎么读见 `agent/shared/params.py` 的 `parse_params` 与 [MaaFramework 文档](https://maafw.com/docs/1.1-QuickStarted)）。
 - 与层级相关的键按第五节命名。
 - 同名键在不同任务里含义必须相同；含义不同就换名字。
 

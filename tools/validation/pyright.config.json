@@ -1,11 +1,13 @@
 {
-    "include": ["../../tools", "../../agent"],
-    "exclude": ["**/node_modules", "**/__pycache__"],
+    "include": [
+        "../../tools",
+        "../../agent"
+    ],
+    "exclude": [
+        "**/node_modules",
+        "**/__pycache__"
+    ],
     "typeCheckingMode": "basic",
-    // agent/ 的模块是兄弟式 import（`from base import ...`），靠运行时的 sys.path
-    // 注入才成立；不把 agent/ 加进 extraPaths，pyright 解析不到 base/factory 等模块，
-    // 会把 `Generic[T]` 里的 T 当成 Unknown 并误报 reportInvalidTypeForm。
-    "extraPaths": ["../../agent", "../../tools"],
     "reportMissingImports": "warning",
     "reportMissingTypeStubs": "none"
 }

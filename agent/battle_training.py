@@ -1,10 +1,5 @@
-"""
-训练所 agent 模块
-
-INFO 使用命名规范版本 v1.2 校验年月日 26/10/13
-"""
-
 from typing import Any
+from numpy import ndarray, dtype
 
 from maa.agent.agent_server import AgentServer
 from maa.custom_recognition import CustomRecognition
@@ -17,9 +12,10 @@ from maa.context import (
     OCRResult,
 )
 from maa.pipeline import JActionType, JStopTask, JTemplateMatch, JOCR
-from numpy import ndarray, dtype
 
-from base import parse_attach, parse_params, toTuple, log, DEFAULT_HIT_BOX
+from shared.agentlog import log
+from shared.params import parse_attach, parse_params
+from shared.rect import DEFAULT_HIT_BOX, toTuple
 
 # 总关卡名
 _all = ["战斗演习", "狩猎行动", "拓展训练", "资源筹备"]

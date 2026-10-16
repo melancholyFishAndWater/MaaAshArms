@@ -3,8 +3,8 @@
   "scripts": {
     "sync:schema": "node tools/sync-schema.mjs",
     "optimize:images": "node tools/optimize-images.mjs",
-    "check:refs": "python tools/validation/validate_refs.py",
-    "check:refs:github": "python tools/validation/validate_refs.py --format github"
+    "check:refs": "python tools/validation/validate_refs.py --agent agent",
+    "check:refs:github": "python tools/validation/validate_refs.py --agent agent --format github"
   },
   "devDependencies": {
     "@nekosu/maa-tools": "1.1.3",

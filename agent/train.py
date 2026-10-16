@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Literal
+from re import search
+from numpy import ndarray
+from typing import Literal
 
 from maa.agent.agent_server import AgentServer
 from maa.custom_recognition import CustomRecognition
@@ -12,14 +14,12 @@ from maa.context import (
     JActionType,
     Rect,
     TemplateMatchResult,
-    RecognitionDetail,
     OCRResult,
 )
-from maa.pipeline import JStopTask, JTarget, JTemplateMatch, JOCR, JSwipe
-from re import search
-from numpy import ndarray, dtype
+from maa.pipeline import JTarget, JTemplateMatch, JOCR, JSwipe
 
-from base import DEFAULT_HIT_BOX, addListToTuple, is_hit, toTuple, log
+from shared.agentlog import log
+from shared.rect import DEFAULT_HIT_BOX, toTuple
 
 _TrainStatus = Literal["acceptable", "rewardable", "busy"]
 

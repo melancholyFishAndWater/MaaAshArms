@@ -2,11 +2,19 @@ import os
 import sys
 from pathlib import Path
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# 兄弟式 import：agent/ 与 agent/shared/ 都进 sys.path，两个目录下的模块都按顶层名导入
+# （`from rect import ...`）。**只加 agent/ 不够**：shared/ 下的模块不在 agent/ 目录里。
+# 反过来不要把 shared/ 做成带 __init__.py 的包 —— 那样 `rect` 与 `shared.rect` 会各成一份模块对象，
+# agentlog.log 的单例、generic 的 _times_by_name / _move_entry 都会被复制成两份。
+_AGENT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(_AGENT_DIR, "shared"))
+if _AGENT_DIR not in sys.path:
+    sys.path.insert(0, _AGENT_DIR)
 
 # 必须在 import maa 之前：maa 在导入时读 MAAFW_BINARY_PATH 把原生库目录定死
 # （maa/__init__.py:6-9）。发行包里指向客户端那份 runtimes/<os>-<arch>/native，
 # 开发态找不到就不设变量、继续用 wheel 自带的 site-packages/maa/bin。
+# 由此 agent/shared/*.py 一律不得 import maafw_paths：那会提前把 maa 拉进来，本行就白设了。
 import maafw_paths
 
 maafw_paths.ensure_maafw_binary_path()
@@ -14,12 +22,13 @@ maafw_paths.ensure_maafw_binary_path()
 from maa.agent.agent_server import AgentServer
 from maa.tasker import Tasker
 
-from base import pi_check_maafw_version, pi_log_snapshot
+from shared.pienv import pi_check_maafw_version, pi_log_snapshot
 import battle_replays
 import battle_training
 import entrust
 import factory_fast
 import factory
+import shared.generic
 import parent_tracker
 import startup
 import store

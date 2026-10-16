@@ -1,29 +1,12 @@
-import time, json
 import factory
-from re import search
-from typing import Any, TypedDict
+from typing import Any
+from numpy import ndarray, dtype
 
 from maa.agent.agent_server import AgentServer
 from maa.custom_recognition import CustomRecognition
 from maa.custom_action import CustomAction
-from maa.context import (
-    Context,
-    JRecognitionType,
-    Rect,
-    TemplateMatchResult,
-    RecognitionDetail,
-    OCRResult,
-)
-from maa.pipeline import (
-    JActionType,
-    JClick,
-    JStopTask,
-    JTemplateMatch,
-    JOCR,
-    JColorMatch,
-)
-from numpy import ndarray, dtype
-from base import DEFAULT_HIT_BOX, addListToTuple, toTuple
+from maa.context import Context, Rect
+from shared.rect import DEFAULT_HIT_BOX
 
 # ---------- reco ----------
 

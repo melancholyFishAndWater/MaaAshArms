@@ -7,18 +7,22 @@ import os
 import tempfile
 from pathlib import Path
 from datetime import timedelta, datetime
-
-from typing import Callable, Generic
+from typing import Callable, Generic, TypeVar
 
 from maa.agent.agent_server import AgentServer
 from maa.custom_recognition import CustomRecognition
 from maa.custom_action import CustomAction
 from maa.context import Context
 
-from base import DEFAULT_HIT_BOX, log, T, parse_params
+from shared.agentlog import log
+from shared.params import parse_params
+from shared.rect import DEFAULT_HIT_BOX
 
 import factory
 import battle_training
+
+# Store 的泛型参数
+T = TypeVar("T")
 
 
 class Store(Generic[T]):

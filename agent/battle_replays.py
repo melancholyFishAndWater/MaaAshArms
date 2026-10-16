@@ -1,23 +1,9 @@
-import json
-from typing import Any, Literal
-
 from maa.agent.agent_server import AgentServer
-from maa.custom_recognition import CustomRecognition
 from maa.custom_action import CustomAction
-from maa.context import (
-    Context,
-    JRecognitionType,
-    JActionType,
-    Rect,
-    TemplateMatchResult,
-    RecognitionDetail,
-    OCRResult,
-)
-from maa.pipeline import JStopTask, JTarget, JTemplateMatch, JOCR, JSwipe
-from re import search
-from numpy import ndarray, dtype
+from maa.context import Context
 
-from base import DEFAULT_HIT_BOX, addListToTuple, is_hit, toTuple, log, parse_params
+from shared.agentlog import log
+from shared.params import parse_params
 
 # 自律完成次数
 _finish_count = 0

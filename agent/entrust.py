@@ -1,3 +1,4 @@
+from re import search
 from typing import Literal
 
 from maa.agent.agent_server import AgentServer
@@ -11,9 +12,10 @@ from maa.context import (
     OCRResult,
 )
 from maa.pipeline import JOCR
-from re import search
 
-from base import DEFAULT_HIT_BOX, log, parse_attach
+from shared.agentlog import log
+from shared.params import parse_attach
+from shared.rect import DEFAULT_HIT_BOX
 
 # 大关名
 stage_name: str = "结晶废墟"

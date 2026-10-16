@@ -101,8 +101,14 @@ node tools/validation/check_pyright.mjs
   `.agents/evidence/project.md` 的「本机跑校验的环境坑」。
 - **pyright 会报一批 `reportMissingImports` warning**（PIL / maa / jsonschema）。那是解析环境
   的事，不是代码问题——`pyright.config.json` 里已把该规则降成 warning，error 计数不受影响。
-  `agent/` 的兄弟式 import（`from base import ...`）靠配置文件里的 `extraPaths` 才解析得到；
-  少了它 `Generic[T]` 里的 `T` 会被当成 `Unknown` 并误报 `reportInvalidTypeForm`。
+  `agent/` 的兄弟式 import（`from rect import ...`）靠配置文件里的 `extraPaths` 才解析得到，
+  **`agent/` 与 `agent/shared/` 两个目录都要列**（`shared/` 下的模块按顶层名互相导入）；
+  少了会误报 `reportMissingImports`，`agent/store.py` 的 `Generic[T]` 也会跟着报错。
+- **`validate_refs.py` 的 agent 发现是递归的**：`rglob` 找 `<agent 目录>/**/*.py`，模块名按
+  "相对 agent 根的点分名"建图（`agent/shared/rect.py` → `shared.rect`），`--agent` 传目录时同样递归。
+  `D1-unimported-module` 因此能追查子目录里的模块（`agent/main.py` 的 import 图是唯一入口）；
+  反过来，**把注册类挪进子目录时不要只 `glob` 顶层**，否则 `A2` / `A3` / `D2` 与"注册名必须能在
+  agent 里搜到"会静默漏掉它们。`--agent` 传子目录会把报告范围收窄到该目录，要覆盖全树就传 `agent`。
 - **`uvx ruff` 能跑但要注意目录**：受限沙箱下 `UV_TOOL_DIR` / `UV_CACHE_DIR` 要指到工作区内，
   否则报 `failed to create directory ... os error 5`。
 - **`ruff` 的默认规则集里有大量本仓库从未采纳的风格偏好**（`TRY004` 异常类型判定、`PERF402`

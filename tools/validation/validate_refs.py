@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 from dataclasses import dataclass, field
@@ -1319,21 +1320,83 @@ def check_images(ctx: Ctx) -> None:
 # --------------------------------------------------------------------------
 
 
+def import_targets(line: str) -> set[str]:
+    """一行源码里 import 的模块名（带点的原名，如 `shared.rect`）。
+
+    只做文本匹配，不建 AST；`from __future__ import ...` 与字符串里的内容不会命中。
+    """
+    out: set[str] = set()
+    m = re.match(r"\s*from\s+([A-Za-z_][\w.]*)\s+import\b", line)
+    if m:
+        return {m.group(1)}                      # from a.b import c  → a.b
+    m = re.match(r"\s*import\s+([A-Za-z_][\w., ]*)", line)
+    if m:
+        for part in m.group(1).split(","):
+            name = part.strip().split(" as ")[0].strip()
+            if name:
+                out.add(name)                    # import a, b.c  → a / b.c
+    return out
+
+
+def local_module(name: str, local: dict[str, Path]) -> str | None:
+    """把 import 名解析成已发现的模块名。
+
+    先整名匹配（`shared.rect`），再取最左段（`shared`）与所有模块的顶层段比（`rect`）——
+    后者是兄弟式 import：`from rect import ...` 里的 rect 没有点，靠 agent/main.py 把
+    agent/shared/ 注入 sys.path 才能解析，这里按"某个子目录里有 rect.py"认。
+    """
+    if name in local:
+        return name
+    top = name.split(".")[0]
+    if top in local:
+        return top
+    for known in local:
+        # 子目录里的模块：`from rect import ...` 要靠 `shared.rect` 认出来。
+        # 比的是点分段（不是子串），免得 `abc` 误配 `x.abc.y`。
+        if top in known.split("."):
+            return known
+    return None
+
+
+def agent_module_root(files: list[Path]) -> Path:
+    """这些 agent 源文件所属的根目录（= 公共父目录，正常是 `<仓库根>/agent`）。
+
+    公共父目录正好把 `agent/shared/rect.py` 还原成模块名 `shared.rect`，与 main.py 的
+    sys.path 注入（agent/ 与 agent/shared/ 各自入 path）对得上。
+    """
+    if not files:
+        return Path(".")
+    try:
+        # 取文件路径的公共目录（commonpath 对 `agent/main.py` 与 `agent/shared/rect.py` 给 `<根>/agent`）；
+        # 只有一个文件时 commonpath 就是文件本身，要退到它的目录。
+        common = Path(os.path.commonpath([str(p) for p in files]))
+        return common if common.is_dir() else common.parent
+    except ValueError:      # 跨盘符（Windows）等极端情况
+        return files[0].parent
+
+
 def check_agent(ctx: Ctx) -> None:
-    local = {p.stem: p for p in ctx.agent_files if p.suffix == ".py"}
+    # 模块名是"相对 agent/ 的点分名"：顶层 base.py → base，子目录 agent/shared/rect.py → shared.rect。
+    root = agent_module_root([p for p in ctx.agent_files if p.suffix == ".py"])
+    local: dict[str, Path] = {}
+    for p in ctx.agent_files:
+        if p.suffix != ".py":
+            continue
+        try:
+            rel = p.relative_to(root)
+        except ValueError:
+            rel = Path(p.name)
+        local[".".join(rel.with_suffix("").parts)] = p
+
     graph: dict[str, set[str]] = {}
     for name, path in local.items():
         deps: set[str] = set()
         for line in lines_of(path):
-            m = re.match(r"\s*from\s+([A-Za-z_]\w*)\s+import\b", line)
-            if m:
-                deps.add(m.group(1))
-                continue
-            m = re.match(r"\s*import\s+([A-Za-z_][\w, ]*)", line)
-            if m:
-                for part in m.group(1).split(","):
-                    deps.add(part.strip().split(" as ")[0].strip())
-        graph[name] = {d for d in deps if d in local}
+            for target in import_targets(line):
+                dep = local_module(target, local)
+                if dep is not None:
+                    deps.add(dep)
+        graph[name] = deps
 
     reachable: set[str] = set()
     stack = [d for d in graph.get("main", set())]
@@ -1347,12 +1410,13 @@ def check_agent(ctx: Ctx) -> None:
         if name == "main":
             continue
         if name not in reachable:
+            rel = f"{name.replace('.', '/')}.py"
             ctx.add(
                 "D1-unimported-module",
                 "error",
                 path,
                 None,
-                f"agent/{name}.py 没有被 main.py 导入（装饰器不执行 -> 注册不生效）",
+                f"agent/{rel} 没有被 main.py 导入（装饰器不执行 -> 注册不生效）",
             )
 
     for name, reg in ctx.regs.items():
@@ -1517,10 +1581,12 @@ def build_ctx(args) -> Ctx:
                 ctx.import_files.append((base / imp).resolve())
         for arg in to_list((ctx.interface.get("agent") or {}).get("child_args")):
             if isinstance(arg, str) and arg.endswith(".py"):
-                # 源码树里 interface 在 assets/ 下、agent 在仓库根下，打包后才同层，两个基准都试
+                # 源码树里 interface 在 assets/ 下、agent 在仓库根下，打包后才同层，两个基准都试。
+                # 用 rglob：注册类可能落在 agent/ 的子目录（agent/shared/**），只 glob 顶层会静默漏掉，
+                # 让 A2/A3/D2 与"注册名必须能在 agent 里搜到"这几条对这些模块不再生效。
                 for cand in (base / arg, repo_root / arg):
                     if cand.is_file():
-                        ctx.agent_files = sorted(cand.parent.glob("*.py"))
+                        ctx.agent_files = sorted(cand.parent.rglob("*.py"))
                         break
                 if ctx.agent_files:
                     break
@@ -1540,7 +1606,7 @@ def build_ctx(args) -> Ctx:
         image_dirs.append(extra)
     explicit_agent: list[Path] = []
     for p in ctx.explicit["agent"]:
-        explicit_agent.extend(sorted(p.glob("*.py")) if p.is_dir() else [p])
+        explicit_agent.extend(sorted(p.rglob("*.py")) if p.is_dir() else [p])
     if explicit_agent:
         ctx.agent_files = explicit_agent
 
@@ -1560,7 +1626,7 @@ def build_ctx(args) -> Ctx:
     if not ctx.agent_files and not args.agent:
         d = repo_root / "agent"
         if d.is_dir():
-            ctx.agent_files = sorted(d.glob("*.py"))
+            ctx.agent_files = sorted(d.rglob("*.py"))
 
     ctx.image_roots = image_dirs
 
@@ -1676,7 +1742,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--interface", help="interface.json 路径")
     parser.add_argument("--pipeline", action="append", help="pipeline 目录/文件（可重复）")
     parser.add_argument("--tasks", action="append", help="tasks 目录（可重复）")
-    parser.add_argument("--agent", action="append", help="agent 目录（可重复）")
+    parser.add_argument("--agent", action="append", help="agent 目录（可重复；目录递归扫描）")
     parser.add_argument("--image", action="append", help="image 根目录（可重复）")
     parser.add_argument("--format", choices=["text", "github", "json"], default="text")
     parser.add_argument("--fail-on", choices=["error", "warn", "info", "none"], default="error")
