@@ -303,7 +303,7 @@
             "[JumpBack]ClickUpperRight"
         ],
         "focus": {
-            "Node.NextList.Failed": {
+            "Node.PipelineNode.Failed": {
                 "content": "严重错误 返回游戏主页面失败 task_id: {task_id}",
                 "display": [
                     "log",
