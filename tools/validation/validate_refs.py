@@ -140,7 +140,7 @@ CLICK_SYNONYMS = ("ClickYes", "ClickNo", "ClickSure")
 
 # 本脚本按哪一版《节点命名与分类》实现。文档头部写着「版本号: vX.Y」；改了收录的规则就同步 +0.1。
 # 不一致时报 E2，提醒人复核新规则要不要收进脚本——版本号只印在输出里而没人对，等于没有。
-NAMING_SPEC_VERSION = "v1.3"
+NAMING_SPEC_VERSION = "v1.4"
 NAMING_SPEC = Path("docs/zh_cn/develop/node-naming.md")
 # 编辑器里在用的写法模板：新节点的字段骨架从它来（`$comment` 上写着对应规范版本）
 PIPELINE_SNIPPETS = Path("tools/vscode/pipeline.snippets.schema.json")
@@ -756,7 +756,54 @@ def check_a6_complement(ctx: Ctx) -> None:
                     reported = True
 
 
+def jumpback_descendants(root: str, nodes: dict[str, "Node"], limit: int = 64) -> set[str]:
+    """从 `root` 出发、沿不带 `[JumpBack]` 的 next 引用能到达的节点集合（含 root）。
+
+    这些节点是从 `root` 往下栈住的"后代"：若某节点能通过它们再 `[JumpBack]` 回到
+    `root`，那 `root` 就是它的祖先，弹回层次会绕圈。
+    """
+    seen: set[str] = set()
+    stack = [root]
+    while stack and len(seen) < limit:
+        cur = stack.pop()
+        if cur in seen:
+            continue  # 出栈时判：环上的节点仍要能再次入栈，否则祖先判定会漏掉自己
+        seen.add(cur)
+        node = nodes.get(cur)
+        if node is None:
+            continue
+        for _key, items in ref_lists(node.data):
+            for item in items:
+                name, jump, enabled = parse_ref(item)
+                if name and enabled and not jump:
+                    stack.append(name)
+    return seen
+
+
+def jumpback_parent_loops(node: "Node", nodes: dict[str, "Node"], limit: int = 64) -> set[str]:
+    """`node` 用 `[JumpBack]` 指向的那些"祖先 Loop"。
+
+    判定：某 `[JumpBack]` 目标 `L` 是祖先，当且仅当 `node` 能从 `L` 沿不带
+    `[JumpBack]` 的引用到达（拓扑上的"后代"）。只看 `L` 以 `Loop` 结尾的引用。
+    """
+    parents: set[str] = set()
+    for _key, items in ref_lists(node.data):
+        for item in items:
+            name, jump, _enabled = parse_ref(item)
+            if not jump or not name or "Loop" not in name:
+                continue
+            if node.name in jumpback_descendants(name, nodes, limit):
+                parents.add(name)
+    return parents
+
+
 def check_a7_jumpback(ctx: Ctx) -> None:
+    """`[JumpBack]` 的落点规则（结构文档 §4）。
+
+    - 指向自己：那是自循环候选，不该带 `[JumpBack]` → error。
+    - 指向 `Loop`：同任务子 Loop 是允许的（"先干完这段再回来"）→ info；
+      指向自己的祖先 Loop（弹回层次会绕圈）→ error。
+    """
     for node in ctx.nodes.values():
         for key, items in ref_lists(node.data):
             for item in items:
@@ -769,16 +816,29 @@ def check_a7_jumpback(ctx: Ctx) -> None:
                         "error",
                         node.file,
                         find_line(node.file, node.name),
-                        f"{node.name}.{key} 用 [JumpBack] 指向自己；自循环应写成普通候选（结构文档 §4.3）",
+                        f"{node.name}.{key} 用 [JumpBack] 指向自己；自循环应写成普通候选（结构文档 §4）",
                     )
-                elif name.endswith("Loop"):
-                    ctx.add(
-                        "A7-jumpback-target",
-                        "error",
-                        node.file,
-                        find_line(node.file, node.name),
-                        f"{node.name}.{key} 用 [JumpBack] 指向工作循环 {name}（结构文档 §4.3 禁止）",
-                    )
+                elif "Loop" in name:
+                    target_file = ctx.nodes[name].file if name in ctx.nodes else node.file
+                    scope = "本文件" if target_file == node.file else "跨文件"
+                    if name in jumpback_parent_loops(node, ctx.nodes):
+                        ctx.add(
+                            "A7-jumpback-target",
+                            "error",
+                            node.file,
+                            find_line(node.file, node.name),
+                            f"{node.name}.{key} 用 [JumpBack] 指向自己的祖先工作循环 {name}"
+                            f"（弹回层次会绕圈，结构文档 §4）",
+                        )
+                    else:
+                        ctx.add(
+                            "A7-jumpback-target",
+                            "info",
+                            node.file,
+                            find_line(node.file, node.name),
+                            f"{node.name}.{key} 用 [JumpBack] 指向工作循环 {name}（{scope}）："
+                            f'结构文档 §4 允许"先干完这段再回来"的子 Loop 串联，确认它不是祖先即可',
+                        )
 
 
 def check_a8_loop_guard(ctx: Ctx) -> None:
@@ -818,13 +878,14 @@ def check_a9_ensure(ctx: Ctx) -> None:
                 find_line(node.file, node.name),
                 f"{node.name}.next 第一项是 {first!r}；结构文档 §2 要求先放目标页面的探针（*Probe*）",
             )
-        if last != "LoopErrorByTimes":
+        if last != "LoopErrorByTimes" and not (last and ENSURE_RE.search(last)):
             ctx.add(
                 "A9-ensure-order",
                 "warn",
                 node.file,
                 find_line(node.file, node.name),
-                f"{node.name}.next 最后一项是 {last!r}；结构文档 §2 要求以 LoopErrorByTimes 结尾",
+                f"{node.name}.next 最后一项是 {last!r}；结构文档 §2 要求以 LoopErrorByTimes 结尾"
+                f"（嵌套 Ensure 的末项是上一级 Ensure 时不报）",
             )
 
 
@@ -1639,6 +1700,72 @@ def self_test() -> int:
         ("A13-key-case" in naming_ids, "参数键非 snake_case 会被拦"),
         ("A13-file-case" in naming_ids, "pipeline 片段文件名不符会被拦"),
     ]
+
+    # 本轮新增规则：子 Loop 串联允许（只 info）、指向祖先 Loop 仍报 error。
+    # 合成节点名必须以 `Loop` 结尾，否则走不到这条判据（`XLoopMain` 这种写法本身
+    # 就违反 §3 的"以 Loop 结尾"；判据按 `endswith("Loop")` 识别目标类别）。
+    jb_ok = synth_ctx(
+        {
+            "XEnterHome": {"action": "Click", "next": ["XLoopMainLoop"]},
+            "XLoopMainLoop": {
+                "recognition": "And",
+                "all_of": ["XProbeHome"],
+                "next": ["[JumpBack]XLoopSubLoop", "LoopErrorByTimes"],
+            },
+            "XLoopSubLoop": {"recognition": "And", "all_of": ["XProbeHome"]},
+            "XProbeHome": {"recognition": "TemplateMatch"},
+        }
+    )
+    check_a7_jumpback(jb_ok)
+    checks.append(
+        (
+            any(
+                f.id == "A7-jumpback-target"
+                and f.severity == "info"
+                and "XLoopSubLoop" in f.message
+                for f in jb_ok.findings
+            ),
+            "指向子 Loop 的 [JumpBack] 只报 info",
+        )
+    )
+
+    jb_ancestor = synth_ctx(
+        {
+            "XLoopMainLoop": {"recognition": "And", "next": ["XLoopChildLoop"]},
+            "XLoopChildLoop": {"recognition": "And", "next": ["[JumpBack]XLoopMainLoop"]},
+        }
+    )
+    check_a7_jumpback(jb_ancestor)
+    checks.append(
+        (
+            any(
+                f.id == "A7-jumpback-target" and f.severity == "error"
+                for f in jb_ancestor.findings
+            ),
+            "指向祖先 Loop 的 [JumpBack] 仍报 error",
+        )
+    )
+
+    # 嵌套 Ensure 的末项是上一级 Ensure：不报 A9-ensure-order
+    ens_ctx = synth_ctx(
+        {
+            "XProbeTavern": {"recognition": "OCR"},
+            "XEnterTavern": {"action": "Click"},
+            "XEnsureHome": {"next": ["XProbeHome", "[JumpBack]XEnsureTavern", "LoopErrorByTimes"]},
+            "XProbeHome": {"recognition": "OCR"},
+            "XEnsureTavern": {"next": ["XProbeTavern", "[JumpBack]XEnterTavern", "XEnsureHome"]},
+        }
+    )
+    check_a9_ensure(ens_ctx)
+    checks.append(
+        (
+            not any(
+                "XEnsureTavern" in f.message and f.id == "A9-ensure-order"
+                for f in ens_ctx.findings
+            ),
+            "嵌套 Ensure 以上一级 Ensure 收尾不报 A9-ensure-order",
+        )
+    )
 
     # 规范版本：文档/模板与脚本不一致就要报，一致时不报（自检不写文件，只试纯函数）
     def vf_id(found: str | None) -> str:

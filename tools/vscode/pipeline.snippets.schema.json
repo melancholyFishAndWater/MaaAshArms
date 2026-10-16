@@ -1,7 +1,7 @@
 {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "type": "object",
-    "$comment": "使用命名规范 v1.3",
+    "$comment": "使用命名规范 v1.4",
     "patternProperties": {
         "^(?!\\$).*": {
             "defaultSnippets": [
@@ -21,6 +21,7 @@
                 },
                 {
                     "label": "Ensure 就位节点",
+                    "$comment": "next 末项：单层 Ensure 写 LoopErrorByTimes；嵌套 Ensure 写上一级 Ensure 即可（结构文档 §2）",
                     "body": {
                         "desc": "[jp] $1",
                         "recognition": "And",
@@ -37,6 +38,7 @@
                 },
                 {
                     "label": "Loop 工作节点",
+                    "$comment": "守卫可用 Probe 或 Custom（Custom 的未命中必须是“不在页面”）；一页多段工作拆子 Loop，用 [JumpBack]<子 Loop> 串联（结构文档 §3/§4）",
                     "body": {
                         "desc": "[Loop] $1 循环",
                         "recognition": "And",
