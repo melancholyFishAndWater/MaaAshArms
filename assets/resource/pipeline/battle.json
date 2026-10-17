@@ -1,24 +1,29 @@
 {
-    // INFO 通用战斗
-    "BattleEnsureHome": {
-        "desc": "[jp][max] 确保在出击页面",
-        "max_hit": 2,
-        "next": [
-            "BattleProbeHome",
-            "[JumpBack]BattleEnterHome",
-            "[JumpBack]ReturnMain",
-            "LoopErrorByTimes"
-        ]
+    /*
+    INFO 通用战斗
+    */
+    /* -------------------- 探测 -------------------- */
+    "BattleProbeHome": {
+        "desc": "[end] 在出击主页面",
+        "recognition": "TemplateMatch",
+        "template": "Battle/MainPageFlag/",
+        "threshold": 0.9
     },
-    // TODO 不再使用Return
-    "ReturnBattleMainPage": {
-        "desc": "回到出击作页面主页",
+    /* -------------------- 就位 -------------------- */
+    "BattleEnsureHome": {
+        "desc": "[jp] 确保在出击主页面",
+        "recognition": "And",
+        "all_of": [
+            "BattleProbeHome"
+        ],
+        "inverse": true,
+        "rate_limit": 2000,
+        "timeout": 30000,
         "next": [
             "BattleProbeHome",
             "[JumpBack]BattleEnterHome",
             "[JumpBack]ReturnMain"
-        ],
-        "post_wait_freezes": 1000
+        ]
     },
     "BattleEnterHome": {
         "desc": "[jp] 点击进入出击页面",
@@ -27,13 +32,7 @@
         "action": "Click",
         "post_wait_freezes": 1000
     },
-    // 判断节点
-    "BattleProbeHome": {
-        "desc": "[end] 在出击作页面标志",
-        "recognition": "TemplateMatch",
-        "template": "Battle/MainPageFlag/",
-        "threshold": 0.9
-    },
+    // TODO
     "BattleInFormation": {
         "desc": "在战斗编队页面",
         "recognition": "And",
