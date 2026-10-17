@@ -273,8 +273,15 @@
     },
     "EntrustChooseLevel": {
         "desc": "[jp] 选择关卡",
-        "recognition": "Custom",
-        "custom_recognition": "EntrustChooseLevelReco",
+        "recognition": "And",
+        "all_of": [
+            "EntrustProbeStageName",
+            {
+                "recognition": "Custom",
+                "custom_recognition": "EntrustChooseLevelReco"
+            }
+        ],
+        "box_index": 1,
         "target_offset": [
             -64,
             87,
