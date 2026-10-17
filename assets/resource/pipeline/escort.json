@@ -168,9 +168,10 @@
         ], // INFO 缩小点击框，防止点到边缘，游戏不识别
         "action": "Click",
         "next": [
+            "EscortProbeHomeName", // INFO 防止识别成功过快卡死
             "EscortClickOk"
         ],
-        "pre_wait_freezes": 1500,
+        "pre_wait_freezes": 1000,
         "on_error": [
             "EscortClickOkFailed"
         ]
@@ -186,7 +187,7 @@
             73
         ],
         "action": "Click",
-        "post_wait_freezes": 1500,
+        "post_wait_freezes": 1000,
         "on_error": [
             "EscortClickOkFailed"
         ]
