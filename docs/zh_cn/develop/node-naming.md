@@ -1,6 +1,6 @@
 # 节点命名与分类
 
-版本号: v1.4
+版本号: v1.6
 
 本文约束 pipeline 节点叫什么名、属于哪一类（探测 / 就位 / 工作 / 动作），以及 agent 侧注册名、
 参数键、文件名与目录的写法。改节点名、加新节点、拆分子任务时按本文执行。
@@ -82,19 +82,19 @@
 被引用时必须带 `[JumpBack]`（怎么写见 [任务链结构](./pipeline-structure.md)与上面的模板）。
 
 它保证页面正常，自己**不写业务候选**——业务属于工作循环，`Loop` 在 `Task*` 入口命中。它可以嵌套
-（一层层推进页面），内部按"目标页面的探针 → 进入动作 → 上一级 `Ensure` → `LoopErrorByTimes`"排候选，
+（一层层推进页面），内部按"目标页面的探针 → 进入动作 → 上一级 `Ensure` → 最后一个兜底候选"排候选，
 降级过程封在节点内部，调用方只看到"保证在训练所"这一个词。
 
-`next` 的末项按嵌套与否分两种：单层 `Ensure`（末项是回主页/枢纽那一级）以 `LoopErrorByTimes` 收尾；
-嵌套 `Ensure` 的末项是上一级 `Ensure`，不必再写 `LoopErrorByTimes`——嵌套链本质是逐级收缩回主页，
-终点那一级内部已经带兜底。完整写法见 [任务链结构](./pipeline-structure.md)。
+`next` 的末项按嵌套与否分两种：单层 `Ensure`（上面就是枢纽那一级）的末项是最后一个兜底候选，通常是
+回主页/枢纽的那一级；嵌套 `Ensure` 的末项是上一级 `Ensure`。完整写法见 [任务链结构](./pipeline-structure.md)。
 
 ### 工作 `Loop`
 
-页面内的工作循环统一用 `Loop` 结尾。守卫可以是 `Probe*`，也可以是 `Custom` 识别；用 `Custom` 时未命中
-语义必须是"不在这个页面/状态"，`next` 里必须有 `LoopErrorByTimes`。一页里有多段独立工作时，拆成子
-`Loop`，由父 `Loop` 用 `[JumpBack]` 串联（语义是"先干完这段再回来"），禁止指向自身、祖先 `Loop` 或别的
-任务的 `Loop`。细节见 [任务链结构](./pipeline-structure.md) 第三、四节。
+页面内的工作循环统一用 `Loop` 结尾；一段活到底该写成 `Loop` / `Ensure` 还是一个自环动作节点，按 [任务链结构](./pipeline-structure.md) 第三节「哪些活不用 `Loop`」的三条判据定。守卫可以是 `Probe*`，也可以是 `Custom` 识别；用 `Custom` 时未命中
+语义必须是"不在这个页面/状态"，并且因为守卫一直命中时链不会自己结束，**必须另有有限 `timeout` 作出口**
+（要受控结束就配 `on_error`）。一页里有多段独立工作时，拆成子 `Loop`，由父 `Loop` 用 `[JumpBack]` 串联
+（语义是"先干完这段再回来"），禁止指向自身、祖先 `Loop` 或别的任务的 `Loop`。细节见
+[任务链结构](./pipeline-structure.md) 第三、四、五节。
 
 ### 动作
 
@@ -121,7 +121,7 @@
 
 离开当前页面，进入另一个页面。宾语必须是页面名。
 
-例：`EntrustEnterMainLine`（主线页面）、`EntrustEnterRewardMainLine`（领奖页面）、`BattleEnterMainPage`（出击页面）。
+例：`EntrustEnterMainLine`（主线页面）、`EntrustEnterRewardStage`（领奖页面）、`BattleEnterMainPage`（出击页面）。
 
 不算 `Enter`：页内点按钮切到本页的另一块内容、展开折叠、切页签。
 
@@ -148,6 +148,7 @@
 | `Close` | 关掉弹窗/页面 | `NoticeClose`、`TrainCloseStatusArrow` |
 | `Stop` | 因某个条件结束任务（`action: StopTask`，提示写 `focus`） | `StopNoMetal` |
 | `Init` | 进入某页后的初始化（清计数、读参数） | `TrainingInit`、`ReplaysInit` |
+| `Enable` | 不点界面，开关另一条任务链的节点（`override_pipeline`） | `EntrustEnableTaskReward`（启用领奖任务） |
 
 ## 五、术语分层
 
