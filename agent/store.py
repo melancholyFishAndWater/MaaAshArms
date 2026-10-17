@@ -292,8 +292,8 @@ class TrainingDailyUpdateAct(CustomAction):
 _entrust = Store[bool]("daily_entrust.json")
 
 
-@AgentServer.custom_recognition("EntrustCheckDailyReco")
-class EntrustCheckDailyReco(CustomRecognition):
+@AgentServer.custom_recognition("EntrustProbeDailyReco")
+class EntrustProbeDailyReco(CustomRecognition):
     def analyze(
         self, context: Context, argv: CustomRecognition.AnalyzeArg
     ) -> list[int] | None:

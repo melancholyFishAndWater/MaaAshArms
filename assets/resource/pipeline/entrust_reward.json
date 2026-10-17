@@ -1,0 +1,139 @@
+{
+    /*
+    INFO 委派（委托）
+    
+    使用任务链结构 v1.6 校验年月日 26/10/17
+    使用节点命名与分类 v1.8 校验年月日 26/10/17
+    */
+    /* -------------------- 就位 -------------------- */
+    // INFO 领取大关页面
+    "EntrustEnsureRewardStage": {
+        "desc": "[jp] 确保在领取奖励大关页面",
+        "recognition": "And",
+        "all_of": [
+            "EntrustProbeRewardText"
+        ],
+        "inverse": true,
+        "rate_limit": 2000,
+        "timeout": 30000,
+        "focus": {
+            "Node.PipelineNode.Failed": "警告 未找到可领取的委派奖励"
+        },
+        "next": [
+            "EntrustProbeRewardText",
+            "[JumpBack]EntrustEnterRewardStage",
+            "[JumpBack]ReturnMain"
+        ]
+    },
+    "EntrustEnterRewardStage": {
+        "desc": "[jp] 进入领取奖励大关页面",
+        "recognition": "OCR",
+        "expected": "前往",
+        "roi": [
+            816,
+            94,
+            116,
+            43
+        ],
+        "action": "Click",
+        "post_wait_freezes": 1000
+    },
+    // INFO 领取小关详情页面
+    "EntrustEnsureRewardInfo": {
+        "desc": "[jp] 确保在领取奖励小关页面",
+        "recognition": "And",
+        "all_of": [
+            "EntrustProbeRewardButton"
+        ],
+        "inverse": true,
+        "rate_limit": 2000,
+        "timeout": 30000,
+        "next": [
+            "EntrustProbeRewardButton",
+            "[JumpBack]EntrustClickRewardLevel",
+            "[JumpBack]EntrustEnsureRewardStage"
+        ]
+    },
+    "EntrustClickRewardLevel": {
+        "desc": "[jp] 点击可领取的关卡",
+        "recognition": "OCR",
+        "expected": "委派完成",
+        "roi": [
+            0,
+            290,
+            1280,
+            346
+        ],
+        "target_offset": [
+            31,
+            -101,
+            -49,
+            1
+        ],
+        "action": "Click",
+        "post_wait_freezes": 1000
+    },
+    /* -------------------- 工作 -------------------- */
+    // INFO 领取委派奖励
+    "EntrustLoopGetReward": {
+        "desc": "[Loop] 领取委派奖励 循环",
+        "recognition": "And",
+        "all_of": [
+            "EntrustProbeRewardButton"
+        ],
+        "rate_limit": 2000,
+        "timeout": 30000,
+        "next": [
+            "EntrustProbeRewardSuccess",
+            "[JumpBack]EntrustClickRewardButton",
+            "[JumpBack]EntrustClickFinish",
+            "[JumpBack]IsGetReward",
+            "[JumpBack]EntrustBranchBattleWin"
+        ]
+    },
+    "EntrustClickRewardButton": {
+        "desc": "[jp] 点击领取按钮",
+        "recognition": "And",
+        "all_of": [
+            "EntrustProbeRewardButton"
+        ],
+        "action": "Click",
+        "post_wait_freezes": 1000
+    },
+    "EntrustClickFinish": {
+        "desc": "[jp] 点击完成",
+        "recognition": "OCR",
+        "expected": "完成",
+        "roi": [
+            686,
+            639,
+            73,
+            40
+        ],
+        "action": "Click",
+        "post_wait_freezes": 1000
+    },
+    "EntrustBranchBattleWin": {
+        "desc": "[jp] 战斗胜利 点击tap区域",
+        "recognition": "OCR",
+        "expected": "战斗胜利",
+        "roi": [
+            1029,
+            464,
+            237,
+            75
+        ],
+        "next": [
+            "ClickTap"
+        ]
+    },
+    // INFO 领取成功
+    "EntrustProbeRewardSuccess": {
+        "desc": "[end] 领取奖励成功",
+        "recognition": "Or",
+        "any_of": [
+            "EntrustProbeStageName",
+            "EntrustProbeMapName"
+        ]
+    }
+}

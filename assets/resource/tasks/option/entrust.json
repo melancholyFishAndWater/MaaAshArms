@@ -10,7 +10,7 @@
                 {
                     "name": "No",
                     "pipeline_override": {
-                        "EntrustCheckDaily": {
+                        "EntrustProbeDaily": {
                             "custom_recognition_param": {
                                 "enable": false
                             }
@@ -20,7 +20,7 @@
             ]
         },
         "entrust_inputs": {
-            "label": "关卡信息",
+            "label": "相关配置",
             "type": "input",
             "inputs": [
                 {
@@ -35,15 +35,24 @@
                     "label": "关卡小节",
                     "default": "10",
                     "pipeline_type": "int",
-                    "verify": "^([0-9]|10)$",
-                    "description": "输入0~10"
+                    "verify": "^([1-9]|10)$",
+                    "description": "请输入1~10"
+                },
+                {
+                    "name": "times",
+                    "label": "委派次数",
+                    "default": "30",
+                    "pipeline_type": "int",
+                    "verify": "^([1-9]|[1-2][0-9]|30)$",
+                    "description": "请输入1~30。与剩余次数取最小值"
                 }
             ],
             "pipeline_override": {
                 "EntrustInit": {
                     "attach": {
-                        "stage_name": "{stage_name}", // 大关名
-                        "level": "{level}" // 目标小关的数字
+                        "stage_name": "{stage_name}",
+                        "level": "{level}",
+                        "times": "{times}"
                     }
                 }
             }
