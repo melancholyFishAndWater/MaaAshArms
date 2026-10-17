@@ -13,6 +13,10 @@ from jsonschema import Draft7Validator, Draft202012Validator
 # 读代码的人会以为 retrieval 被用到了（ruff F401 也会报它）。
 HAS_REFERENCING = find_spec("referencing") is not None
 
+# 资源目录根部的默认值文件：形状不是节点定义，不能按 pipeline.schema.json 校验
+DEFAULT_PIPELINE_NAME = "default_pipeline.json"
+DEFAULT_PIPELINE_SCHEMA = "tools/vscode/default_pipeline.schema.json"
+
 if HAS_REFERENCING:
     from referencing import Registry, Resource
     from referencing.jsonschema import DRAFT7, DRAFT202012
@@ -248,6 +252,12 @@ def main():
         default=[],
         help="Directories containing task files to validate against interface_import.schema.json (default: none)",
     )
+    parser.add_argument(
+        "--default-pipeline-schema",
+        type=str,
+        default=DEFAULT_PIPELINE_SCHEMA,
+        help=f"Schema for <resource-dir>/{DEFAULT_PIPELINE_NAME} (default: {DEFAULT_PIPELINE_SCHEMA})",
+    )
 
     args = parser.parse_args()
 
@@ -305,16 +315,37 @@ def main():
             continue
 
         for file_path in resource_path.rglob("*.json"):
-            if is_excluded(file_path):
+            if is_excluded(file_path) or file_path.name == DEFAULT_PIPELINE_NAME:
                 continue
             if not validate_file(file_path, pipeline_validator):
                 all_valid = False
 
         for file_path in resource_path.rglob("*.jsonc"):
-            if is_excluded(file_path):
+            if is_excluded(file_path) or file_path.name == DEFAULT_PIPELINE_NAME:
                 continue
             if not validate_file(file_path, pipeline_validator):
                 all_valid = False
+
+    # default_pipeline.json 不是节点定义，按它自己的 schema 校验（块名写错会静默不生效）
+    default_schema_path = Path(args.default_pipeline_schema)
+    default_checked = 0
+    if default_schema_path.is_file():
+        print("\nValidating default_pipeline.json...")
+        default_schema = load_jsonc(default_schema_path)
+        default_schema_uri = default_schema_path.resolve().as_uri()
+        schema_store[default_schema_uri] = default_schema
+        default_validator = create_validator(default_schema, schema_store)
+        for resource_dir in args.resource_dirs:
+            default_file = Path(resource_dir) / DEFAULT_PIPELINE_NAME
+            if not default_file.is_file():
+                continue
+            default_checked += 1
+            if not validate_file(default_file, default_validator):
+                all_valid = False
+    elif default_checked == 0:
+        print(
+            f"Warning: default pipeline schema {default_schema_path} does not exist, skipping..."
+        )
 
     print("\nValidating interface files...")
     # 验证 interface 文件

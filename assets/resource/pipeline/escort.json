@@ -94,7 +94,6 @@
             "EscortProbeHomeName",
             "ProbeReward"
         ],
-        "rate_limit": 2000,
         "next": [
             "[JumpBack]ProbeBlackPage",
             "[JumpBack]IsGetReward",

@@ -36,6 +36,13 @@
         },
         {
             "fileMatch": [
+                "/assets/resource/default_pipeline.json",
+                "/install/resource/default_pipeline.json"
+            ],
+            "url": "/tools/vscode/default_pipeline.schema.json"
+        },
+        {
+            "fileMatch": [
                 "/assets/interface.json",
                 "/install/interface.json"
             ],

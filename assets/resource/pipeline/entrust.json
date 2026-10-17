@@ -184,7 +184,6 @@
             "EntrustProbeChapter"
         ],
         "inverse": true,
-        "rate_limit": 2000,
         "timeout": 30000,
         "focus": {
             "Node.PipelineNode.Failed": "未找到章节页面，检查是否停留在主线页面"
@@ -216,7 +215,6 @@
             "EntrustProbeStageName"
         ],
         "inverse": true,
-        "rate_limit": 2000,
         "timeout": 30000,
         "next": [
             "EntrustProbeStageName",
@@ -262,7 +260,6 @@
             "EntrustProbeLevelInfo"
         ],
         "inverse": true,
-        "rate_limit": 2000,
         "timeout": 45000, // INFO 防止电脑太卡
         "next": [
             "EntrustProbeLevelInfo",

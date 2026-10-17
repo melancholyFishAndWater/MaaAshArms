@@ -14,7 +14,6 @@
             "EntrustProbeRewardText"
         ],
         "inverse": true,
-        "rate_limit": 2000,
         "timeout": 30000,
         "focus": {
             "Node.PipelineNode.Failed": "警告 未找到可领取的委派奖励"
@@ -46,7 +45,6 @@
             "EntrustProbeRewardButton"
         ],
         "inverse": true,
-        "rate_limit": 2000,
         "timeout": 30000,
         "next": [
             "EntrustProbeRewardButton",
@@ -81,7 +79,6 @@
         "all_of": [
             "EntrustProbeRewardButton"
         ],
-        "rate_limit": 2000,
         "timeout": 30000,
         "next": [
             "EntrustProbeRewardSuccess",

@@ -1,0 +1,73 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$id": "https://github.com/MaaAshArms/default_pipeline.schema.json",
+    "title": "default_pipeline.json（Pipeline 默认值）",
+    "description": "放在资源目录根部（与 pipeline/ 同级）。节点没写的字段按这里补。优先级：节点自身 > 算法/动作名块 > Default > 框架内置。",
+    "type": "object",
+    "properties": {
+        "Default": {
+            "type": "object",
+            "description": "所有节点通用的默认字段，如 rate_limit / timeout / pre_delay / post_delay",
+            "properties": {
+                "rate_limit": { "type": "integer", "minimum": 0 },
+                "timeout": { "type": "integer" },
+                "pre_delay": { "type": "integer", "minimum": 0 },
+                "post_delay": { "type": "integer", "minimum": 0 },
+                "pre_wait_freezes": { "$ref": "#/definitions/waitFreezes" },
+                "post_wait_freezes": { "$ref": "#/definitions/waitFreezes" }
+            },
+            "additionalProperties": true
+        },
+        "DirectHit": { "$ref": "#/definitions/block" },
+        "TemplateMatch": { "$ref": "#/definitions/block" },
+        "FeatureMatch": { "$ref": "#/definitions/block" },
+        "ColorMatch": { "$ref": "#/definitions/block" },
+        "OCR": { "$ref": "#/definitions/block" },
+        "NeuralNetworkClassify": { "$ref": "#/definitions/block" },
+        "NeuralNetworkDetect": { "$ref": "#/definitions/block" },
+        "Custom": { "$ref": "#/definitions/block" },
+        "DoNothing": { "$ref": "#/definitions/block" },
+        "Click": { "$ref": "#/definitions/block" },
+        "LongPress": { "$ref": "#/definitions/block" },
+        "Swipe": { "$ref": "#/definitions/block" },
+        "MultiSwipe": { "$ref": "#/definitions/block" },
+        "TouchDown": { "$ref": "#/definitions/block" },
+        "TouchMove": { "$ref": "#/definitions/block" },
+        "TouchUp": { "$ref": "#/definitions/block" },
+        "ClickKey": { "$ref": "#/definitions/block" },
+        "LongPressKey": { "$ref": "#/definitions/block" },
+        "KeyDown": { "$ref": "#/definitions/block" },
+        "KeyUp": { "$ref": "#/definitions/block" },
+        "InputText": { "$ref": "#/definitions/block" },
+        "StartApp": { "$ref": "#/definitions/block" },
+        "StopApp": { "$ref": "#/definitions/block" },
+        "StopTask": { "$ref": "#/definitions/block" },
+        "Command": { "$ref": "#/definitions/block" }
+    },
+    "additionalProperties": false,
+    "definitions": {
+        "block": {
+            "type": "object",
+            "description": "该算法/动作的默认参数；节点写了的字段优先。",
+            "additionalProperties": true
+        },
+        "waitFreezes": {
+            "oneOf": [
+                { "type": "integer", "minimum": 0 },
+                {
+                    "type": "object",
+                    "properties": {
+                        "time": { "type": "integer", "minimum": 0 },
+                        "target": { "type": "array" },
+                        "target_offset": { "type": "array" },
+                        "threshold": { "type": "number" },
+                        "method": { "type": "integer" },
+                        "rate_limit": { "type": "integer", "minimum": 0 },
+                        "timeout": { "type": "integer" }
+                    },
+                    "additionalProperties": false
+                }
+            ]
+        }
+    }
+}

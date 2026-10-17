@@ -62,7 +62,6 @@
             "TrainingProbeHome"
         ],
         "inverse": true,
-        "rate_limit": 2000,
         "timeout": 30000,
         "next": [
             "TrainingProbeHome",
@@ -146,7 +145,6 @@
             "level": "六"
         },
         "action": "Click",
-        "rate_limit": 2000,
         "next": [
             "TaskBattleReplay",
             "LoopErrorByTimes",

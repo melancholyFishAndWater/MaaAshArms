@@ -132,7 +132,6 @@
             "GiftProbeTavern"
         ],
         "inverse": true,
-        "rate_limit": 2000,
         "timeout": 30000,
         "next": [
             "GiftProbeTavern",
@@ -161,7 +160,6 @@
             "GiftProbeHome"
         ],
         "inverse": true,
-        "rate_limit": 2000,
         "timeout": 30000,
         "next": [
             "GiftProbeHome",
@@ -190,7 +188,6 @@
             "GiftProbeCharacters"
         ],
         "inverse": true,
-        "rate_limit": 2000,
         "timeout": 30000,
         "next": [
             "GiftProbeCharacters",
@@ -219,7 +216,6 @@
             "GiftProbeRules"
         ],
         "inverse": true,
-        "rate_limit": 2000,
         "timeout": 30000,
         "next": [
             "GiftProbeRules",
@@ -248,7 +244,6 @@
             "GiftProbeCharacters",
             "GiftProbeMaxFavorability"
         ],
-        "rate_limit": 2000,
         "next": [
             "GiftProbeNoMaxFavorability",
             "[JumpBack]GiftChooseFavorability",
@@ -326,7 +321,6 @@
         "all_of": [
             "GiftProbeHome"
         ],
-        "rate_limit": 2000,
         "next": [
             "GiftClickShowGift",
             "[JumpBack]GiftEnsureHome",

@@ -38,7 +38,6 @@
             "FeiduProbeHome"
         ],
         "inverse": true,
-        "rate_limit": 2000,
         "timeout": 30000,
         "next": [
             "FeiduProbeHome",

@@ -219,6 +219,7 @@
         "desc": "若画面连续k次冻结则识别成功 注意覆写roi",
         "recognition": "Custom",
         "custom_recognition": "IsFreezesReco",
+        "rate_limit": 1000,
         "roi": [
             0,
             0,
@@ -294,7 +295,6 @@
             "HomeFlagFirst"
         ],
         "inverse": true,
-        "rate_limit": 2000,
         "timeout": 30000,
         "next": [
             "HomeFlagFirst",
@@ -327,6 +327,7 @@
         "desc": "[兜底] 当同一个next中连续识别超过指定次数后，直接报错并结束任务",
         "recognition": "Custom",
         "custom_recognition": "LoopErrorByTimesReco",
+        "rate_limit": 1000,
         "custom_recognition_param": {
             "times": 10 // 识别需超过的次数
         },

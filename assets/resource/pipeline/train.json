@@ -111,7 +111,6 @@
             "TrainProbeInfo"
         ],
         "inverse": true,
-        "rate_limit": 2000,
         "timeout": 30000,
         "next": [
             "TrainProbeInfo",
@@ -140,7 +139,6 @@
             "TrainProbeHomeReady"
         ],
         "inverse": true,
-        "rate_limit": 2000,
         "timeout": 30000,
         "next": [
             "TrainProbeHomeReady",
@@ -172,7 +170,6 @@
             "TrainProbeGoButtonLight"
         ],
         "inverse": true,
-        "rate_limit": 2000,
         "timeout": 30000,
         "next": [
             "TrainProbeGoButtonLight",
@@ -250,7 +247,6 @@
         "all_of": [
             "TrainProbeHomeReady"
         ],
-        "rate_limit": 2000,
         "timeout": 30000,
         "next": [
             "TrainCheckEnd",
@@ -279,7 +275,6 @@
         "desc": "[Loop][jp] 领取奖励 循环",
         "recognition": "Custom",
         "custom_recognition": "TrainLoopRewardReco",
-        "rate_limit": 2000,
         "timeout": 30000,
         "next": [
             "TrainClickRewardInfo",
@@ -340,7 +335,6 @@
             119,
             533
         ],
-        "rate_limit": 2000,
         "next": [
             "TrainGetRewardSuccess",
             "[JumpBack]ClickTap"
@@ -386,7 +380,6 @@
         "desc": "[Loop][jp] 可以发车 循环",
         "recognition": "Custom",
         "custom_recognition": "TrainLoopAcceptableReco",
-        "rate_limit": 2000,
         "timeout": 30000,
         "next": [
             "TrainClickAcceptInfo",
@@ -495,7 +488,6 @@
         "all_of": [
             "TrainProbeFormation"
         ],
-        "rate_limit": 2000,
         "timeout": 30000,
         "next": [
             "[JumpBack]TrainOverrideConfirm",
@@ -514,7 +506,6 @@
         "all_of": [
             "TrainProbeGoButtonLight"
         ],
-        "rate_limit": 2000,
         "timeout": 30000,
         "next": [
             "[JumpBack]TrainOverrideConfirm",
