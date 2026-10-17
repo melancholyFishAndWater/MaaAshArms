@@ -1,7 +1,7 @@
 {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "type": "object",
-    "$comment": "使用命名规范 v1.7; 使用任务链结构 v1.5",
+    "$comment": "使用命名规范 v1.8; 使用任务链结构 v1.6",
     "patternProperties": {
         "^(?!\\$).*": {
             "defaultSnippets": [
@@ -17,6 +17,20 @@
                         "desc": "[end] $1",
                         "recognition": "$0",
                         "roi": []
+                    }
+                },
+                {
+                    "label": "Branch 分支节点",
+                    "$comment": "识别到该状态就把 next 交出去：不写 action、不保证页面、不回到自己（node-naming.md §3）",
+                    "body": {
+                        "desc": "$1",
+                        "recognition": "And",
+                        "all_of": [
+                            "$2"
+                        ],
+                        "next": [
+                            "$0"
+                        ]
                     }
                 },
                 {

@@ -143,9 +143,9 @@ CLICK_SYNONYMS = ("ClickYes", "ClickNo", "ClickSure")
 # 不一致时报 E2，提醒人复核新规则要不要收进脚本——版本号只印在输出里而没人对，等于没有。
 # 两份都收：结构类判据（A4/A5/A7/A8/A9/A14…）按 pipeline-structure.md 实现，只对命名规范算版本
 # 等于让结构文档改了规则没人提醒。
-NAMING_SPEC_VERSION = "v1.7"
+NAMING_SPEC_VERSION = "v1.8"
 NAMING_SPEC = Path("docs/zh_cn/develop/node-naming.md")
-STRUCT_SPEC_VERSION = "v1.5"
+STRUCT_SPEC_VERSION = "v1.6"
 STRUCT_SPEC = Path("docs/zh_cn/develop/pipeline-structure.md")
 
 
@@ -1096,6 +1096,33 @@ def check_a13_naming(ctx: Ctx) -> None:
                     f"{name} 是探测节点却有 next（node-naming.md §3：探测不做行为，是终点节点）",
                 )
             continue
+        is_branch = "Branch" in name
+        if is_branch:
+            if has_action:
+                ctx.add(
+                    "A13-branch-action",
+                    "warn",
+                    info.file,
+                    line,
+                    f"{name} 是分支节点却带 action（node-naming.md §3：分支只路由，不做动作）",
+                )
+            if not data.get("recognition"):
+                ctx.add(
+                    "A13-branch-recognition",
+                    "warn",
+                    info.file,
+                    line,
+                    f"{name} 是分支节点却没有 recognition（那等于无条件跳转，把 next 写在上一个节点里即可）",
+                )
+            if not to_list(data.get("next")):
+                ctx.add(
+                    "A13-branch-next",
+                    "warn",
+                    info.file,
+                    line,
+                    f"{name} 是分支节点却没有 next（没有可交出去的候选）",
+                )
+            continue
         for synonym in CLICK_SYNONYMS:
             if synonym in name:
                 ctx.add(
@@ -1848,6 +1875,36 @@ def self_test() -> int:
         ("A13-loop-next" in naming_ids, "工作循环没有 next 会被拦"),
         ("A13-key-case" in naming_ids, "参数键非 snake_case 会被拦"),
         ("A13-file-case" in naming_ids, "pipeline 片段文件名不符会被拦"),
+    ]
+
+    # 分支 Branch：合规写法不报；带 action / 无识别 / 无 next 三条都报
+    branch_ok = synth_ctx(
+        {
+            "XProbeHome": {"recognition": "OCR"},
+            "XBranchHome": {
+                "recognition": "And",
+                "all_of": ["XProbeHome"],
+                "next": ["XProbeHome"],
+            },
+        }
+    )
+    check_a13_naming(branch_ok)
+    branch_bad = synth_ctx(
+        {
+            "XBranchBad": {"action": "Click"},
+        }
+    )
+    check_a13_naming(branch_bad)
+    bad_ids = {f.id for f in branch_bad.findings}
+    checks += [
+        (
+            not any(f.id.startswith("A13-branch") for f in branch_ok.findings),
+            "合规的分支节点不报 A13-branch-*",
+        ),
+        (
+            {"A13-branch-action", "A13-branch-recognition", "A13-branch-next"} <= bad_ids,
+            "分支带 action / 无识别 / 无 next 都会被拦",
+        ),
     ]
 
     # 本轮新增规则：子 Loop 串联允许（只 info）、指向祖先 Loop 仍报 error。
