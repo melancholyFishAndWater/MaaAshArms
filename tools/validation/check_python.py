@@ -31,7 +31,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 # 扫描范围：只查自己写的 Python，不动 vendored 的运行时/依赖（那里有几千个文件）。
-DEFAULT_ROOTS = ("tools", "agent", "scripts")
+DEFAULT_ROOTS = ("tools", "agent", "scripts", "tests")
 # 这些目录一律跳过（名字里出现任一片段就跳）
 SKIP_PARTS = (
     "__pycache__", "node_modules", ".git", ".python-runtime", "install", "build",

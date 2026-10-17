@@ -55,3 +55,10 @@ jobs:
       - name: Validate references and conventions
         run: |
           python tools/validation/validate_refs.py --format github
+
+      # agent 纯逻辑打桩测试：不连设备、不起 MFA，只断言决策分支。
+      # 依赖上一步装好的 maafw（识别结果类型）。
+      - name: Run agent tests
+        run: |
+          python -m pip install pytest
+          python -m pytest -q tests

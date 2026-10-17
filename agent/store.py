@@ -25,6 +25,14 @@ import battle_training
 T = TypeVar("T")
 
 
+def _data_dir() -> Path:
+    """状态文件目录，与框架的 log_dir 同一基准（<安装根>/debug）。
+
+    抽成函数只为让测试能重定向；生产路径不变。
+    """
+    return Path(__file__).resolve().parents[1] / "debug"
+
+
 class Store(Generic[T]):
     def __init__(
         self,
@@ -57,7 +65,7 @@ class Store(Generic[T]):
         """
         初始化数据
         """
-        path = Path(__file__).resolve().parents[1] / "debug" / self._state
+        path = _data_dir() / self._state
         try:
             # 读取原始数据
             dict_ = (
@@ -77,7 +85,7 @@ class Store(Generic[T]):
         先写临时文件，再 os.replace 原子替换；
         失败时清理临时文件，但不掩盖原始异常。
         """
-        path = Path(__file__).resolve().parents[1] / "debug" / self._state
+        path = _data_dir() / self._state
         path.parent.mkdir(parents=True, exist_ok=True)
 
         payload = json.dumps({self._today: self._data})

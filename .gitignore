@@ -468,3 +468,6 @@ config
 debug
 AGENTS.md
 .agents/
+.pytest_cache
+pytest-cache-files-*
+tests/.store-tmp
