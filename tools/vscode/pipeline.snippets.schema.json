@@ -1,7 +1,7 @@
 {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "type": "object",
-    "$comment": "使用命名规范 v1.4",
+    "$comment": "使用命名规范 v1.6; 使用任务链结构 v1.4",
     "patternProperties": {
         "^(?!\\$).*": {
             "defaultSnippets": [
@@ -21,7 +21,7 @@
                 },
                 {
                     "label": "Ensure 就位节点",
-                    "$comment": "next 末项：单层 Ensure 写 LoopErrorByTimes；嵌套 Ensure 写上一级 Ensure 即可（结构文档 §2）",
+                    "$comment": "next 末项：单层 Ensure 写最后一个兜底候选（通常是回主页那一级）；嵌套 Ensure 写上一级 Ensure（结构文档 §2）",
                     "body": {
                         "desc": "[jp] $1",
                         "recognition": "And",
@@ -38,7 +38,7 @@
                 },
                 {
                     "label": "Loop 工作节点",
-                    "$comment": "守卫可用 Probe 或 Custom（Custom 的未命中必须是“不在页面”）；一页多段工作拆子 Loop，用 [JumpBack]<子 Loop> 串联（结构文档 §3/§4）",
+                    "$comment": "守卫可用 Probe 或 Custom（Custom 的未命中必须是“不在页面”）；出口只有守卫失效与有限 timeout 两条，不设计数兜底；一页多段工作拆子 Loop，用 [JumpBack]<子 Loop> 串联（结构文档 §3/§4/§5）",
                     "body": {
                         "desc": "[Loop] $1 循环",
                         "recognition": "And",
@@ -48,8 +48,7 @@
                         "rate_limit": 2000,
                         "timeout": 30000,
                         "next": [
-                            "$0",
-                            "LoopErrorByTimes"
+                            "$0"
                         ]
                     }
                 },
@@ -67,8 +66,7 @@
                         "desc": "$1任务",
                         "timeout": 30000,
                         "next": [
-                            "$0",
-                            "LoopErrorByTimes"
+                            "$0"
                         ]
                     }
                 }
