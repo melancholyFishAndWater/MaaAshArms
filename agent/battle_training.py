@@ -181,7 +181,7 @@ class TrainingEnterOneReco(CustomRecognition):
                 log.debug(f"{node_name} 识别到的关卡名无法匹配: {b_r2.text}")
                 continue
             level = battle_targets[name]
-            _current_level_name = level
+            _current_level_name = name
 
             # 覆写
             ov_r = context.override_pipeline(
@@ -275,7 +275,7 @@ class TrainingBattleWinAct(CustomAction):
         self, context: Context, argv: CustomAction.RunArg
     ) -> CustomAction.RunResult | bool:
         if _current_level_name not in _all:
-            log.ferror(f"{argv.node_name} 非法的关卡名字")
+            log.ferror(f"{argv.node_name} 非法的关卡名字: {_current_level_name}")
             return False
         _done_targets.append(_current_level_name)
         return True
