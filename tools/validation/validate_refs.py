@@ -124,6 +124,7 @@ VERBS = (
     "Stop",
     "Init",
     "Get",
+    "Enable",
 )
 # node-naming.md §2 里已成类的后缀，不按动词表判
 CLASS_SUFFIXES = ("DailyUpdate", "Success", "Failed", "Init", "End", "Loop")
@@ -140,7 +141,7 @@ CLICK_SYNONYMS = ("ClickYes", "ClickNo", "ClickSure")
 
 # 本脚本按哪一版《节点命名与分类》实现。文档头部写着「版本号: vX.Y」；改了收录的规则就同步 +0.1。
 # 不一致时报 E2，提醒人复核新规则要不要收进脚本——版本号只印在输出里而没人对，等于没有。
-NAMING_SPEC_VERSION = "v1.4"
+NAMING_SPEC_VERSION = "v1.6"
 NAMING_SPEC = Path("docs/zh_cn/develop/node-naming.md")
 # 编辑器里在用的写法模板：新节点的字段骨架从它来（`$comment` 上写着对应规范版本）
 PIPELINE_SNIPPETS = Path("tools/vscode/pipeline.snippets.schema.json")
@@ -405,6 +406,20 @@ def hits_always(target: Node | None) -> TypeGuard[Node]:
 def complement_of(node: dict) -> str | None:
     """`And all_of [X] + inverse` 这种严格取反节点：返回被取反的节点名 X。"""
     if node.get("recognition") != "And" or node.get("inverse") is not True:
+        return None
+    all_of = node.get("all_of")
+    if isinstance(all_of, list) and len(all_of) == 1 and isinstance(all_of[0], str):
+        return _TAG_RE.sub("", all_of[0]).strip()
+    return None
+
+
+def guard_probe(node: dict) -> str | None:
+    """`And all_of [X]` 这种单探针守卫：返回 X（`inverse` 与否都算）。
+
+    用来判"两个守卫是不是同一个判据"：工作循环的守卫与它末项兜底 `Ensure` 的守卫
+    取同一个探针时，兜底等于把"守卫不成立"修成"守卫成立"（结构文档 §3）。
+    """
+    if node.get("recognition") != "And":
         return None
     all_of = node.get("all_of")
     if isinstance(all_of, list) and len(all_of) == 1 and isinstance(all_of[0], str):
@@ -878,15 +893,39 @@ def check_a9_ensure(ctx: Ctx) -> None:
                 find_line(node.file, node.name),
                 f"{node.name}.next 第一项是 {first!r}；结构文档 §2 要求先放目标页面的探针（*Probe*）",
             )
-        if last != "LoopErrorByTimes" and not (last and ENSURE_RE.search(last)):
+        if last is None:
+            continue  # 未定义由 A1-dangling-node 负责
+        if ENSURE_RE.search(last):
+            continue  # 末项是上一级 Ensure（嵌套）或兜底用的 Ensure，符合 §2
+        if any(n and ENSURE_RE.search(n) for n in names[:-1]):
             ctx.add(
                 "A9-ensure-order",
                 "warn",
                 node.file,
                 find_line(node.file, node.name),
-                f"{node.name}.next 最后一项是 {last!r}；结构文档 §2 要求以 LoopErrorByTimes 结尾"
-                f"（嵌套 Ensure 的末项是上一级 Ensure 时不报）",
+                f"{node.name}.next 末项是 {last!r}；嵌套 Ensure 的末项是上一级 Ensure（结构文档 §2）",
             )
+            continue
+        # 单层：末项若是"必然命中 + 有 next + 没有 max_hit / 有限 timeout"，
+        # 它每轮都会抢走，这个 Ensure 自己的 timeout 永远触发不到。
+        target = ctx.nodes.get(last)
+        if target is None or not always_hit(target.data):
+            continue
+        if not to_list(target.data.get("next")):
+            continue
+        if target.data.get("max_hit") is not None:
+            continue
+        timeout = target.data.get("timeout")
+        if isinstance(timeout, int) and timeout > 0:
+            continue
+        ctx.add(
+            "A9-ensure-order",
+            "warn",
+            node.file,
+            find_line(node.file, node.name),
+            f"{node.name}.next 末项 {last!r} 必然命中且带 next，又没有 max_hit / 有限 timeout："
+            f"它每轮都会抢走，守卫的 timeout 永远触发不到（结构文档 §2）",
+        )
 
 
 def check_a10_maxhit_in_loop(ctx: Ctx) -> None:
@@ -1124,6 +1163,39 @@ def check_a13_references(ctx: Ctx) -> None:
                 None,
                 f"pipeline 片段文件名 {path.name} 不是小写 snake_case（node-naming.md §8）",
             )
+
+
+def check_a14_loop_fallback(ctx: Ctx) -> None:
+    """工作循环末项兜底 `Ensure` 与循环守卫取同一个探针（结构文档 §3）。
+
+    这种兜底等于"找不到东西就让守卫重新成立"：如果这个循环的完成态恰好也是
+    "候选全部 miss"，它会被拉回工作态、永远结束不了。但"页面级循环"里同样形状是
+    合法的（候选全是子守卫，全 miss 只可能意味着漂走），判不了，所以只报 info。
+    """
+    for node in ctx.nodes.values():
+        if "Loop" not in node.name:
+            continue
+        probe = guard_probe(node.data)
+        if not probe:
+            continue
+        items = to_list(node.data.get("next"))
+        if not items:
+            continue
+        last, jump, _enabled = parse_ref(items[-1])
+        if not jump or not last or not ENSURE_RE.search(last):
+            continue
+        target = ctx.nodes.get(last)
+        if target is None or guard_probe(target.data) != probe:
+            continue
+        ctx.add(
+            "A14-fallback-same-probe",
+            "info",
+            node.file,
+            find_line(node.file, node.name),
+            f"{node.name}.next 末项 {last!r} 与该循环的守卫用同一个探针 {probe!r}："
+            f"兜底会把『守卫不成立』修成『守卫成立』。确认这个循环的完成态不是『候选全 miss』，"
+            f"否则它永远结束不了（结构文档 §3）",
+        )
 
 
 def check_spec_version(ctx: Ctx) -> None:
@@ -1767,6 +1839,103 @@ def self_test() -> int:
         )
     )
 
+    # A9：嵌套但末项不是上一级 Ensure → 报
+    ens_bad = synth_ctx(
+        {
+            "XProbeTavern": {"recognition": "OCR"},
+            "XEnterTavern": {"recognition": "OCR", "action": "Click"},
+            "XProbeHome": {"recognition": "OCR"},
+            "XEnsureHome": {"next": ["XProbeHome"]},
+            "XEnsureTavern": {"next": ["XProbeTavern", "[JumpBack]XEnsureHome", "XEnterTavern"]},
+        }
+    )
+    check_a9_ensure(ens_bad)
+    checks.append(
+        (
+            any(
+                "XEnsureTavern" in f.message and f.id == "A9-ensure-order"
+                for f in ens_bad.findings
+            ),
+            "嵌套 Ensure 末项不是上一级 Ensure → 报 A9-ensure-order",
+        )
+    )
+
+    # A9：单层末项必然命中且带 next、没有 max_hit / 有限 timeout → 报；带 max_hit → 不报
+    def ensure_with_last(last: dict) -> Ctx:
+        synth = synth_ctx(
+            {
+                "XProbeHome": {"recognition": "OCR"},
+                "XForward": last,
+                "XEnsureHome": {"next": ["XProbeHome", "XForward"]},
+            }
+        )
+        check_a9_ensure(synth)
+        return synth
+
+    forward_ctx = ensure_with_last({"next": ["XProbeHome"]})
+    checks.append(
+        (
+            any(f.id == "A9-ensure-order" for f in forward_ctx.findings),
+            "单层 Ensure 末项必然命中且无收尾 → 报 A9-ensure-order",
+        )
+    )
+    bounded_ctx = ensure_with_last({"max_hit": 2, "next": ["XProbeHome"]})
+    checks.append(
+        (
+            not any(f.id == "A9-ensure-order" for f in bounded_ctx.findings),
+            "末项带 max_hit 有收尾 → 不报 A9-ensure-order",
+        )
+    )
+
+    # A14：循环末项兜底 Ensure 与循环守卫同探针 → info；不同探针 → 不报
+    fallback_ctx = synth_ctx(
+        {
+            "XProbeWork": {"recognition": "OCR"},
+            "XProbeElse": {"recognition": "OCR"},
+            "XEnsureWork": {"recognition": "And", "all_of": ["XProbeWork"], "inverse": True},
+            "XEnsureElse": {"recognition": "And", "all_of": ["XProbeElse"], "inverse": True},
+            "XLoopWork": {
+                "recognition": "And",
+                "all_of": ["XProbeWork"],
+                "next": ["[JumpBack]XEnsureWork"],
+            },
+            "XLoopElse": {
+                "recognition": "And",
+                "all_of": ["XProbeWork"],
+                "next": ["[JumpBack]XEnsureElse"],
+            },
+        }
+    )
+    check_a14_loop_fallback(fallback_ctx)
+    checks += [
+        (
+            any(
+                f.id == "A14-fallback-same-probe"
+                and f.severity == "info"
+                and "XLoopWork" in f.message
+                for f in fallback_ctx.findings
+            ),
+            "兜底 Ensure 与循环守卫同探针 → 报 A14（info）",
+        ),
+        (
+            not any("XLoopElse" in f.message for f in fallback_ctx.findings),
+            "兜底 Ensure 换一个探针 → 不报 A14",
+        ),
+    ]
+
+    # 动词表新增 Enable：pipeline 内的开关型动作不再报 A13-verb
+    enable_ctx = synth_ctx({"XEnableReward": {"action": "Custom"}})
+    check_a13_naming(enable_ctx)
+    checks.append(
+        (
+            not any(
+                f.id == "A13-verb" and "XEnableReward" in f.message
+                for f in enable_ctx.findings
+            ),
+            "Enable 进动词表：XEnableReward 不报 A13-verb",
+        )
+    )
+
     # 规范版本：文档/模板与脚本不一致就要报，一致时不报（自检不写文件，只试纯函数）
     def vf_id(found: str | None) -> str:
         verdict = version_finding(found)
@@ -2071,6 +2240,7 @@ def main(argv: list[str] | None = None) -> int:
         check_a12_focus(ctx)
         check_a13_naming(ctx)
         check_a13_references(ctx)
+        check_a14_loop_fallback(ctx)
     # 规范版本与注解新鲜度：不属于任何域，给了 --pipeline 之类也要报
     check_spec_version(ctx)
     if domains["interface"]:
