@@ -64,22 +64,24 @@ node tools/validation/check_pyright.mjs
 
 退出码 0 = 无 error；1 = 有 error。`warn` 不影响退出码。
 
-## 命名规范版本（`validate_refs.py`）
+## 规范版本（`validate_refs.py`）
 
-**本脚本按 `NAMING_SPEC_VERSION` 那一版规范实现**，运行时会在输出里声明（console 头部、
-`--format github` 的摘要、`--format json` 的 `spec_version` 字段）。
+**本脚本按两份规范的各自版本实现**：`NAMING_SPEC_VERSION`（`node-naming.md`）与
+`STRUCT_SPEC_VERSION`（`pipeline-structure.md`）。运行时会在输出里声明命名规范那一版（console 头部、
+`--format github` 的摘要、`--format json` 的 `spec_version` 字段）；结构类判据（A4/A5/A7/A8/A9/A14…）
+按结构文档实现，所以它的版本也对。
 
-规范和脚本必须对齐，否则"这几条没查"会和"查了没问题"看起来一样：
+规范、模板、脚本必须对齐，否则"这几条没查"会和"查了没问题"看起来一样：
 
 | 发现 | 什么时候报 | 怎么办 |
 | --- | --- | --- |
-| `E1-spec-missing`（error） | 找不到 `docs/zh_cn/develop/node-naming.md`，或文档里没有「版本号: vX.Y」 | 检查文档路径与头部版本号；改名要同步脚本里的 `NAMING_SPEC` |
-| `E2-spec-version`（warn） | 文档的版本号与 `NAMING_SPEC_VERSION` 不一致（两个方向都报）；写法模板 `tools/vscode/pipeline.snippets.schema.json` 的 `$comment` 与它不一致也报 | 复核新规则要不要收进脚本，收完把 `NAMING_SPEC_VERSION` 与文档版本一起改 |
-| `E3-stale-annotation`（info） | 某个 pipeline/tasks/agent 文件头部写着「使用命名规范版本 vX.Y 校验年月日 YY/MM/DD」，且 vX.Y 低于当前版本 | 按当前规范重看那个文件，然后把版本号改成当前值 |
+| `E1-spec-missing`（error） | 找不到 `node-naming.md` / `pipeline-structure.md`，或文档里没有「版本号: vX.Y」 | 检查文档路径与头部版本号；改名要同步脚本里的 `NAMING_SPEC` / `STRUCT_SPEC` |
+| `E2-spec-version`（warn） | 某份文档的版本号与对应常量不一致（两个方向都报）；写法模板 `tools/vscode/pipeline.snippets.schema.json` 的 `$comment` 里两份规范的版本也逐份比 | 复核新规则要不要收进脚本，收完把对应常量（`NAMING_SPEC_VERSION` / `STRUCT_SPEC_VERSION`）与文档版本一起改 |
+| `E3-stale-annotation`（info） | 某个 pipeline/tasks/agent 文件头部注解低于对应文档的当前版本。**三种写法都认**：`使用命名规范版本 vX.Y 校验年月日 …`（旧）、`使用节点命名与分类 vX.Y …` + `使用任务链结构 vX.Y …`（新，一行一份）、带不带校验日期都行 | 按当前规范重看那个文件，然后把版本号改成当前值 |
 
-**改命名规范（`node-naming.md`）的规则就要同步 +0.1 并复核脚本**：文档版本号、`NAMING_SPEC_VERSION`、
+**改规范的规则就要同步 +0.1 并复核脚本**：文档版本号、对应常量、
 `tools/vscode/pipeline.snippets.schema.json` 的 `$comment` 三处是对齐的。文件没写注解的不报 E3
-（老文件太多，报了等于噪音），只报"看过的"。
+（老文件太多，报了等于噪音），只报"看过的"。一份文件可以同时挂两份规范的注解，落后的那份会被单独报出来。
 
 `A13-*` 里属于**护栏**（今天一条都不报，为的是以后别写错）的几条：引用就位节点必须带 `[JumpBack]`、
 就位节点的 `next` 里不放业务 `Loop`（`LoopErrorByTimes` 属骨架，豁免）、探测节点不该有 `next`、
@@ -108,7 +110,9 @@ node tools/validation/check_pyright.mjs
   "相对 agent 根的点分名"建图（`agent/shared/rect.py` → `shared.rect`），`--agent` 传目录时同样递归。
   `D1-unimported-module` 因此能追查子目录里的模块（`agent/main.py` 的 import 图是唯一入口）；
   反过来，**把注册类挪进子目录时不要只 `glob` 顶层**，否则 `A2` / `A3` / `D2` 与"注册名必须能在
-  agent 里搜到"会静默漏掉它们。`--agent` 传子目录会把报告范围收窄到该目录，要覆盖全树就传 `agent`。
+  agent 里搜到"会静默漏掉它们。`--agent` 传子目录只收窄**报告范围**（`report().in_scope`），
+  载入集取并集——传单个文件也不会让同一棵树里注册的自定义名变成 `A2-unknown-custom`
+  （早先的实现是替换载入集，`--agent agent/entrust.py` 会误报 3 条 error）。
 - **`uvx ruff` 能跑但要注意目录**：受限沙箱下 `UV_TOOL_DIR` / `UV_CACHE_DIR` 要指到工作区内，
   否则报 `failed to create directory ... os error 5`。
 - **`ruff` 的默认规则集里有大量本仓库从未采纳的风格偏好**（`TRY004` 异常类型判定、`PERF402`

@@ -139,15 +139,50 @@ CLICK_SYNONYMS = ("ClickYes", "ClickNo", "ClickSure")
 # 规范版本
 # --------------------------------------------------------------------------
 
-# 本脚本按哪一版《节点命名与分类》实现。文档头部写着「版本号: vX.Y」；改了收录的规则就同步 +0.1。
+# 两份规范各自的版本：脚本按哪一版实现。文档头部写着「版本号: vX.Y」；改了收录的规则就同步 +0.1。
 # 不一致时报 E2，提醒人复核新规则要不要收进脚本——版本号只印在输出里而没人对，等于没有。
-NAMING_SPEC_VERSION = "v1.6"
+# 两份都收：结构类判据（A4/A5/A7/A8/A9/A14…）按 pipeline-structure.md 实现，只对命名规范算版本
+# 等于让结构文档改了规则没人提醒。
+NAMING_SPEC_VERSION = "v1.7"
 NAMING_SPEC = Path("docs/zh_cn/develop/node-naming.md")
+STRUCT_SPEC_VERSION = "v1.5"
+STRUCT_SPEC = Path("docs/zh_cn/develop/pipeline-structure.md")
+
+
+@dataclass(frozen=True)
+class Spec:
+    """一份"有版本号"的规范：文档标题里的名字、文件、脚本实现的版本、对应的常量名。"""
+
+    label: str    # 文档标题，也是头部注解里对它的称呼（「节点命名与分类」/「任务链结构」）
+    path: Path
+    version: str  # 脚本按哪一版实现；改收录的规则就 +0.1
+    const: str    # 常量名，写进 E2 的提示里（改哪一处）
+
+    def older_than(self, other: str) -> bool:
+        return version_tuple(self.version) < version_tuple(other)
+
+
+SPEC_NAMING = Spec("节点命名与分类", NAMING_SPEC, NAMING_SPEC_VERSION, "NAMING_SPEC_VERSION")
+SPEC_STRUCTURE = Spec("任务链结构", STRUCT_SPEC, STRUCT_SPEC_VERSION, "STRUCT_SPEC_VERSION")
+SPECS: tuple[Spec, ...] = (SPEC_NAMING, SPEC_STRUCTURE)
+# 头部注解里对同一份规范可能出现的几种说法（同一份文档的历史写法都认，否则老文件永远报不出来）。
+# 「命名规范版本」是 node-naming.md 改名前（naming.md）的写法，「命名规范」是写法模板里的简写。
+ANNOTATION_SPECS: dict[str, Spec] = {
+    "命名规范版本": SPEC_NAMING,
+    "命名规范": SPEC_NAMING,
+    "节点命名与分类": SPEC_NAMING,
+    "任务链结构": SPEC_STRUCTURE,
+}
 # 编辑器里在用的写法模板：新节点的字段骨架从它来（`$comment` 上写着对应规范版本）
 PIPELINE_SNIPPETS = Path("tools/vscode/pipeline.snippets.schema.json")
-# 文件头部注释的写法由命名规范自己的「版本号」一节规定
+# 文件头部注释的写法：「使用<规范名> vX.Y」，后面可以跟「校验年月日 YY/MM/DD」。
+# 实测三种写法并存：`使用命名规范版本 v1.2 校验年月日 26/10/13`（旧）、
+# `使用节点命名与分类 v1.5 校验年月日 26/10/16` + `使用任务链结构 v1.3 …`（新，一行一份）、
+# `使用命名规范 v1.6; 使用任务链结构 v1.4`（写法模板的 `$comment`，没有校验日期）。
+# 前两种都带 `校验年月日`，第三种不带——所以日期那一组是可选的。
 ANNOTATION_RE = re.compile(
-    r"使用命名规范版本\s*v(\d+\.\d+)\s*校验年月日\s*(\d{2}/\d{2}/\d{2})"
+    r"使用(命名规范版本|命名规范|节点命名与分类|任务链结构)\s*v(\d+\.\d+)"
+    r"(?:\s*校验年月日\s*(\d{2}/\d{2}/\d{2}))?"
 )
 DOC_VERSION_RE = re.compile(r"版本号\s*[:：]\s*v(\d+\.\d+)")
 ANY_VERSION_RE = re.compile(r"v(\d+\.\d+)")
@@ -162,25 +197,32 @@ def version_tuple(text: str) -> tuple[int, int]:
 
 
 def version_finding(
-    found: str | None, current: str = NAMING_SPEC_VERSION
+    found: str | None,
+    current: str = NAMING_SPEC_VERSION,
+    spec: Spec = SPEC_NAMING,
 ) -> tuple[str, str] | None:
     """比对"文档/模板写的版本"与"脚本实现的版本"，返回 `(finding_id, 说明)` 或 None。
+
+    两处都要说清是**哪一份**规范（节点命名与分类 / 任务链结构）：两份都有版本号，
+    只说"文档已到 vX.Y"会让人对着另一份找。`current` 与 `spec` 分开是为了自检能造任意版本，
+    正常调用用 `spec.version`。
 
     抽成纯函数是为了自检能试它——自检不写文件（受限沙箱下系统临时目录不可写）。
     """
     if found is None:
-        return ("E1-spec-missing", "找不到「版本号: vX.Y」")
+        return ("E1-spec-missing", f"找不到{spec.label}文档的「版本号: vX.Y」")
     if f"v{found}" == current:
         return None
     if version_tuple(f"v{found}") > version_tuple(current):
         return (
             "E2-spec-version",
-            f"文档已到 v{found}，脚本按 {current} 实现："
-            f"复核新规则要不要收进脚本，收完把 NAMING_SPEC_VERSION 一起改",
+            f"{spec.label}文档已到 v{found}，脚本按 {current} 实现："
+            f"复核新规则要不要收进脚本，收完把 {spec.const} 一起改",
         )
     return (
         "E2-spec-version",
-        f"文档是 v{found}，脚本按 {current} 实现：两边要一致，改文档版本号或改 NAMING_SPEC_VERSION",
+        f"{spec.label}文档是 v{found}，脚本按 {current} 实现："
+        f"两边要一致，改文档版本号或改 {spec.const}",
     )
 
 
@@ -869,17 +911,15 @@ def check_a8_loop_guard(ctx: Ctx) -> None:
 
 
 def check_a9_ensure(ctx: Ctx) -> None:
+    """就位节点的 `next` 顺序（结构文档 §2）。
+
+    **不查 `max_hit`**：§2 现在没有"就位节点不要用 max_hit 卡"这句话，而 §5 明确把 `max_hit`
+    划给"任务级导航（从枢纽到页面）"——就位节点正是导航，`BattleEnsureHome` 的 `max_hit: 2` 是
+    合规预算。真正该管的是"在循环自愈路径上依赖它"，那条由 A10 负责（`--ignore A10-…` 可放行）。
+    """
     for node in ctx.nodes.values():
         if not ENSURE_RE.search(node.name):
             continue
-        if node.data.get("max_hit") is not None:
-            ctx.add(
-                "A9-ensure-maxhit",
-                "warn",
-                node.file,
-                find_line(node.file, node.name),
-                f"{node.name} 带 max_hit: {node.data['max_hit']}；结构文档 §2 要求就位节点用 pre_wait_freezes + rate_limit，不要用 max_hit 卡",
-            )
         items = to_list(node.data.get("next"))
         if not items:
             continue
@@ -1166,11 +1206,11 @@ def check_a13_references(ctx: Ctx) -> None:
 
 
 def check_a14_loop_fallback(ctx: Ctx) -> None:
-    """工作循环末项兜底 `Ensure` 与循环守卫取同一个探针（结构文档 §3）。
+    """工作循环末项兜底 `Ensure` 与循环守卫取同一个探针（结构文档 §3 末段）。
 
-    这种兜底等于"找不到东西就让守卫重新成立"：如果这个循环的完成态恰好也是
-    "候选全部 miss"，它会被拉回工作态、永远结束不了。但"页面级循环"里同样形状是
-    合法的（候选全是子守卫，全 miss 只可能意味着漂走），判不了，所以只报 info。
+    结构文档把它写成硬规则（"兜底的探针不能与本 `Loop` 的守卫探针相同（方向相反也算）"），
+    所以报 warn 而不是 info。确实合法的页面级循环（候选全是子守卫，全 miss 只可能意味着漂走）
+    用 `--ignore A14-fallback-same-probe` 放行——判不了的事交给人点名豁免，比让规则常年只当提示强。
     """
     for node in ctx.nodes.values():
         if "Loop" not in node.name:
@@ -1189,74 +1229,99 @@ def check_a14_loop_fallback(ctx: Ctx) -> None:
             continue
         ctx.add(
             "A14-fallback-same-probe",
-            "info",
+            "warn",
             node.file,
             find_line(node.file, node.name),
             f"{node.name}.next 末项 {last!r} 与该循环的守卫用同一个探针 {probe!r}："
-            f"兜底会把『守卫不成立』修成『守卫成立』。确认这个循环的完成态不是『候选全 miss』，"
-            f"否则它永远结束不了（结构文档 §3）",
+            f"兜底会把『守卫不成立』修成『守卫成立』，循环永远结束不了（结构文档 §3）。"
+            f"页面级循环确实要这么写时用 --ignore A14-fallback-same-probe 放行",
         )
+
+
+def annotations_of(text: str) -> list[tuple[Spec, str, str | None]]:
+    """把一段文本里所有「使用<规范名> vX.Y [校验年月日 YY/MM/DD]」抽出来。
+
+    返回 `[(规范, 版本, 校验日期)]`，按出现顺序；认不出的说法直接跳过。抽成纯函数是为了自检：
+    三种写法（旧名 `命名规范版本`、新名 `节点命名与分类` + `任务链结构`、模板里不带日期的简写）
+    都要能解析出来，否则"文件头部到底按哪版看过的"就查不出来。
+    """
+    found: list[tuple[Spec, str, str | None]] = []
+    for match in ANNOTATION_RE.finditer(text):
+        spec = ANNOTATION_SPECS.get(match.group(1))
+        if spec is not None:
+            found.append((spec, match.group(2), match.group(3)))
+    return found
 
 
 def check_spec_version(ctx: Ctx) -> None:
-    """规范版本落地：脚本按哪版实现、文档到哪版、哪些文件还没按当前版本重看过。
+    """规范版本落地：脚本按哪版实现、每份文档到哪版、哪些文件还没按当前版本重看过。
 
-    判据是文档头部的「版本号: vX.Y」与各文件头部注释里的
-    「使用命名规范版本 vX.Y 校验年月日 YY/MM/DD」——两者都是命名规范自己规定的写法。
+    三处判据：① 文档头部的「版本号: vX.Y」对各自的常量（命名规范 / 任务链结构，两份都要比，
+    结构类判据按 pipeline-structure.md 实现，只对一份算版本等于让另一份改了没人提醒）；
+    ② 写法模板 `$comment` 里那句 `使用命名规范 vX.Y; 使用任务链结构 vX.Y`（两份分别比）；
+    ③ 各文件头部注解落后于对应文档的（没有注解的不报——老文件太多，报了等于噪音）。
     """
-    doc = ctx.repo_root / NAMING_SPEC
-    if not doc.is_file():
-        ctx.add(
-            "E1-spec-missing",
-            "error",
-            doc,
-            None,
-            f"找不到命名规范文档 {NAMING_SPEC}（本脚本按 {NAMING_SPEC_VERSION} 实现）",
-        )
-    else:
+    for spec in SPECS:
+        doc = ctx.repo_root / spec.path
+        if not doc.is_file():
+            ctx.add(
+                "E1-spec-missing",
+                "error",
+                doc,
+                None,
+                f"找不到{spec.label}文档 {spec.path}（本脚本按 {spec.version} 实现）",
+            )
+            continue
         m = DOC_VERSION_RE.search(doc.read_text(encoding="utf-8"))
-        verdict = version_finding(m.group(1) if m else None)
+        verdict = version_finding(m.group(1) if m else None, spec.version, spec)
         if verdict:
             severity = "error" if verdict[0] == "E1-spec-missing" else "warn"
             ctx.add(verdict[0], severity, doc, find_line(doc, "版本号"), verdict[1])
 
+    # 写法模板：`$comment` 上那句也带两份规范的版本，逐份比（只比第一处 vX.Y 会漏掉结构那一份）
     snippets = ctx.repo_root / PIPELINE_SNIPPETS
     if snippets.is_file():
-        sm = ANY_VERSION_RE.search(snippets.read_text(encoding="utf-8"))
-        if sm:
-            verdict = version_finding(sm.group(1))
+        text = snippets.read_text(encoding="utf-8")
+        comment = next((l for l in text.splitlines() if "$comment" in l), "")
+        for spec, version, _date in annotations_of(comment):
+            verdict = version_finding(version, spec.version, spec)
             if verdict:
                 ctx.add(
                     verdict[0],
                     "warn",
                     snippets,
                     find_line(snippets, "$comment"),
-                    f"写法模板写着 v{sm.group(1)}，脚本按 {NAMING_SPEC_VERSION} 实现：两处版本要一起对",
+                    f"写法模板写着{spec.label} v{version}，脚本按 {spec.version} 实现："
+                    f"复核骨架要不要跟着改，改完把 {spec.const} 与模板的版本一起对",
                 )
 
-    # 头部注解落后的文件：没有注解的不报（老文件太多，报了等于噪音），只报"看过的"。
+    # 头部注解落后的文件：没有注解的不报，只报"看过的"。一行可以同时标两份规范（新写法），
+    # 所以逐个注解报，而不是只看第一条。
     for path in (*ctx.pipeline_files, *ctx.task_files, *ctx.agent_files):
         try:
             text = path.read_text(encoding="utf-8")
         except OSError:
             continue
-        am = ANNOTATION_RE.search(text)
-        if not am or version_tuple(f"v{am.group(1)}") >= version_tuple(
-            NAMING_SPEC_VERSION
-        ):
+        stale = [(spec, version, date) for spec, version, date in annotations_of(text)
+                 if version_tuple(f"v{version}") < version_tuple(spec.version)]
+        if not stale:
             continue
-        line = next(
-            (i for i, l in enumerate(lines_of(path), 1) if ANNOTATION_RE.search(l)),
-            None,
-        )
-        ctx.add(
-            "E3-stale-annotation",
-            "info",
-            path,
-            line,
-            f"头部标注按命名规范 v{am.group(1)}（{am.group(2)}）校验过，文档已到 {NAMING_SPEC_VERSION}："
-            f"重看一遍后把版本号改成 {NAMING_SPEC_VERSION}",
-        )
+        lines = lines_of(path)
+        for spec, version, date in stale:
+            line = next(
+                (i for i, l in enumerate(lines, 1)
+                 if any(s is spec and v == version for s, v, _d in annotations_of(l))),
+                None,
+            )
+            when = f"（{date}）" if date else ""
+            ctx.add(
+                "E3-stale-annotation",
+                "info",
+                path,
+                line,
+                f"头部标注按{spec.label} v{version}{when}校验过，该文档已到 {spec.version}："
+                f"重看一遍后把版本号改成 {spec.version}",
+            )
 
 
 # --------------------------------------------------------------------------
@@ -1720,8 +1785,20 @@ def self_test() -> int:
         ),
         (version_tuple("v1.10") > version_tuple("v1.3"), "版本号按数字比大小"),
         (
-            ANNOTATION_RE.search("// INFO 使用命名规范版本 v1.2 校验年月日 26/10/13").group(1) == "1.2",  # type: ignore[union-attr]
-            "头部注解版本号",
+            ANNOTATION_RE.search("// INFO 使用命名规范版本 v1.2 校验年月日 26/10/13").group(2) == "1.2",  # type: ignore[union-attr]
+            "头部注解版本号（旧写法）",
+        ),
+        (
+            [spec.label for spec, _v, _d in annotations_of(
+                "使用节点命名与分类 v1.5 校验年月日 26/10/16\n使用任务链结构 v1.3 校验年月日 26/10/16")]
+            == ["节点命名与分类", "任务链结构"],
+            "头部注解（新写法，一行一份）两份都认",
+        ),
+        (
+            [(spec.label, date) for spec, _v, date in annotations_of(
+                '"$comment": "使用命名规范 v1.6; 使用任务链结构 v1.4"')]
+            == [("节点命名与分类", None), ("任务链结构", None)],
+            "写法模板那种没有校验日期的简写也认",
         ),
         (DOC_VERSION_RE.search("版本号: v1.3").group(1) == "1.3", "文档版本号"),  # type: ignore[union-attr]
     ]
@@ -1911,15 +1988,35 @@ def self_test() -> int:
         (
             any(
                 f.id == "A14-fallback-same-probe"
-                and f.severity == "info"
+                and f.severity == "warn"
                 and "XLoopWork" in f.message
                 for f in fallback_ctx.findings
             ),
-            "兜底 Ensure 与循环守卫同探针 → 报 A14（info）",
+            "兜底 Ensure 与循环守卫同探针 → 报 A14（warn，结构文档 §3 是硬规则）",
         ),
         (
             not any("XLoopElse" in f.message for f in fallback_ctx.findings),
             "兜底 Ensure 换一个探针 → 不报 A14",
+        ),
+    ]
+
+    # A9 不再查 max_hit（§5 把 max_hit 划给任务级导航，就位节点正是导航），但仍要查 next 顺序
+    a9_ctx = synth_ctx(
+        {
+            "XProbeHome": {"recognition": "OCR"},
+            "XEnsureHome": {"max_hit": 2, "next": ["XProbeHome", "XEnterHome"]},
+            "XEnterHome": {"action": "Click"},
+        }
+    )
+    check_a9_ensure(a9_ctx)
+    checks += [
+        (
+            not any(f.id == "A9-ensure-maxhit" for f in a9_ctx.findings),
+            "就位节点带 max_hit 不再报 A9（§5 允许导航预算）",
+        ),
+        (
+            not a9_ctx.findings,
+            "就位节点 next 顺序合规时 A9 不报",
         ),
     ]
 
@@ -1949,6 +2046,14 @@ def self_test() -> int:
         (
             version_tuple("v1.2") < version_tuple(NAMING_SPEC_VERSION),
             "旧注解比当前版本低",
+        ),
+        (
+            "任务链结构" in (version_finding("1.2", STRUCT_SPEC_VERSION, SPEC_STRUCTURE) or ("", ""))[1],
+            "E2 说清是哪一份规范的版本不一致",
+        ),
+        (
+            version_finding(STRUCT_SPEC_VERSION.lstrip("v"), STRUCT_SPEC_VERSION, SPEC_STRUCTURE) is None,
+            "结构文档版本一致 → 不报 E2",
         ),
     ]
 
@@ -2029,9 +2134,11 @@ def build_ctx(args) -> Ctx:
         for arg in to_list((ctx.interface.get("agent") or {}).get("child_args")):
             if isinstance(arg, str) and arg.endswith(".py"):
                 # 源码树里 interface 在 assets/ 下、agent 在仓库根下，打包后才同层，两个基准都试。
+                # **仓库根优先**：`assets/agent` 是打包脚本留下的副本且在 .gitignore 里（第 464 行），
+                # 先试 base 会解析到那份陈旧副本，改了 `agent/` 却校验旧代码，还没有任何提示。
                 # 用 rglob：注册类可能落在 agent/ 的子目录（agent/shared/**），只 glob 顶层会静默漏掉，
                 # 让 A2/A3/D2 与"注册名必须能在 agent 里搜到"这几条对这些模块不再生效。
-                for cand in (base / arg, repo_root / arg):
+                for cand in (repo_root / arg, base / arg):
                     if cand.is_file():
                         ctx.agent_files = sorted(cand.parent.rglob("*.py"))
                         break
@@ -2055,7 +2162,11 @@ def build_ctx(args) -> Ctx:
     for p in ctx.explicit["agent"]:
         explicit_agent.extend(sorted(p.rglob("*.py")) if p.is_dir() else [p])
     if explicit_agent:
-        ctx.agent_files = explicit_agent
+        # 取并集，不是替换：载入集决定"引用能不能解析"，换掉它会让 `--agent agent/entrust.py`
+        # 这种单文件调用把同一棵树里注册的自定义名全变成 A2-unknown-custom（实测 3 条假 error，
+        # 其中 D1-unimported-module 还会误报"没被 main.py 导入"）。报告范围由 report().in_scope 决定，
+        # 与载入集无关，所以这里放宽不会让输出变脏。
+        ctx.agent_files = sorted({*ctx.agent_files, *explicit_agent})
 
     # 兜底默认布局
     if not pipeline_dirs and not args.pipeline:
@@ -2181,18 +2292,16 @@ def _ensure_printable_stdout() -> None:
     """
     if sys.stdout is None:
         return
+    # `except` 与抑制注释必须写在同一行：ruff 0.17 起，多行 `except (\n Exception\n):  # 抑制` 会把
+    # 抑制当成"未使用"（RUF100）而把 S110/BLE001 报出来，那是两个版本行为不同造成的假红。
     try:
         if sys.stdout.isatty():
             return
-    except (
-        Exception
-    ):  # noqa: BLE001, S110 - 探测 isatty 失败就当"不是终端"，继续往下改编码
+    except Exception:  # noqa: BLE001, S110 - 探测 isatty 失败就当"不是终端"，继续往下改编码
         pass
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
-    except (
-        Exception
-    ):  # noqa: BLE001, S110 - 老解释器/被包装过的 stdout 没有 reconfigure，保持原样即可
+    except Exception:  # noqa: BLE001, S110 - 老解释器/被包装过的 stdout 没有 reconfigure，保持原样即可
         pass
 
 
