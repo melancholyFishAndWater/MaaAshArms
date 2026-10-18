@@ -6,6 +6,7 @@
         "desc": "防卫局任务",
         "next": [
             "EscortLoopReward",
+            "[JumpBack]BaseBranchError",
             "[JumpBack]EscortEnsureHome",
             "LoopErrorByTimes"
         ]
@@ -44,6 +45,7 @@
         "next": [
             "EscortProbeHomeName",
             "[JumpBack]ProbeBlackPage",
+            "[JumpBack]BaseBranchError",
             "[JumpBack]EscortBackFromChoose",
             "[JumpBack]EscortEnterHome",
             "[JumpBack]ReturnMain",
@@ -99,6 +101,7 @@
             "[JumpBack]IsGetReward",
             "[JumpBack]EscortClickDelivery",
             "EscortLoopFind",
+            "[JumpBack]BaseBranchError",
             "LoopErrorByTimes"
         ]
     },
@@ -130,6 +133,7 @@
             "[JumpBack]EscortEnterAccept",
             "IsFreezes",
             "[JumpBack]MoveRight", // INFO 滑动到底部后画面上面部分无变化
+            "[JumpBack]BaseBranchError",
             "LoopErrorByTimes"
         ],
         "on_error": [

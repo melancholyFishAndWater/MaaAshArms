@@ -11,6 +11,7 @@
             "[JumpBack]GiftProbeDaily",
             "[JumpBack]GiftLoopChoose",
             "GiftLoopGive",
+            "[JumpBack]BaseBranchError",
             "[JumpBack]GiftEnsureHome",
             "LoopErrorByTimes"
         ]
@@ -135,6 +136,7 @@
         "timeout": 30000,
         "next": [
             "GiftProbeTavern",
+            "[JumpBack]BaseBranchError",
             "[JumpBack]GiftEnterTavern",
             "[JumpBack]FeiduEnsureHome"
         ]
@@ -163,6 +165,7 @@
         "timeout": 30000,
         "next": [
             "GiftProbeHome",
+            "[JumpBack]BaseBranchError",
             "[JumpBack]GiftEnterHome",
             "[JumpBack]GiftEnsureTavern"
         ]
@@ -191,6 +194,7 @@
         "timeout": 30000,
         "next": [
             "GiftProbeCharacters",
+            "[JumpBack]BaseBranchError",
             "[JumpBack]GiftEnterCharactersPage",
             "[JumpBack]GiftEnsureHome"
         ]
@@ -219,6 +223,7 @@
         "timeout": 30000,
         "next": [
             "GiftProbeRules",
+            "[JumpBack]BaseBranchError",
             "[JumpBack]GiftEnterRules",
             "[JumpBack]GiftEnsureCharacters"
         ]
@@ -247,6 +252,7 @@
         "next": [
             "GiftProbeNoMaxFavorability",
             "[JumpBack]GiftChooseFavorability",
+            "[JumpBack]BaseBranchError",
             "[JumpBack]GiftEnsureRules",
             "LoopErrorByTimes"
         ]
@@ -323,6 +329,7 @@
         ],
         "next": [
             "GiftClickShowGift",
+            "[JumpBack]BaseBranchError",
             "[JumpBack]GiftEnsureHome",
             "LoopErrorByTimes"
         ]

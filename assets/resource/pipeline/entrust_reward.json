@@ -20,6 +20,7 @@
         },
         "next": [
             "EntrustProbeRewardText",
+            "[JumpBack]BaseBranchError",
             "[JumpBack]EntrustEnterRewardStage",
             "[JumpBack]ReturnMain"
         ]
@@ -48,6 +49,7 @@
         "timeout": 30000,
         "next": [
             "EntrustProbeRewardButton",
+            "[JumpBack]BaseBranchError",
             "[JumpBack]EntrustClickRewardLevel",
             "[JumpBack]EntrustEnsureRewardStage"
         ]
@@ -85,7 +87,8 @@
             "[JumpBack]EntrustClickRewardButton",
             "[JumpBack]EntrustClickFinish",
             "[JumpBack]IsGetReward",
-            "[JumpBack]EntrustBranchBattleWin"
+            "[JumpBack]EntrustBranchBattleWin",
+            "[JumpBack]BaseBranchError"
         ]
     },
     "EntrustClickRewardButton": {

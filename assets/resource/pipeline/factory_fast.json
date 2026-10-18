@@ -4,6 +4,7 @@
         "desc": " FastFactoryStopOnMaxCount 建造第x次第一个角色; FactoryChooseNumber 一次建造多少个",
         "next": [
             "FastFactoryInit",
+            "[JumpBack]BaseBranchError",
             "[JumpBack]ReturnFactory"
         ]
     },

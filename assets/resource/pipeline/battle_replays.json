@@ -7,6 +7,7 @@
             "ReplaysStartClickAttack",
             "ReplaysStartInConfirm",
             "ReplaysStartInBattle",
+            "[JumpBack]BaseBranchError",
             "LoopErrorByTimes"
         ]
     },
@@ -41,6 +42,7 @@
             "[JumpBack]ReplaysEnd",
             "ReplaysMetalEnd",
             "ReplaysStartClickAttack",
+            "[JumpBack]BaseBranchError",
             "LoopErrorByTimes"
         ]
     },
@@ -61,6 +63,7 @@
             "ReplaysNoProps",
             "IsNoMetal",
             "[JumpBack]ReplaysInBattle",
+            "[JumpBack]BaseBranchError",
             "LoopErrorByTimes",
             "ReplaysStartClickAttack"
         ]
@@ -81,6 +84,7 @@
             "[JumpBack]ReplaysWin",
             "ReplaysEnd",
             "ReplaysMetalEnd",
+            "[JumpBack]BaseBranchError",
             "LoopErrorByTimes"
         ]
     },
@@ -125,7 +129,8 @@
         "max_hit": 8,
         "next": [
             "ReplaysClickFinishSuccess",
-            "ReplaysClickFinish"
+            "ReplaysClickFinish",
+            "[JumpBack]BaseBranchError"
         ]
     },
     "ReplaysClickFinishSuccess": {
@@ -167,6 +172,7 @@
         ],
         "action": "Click",
         "next": [
+            "[JumpBack]BaseBranchError",
             "ReplaysChooseReattackSuccess",
             "LoopErrorByTimes",
             "ReplaysChooseReattack"

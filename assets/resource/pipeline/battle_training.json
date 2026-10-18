@@ -9,6 +9,7 @@
             "[JumpBack]TrainingInit",
             "[JumpBack]TrainingProbeDaily",
             "TrainingLoop", // INFO 在训练所
+            "[JumpBack]BaseBranchError",
             "[JumpBack]TrainingEnsureHome",
             "LoopErrorByTimes"
         ]
@@ -65,6 +66,7 @@
         "timeout": 30000,
         "next": [
             "TrainingProbeHome",
+            "[JumpBack]BaseBranchError",
             "LoopErrorByTimes",
             "[JumpBack]ProbeBlackPage",
             "[JumpBack]TrainingEnterHome",
@@ -88,6 +90,7 @@
         "rate_limit": 1500,
         "next": [
             "TrainingLoop",
+            "[JumpBack]BaseBranchError",
             "LoopErrorByTimes",
             "TrainingEnterHome"
         ]
@@ -102,6 +105,7 @@
             "[JumpBack]TrainingGetStatus",
             "[JumpBack]TrainingEnterOne",
             "TrainingCheckEnd",
+            "[JumpBack]BaseBranchError",
             "[JumpBack]TrainingEnsureHome",
             "LoopErrorByTimes"
             // TODO 自律战斗失败的逻辑、不可代理的逻辑
@@ -147,6 +151,7 @@
         "action": "Click",
         "next": [
             "TaskBattleReplay",
+            "[JumpBack]BaseBranchError",
             "LoopErrorByTimes",
             "[JumpBack]ProbeBlackPage"
         ],

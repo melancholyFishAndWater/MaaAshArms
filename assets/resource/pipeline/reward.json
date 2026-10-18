@@ -4,6 +4,7 @@
         "next": [
             "[JumpBack]TaskEntrustGetReward",
             "CheckMissionStatus",
+            "[JumpBack]BaseBranchError",
             "[JumpBack]ReturnMain"
         ]
     },
@@ -22,6 +23,7 @@
             36
         ],
         "next": [
+            "[JumpBack]BaseBranchError",
             "MissionNoBlueMark",
             "MissionBlueMark"
         ]

@@ -6,6 +6,7 @@
         "desc": "领取资源任务",
         "next": [
             "FeiduRewardOne",
+            "[JumpBack]BaseBranchError",
             "[JumpBack]FeiduEnsureHome",
             "LoopErrorByTimes"
         ]
@@ -41,6 +42,7 @@
         "timeout": 30000,
         "next": [
             "FeiduProbeHome",
+            "[JumpBack]BaseBranchError",
             "[JumpBack]FeiduEnterHome",
             "[JumpBack]ReturnMain"
         ]

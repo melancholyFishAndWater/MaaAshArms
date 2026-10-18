@@ -9,6 +9,7 @@
         "desc": "武装押运任务",
         "next": [
             "TrainLoop",
+            "[JumpBack]BaseBranchError",
             "[JumpBack]TrainEnsureHome"
         ]
     },
@@ -114,6 +115,7 @@
         "timeout": 30000,
         "next": [
             "TrainProbeInfo",
+            "[JumpBack]BaseBranchError",
             "TrainClickArrow",
             "[JumpBack]ReturnMain"
         ]
@@ -142,6 +144,7 @@
         "timeout": 30000,
         "next": [
             "TrainProbeHomeReady",
+            "[JumpBack]BaseBranchError",
             "[JumpBack]TrainEnterHome", // INFO 此处初始化
             "[JumpBack]TrainEnsureInfo"
         ]
@@ -174,6 +177,7 @@
         "next": [
             "TrainProbeGoButtonLight",
             "IsNoMetal",
+            "[JumpBack]BaseBranchError",
             "[JumpBack]TrainClickRecommend",
             "[JumpBack]TrainOverrideConfirm",
             "[JumpBack]TrainResetCancel",
@@ -252,6 +256,7 @@
             "TrainCheckEnd",
             "[JumpBack]TrainLoopReward",
             "[JumpBack]TrainLoopAcceptable",
+            "[JumpBack]BaseBranchError",
             "LoopErrorByTimes"
         ]
     },
@@ -278,6 +283,7 @@
         "timeout": 30000,
         "next": [
             "TrainClickRewardInfo",
+            "[JumpBack]BaseBranchError",
             "[JumpBack]TrainEnsureHome",
             "[JumpBack]TrainInfoMover",
             "LoopErrorByTimes" // XXX 不会触发 暂时没有更好的解决方案
@@ -305,6 +311,7 @@
         "next": [
             "TrainEnterRewardPage",
             "TrainClickRewardInfo",
+            "[JumpBack]BaseBranchError",
             "LoopErrorByTimes"
         ],
         "post_wait_freezes": 1000
@@ -383,6 +390,7 @@
         "timeout": 30000,
         "next": [
             "TrainClickAcceptInfo",
+            "[JumpBack]BaseBranchError",
             "[JumpBack]TrainEnsureHome",
             "[JumpBack]TrainInfoMover",
             "LoopErrorByTimes" // XXX 不会触发
@@ -400,6 +408,7 @@
         "next": [
             "TrainEnterAcceptPage",
             "TrainClickAcceptInfo",
+            "[JumpBack]BaseBranchError",
             "LoopErrorByTimes"
         ]
     },
@@ -493,6 +502,7 @@
             "[JumpBack]TrainOverrideConfirm",
             "[JumpBack]TrainResetCancel",
             "TrainLoopGoButtonLight",
+            "[JumpBack]BaseBranchError",
             "[JumpBack]TrainEnsureGoButtonLight",
             "LoopErrorByTimes"
         ],

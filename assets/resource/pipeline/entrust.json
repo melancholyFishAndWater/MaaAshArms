@@ -13,6 +13,7 @@
             "EntrustClickLight",
             "[JumpBack]EntrustClickDart",
             "[JumpBack]EntrustLoopGetReward",
+            "[JumpBack]BaseBranchError",
             "[JumpBack]EntrustEnsureLevelInfo"
         ]
     },
@@ -24,6 +25,7 @@
         "custom_recognition": "TaskEntrustGetRewardReco",
         "next": [
             "EntrustLoopGetReward",
+            "[JumpBack]BaseBranchError",
             "[JumpBack]EntrustEnsureRewardInfo"
         ]
     },
@@ -35,6 +37,7 @@
         "custom_recognition": "TaskEntrustTrainingGetRewardReco",
         "next": [
             "EntrustLoopGetReward",
+            "[JumpBack]BaseBranchError",
             "[JumpBack]EntrustEnsureRewardInfo"
         ]
     },
@@ -190,6 +193,7 @@
         },
         "next": [
             "EntrustProbeChapter",
+            "[JumpBack]BaseBranchError",
             "[JumpBack]EntrustEnterMainLine",
             "[JumpBack]BattleEnsureHome"
         ]
@@ -218,6 +222,7 @@
         "timeout": 30000,
         "next": [
             "EntrustProbeStageName",
+            "[JumpBack]BaseBranchError",
             "[JumpBack]EntrustEnterStage",
             "[JumpBack]EntrustClickNextChapter",
             "[JumpBack]EntrustEnsureChapter"
@@ -263,6 +268,7 @@
         "timeout": 45000, // INFO 防止电脑太卡
         "next": [
             "EntrustProbeLevelInfo",
+            "[JumpBack]BaseBranchError",
             "[JumpBack]EntrustChooseLevel",
             "[JumpBack]EntrustMover",
             "[JumpBack]EntrustEnsureStage"
@@ -473,6 +479,7 @@
         ],
         "next": [
             "EntrustLoopGetReward",
+            "[JumpBack]BaseBranchError",
             "[JumpBack]EntrustEnsureRewardInfo"
         ]
     },

@@ -20,6 +20,7 @@
         "timeout": 30000,
         "next": [
             "BattleProbeHome",
+            "[JumpBack]BaseBranchError",
             "[JumpBack]BattleEnterHome",
             "[JumpBack]ReturnMain"
         ]
@@ -71,7 +72,8 @@
         "next": [
             "BattleReplayLight",
             "BattleClickReplay",
-            "BattleClickAuto"
+            "BattleClickAuto",
+            "[JumpBack]BaseBranchError"
         ]
     },
     "TaskBattleReplay": {
@@ -83,7 +85,8 @@
         "next": [
             "BattleReplayLight",
             "BattleClickReplay",
-            "BattleIsReplayLocked"
+            "BattleIsReplayLocked",
+            "[JumpBack]BaseBranchError"
         ]
     },
     // INFO 终止节点
@@ -144,7 +147,8 @@
         ],
         "next": [
             "BattleReplayLight",
-            "BattleClickReplay"
+            "BattleClickReplay",
+            "[JumpBack]BaseBranchError"
         ],
         "post_wait_freezes": 3000
     },
@@ -215,6 +219,7 @@
             "[JumpBack]BattleIsLoading",
             "BattleWin",
             "IsNoMetal",
+            "[JumpBack]BaseBranchError",
             "LoopErrorByTimes",
             "BattleClickAttack"
         ]
@@ -295,6 +300,7 @@
         "next": [
             "[JumpBack]IsGetReward",
             "BattleWin",
+            "[JumpBack]BaseBranchError",
             "BattleWinSuccess"
         ],
         "post_wait_freezes": 1000

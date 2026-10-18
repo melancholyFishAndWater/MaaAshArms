@@ -3,6 +3,7 @@
         "desc": "联络人任务",
         "next": [
             "EnterFriend",
+            "[JumpBack]BaseBranchError",
             "[JumpBack]ReturnMain"
         ]
     },

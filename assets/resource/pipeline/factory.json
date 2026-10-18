@@ -9,6 +9,7 @@
         },
         "next": [
             "TaskFactoryInHome",
+            "[JumpBack]BaseBranchError",
             "[JumpBack]ReturnFactory"
         ]
     },
@@ -70,6 +71,7 @@
             "[JumpBack]FactoryGetReward",
             "[JumpBack]FactoryCreateOrder",
             // TODO 子节点卡住
+            "[JumpBack]BaseBranchError",
             "[JumpBack]MoveUpDown",
             "TaskStop"
         ]
