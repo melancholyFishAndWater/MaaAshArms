@@ -135,6 +135,13 @@ LEGACY_PREFIXES = ("Is", "Has", "In", "At", "Can", "Able", "Unable")
 # 不做"猜同义词"。`GiftClickSortConfirm` 这类宾语本身就是"排序确认"的不算。
 CLICK_SYNONYMS = ("ClickYes", "ClickNo", "ClickSure")
 
+# pipeline-structure.md §9：通用错误分支（base.json 的 BaseBranchError，:36-92）。
+# 它只在"中央弹窗区出现确认"时命中，所以位置只影响谁先抢画面，不影响正常流程语义。
+GENERIC_ERROR_BRANCH = "BaseBranchError"
+# 会把「确认」点掉的候选：通用的确认节点名，或 expected 里含这个词的带动作节点。
+CONFIRM_NODE_NAMES = frozenset({"BaseProbeConfirm", "ClickConfirm"})
+CONFIRM_WORDS = ("确认",)
+
 # --------------------------------------------------------------------------
 # 规范版本
 # --------------------------------------------------------------------------
@@ -145,7 +152,7 @@ CLICK_SYNONYMS = ("ClickYes", "ClickNo", "ClickSure")
 # 等于让结构文档改了规则没人提醒。
 NAMING_SPEC_VERSION = "v1.8"
 NAMING_SPEC = Path("docs/zh_cn/develop/node-naming.md")
-STRUCT_SPEC_VERSION = "v1.6"
+STRUCT_SPEC_VERSION = "v1.7"
 STRUCT_SPEC = Path("docs/zh_cn/develop/pipeline-structure.md")
 
 
@@ -1265,6 +1272,115 @@ def check_a14_loop_fallback(ctx: Ctx) -> None:
         )
 
 
+def _resolve_candidate(item, nodes: dict[str, Node]) -> tuple[str, dict] | None:
+    """next/on_error 的一项 → (节点名, 节点数据)。
+
+    `enabled: false`、内联定义（没有节点名）、定义不存在的候选都返回 None——它们不参与 §9 的位次判定。
+    """
+    name, _jump, enabled = parse_ref(item)
+    if not enabled or not name:
+        return None
+    target = nodes.get(name)
+    return (name, target.data) if target else None
+
+
+def _has_confirm_mark(name: str | None, data: dict) -> bool:
+    """这个候选自身是不是「确认按钮」：名字是通用确认节点，或 expected 里含「确认」。"""
+    if name in CONFIRM_NODE_NAMES:
+        return True
+    for _path, value in walk_key(data, "expected"):
+        for pattern in to_list(value):
+            if isinstance(pattern, str) and any(w in pattern for w in CONFIRM_WORDS):
+                return True
+    return False
+
+
+def _is_inverse_guard(name: str | None, data: dict) -> bool:
+    """全取反守卫：`Ensure*`，或顶层 `inverse: true` 的节点（含取反的终点探针）。"""
+    return bool(name and ENSURE_RE.search(name)) or data.get("inverse") is True
+
+
+def _clicks_confirm(
+    name: str | None, data: dict, nodes: dict[str, Node], depth: int = 3
+) -> bool:
+    """这个候选会不会把「确认」点掉：自己有 `action`，且自身或引用的子识别里出现确认按钮。"""
+    if "action" not in data:
+        return False
+    if _has_confirm_mark(name, data):
+        return True
+    if depth <= 0:
+        return False
+    for key in ("all_of", "any_of"):
+        for item in to_list(data.get(key)):
+            sub = _resolve_candidate(item, nodes)
+            if sub and _clicks_confirm(sub[0], sub[1], nodes, depth - 1):
+                return True
+    return False
+
+
+def check_a15_error_branch(ctx: Ctx) -> None:
+    """通用错误分支的引用写法与位次（pipeline-structure.md §9）。
+
+    三条都是**今天一条都不报**的护栏：写它们是为了接线时别挂错位置，不是为了现在挑错。
+
+    - 引用必须带 `[JumpBack]`（候选位，"办完弹回我这里继续"）。
+    - 排在取反守卫（`Ensure*` / 顶层 `inverse`）之后等于没接：弹窗挡住页面时那个守卫必然命中。
+    - 排在自己会点「确认」的候选之前会抢点，把正常流程记成"错误弹窗"。
+
+    只判同一个 next/on_error 列表内的先后；跨列表的冲突、"哪个模板在弹窗下仍会命中"判不了。
+    """
+    for node in ctx.nodes.values():
+        for key, items in ref_lists(node.data):
+            resolved = [(item, _resolve_candidate(item, ctx.nodes)) for item in items]
+            slots = [
+                i
+                for i, (_item, cand) in enumerate(resolved)
+                if cand is not None and cand[0] == GENERIC_ERROR_BRANCH
+            ]
+            line = find_line(node.file, node.name)
+            for item, cand in resolved:
+                if cand is None or cand[0] != GENERIC_ERROR_BRANCH:
+                    continue
+                if not parse_ref(item)[1]:
+                    ctx.add(
+                        "A15-error-branch-jumpback",
+                        "warn",
+                        node.file,
+                        line,
+                        f"{node.name}.{key} 引用了通用错误分支 {GENERIC_ERROR_BRANCH} 却没带 [JumpBack]"
+                        f"（结构文档 §9：候选位）",
+                    )
+            if not slots:
+                continue
+            first = slots[0]
+            for _item, cand in resolved[:first]:
+                if cand is None:
+                    continue
+                if _is_inverse_guard(*cand):
+                    ctx.add(
+                        "A15-error-branch-shadowed",
+                        "warn",
+                        node.file,
+                        line,
+                        f"{node.name}.{key} 里 {GENERIC_ERROR_BRANCH} 排在取反守卫 {cand[0]} 之后："
+                        f"弹窗挡住页面时那个守卫必然命中，错误分支永远轮不到（结构文档 §9）",
+                    )
+                    break
+            for _item, cand in resolved[first + 1 :]:
+                if cand is None:
+                    continue
+                if _clicks_confirm(cand[0], cand[1], ctx.nodes):
+                    ctx.add(
+                        "A15-error-branch-conflict",
+                        "warn",
+                        node.file,
+                        line,
+                        f"{node.name}.{key} 里 {GENERIC_ERROR_BRANCH} 排在自己会点「确认」的候选 {cand[0]} 之前："
+                        f"同一个确认会被当成错误弹窗点掉（结构文档 §9）",
+                    )
+                    break
+
+
 def annotations_of(text: str) -> list[tuple[Spec, str, str | None]]:
     """把一段文本里所有「使用<规范名> vX.Y [校验年月日 YY/MM/DD]」抽出来。
 
@@ -2114,6 +2230,73 @@ def self_test() -> int:
         ),
     ]
 
+    # A15：通用错误分支的引用写法与位次（pipeline-structure.md §9）
+    a15_ctx = synth_ctx(
+        {
+            "BaseBranchError": {
+                "recognition": "Or",
+                "any_of": ["ProbeConfirmX"],
+                "next": ["ProbeHomeX"],
+            },
+            "ProbeConfirmX": {"recognition": "OCR", "expected": "确认"},
+            "ProbeHomeX": {"recognition": "OCR", "expected": "主页"},
+            "ClickConfirmX": {
+                "recognition": "OCR",
+                "expected": "确认",
+                "action": "Click",
+            },
+            "EnsureX": {
+                "recognition": "And",
+                "all_of": ["ProbeHomeX"],
+                "inverse": True,
+                "next": ["ProbeHomeX"],
+            },
+            "StopAllBusyX": {
+                "recognition": "Or",
+                "any_of": ["ProbeHomeX"],
+                "inverse": True,
+            },
+            "TaskOnlyError": {"next": ["[JumpBack]BaseBranchError"]},
+            "TaskOk": {"next": ["[JumpBack]BaseBranchError", "EnsureX"]},
+            "TaskNoJump": {"next": ["BaseBranchError"]},
+            "TaskShadowed": {"next": ["EnsureX", "[JumpBack]BaseBranchError"]},
+            "TaskInverseEnd": {"next": ["StopAllBusyX", "[JumpBack]BaseBranchError"]},
+            "TaskConflict": {"next": ["[JumpBack]BaseBranchError", "ClickConfirmX"]},
+            "TaskClaimFirst": {"next": ["ClickConfirmX", "[JumpBack]BaseBranchError"]},
+        }
+    )
+    check_a15_error_branch(a15_ctx)
+
+    def a15_ids(node_name: str) -> set[str]:
+        return {
+            f.id for f in a15_ctx.findings if f.message.startswith(node_name + ".")
+        }
+
+    checks += [
+        (not a15_ids("TaskOnlyError"), "只挂 [JumpBack]BaseBranchError → 不报 A15"),
+        (not a15_ids("TaskOk"), "错误分支排在取反守卫之前 → 不报 A15"),
+        (
+            "A15-error-branch-jumpback" in a15_ids("TaskNoJump"),
+            "引用错误分支不带 [JumpBack] → 报",
+        ),
+        (
+            "A15-error-branch-shadowed" in a15_ids("TaskShadowed"),
+            "错误分支排在 Ensure 之后 → 报 shadowed",
+        ),
+        (
+            "A15-error-branch-shadowed" in a15_ids("TaskInverseEnd"),
+            "顶层 inverse 的终点探针也算取反守卫 → 报 shadowed",
+        ),
+        (
+            "A15-error-branch-conflict" in a15_ids("TaskConflict"),
+            "错误分支排在自己的确认之前 → 报 conflict",
+        ),
+        (
+            not a15_ids("TaskClaimFirst"),
+            "自己的确认排在错误分支之前 → 不报 conflict",
+        ),
+    ]
+
     bad = [name for ok, name in checks if not ok]
     if bad:
         for name in bad:
@@ -2407,6 +2590,7 @@ def main(argv: list[str] | None = None) -> int:
         check_a13_naming(ctx)
         check_a13_references(ctx)
         check_a14_loop_fallback(ctx)
+        check_a15_error_branch(ctx)
     # 规范版本与注解新鲜度：不属于任何域，给了 --pipeline 之类也要报
     check_spec_version(ctx)
     if domains["interface"]:

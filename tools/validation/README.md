@@ -31,7 +31,7 @@ python tools/validation/check_python.py --root agent        # 只查某个根
 python tools/validation/validate_refs.py
 python tools/validation/validate_refs.py --format github
 python tools/validation/validate_refs.py --pipeline         # 只查某一域，可选 --tasks/--agent/--image/--interface
-python tools/validation/validate_refs.py --self-test        # 只跑内置断言（26 项纯函数），不读资源
+python tools/validation/validate_refs.py --self-test        # 只跑内置断言（纯函数），不读资源
 
 # 3. JSON Schema 校验（需要额外装包，见下）
 python tools/validation/validate_schema.py \
@@ -86,6 +86,11 @@ node tools/validation/check_pyright.mjs
 `A13-*` 里属于**护栏**（今天一条都不报，为的是以后别写错）的几条：引用就位节点必须带 `[JumpBack]`、
 就位节点的 `next` 里不放业务 `Loop`（`LoopErrorByTimes` 属骨架，豁免）、探测节点不该有 `next`、
 工作循环必须有 `next`、参数键 snake_case、pipeline 片段文件名 snake_case、不用 `ClickYes` 这类同义写法。
+
+`A15-error-branch-*` 是同一类护栏，管通用错误分支 `BaseBranchError`（`base.json`）挂在哪：引用必须带
+`[JumpBack]`；不能排在取反守卫（`Ensure*` / 顶层 `inverse`）之后——弹窗挡住页面时那些守卫必然命中，错误分支
+永远轮不到；也不能排在自己会点「确认」的候选之前——同一个确认会被当成错误弹窗点掉。只判同一列表内的先后，
+"哪个模板在弹窗下仍会命中"静态判不了，按人工。判据见 `docs/zh_cn/develop/pipeline-structure.md` §9。
 
 ## 依赖与前置
 
