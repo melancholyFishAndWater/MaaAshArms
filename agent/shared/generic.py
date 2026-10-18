@@ -19,13 +19,16 @@ from maa.context import (
     ContextEventSink,
     JRecognitionType,
 )
+from maa.define import OCRResult
 from maa.event_sink import NotificationType
-from maa.pipeline import JTemplateMatch
+from maa.pipeline import JOCR, JTemplateMatch
 
 from agentlog import log
 from params import parse_params
 from parent_tracker import father_name
 from rect import DEFAULT_HIT_BOX
+
+# ---------- Reco ----------
 
 
 # 如果连续k次画面不变 则返回roi box 一般和move系列搭配判断移动前后是否有明显变化
@@ -83,6 +86,38 @@ class IsFreezesReco(CustomRecognition):
             del self.__freezes_dict[key]
             log.debug(f"{argv.node_name} 画面冻结次数超过{k}，返回识别区域box")
             return (x, y, w, h)
+
+
+@AgentServer.custom_recognition("BaseBranchErrorConfirmReco")
+class BaseBranchErrorConfirmReco(CustomRecognition):
+    def analyze(
+        self, context: Context, argv: CustomRecognition.AnalyzeArg
+    ) -> list[int] | None:
+        # 标题
+        ocr_r1 = context.run_recognition_direct(
+            JRecognitionType.OCR, JOCR([".+"], roi=(412, 243, 474, 40)), argv.image
+        )
+        if ocr_r1 is not None and ocr_r1.hit:
+            assert type(ocr_r1.best_result) == OCRResult
+            log.info(ocr_r1.best_result.text)
+        else:
+            log.debug(f"{argv.node_name} 未捕获到错误模态弹窗标题")
+
+        # 内容
+        ocr_r2 = context.run_recognition_direct(
+            JRecognitionType.OCR, JOCR([".+"], roi=(359, 293, 566, 141)), argv.image
+        )
+        if ocr_r2 is not None and ocr_r2.hit:
+            for i in ocr_r2.filtered_results:
+                assert type(i) == OCRResult
+                log.info(i.text)
+        else:
+            log.debug(f"{argv.node_name} 未捕获到错误模态弹窗内容")
+
+        return DEFAULT_HIT_BOX
+
+
+# ---------- Act ----------
 
 
 # 始终执行失败

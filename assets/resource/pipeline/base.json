@@ -45,6 +45,51 @@
         ]
     },
     /* -------------------- 工作 -------------------- */
+    // INFO 错误弹窗
+    "BaseBranchError": {
+        "desc": "[jp] 捕获任何确认按钮 点击确认并输出日志 需要注意不要和任务冲突",
+        "recognition": "And",
+        "all_of": [
+            "BaseProbeConfirm"
+        ],
+        "next": [
+            "BaseBranchSeverClose",
+            "BaseBranchErrorConfirm"
+        ]
+    },
+    "BaseBranchSeverClose": {
+        "desc": "[end] 游戏内服务器维护弹窗 任务结束",
+        "recognition": "OCR",
+        "expected": [
+            "维护中",
+            "维护时间"
+        ],
+        "roi": [
+            320,
+            148,
+            636,
+            423
+        ],
+        "action": "StopTask",
+        "focus": {
+            "Node.Recognition.Succeeded": {
+                "content": "游戏维护 任务结束",
+                "display": [
+                    "log",
+                    "notification",
+                    "modal"
+                ]
+            }
+        }
+    },
+    "BaseBranchErrorConfirm": {
+        "desc": "[end] 点击确认按钮 并输出日志",
+        "recognition": "Custom",
+        "custom_recognition": "BaseBranchErrorConfirmReco",
+        "target": "BaseBranchError",
+        "action": "Click",
+        "post_wait_freezes": 1000
+    },
     // INFO 移动系列 起点是物品的话无法滑动，详见 TrainMoveToBottom
     "MoveDown": {
         "desc": "通用下滑",

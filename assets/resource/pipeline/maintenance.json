@@ -2,7 +2,7 @@
     /*
     INFO 维修会任务
 
-    使用任务链结构 v1.6 校验年月日 26/10/18
+    使用任务链结构 v1.7 校验年月日 26/10/18
     使用节点命名与分类 v1.8 校验年月日 26/10/18
     */
     "TaskMaintenance": {
@@ -10,6 +10,7 @@
         "next": [
             "[JumpBack]MaintenanceLoopFinish",
             "[JumpBack]MaintenanceBranchAble",
+            "[JumpBack]BaseBranchError",
             "[JumpBack]MaintenanceEnsureHome",
             "MaintenanceProbeAllBusy" // INFO 为了优化识别
         ]
@@ -107,6 +108,7 @@
         "timeout": 30000,
         "next": [
             "MaintenanceProbeHome",
+            "[JumpBack]BaseBranchError",
             "[JumpBack]MaintenanceEnterHome",
             "[JumpBack]ReturnMain"
         ]
@@ -135,6 +137,7 @@
         ],
         "next": [
             "MaintenanceBranchRange",
+            "[JumpBack]BaseBranchError",
             "[JumpBack]MaintenanceEnterRange"
         ]
     },
@@ -155,6 +158,7 @@
         ],
         "next": [
             "MaintenanceClickStart",
+            "[JumpBack]BaseBranchError",
             "MaintenanceProbeActionDart"
         ]
     },
@@ -184,7 +188,8 @@
             "MaintenanceProbeHome",
             "[JumpBack]MaintenanceClickCharacterConfirm",
             "[JumpBack]MaintenanceClickCharacterType",
-            "[JumpBack]MaintenanceClickFinish"
+            "[JumpBack]MaintenanceClickFinish",
+            "[JumpBack]BaseBranchError"
         ]
     },
     "MaintenanceClickCharacterConfirm": {
