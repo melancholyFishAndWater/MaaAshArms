@@ -98,8 +98,9 @@ class BaseBranchErrorConfirmReco(CustomRecognition):
             JRecognitionType.OCR, JOCR([".+"], roi=(412, 243, 474, 40)), argv.image
         )
         if ocr_r1 is not None and ocr_r1.hit:
-            assert type(ocr_r1.best_result) == OCRResult
-            log.info(ocr_r1.best_result.text)
+            for i in ocr_r1.filtered_results:
+                assert type(i) == OCRResult
+                log.info(i.text)
         else:
             log.debug(f"{argv.node_name} 未捕获到错误模态弹窗标题")
 
