@@ -184,7 +184,7 @@
         {
             "name": "Mission",
             "label": "任务奖励",
-            "entry": "TaskMission",
+            "entry": "TaskReward",
             "default_check": true
         },
         {

@@ -1,6 +1,7 @@
 {
-    "TaskMission": {
-        "desc": "领取奖励的任务",
+    "TaskReward": {
+        "desc": "领取奖励任务",
+        "timeout": 30000,
         "next": [
             "[JumpBack]TaskEntrustGetReward",
             "CheckMissionStatus",
