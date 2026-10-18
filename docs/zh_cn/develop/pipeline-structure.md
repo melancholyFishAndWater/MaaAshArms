@@ -178,6 +178,8 @@ TaskX            入口：门控、初始化、选择"去哪"
 
 `IsNoMetal` / `IsServerMaintenance` / `IsNetworkError` 是"判到就停"，`BaseBranchError` 是"点掉继续"。两类放在同一列表会互相抢顺序：同一个「确认」既可能被当成错误弹窗点掉，也可能被专责节点判成终止条件。维护弹窗尤其重复——`BaseBranchSeverClose` 与 `IsServerMaintenance` 都是 OCR「维护中」→ `StopTask`，接线时只留一处。
 
+列表里已经有专门点确认的候选（`ClickConfirm`、`TrainOverrideConfirm` 这类）时通常不再加：它已经能点掉弹窗，再加只是多一次 OCR。要补的是这类列表之外的入口、就位与出口分支。
+
 ### 成本
 
 命中评估一次＝一次 OCR（ROI 636×423）。按上表排在正向探针之后，只有前面候选全 miss 才付；排在前面则每轮都付。所以按"入口 + 就位 + 会把遮挡读成状态的分支"三处铺，不要每个节点都挂。
