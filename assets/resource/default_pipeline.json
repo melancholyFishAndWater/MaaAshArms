@@ -3,6 +3,7 @@
         "rate_limit": 2000
     },
     "TemplateMatch": {
+        "recognition": "TemplateMatch",
         "threshold": 0.8
     }
 }

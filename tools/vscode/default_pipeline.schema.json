@@ -2,7 +2,7 @@
     "$schema": "http://json-schema.org/draft-07/schema#",
     "$id": "https://github.com/MaaAshArms/default_pipeline.schema.json",
     "title": "default_pipeline.json（Pipeline 默认值）",
-    "description": "放在资源目录根部（与 pipeline/ 同级）。节点没写的字段按这里补。优先级：节点自身 > 算法/动作名块 > Default > 框架内置。",
+    "description": "放在资源目录根部（与 pipeline/ 同级）。节点没写的字段按这里补。优先级：节点自身 > 算法/动作名块 > Default > 框架内置。**算法名块必须显式写 recognition、动作名块必须显式写 action**：缺了框架会按 Invalid 解析（Unknown recognition / parse_action failed），整包加载失败；块内写出的类型还须与键名一致，否则 parsed_type != type 同样失败（这一条由框架加载时校验；本 schema 只查\"该键存在且是已知类型\"）。",
     "type": "object",
     "properties": {
         "Default": {
@@ -18,31 +18,31 @@
             },
             "additionalProperties": true
         },
-        "DirectHit": { "$ref": "#/definitions/block" },
-        "TemplateMatch": { "$ref": "#/definitions/block" },
-        "FeatureMatch": { "$ref": "#/definitions/block" },
-        "ColorMatch": { "$ref": "#/definitions/block" },
-        "OCR": { "$ref": "#/definitions/block" },
-        "NeuralNetworkClassify": { "$ref": "#/definitions/block" },
-        "NeuralNetworkDetect": { "$ref": "#/definitions/block" },
-        "Custom": { "$ref": "#/definitions/block" },
-        "DoNothing": { "$ref": "#/definitions/block" },
-        "Click": { "$ref": "#/definitions/block" },
-        "LongPress": { "$ref": "#/definitions/block" },
-        "Swipe": { "$ref": "#/definitions/block" },
-        "MultiSwipe": { "$ref": "#/definitions/block" },
-        "TouchDown": { "$ref": "#/definitions/block" },
-        "TouchMove": { "$ref": "#/definitions/block" },
-        "TouchUp": { "$ref": "#/definitions/block" },
-        "ClickKey": { "$ref": "#/definitions/block" },
-        "LongPressKey": { "$ref": "#/definitions/block" },
-        "KeyDown": { "$ref": "#/definitions/block" },
-        "KeyUp": { "$ref": "#/definitions/block" },
-        "InputText": { "$ref": "#/definitions/block" },
-        "StartApp": { "$ref": "#/definitions/block" },
-        "StopApp": { "$ref": "#/definitions/block" },
-        "StopTask": { "$ref": "#/definitions/block" },
-        "Command": { "$ref": "#/definitions/block" }
+        "DirectHit": { "$ref": "#/definitions/recognitionBlock" },
+        "TemplateMatch": { "$ref": "#/definitions/recognitionBlock" },
+        "FeatureMatch": { "$ref": "#/definitions/recognitionBlock" },
+        "ColorMatch": { "$ref": "#/definitions/recognitionBlock" },
+        "OCR": { "$ref": "#/definitions/recognitionBlock" },
+        "NeuralNetworkClassify": { "$ref": "#/definitions/recognitionBlock" },
+        "NeuralNetworkDetect": { "$ref": "#/definitions/recognitionBlock" },
+        "Custom": { "$ref": "#/definitions/recognitionBlock" },
+        "DoNothing": { "$ref": "#/definitions/actionBlock" },
+        "Click": { "$ref": "#/definitions/actionBlock" },
+        "LongPress": { "$ref": "#/definitions/actionBlock" },
+        "Swipe": { "$ref": "#/definitions/actionBlock" },
+        "MultiSwipe": { "$ref": "#/definitions/actionBlock" },
+        "TouchDown": { "$ref": "#/definitions/actionBlock" },
+        "TouchMove": { "$ref": "#/definitions/actionBlock" },
+        "TouchUp": { "$ref": "#/definitions/actionBlock" },
+        "ClickKey": { "$ref": "#/definitions/actionBlock" },
+        "LongPressKey": { "$ref": "#/definitions/actionBlock" },
+        "KeyDown": { "$ref": "#/definitions/actionBlock" },
+        "KeyUp": { "$ref": "#/definitions/actionBlock" },
+        "InputText": { "$ref": "#/definitions/actionBlock" },
+        "StartApp": { "$ref": "#/definitions/actionBlock" },
+        "StopApp": { "$ref": "#/definitions/actionBlock" },
+        "StopTask": { "$ref": "#/definitions/actionBlock" },
+        "Command": { "$ref": "#/definitions/actionBlock" }
     },
     "additionalProperties": false,
     "definitions": {
@@ -50,6 +50,116 @@
             "type": "object",
             "description": "该算法/动作的默认参数；节点写了的字段优先。",
             "additionalProperties": true
+        },
+        "recognitionBlock": {
+            "type": "object",
+            "description": "算法名块的默认参数。必须写 recognition（如 \"recognition\": \"TemplateMatch\"）；只写参数会让框架按 Invalid 解析并整包加载失败。",
+            "required": ["recognition"],
+            "properties": {
+                "recognition": { "$ref": "#/definitions/recognitionType" }
+            },
+            "allOf": [{ "$ref": "#/definitions/block" }]
+        },
+        "actionBlock": {
+            "type": "object",
+            "description": "动作名块的默认参数。必须写 action（如 \"action\": \"Click\"）。",
+            "required": ["action"],
+            "properties": {
+                "action": { "$ref": "#/definitions/actionType" }
+            },
+            "allOf": [{ "$ref": "#/definitions/block" }]
+        },
+        "recognitionType": {
+            "description": "v1 走字符串、v2 走 { type, param }；两种形式都必须带识别类型名。",
+            "oneOf": [
+                {
+                    "enum": [
+                        "DirectHit",
+                        "TemplateMatch",
+                        "FeatureMatch",
+                        "ColorMatch",
+                        "OCR",
+                        "NeuralNetworkClassify",
+                        "NeuralNetworkDetect",
+                        "Custom"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "required": ["type"],
+                    "additionalProperties": false,
+                    "properties": {
+                        "type": {
+                            "enum": [
+                                "DirectHit",
+                                "TemplateMatch",
+                                "FeatureMatch",
+                                "ColorMatch",
+                                "OCR",
+                                "NeuralNetworkClassify",
+                                "NeuralNetworkDetect",
+                                "Custom"
+                            ]
+                        },
+                        "param": { "type": "object" }
+                    }
+                }
+            ]
+        },
+        "actionType": {
+            "description": "v1 走字符串、v2 走 { type, param }；两种形式都必须带动作类型名。",
+            "oneOf": [
+                {
+                    "enum": [
+                        "DoNothing",
+                        "Click",
+                        "LongPress",
+                        "Swipe",
+                        "MultiSwipe",
+                        "TouchDown",
+                        "TouchMove",
+                        "TouchUp",
+                        "ClickKey",
+                        "LongPressKey",
+                        "KeyDown",
+                        "KeyUp",
+                        "InputText",
+                        "StartApp",
+                        "StopApp",
+                        "StopTask",
+                        "Command"
+                    ]
+                },
+                {
+                    "type": "object",
+                    "required": ["type"],
+                    "additionalProperties": false,
+                    "properties": {
+                        "type": {
+                            "enum": [
+                                "DoNothing",
+                                "Click",
+                                "LongPress",
+                                "Swipe",
+                                "MultiSwipe",
+                                "TouchDown",
+                                "TouchMove",
+                                "TouchUp",
+                                "ClickKey",
+                                "LongPressKey",
+                                "KeyDown",
+                                "KeyUp",
+                                "InputText",
+                                "StartApp",
+                                "StopApp",
+                                "StopTask",
+                                "Command"
+                            ]
+                        },
+                        "param": { "type": "object" }
+                    }
+                }
+            ]
         },
         "waitFreezes": {
             "oneOf": [
