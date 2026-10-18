@@ -1,5 +1,8 @@
 {
     "Default": {
         "rate_limit": 2000
+    },
+    "TemplateMatch": {
+        "threshold": 0.8
     }
 }
