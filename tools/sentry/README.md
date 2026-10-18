@@ -23,6 +23,7 @@
 | 把 Sentry CLI 的缓存库自动搬到可写目录 | 那等于由工具替人复制 OAuth 凭据（`cli.db` 里有 token 与 refresh_token），凭据会散落到 `temp/` 且不会自己清掉；而这个问题只需在受限沙箱下处理一次 | 照「前置条件」手动两条命令；报错时 `report_common.authority_error_hint()` 会把这两条打出来 |
 | 让画图脚本直接吃 Explore CSV | 导出的正文是**按块切碎**的（每格约 3.3 KB，块首块尾都丢头去尾），格子顺序也不是时间顺序，直接拼会拼出假行 | 先过 `python -m tools.sentry.cli explore-csv <csv>`，再拿它产出的日志正文去画 |
 | 还原被截断的行、猜丢失的内容 | 导出按字节裁过（实测 53 条 reco/action/node-done 读不出、104 行断头、1080 块碎片），猜出来的内容会变成假事实 | 只统计并提示；要完整证据用本机 `debug/` 目录 |
+| 把 Sentry 按字节块切碎的续行并回原记录 | 实测收益接近零、还有反作用：`PYTHON-18` 落盘的 `maafw.log`（10698 行）有 968 条续行（`内存管理]释放了2.97 MB` / `Adb, resource=B 服…` / `-10-14 13:01:26.284]…` 这类不以 `[时间]` 开头的碎片），并回后 `steps` 仍是 34、轮数与框数不变、只多 2 条 `attempts`（168→170）、`truncated_skipped` 64→61；而 `PYTHON-16` 那份并回后 `truncated` 从 38 变 39——把碎片粘到一条**本来完整**的记录尾巴上会毁掉它（`reco`/`node done` 的正则都以 `$` 收尾）。**"某任务只画出 2 步"不是这个原因**：那 2 条 `PipelineTask node done` 是日志里真有的（`logs_truncated: true`，Sentry 只留 1 MB），968 条续行里没有一条含 `node done` | 要看某任务完整过程：拉更长的窗口（`--limit` 已到上限 1000）或本机 `debug/`；没有 `node done` 时画图会退到"由识别记录还原"模式 |
 | 合并 `!!!OnEventNotify!!!` 与 `ctx_event_sink` 两份记录 | 同一次识别在日志里有两行，按行计数会翻倍；两份的字段也不完全一样 | 只计数，需要去重时按 `reco_id`（且注意它是进程内计数） |
 
 ## 前置条件
