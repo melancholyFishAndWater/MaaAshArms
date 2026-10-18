@@ -16,7 +16,7 @@
         "recognition": "And",
         "all_of": [
             "FeiduProbeHomeName",
-            "HasHelpButton"
+            "BaseProbeHelpButton"
         ]
     },
     "FeiduProbeHomeName": {

@@ -19,7 +19,7 @@
         "recognition": "And",
         "all_of": [
             "TrainingProbeHomeName",
-            "HasHelpButton"
+            "BaseProbeHelpButton"
         ]
     },
     "TrainingProbeHomeName": {

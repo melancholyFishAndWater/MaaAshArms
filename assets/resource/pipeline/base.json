@@ -1,4 +1,50 @@
 {
+    /* -------------------- 探测 -------------------- */
+    "BaseProbeHome": {
+        "desc": "[end] 在游戏主页",
+        "recognition": "OCR",
+        "expected": "出击作战",
+        "roi": [
+            805,
+            288,
+            460,
+            111
+        ]
+    },
+    "BaseProbeHelpButton": {
+        "desc": "有问号按钮",
+        "recognition": "TemplateMatch",
+        "template": "Base/HelpButton.png",
+        "roi": [
+            315,
+            0,
+            143,
+            106
+        ]
+    },
+    "BaseProbeReward": {
+        "desc": "[end] 在获得一览",
+        "recognition": "OCR",
+        "expected": "获得一览",
+        "roi": [
+            525,
+            154,
+            174,
+            53
+        ]
+    },
+    "BaseProbeConfirm": {
+        "desc": "[end] 有确认按钮",
+        "recognition": "OCR",
+        "expected": "确认",
+        "roi": [
+            320,
+            148,
+            636,
+            423
+        ]
+    },
+    /* -------------------- 工作 -------------------- */
     // INFO 移动系列 起点是物品的话无法滑动，详见 TrainMoveToBottom
     "MoveDown": {
         "desc": "通用下滑",
@@ -70,13 +116,9 @@
     // INFO 点击系列
     "ClickConfirm": {
         "desc": "通用点击确认",
-        "recognition": "OCR",
-        "expected": "确认",
-        "roi": [
-            340,
-            168,
-            596,
-            383
+        "recognition": "And",
+        "all_of": [
+            "BaseProbeConfirm"
         ],
         "action": "Click",
         "post_wait_freezes": 500
@@ -121,40 +163,6 @@
         ],
         "post_wait_freezes": 500
     },
-    /* -------------------- 探测 -------------------- */
-    "ProbeHome": {
-        "desc": "[end] 在游戏主页",
-        "recognition": "OCR",
-        "expected": "出击作战",
-        "roi": [
-            805,
-            288,
-            460,
-            111
-        ]
-    },
-    "HasHelpButton": {
-        "desc": "有问号按钮",
-        "recognition": "TemplateMatch",
-        "template": "Base/HelpButton.png",
-        "roi": [
-            315,
-            0,
-            143,
-            106
-        ]
-    },
-    "ProbeReward": {
-        "desc": "[end] 在获得一览",
-        "recognition": "OCR",
-        "expected": "获得一览",
-        "roi": [
-            525,
-            154,
-            174,
-            53
-        ]
-    },
     // INFO 条件执行节点
     "BackButton": {
         "desc": "点击返回按钮",
@@ -190,7 +198,7 @@
         "desc": "领取奖励",
         "recognition": "And",
         "all_of": [
-            "ProbeReward"
+            "BaseProbeReward"
         ],
         "action": "Click",
         "target": [
@@ -290,12 +298,12 @@
         "desc": "确保在主页面",
         "recognition": "And",
         "all_of": [
-            "ProbeHome"
+            "BaseProbeHome"
         ],
         "inverse": true,
         "timeout": 30000,
         "next": [
-            "ProbeHome",
+            "BaseProbeHome",
             "[JumpBack]HomeButton",
             "[JumpBack]BackButton",
             "[JumpBack]ClickUpperRight"

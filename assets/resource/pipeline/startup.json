@@ -3,7 +3,7 @@
         "desc": "启动游戏任务",
         "next": [
             "StartUpInGame",
-            "ProbeHome",
+            "BaseProbeHome",
             "StartUpClickIcon",
             "StartUpAshArms"
         ]
@@ -22,7 +22,7 @@
         "order_by": "Score",
         "threshold": 0.8,
         "next": [
-            "ProbeHome",
+            "BaseProbeHome",
             "StartUpClickIcon",
             "[JumpBack]StartUpDisclaimer",
             "[JumpBack]StartUpInLoding",
@@ -41,7 +41,7 @@
         "action": "StartApp",
         "package": "com.asharmdolls.bilibili",
         "next": [
-            "ProbeHome",
+            "BaseProbeHome",
             "[JumpBack]StartUpDisclaimer",
             "[JumpBack]StartUpInLoding",
             "IsServerMaintenance",
@@ -121,7 +121,7 @@
         ],
         "action": "Click",
         "next": [
-            "ProbeHome",
+            "BaseProbeHome",
             "[JumpBack]IsGetReward",
             "[JumpBack]NoticeClickDisable",
             "StartUpClickLogin"
@@ -145,7 +145,7 @@
             540
         ],
         "next": [
-            "ProbeHome",
+            "BaseProbeHome",
             "[JumpBack]IsGetReward",
             "[JumpBack]NoticeClickDisable",
             "[JumpBack]BackButton",

@@ -75,7 +75,7 @@
 | --- | --- |
 | 页面 | `EscortProbeHome`、`BattleProbeBlack`、`FactoryProbeHome` |
 | 布尔状态 | `TrainProbeAcceptable`、`BattleProbeLoading`、`BattleProbeAutoLight` |
-| 页面元素 | `TrainingProbeHomeName`、`ProbeHasHelpButton`（通用元素，放 `base.json`） |
+| 页面元素 | `TrainingProbeHomeName`、`ProbeProbeHelpButton`（通用元素，放 `base.json`） |
 | 可操作性 | `EntrustProbeAble`、`MaintenanceProbeRecyclable` |
 | 每日门控 | `EntrustProbeDaily`、`TrainingProbeDaily` |
 
@@ -130,7 +130,7 @@
 
 | 顺序 | 判据 | 用 |
 | --- | --- | --- |
-| 1 | 点完**离开当前页面**（`next` 里出现新页面的探针，如 `*ProbeHome`） | `Enter` |
+| 1 | 点完**离开当前页面**（`next` 里出现新页面的探针，如 `*BaseProbeHome`） | `Enter` |
 | 2 | 点完留在本页，只改变选中态（数量、排序、选了哪一项），可反复换 | `Choose` |
 | 3 | 其余：提交、执行、领取、关闭弹窗 | `Click` |
 

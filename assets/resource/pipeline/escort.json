@@ -92,7 +92,7 @@
         "recognition": "Or",
         "any_of": [
             "EscortProbeHomeName",
-            "ProbeReward"
+            "BaseProbeReward"
         ],
         "next": [
             "[JumpBack]ProbeBlackPage",
