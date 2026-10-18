@@ -182,10 +182,13 @@
             }
         },
         {
-            "name": "Mission",
-            "label": "任务奖励",
+            "name": "Reward",
+            "label": "领取奖励",
             "entry": "TaskReward",
-            "default_check": true
+            "default_check": true,
+            "option": [
+                "siku_reward_switch"
+            ]
         },
         {
             "name": "Replays",
@@ -235,6 +238,7 @@
         "resource/tasks/option/feidu_gift.json",
         "resource/tasks/option/entrust.json",
         "resource/tasks/option/battle_replays.json",
+        "resource/tasks/option/reward.json",
         "resource/tasks/preset/default.json"
     ]
 }

@@ -1,0 +1,142 @@
+{
+    /*
+    INFO 司库部
+
+    使用任务链结构 v1.7 校验年月日 26/10/19
+    使用节点命名与分类 v1.8 校验年月日 26/10/19
+    */
+    "SikuBranchReward": {
+        "desc": "[jp][once] 司库部任务分支",
+        "max_hit": 1,
+        "recognition": "And",
+        "all_of": [
+            "BaseProbeHome"
+        ],
+        "next": [
+            "[JumpBack]BaseBranchError",
+            "SikuStopUnrewardable",
+            "SikuEnterHome"
+        ]
+    },
+    /* -------------------- 探测 -------------------- */
+    "SikuProbeHomeName": {
+        "desc": "[end] 在司库部主页面",
+        "recognition": "OCR",
+        "expected": "司库部",
+        "roi": [
+            133,
+            14,
+            106,
+            43
+        ]
+    },
+    "SikuProbeRewardable": {
+        "desc": "[end] 可以领取司库奖励",
+        "recognition": "TemplateMatch",
+        "template": "Base/BlueMarkGreen.png",
+        "green_mask": true,
+        "roi": [
+            990,
+            609,
+            48,
+            45
+        ]
+    },
+    "SikuProbeBlueMark": {
+        "desc": "[end] 在司库部主页面 有蓝色标记的标签",
+        "recognition": "TemplateMatch",
+        "template": "Base/BlueMarkGreen.png",
+        "green_mask": true,
+        "roi": [
+            73,
+            95,
+            62,
+            456
+        ],
+        "order_by": "Vertical",
+        "index": -1
+    },
+    "SikuProbeNoBlueMark": {
+        "desc": "[end] 在司库部主页面 无蓝色标记的标签",
+        "recognition": "And",
+        "all_of": [
+            "SikuProbeBlueMark"
+        ],
+        "inverse": true
+    },
+    /* -------------------- 工作 -------------------- */
+    // INFO 无奖励
+    "SikuStopUnrewardable": {
+        "desc": "[end] 司库部无奖励",
+        "recognition": "And",
+        "all_of": [
+            "SikuProbeRewardable"
+        ],
+        "inverse": true,
+        "focus": {
+            "Node.Recognition.Succeeded": "司库部无奖励"
+        }
+    },
+    // INFO 有奖励
+    "SikuEnterHome": {
+        "desc": "[max] 进入司库部主页",
+        "max_hit": 10,
+        "recognition": "OCR",
+        "expected": "司库部",
+        "roi": [
+            947,
+            675,
+            65,
+            34
+        ],
+        "action": "Click",
+        "post_wait_freezes": 1000,
+        "next": [
+            "SikuLoopHome",
+            "[JumpBack]BaseBranchError",
+            "SikuEnterHome"
+        ]
+    },
+    "SikuLoopHome": {
+        "desc": "[Loop] 司库部领取奖励",
+        "recognition": "And",
+        "all_of": [
+            "SikuProbeHomeName"
+        ],
+        "timeout": 30000,
+        "next": [
+            "[JumpBack]ProbeBlackPage",
+            "SikuProbeNoBlueMark",
+            "[JumpBack]IsGetReward",
+            "[JumpBack]SikuClickBlueMark",
+            "[JumpBack]BaseBranchError"
+        ]
+    },
+    "SikuClickBlueMark": {
+        "desc": "[jp] 点击有蓝色标记的标签",
+        "recognition": "And",
+        "all_of": [
+            "SikuProbeBlueMark"
+        ],
+        "action": "Click",
+        "target_offset": [
+            -47,
+            53,
+            11,
+            9
+        ],
+        "post_wait_freezes": 1000,
+        "next": [
+            "SikuClickRewardButton"
+        ]
+    },
+    "SikuClickRewardButton": {
+        "desc": "[end] 无条件点击领取按钮区域",
+        "action": "Click",
+        "target": [
+            1036,
+            566
+        ],
+        "post_wait_freezes": 1000
+    }
+}

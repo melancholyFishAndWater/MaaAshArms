@@ -1,49 +1,25 @@
 {
+    /*
+    INFO 领取奖励
+
+    使用任务链结构 v1.7 校验年月日 26/10/19
+    使用节点命名与分类 v1.8 校验年月日 26/10/19
+    */
     "TaskReward": {
         "desc": "领取奖励任务",
-        "timeout": 30000,
+        "timeout": 60000,
         "next": [
             "[JumpBack]TaskEntrustGetReward",
-            "CheckMissionStatus",
+            "[JumpBack]SikuBranchReward",
+            "[JumpBack]MissionBranchReward",
             "[JumpBack]BaseBranchError",
-            "[JumpBack]ReturnMain"
+            "[JumpBack]ReturnMain",
+            "TaskStop"
         ]
     },
-    // TODO 领取邮箱奖励
-    "TaskEmail": {
-        "desc": "领取邮箱奖励"
-    },
-    "CheckMissionStatus": {
-        "desc": "获得任务状态",
-        "recognition": "OCR",
-        "expected": "任务",
-        "roi": [
-            849,
-            676,
-            63,
-            36
-        ],
-        "next": [
-            "[JumpBack]BaseBranchError",
-            "MissionNoBlueMark",
-            "MissionBlueMark"
-        ]
-    },
-    "MissionNoBlueMark": {
-        "desc": "任务没有蓝色标志",
-        "recognition": "TemplateMatch",
-        "template": "Base/BlueMarkGreen.png",
-        "green_mask": true,
-        "inverse": true,
-        "roi": [
-            885,
-            602,
-            63,
-            60
-        ]
-    },
-    "MissionBlueMark": {
-        "desc": "任务有蓝色标志",
+    /* -------------------- 探测 -------------------- */
+    "MissionProbeRewardable": {
+        "desc": "[end] 有任务奖励",
         "recognition": "TemplateMatch",
         "template": "Base/BlueMarkGreen.png",
         "green_mask": true,
@@ -52,21 +28,18 @@
             602,
             63,
             60
-        ],
-        "action": "Click",
-        "target_offset": [
-            -25,
-            25,
-            0,
-            0
-        ],
-        "next": [
-            "InMissionPage"
-        ],
-        "post_wait_freezes": 1000
+        ]
     },
-    "InMissionPage": {
-        "desc": "在任务界面",
+    "MissionProbeUnrewardable": {
+        "desc": "没有任务奖励",
+        "recognition": "And",
+        "all_of": [
+            "MissionProbeRewardable"
+        ],
+        "inverse": true
+    },
+    "MissionProbeHome": {
+        "desc": "[end] 在任务界面",
         "recognition": "OCR",
         "expected": "任务",
         "roi": [
@@ -74,14 +47,64 @@
             15,
             189,
             44
+        ]
+    },
+    /* -------------------- 工作 -------------------- */
+    // TODO 领取邮箱奖励
+    // "TaskEmail": {
+    //     "desc": "领取邮箱奖励"
+    // },
+    // INFO 任务奖励
+    "MissionBranchReward": {
+        "desc": "[jp][once] 任务奖励分支",
+        "max_hit": 1,
+        "recognition": "And",
+        "all_of": [
+            "BaseProbeHome"
         ],
+        "timeout": 30000,
+        "next": [
+            "[JumpBack]BaseBranchError",
+            "MissionProbeUnrewardable",
+            "MissionEnterHome"
+        ]
+    },
+    "MissionEnterHome": {
+        "desc": "[max] 进入任务奖励页面",
+        "max_hit": 10,
+        "recognition": "OCR",
+        "expected": "任务",
+        "roi": [
+            857,
+            677,
+            49,
+            32
+        ],
+        "action": "Click",
+        "post_wait_freezes": 1000,
+        "next": [
+            "MissionLoopHome",
+            "[JumpBack]BaseBranchError",
+            "MissionEnterHome"
+        ]
+    },
+    "MissionLoopHome": {
+        "desc": "[Loop]  循环",
+        "recognition": "And",
+        "all_of": [
+            "MissionProbeHome"
+        ],
+        "rate_limit": 1000,
+        "timeout": 30000,
         "next": [
             "MissionEnd",
-            "MissionGetReward"
+            "[JumpBack]MissionClickGetReward",
+            "[JumpBack]IsGetReward",
+            "[JumpBack]BaseBranchError"
         ]
     },
     "MissionEnd": {
-        "desc": "领取资源结束标志",
+        "desc": "[end] 领取资源结束标志",
         "recognition": "TemplateMatch",
         "template": "Reward/Dart.png",
         "method": 10001,
@@ -93,8 +116,8 @@
             194
         ]
     },
-    "MissionGetReward": {
-        "desc": "点击一键领取",
+    "MissionClickGetReward": {
+        "desc": "[jp] 点击一键领取",
         "recognition": "TemplateMatch",
         "template": "Reward/RewardLight.png",
         "action": "Click",
@@ -103,11 +126,6 @@
             69,
             215,
             84
-        ],
-        "next": [
-            "MissionEnd",
-            "MissionGetReward",
-            "IsGetReward"
         ],
         "post_wait_freezes": 1000
     }
