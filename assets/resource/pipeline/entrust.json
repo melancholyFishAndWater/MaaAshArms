@@ -47,7 +47,7 @@
         "action": "Custom",
         "custom_action": "EntrustInitAct",
         "attach": {
-            // INFO 会被覆写 或提供给vscode调试
+            // INFO 提供给vscode调试 发布版中会被覆写
             // 层级：章节（Chapter）→ 大关（stage_name）→ 小关（level）
             "stage_name": "结晶废墟", // 大关名
             "level": 10, // 目标小关的数字
@@ -178,6 +178,17 @@
         "recognition": "Custom",
         "custom_recognition": "EntrustProbeCanStartReco"
     },
+    "EntrustProbeChaapterFinsh": {
+        "desc": "[end] 当前页面所有章节已完成",
+        "recognition": "OCR",
+        "expected": "完成度.*?(\\d)/\\1",
+        "roi": [
+            45,
+            527,
+            125,
+            40
+        ]
+    },
     /* -------------------- 就位 -------------------- */
     // INFO 章节
     "EntrustEnsureChapter": {
@@ -239,20 +250,14 @@
         "post_wait_freezes": 1000
     },
     "EntrustClickNextChapter": {
-        // INFO max_hit=8 是限次不是自愈：章节数少，额度用尽后静默跳过，由 EnsureStage 的探针或 EnsureChapter 接管
-        "desc": "[max] 点击下一章",
-        "max_hit": 8,
-        "recognition": "OCR",
-        "expected": "下一章",
-        "roi": [
-            1199,
-            325,
-            70,
-            34
+        "desc": "[max] 点击下一章区域",
+        "recognition": "And",
+        "all_of": [
+            "EntrustProbeChaapterFinsh"
         ],
         "target": [
-            1246,
-            277
+            1247,
+            280
         ],
         "action": "Click"
     },
