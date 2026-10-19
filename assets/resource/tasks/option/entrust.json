@@ -28,7 +28,9 @@
                     "label": "关卡名",
                     "default": "结晶废墟",
                     "pipeline_type": "string",
-                    "description": "输入关卡名称"
+                    "description": "关卡名称 可以只写一部分",
+                    "verify": ".+",
+                    "pattern_msg": "请输入关卡名称 如结晶废墟"
                 },
                 {
                     "name": "level",
@@ -36,7 +38,7 @@
                     "default": "10",
                     "pipeline_type": "int",
                     "verify": "^([1-9]|10)$",
-                    "description": "请输入1~10"
+                    "pattern_msg": "请输入1~10"
                 },
                 {
                     "name": "times",
@@ -44,7 +46,8 @@
                     "default": "30",
                     "pipeline_type": "int",
                     "verify": "^([1-9]|[1-2][0-9]|30)$",
-                    "description": "请输入1~30。与剩余次数取最小值"
+                    "description": "与剩余次数取最小值",
+                    "pattern_msg": "请输入1~30"
                 }
             ],
             "pipeline_override": {
