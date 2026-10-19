@@ -220,7 +220,6 @@
             "BattleWin",
             "IsNoMetal",
             "[JumpBack]BaseBranchError",
-            "LoopErrorByTimes",
             "BattleClickAttack"
         ]
     },

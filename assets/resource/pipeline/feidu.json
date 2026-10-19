@@ -7,8 +7,7 @@
         "next": [
             "FeiduRewardOne",
             "[JumpBack]BaseBranchError",
-            "[JumpBack]FeiduEnsureHome",
-            "LoopErrorByTimes"
+            "[JumpBack]FeiduEnsureHome"
         ]
     },
     // INFO 探测

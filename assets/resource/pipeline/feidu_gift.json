@@ -12,8 +12,7 @@
             "[JumpBack]GiftLoopChoose",
             "GiftLoopGive",
             "[JumpBack]BaseBranchError",
-            "[JumpBack]GiftEnsureHome",
-            "LoopErrorByTimes"
+            "[JumpBack]GiftEnsureHome"
         ]
     },
     // INFO 探测
@@ -335,8 +334,7 @@
         "next": [
             "GiftClickShowGift",
             "[JumpBack]BaseBranchError",
-            "[JumpBack]GiftEnsureHome",
-            "LoopErrorByTimes"
+            "[JumpBack]GiftEnsureHome"
         ]
     },
     "GiftClickShowGift": {

@@ -181,8 +181,7 @@
             "[JumpBack]TrainClickRecommend",
             "[JumpBack]TrainOverrideConfirm",
             "[JumpBack]TrainResetCancel",
-            "[JumpBack]TrainClickGoButtonDart",
-            "LoopErrorByTimes"
+            "[JumpBack]TrainClickGoButtonDart"
         ]
     },
     "TrainClickRecommend": {
@@ -256,8 +255,7 @@
             "TrainCheckEnd",
             "[JumpBack]TrainLoopReward",
             "[JumpBack]TrainLoopAcceptable",
-            "[JumpBack]BaseBranchError",
-            "LoopErrorByTimes"
+            "[JumpBack]BaseBranchError"
         ]
     },
     // INFO 特殊节点
@@ -285,8 +283,7 @@
             "TrainClickRewardInfo",
             "[JumpBack]BaseBranchError",
             "[JumpBack]TrainEnsureHome",
-            "[JumpBack]TrainInfoMover",
-            "LoopErrorByTimes" // XXX 不会触发 暂时没有更好的解决方案
+            "[JumpBack]TrainInfoMover" // XXX 不会触发 暂时没有更好的解决方案
         ]
     },
     "TrainClickRewardInfo": {
@@ -311,8 +308,7 @@
         "next": [
             "TrainEnterRewardPage",
             "TrainClickRewardInfo",
-            "[JumpBack]BaseBranchError",
-            "LoopErrorByTimes"
+            "[JumpBack]BaseBranchError"
         ],
         "post_wait_freezes": 1000
     },
@@ -392,8 +388,7 @@
             "TrainClickAcceptInfo",
             "[JumpBack]BaseBranchError",
             "[JumpBack]TrainEnsureHome",
-            "[JumpBack]TrainInfoMover",
-            "LoopErrorByTimes" // XXX 不会触发
+            "[JumpBack]TrainInfoMover" // XXX 不会触发
         ]
     },
     "TrainClickAcceptInfo": {
@@ -408,8 +403,7 @@
         "next": [
             "TrainEnterAcceptPage",
             "TrainClickAcceptInfo",
-            "[JumpBack]BaseBranchError",
-            "LoopErrorByTimes"
+            "[JumpBack]BaseBranchError"
         ]
     },
     "TrainEnterAcceptPage": {
@@ -427,8 +421,7 @@
         "next": [
             "[JumpBack]TrainMoveToBottom",
             "TrainLoopFormation",
-            "[JumpBack]TrainEnterFormation",
-            "LoopErrorByTimes"
+            "[JumpBack]TrainEnterFormation"
             // "[JumpBack]TrainMoveDown" // TODO 移动到目标路线
         ],
         "post_wait_freezes": 2500
@@ -503,8 +496,7 @@
             "[JumpBack]TrainResetCancel",
             "TrainLoopGoButtonLight",
             "[JumpBack]BaseBranchError",
-            "[JumpBack]TrainEnsureGoButtonLight",
-            "LoopErrorByTimes"
+            "[JumpBack]TrainEnsureGoButtonLight"
         ],
         "focus": {
             "Node.PipelineNode.Failed": "错误 发车失败"
@@ -522,8 +514,7 @@
             "[JumpBack]TrainResetCancel",
             "[JumpBack]ClickConfirm", // INFO 发车确认 
             "TrainGoSuccess",
-            "[JumpBack]TrainClickGoButtonLight",
-            "LoopErrorByTimes"
+            "[JumpBack]TrainClickGoButtonLight"
         ]
     },
     "TrainClickGoButtonLight": {

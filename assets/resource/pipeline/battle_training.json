@@ -10,8 +10,7 @@
             "[JumpBack]TrainingProbeDaily",
             "TrainingLoop", // INFO 在训练所
             "[JumpBack]BaseBranchError",
-            "[JumpBack]TrainingEnsureHome",
-            "LoopErrorByTimes"
+            "[JumpBack]TrainingEnsureHome"
         ]
     },
     // INFO 判断与初始化
@@ -67,7 +66,6 @@
         "next": [
             "TrainingProbeHome",
             "[JumpBack]BaseBranchError",
-            "LoopErrorByTimes",
             "[JumpBack]ProbeBlackPage",
             "[JumpBack]TrainingEnterHome",
             "[JumpBack]BackButton", // INFO 尝试返回按钮(为兼容在关卡内)
@@ -91,7 +89,6 @@
         "next": [
             "TrainingLoop",
             "[JumpBack]BaseBranchError",
-            "LoopErrorByTimes",
             "TrainingEnterHome"
         ]
     },
@@ -106,8 +103,7 @@
             "[JumpBack]TrainingEnterOne",
             "TrainingCheckEnd",
             "[JumpBack]BaseBranchError",
-            "[JumpBack]TrainingEnsureHome",
-            "LoopErrorByTimes"
+            "[JumpBack]TrainingEnsureHome"
             // TODO 自律战斗失败的逻辑、不可代理的逻辑
         ]
     },
@@ -152,7 +148,6 @@
         "next": [
             "TaskBattleReplay",
             "[JumpBack]BaseBranchError",
-            "LoopErrorByTimes",
             "[JumpBack]ProbeBlackPage"
         ],
         "post_wait_freezes": 2000

@@ -7,8 +7,7 @@
         "next": [
             "EscortLoopReward",
             "[JumpBack]BaseBranchError",
-            "[JumpBack]EscortEnsureHome",
-            "LoopErrorByTimes"
+            "[JumpBack]EscortEnsureHome"
         ]
     },
     // INFO 探测
@@ -48,8 +47,7 @@
             "[JumpBack]BaseBranchError",
             "[JumpBack]EscortBackFromChoose",
             "[JumpBack]EscortEnterHome",
-            "[JumpBack]ReturnMain",
-            "LoopErrorByTimes"
+            "[JumpBack]ReturnMain"
         ]
     },
     "EscortBackFromChoose": {
@@ -101,8 +99,7 @@
             "[JumpBack]IsGetReward",
             "[JumpBack]EscortClickDelivery",
             "EscortLoopFind",
-            "[JumpBack]BaseBranchError",
-            "LoopErrorByTimes"
+            "[JumpBack]BaseBranchError"
         ]
     },
     "EscortClickDelivery": {
@@ -133,8 +130,7 @@
             "[JumpBack]EscortEnterAccept",
             "IsFreezes",
             "[JumpBack]MoveRight", // INFO 滑动到底部后画面上面部分无变化
-            "[JumpBack]BaseBranchError",
-            "LoopErrorByTimes"
+            "[JumpBack]BaseBranchError"
         ],
         "on_error": [
             "EscortClickOkFailed"

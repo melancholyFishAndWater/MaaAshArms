@@ -7,8 +7,7 @@
             "ReplaysStartClickAttack",
             "ReplaysStartInConfirm",
             "ReplaysStartInBattle",
-            "[JumpBack]BaseBranchError",
-            "LoopErrorByTimes"
+            "[JumpBack]BaseBranchError"
         ]
     },
     "ReplaysInit": {
@@ -42,8 +41,7 @@
             "[JumpBack]ReplaysEnd",
             "ReplaysMetalEnd",
             "ReplaysStartClickAttack",
-            "[JumpBack]BaseBranchError",
-            "LoopErrorByTimes"
+            "[JumpBack]BaseBranchError"
         ]
     },
     "ReplaysStartClickAttack": {
@@ -64,7 +62,6 @@
             "IsNoMetal",
             "[JumpBack]ReplaysInBattle",
             "[JumpBack]BaseBranchError",
-            "LoopErrorByTimes",
             "ReplaysStartClickAttack"
         ]
     },
@@ -84,8 +81,7 @@
             "[JumpBack]ReplaysWin",
             "ReplaysEnd",
             "ReplaysMetalEnd",
-            "[JumpBack]BaseBranchError",
-            "LoopErrorByTimes"
+            "[JumpBack]BaseBranchError"
         ]
     },
     // INFO 战斗胜利等待分支
@@ -111,8 +107,7 @@
         "next": [
             "[JumpBack]ClickConfirm",
             "[JumpBack]IsGetReward",
-            "ReplaysClickFinish",
-            "LoopErrorByTimes"
+            "ReplaysClickFinish"
         ]
     },
     "ReplaysClickFinish": {
@@ -156,8 +151,7 @@
         "next": [
             "[JumpBack]ClickConfirm",
             "[JumpBack]IsGetReward",
-            "ReplaysChooseReattack",
-            "LoopErrorByTimes"
+            "ReplaysChooseReattack"
         ]
     },
     "ReplaysChooseReattack": {
@@ -174,7 +168,6 @@
         "next": [
             "[JumpBack]BaseBranchError",
             "ReplaysChooseReattackSuccess",
-            "LoopErrorByTimes",
             "ReplaysChooseReattack"
         ],
         "post_wait_freezes": 1000
