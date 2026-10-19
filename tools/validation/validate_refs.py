@@ -160,17 +160,23 @@ STRUCT_SPEC = Path("docs/zh_cn/develop/pipeline-structure.md")
 class Spec:
     """一份"有版本号"的规范：文档标题里的名字、文件、脚本实现的版本、对应的常量名。"""
 
-    label: str    # 文档标题，也是头部注解里对它的称呼（「节点命名与分类」/「任务链结构」）
+    label: (
+        str  # 文档标题，也是头部注解里对它的称呼（「节点命名与分类」/「任务链结构」）
+    )
     path: Path
     version: str  # 脚本按哪一版实现；改收录的规则就 +0.1
-    const: str    # 常量名，写进 E2 的提示里（改哪一处）
+    const: str  # 常量名，写进 E2 的提示里（改哪一处）
 
     def older_than(self, other: str) -> bool:
         return version_tuple(self.version) < version_tuple(other)
 
 
-SPEC_NAMING = Spec("节点命名与分类", NAMING_SPEC, NAMING_SPEC_VERSION, "NAMING_SPEC_VERSION")
-SPEC_STRUCTURE = Spec("任务链结构", STRUCT_SPEC, STRUCT_SPEC_VERSION, "STRUCT_SPEC_VERSION")
+SPEC_NAMING = Spec(
+    "节点命名与分类", NAMING_SPEC, NAMING_SPEC_VERSION, "NAMING_SPEC_VERSION"
+)
+SPEC_STRUCTURE = Spec(
+    "任务链结构", STRUCT_SPEC, STRUCT_SPEC_VERSION, "STRUCT_SPEC_VERSION"
+)
 SPECS: tuple[Spec, ...] = (SPEC_NAMING, SPEC_STRUCTURE)
 # 头部注解里对同一份规范可能出现的几种说法（同一份文档的历史写法都认，否则老文件永远报不出来）。
 # 「命名规范版本」是 node-naming.md 改名前（naming.md）的写法，「命名规范」是写法模板里的简写。
@@ -488,7 +494,7 @@ def iter_custom_refs(data):
 
 
 def leading_word(name: str) -> str:
-    """名字的第一个 CamelCase 词（`BattleEnsureHome` -> `Battle`、`TaskBattleAuto` -> `Task`）。"""
+    """名字的第一个 CamelCase 词（`BattleEnsureHome` -> `Battle`、`BattleAuto` -> `Task`）。"""
     m = re.match(r"[A-Z][a-z0-9]*|[A-Z]+(?![a-z])", name)
     return m.group(0) if m else name
 
@@ -818,7 +824,9 @@ def check_a6_complement(ctx: Ctx) -> None:
                     reported = True
 
 
-def jumpback_descendants(root: str, nodes: dict[str, "Node"], limit: int = 64) -> set[str]:
+def jumpback_descendants(
+    root: str, nodes: dict[str, "Node"], limit: int = 64
+) -> set[str]:
     """从 `root` 出发、沿不带 `[JumpBack]` 的 next 引用能到达的节点集合（含 root）。
 
     这些节点是从 `root` 往下栈住的"后代"：若某节点能通过它们再 `[JumpBack]` 回到
@@ -842,7 +850,9 @@ def jumpback_descendants(root: str, nodes: dict[str, "Node"], limit: int = 64) -
     return seen
 
 
-def jumpback_parent_loops(node: "Node", nodes: dict[str, "Node"], limit: int = 64) -> set[str]:
+def jumpback_parent_loops(
+    node: "Node", nodes: dict[str, "Node"], limit: int = 64
+) -> set[str]:
     """`node` 用 `[JumpBack]` 指向的那些"祖先 Loop"。
 
     判定：某 `[JumpBack]` 目标 `L` 是祖先，当且仅当 `node` 能从 `L` 沿不带
@@ -881,7 +891,9 @@ def check_a7_jumpback(ctx: Ctx) -> None:
                         f"{node.name}.{key} 用 [JumpBack] 指向自己；自循环应写成普通候选（结构文档 §4）",
                     )
                 elif "Loop" in name:
-                    target_file = ctx.nodes[name].file if name in ctx.nodes else node.file
+                    target_file = (
+                        ctx.nodes[name].file if name in ctx.nodes else node.file
+                    )
                     scope = "本文件" if target_file == node.file else "跨文件"
                     if name in jumpback_parent_loops(node, ctx.nodes):
                         ctx.add(
@@ -1038,7 +1050,7 @@ def check_a12_focus(ctx: Ctx) -> None:
 def check_a13_naming(ctx: Ctx) -> None:
     generic = ctx.generic_nodes
     # 每个文件接受的"任务前缀"：出现 ≥2 次的第一个 CamelCase 词
-    # （不看 entry 名，因为一个文件可能有 TaskBattleAuto / TaskBattleReplay 这类入口名）
+    # （不看 entry 名，因为一个文件可能有 BattleAuto / TaskBattleReplay 这类入口名）
     prefixes: dict[Path, set[str]] = {}
     by_file: dict[Path, list[str]] = {}
     for name, info in ctx.nodes.items():
@@ -1442,15 +1454,21 @@ def check_spec_version(ctx: Ctx) -> None:
             text = path.read_text(encoding="utf-8")
         except OSError:
             continue
-        stale = [(spec, version, date) for spec, version, date in annotations_of(text)
-                 if version_tuple(f"v{version}") < version_tuple(spec.version)]
+        stale = [
+            (spec, version, date)
+            for spec, version, date in annotations_of(text)
+            if version_tuple(f"v{version}") < version_tuple(spec.version)
+        ]
         if not stale:
             continue
         lines = lines_of(path)
         for spec, version, date in stale:
             line = next(
-                (i for i, l in enumerate(lines, 1)
-                 if any(s is spec and v == version for s, v, _d in annotations_of(l))),
+                (
+                    i
+                    for i, l in enumerate(lines, 1)
+                    if any(s is spec and v == version for s, v, _d in annotations_of(l))
+                ),
                 None,
             )
             when = f"（{date}）" if date else ""
@@ -1929,14 +1947,22 @@ def self_test() -> int:
             "头部注解版本号（旧写法）",
         ),
         (
-            [spec.label for spec, _v, _d in annotations_of(
-                "使用节点命名与分类 v1.5 校验年月日 26/10/16\n使用任务链结构 v1.3 校验年月日 26/10/16")]
+            [
+                spec.label
+                for spec, _v, _d in annotations_of(
+                    "使用节点命名与分类 v1.5 校验年月日 26/10/16\n使用任务链结构 v1.3 校验年月日 26/10/16"
+                )
+            ]
             == ["节点命名与分类", "任务链结构"],
             "头部注解（新写法，一行一份）两份都认",
         ),
         (
-            [(spec.label, date) for spec, _v, date in annotations_of(
-                '"$comment": "使用命名规范 v1.6; 使用任务链结构 v1.4"')]
+            [
+                (spec.label, date)
+                for spec, _v, date in annotations_of(
+                    '"$comment": "使用命名规范 v1.6; 使用任务链结构 v1.4"'
+                )
+            ]
             == [("节点命名与分类", None), ("任务链结构", None)],
             "写法模板那种没有校验日期的简写也认",
         ),
@@ -2011,7 +2037,8 @@ def self_test() -> int:
             "合规的分支节点不报 A13-branch-*",
         ),
         (
-            {"A13-branch-action", "A13-branch-recognition", "A13-branch-next"} <= bad_ids,
+            {"A13-branch-action", "A13-branch-recognition", "A13-branch-next"}
+            <= bad_ids,
             "分支带 action / 无识别 / 无 next 都会被拦",
         ),
     ]
@@ -2047,7 +2074,10 @@ def self_test() -> int:
     jb_ancestor = synth_ctx(
         {
             "XLoopMainLoop": {"recognition": "And", "next": ["XLoopChildLoop"]},
-            "XLoopChildLoop": {"recognition": "And", "next": ["[JumpBack]XLoopMainLoop"]},
+            "XLoopChildLoop": {
+                "recognition": "And",
+                "next": ["[JumpBack]XLoopMainLoop"],
+            },
         }
     )
     check_a7_jumpback(jb_ancestor)
@@ -2068,7 +2098,9 @@ def self_test() -> int:
             "XEnterTavern": {"action": "Click"},
             "XEnsureHome": {"next": ["XProbeHome", "[JumpBack]XEnsureTavern"]},
             "XProbeHome": {"recognition": "OCR"},
-            "XEnsureTavern": {"next": ["XProbeTavern", "[JumpBack]XEnterTavern", "XEnsureHome"]},
+            "XEnsureTavern": {
+                "next": ["XProbeTavern", "[JumpBack]XEnterTavern", "XEnsureHome"]
+            },
         }
     )
     check_a9_ensure(ens_ctx)
@@ -2089,7 +2121,9 @@ def self_test() -> int:
             "XEnterTavern": {"recognition": "OCR", "action": "Click"},
             "XProbeHome": {"recognition": "OCR"},
             "XEnsureHome": {"next": ["XProbeHome"]},
-            "XEnsureTavern": {"next": ["XProbeTavern", "[JumpBack]XEnsureHome", "XEnterTavern"]},
+            "XEnsureTavern": {
+                "next": ["XProbeTavern", "[JumpBack]XEnsureHome", "XEnterTavern"]
+            },
         }
     )
     check_a9_ensure(ens_bad)
@@ -2135,8 +2169,16 @@ def self_test() -> int:
         {
             "XProbeWork": {"recognition": "OCR"},
             "XProbeElse": {"recognition": "OCR"},
-            "XEnsureWork": {"recognition": "And", "all_of": ["XProbeWork"], "inverse": True},
-            "XEnsureElse": {"recognition": "And", "all_of": ["XProbeElse"], "inverse": True},
+            "XEnsureWork": {
+                "recognition": "And",
+                "all_of": ["XProbeWork"],
+                "inverse": True,
+            },
+            "XEnsureElse": {
+                "recognition": "And",
+                "all_of": ["XProbeElse"],
+                "inverse": True,
+            },
             "XLoopWork": {
                 "recognition": "And",
                 "all_of": ["XProbeWork"],
@@ -2214,11 +2256,17 @@ def self_test() -> int:
             "旧注解比当前版本低",
         ),
         (
-            "任务链结构" in (version_finding("1.2", STRUCT_SPEC_VERSION, SPEC_STRUCTURE) or ("", ""))[1],
+            "任务链结构"
+            in (
+                version_finding("1.2", STRUCT_SPEC_VERSION, SPEC_STRUCTURE) or ("", "")
+            )[1],
             "E2 说清是哪一份规范的版本不一致",
         ),
         (
-            version_finding(STRUCT_SPEC_VERSION.lstrip("v"), STRUCT_SPEC_VERSION, SPEC_STRUCTURE) is None,
+            version_finding(
+                STRUCT_SPEC_VERSION.lstrip("v"), STRUCT_SPEC_VERSION, SPEC_STRUCTURE
+            )
+            is None,
             "结构文档版本一致 → 不报 E2",
         ),
     ]
@@ -2261,9 +2309,7 @@ def self_test() -> int:
     check_a15_error_branch(a15_ctx)
 
     def a15_ids(node_name: str) -> set[str]:
-        return {
-            f.id for f in a15_ctx.findings if f.message.startswith(node_name + ".")
-        }
+        return {f.id for f in a15_ctx.findings if f.message.startswith(node_name + ".")}
 
     checks += [
         (not a15_ids("TaskOnlyError"), "只挂 [JumpBack]BaseBranchError → 不报 A15"),
@@ -2530,11 +2576,15 @@ def _ensure_printable_stdout() -> None:
     try:
         if sys.stdout.isatty():
             return
-    except Exception:  # noqa: BLE001, S110 - 探测 isatty 失败就当"不是终端"，继续往下改编码
+    except (
+        Exception
+    ):  # noqa: BLE001, S110 - 探测 isatty 失败就当"不是终端"，继续往下改编码
         pass
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
-    except Exception:  # noqa: BLE001, S110 - 老解释器/被包装过的 stdout 没有 reconfigure，保持原样即可
+    except (
+        Exception
+    ):  # noqa: BLE001, S110 - 老解释器/被包装过的 stdout 没有 reconfigure，保持原样即可
         pass
 
 
