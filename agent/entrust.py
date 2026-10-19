@@ -11,8 +11,10 @@ from maa.context import (
     Rect,
     RecognitionDetail,
     OCRResult,
+    ContextEventSink,
 )
 from maa.pipeline import JOCR
+from maa.event_sink import NotificationType
 
 from agentlog import log
 from params import parse_attach
@@ -391,3 +393,42 @@ class EntrustMoverAct(CustomAction):
         if r is not None and r.success:
             return True
         return False
+
+
+# ----- EntrustCheckStageLocked -----
+
+_locked_count = 0
+
+
+# 连续三次识别时 返回box
+@AgentServer.custom_recognition("EntrustCheckStageLockedReco")
+class EntrustCheckStageLockedReco(CustomRecognition):
+    def analyze(
+        self, context: Context, argv: CustomRecognition.AnalyzeArg
+    ) -> list[int] | None:
+        node_name = argv.node_name
+
+        ocr_r = context.run_recognition("EntrustProbeChaapterFinsh", argv.image)
+        if ocr_r is not None and ocr_r.hit:
+            log.debug(f"{node_name} 当前画面所有章节完成 跳过累加")
+            return
+        elif ocr_r is None:
+            log.debug(f"{node_name} ocr失败 跳过累加")
+            return
+
+        global _locked_count
+        _locked_count += 1
+        if _locked_count >= 3:
+            log.debug(
+                f"{node_name} 当前画面所有章节未完成 累加 当前次数: {_locked_count}"
+            )
+            return DEFAULT_HIT_BOX
+
+
+# 注册上下文监听器 当next中有节点命中时，清空累积次数
+@AgentServer.context_sink()
+class _LoopErrorResetSink(ContextEventSink):
+    def on_node_pipeline_node(self, context, noti_type, detail) -> None:
+        global _locked_count
+        if noti_type == NotificationType.Succeeded:
+            _locked_count = 0

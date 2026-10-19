@@ -236,10 +236,11 @@
             "[JumpBack]BaseBranchError",
             "[JumpBack]EntrustEnterStage",
             "[JumpBack]EntrustClickNextChapter",
-            "[JumpBack]EntrustEnsureChapter"
+            "[JumpBack]EntrustEnsureChapter",
+            "EntrustCheckStageLocked"
         ],
         "focus": {
-            "Node.PipelineNode.Failed": "寻找关卡失败 可能关卡未解锁"
+            "Node.PipelineNode.Failed": "寻找关卡失败"
         }
     },
     "EntrustEnterStage": {
@@ -261,7 +262,16 @@
         ],
         "action": "Click"
     },
-    // TODO 关卡未解锁
+    // INFO 关卡未解锁
+    "EntrustCheckStageLocked": {
+        "desc": "[end] 连续三次识别关卡完成度未达标",
+        "recognition": "Custom",
+        "custom_recognition": "EntrustCheckStageLockedReco",
+        "post_wait_freezes": 1000,
+        "focus": {
+            "Node.PipelineNode.Failed": "寻找关卡失败 可能关卡未解锁"
+        }
+    },
     // INFO 委派详情页面
     "EntrustEnsureLevelInfo": {
         "desc": "[jp] 确保在小关详情页面",
