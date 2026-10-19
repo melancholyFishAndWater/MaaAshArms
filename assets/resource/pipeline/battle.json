@@ -27,8 +27,14 @@
     },
     "BattleEnterHome": {
         "desc": "[jp] 点击进入出击页面",
-        "recognition": "TemplateMatch",
-        "template": "Battle/MainBattleButton.png",
+        "recognition": "OCR",
+        "expected": "出击作战",
+        "roi": [
+            805,
+            288,
+            460,
+            111
+        ],
         "action": "Click",
         "post_wait_freezes": 1000
     },

@@ -1,6 +1,9 @@
 {
-    // INFO 使用命名规范版本 v1.2 校验年月日 26/10/13
-    // INFO 训练所任务
+    /*
+    INFO 训练所任务
+    
+    使用命名规范版本 v1.2 校验年月日 26/10/13
+    */
     "TaskTraining": {
         "desc": "训练所任务",
         "timeout": 60000,
@@ -13,7 +16,20 @@
             "[JumpBack]TrainingEnsureHome"
         ]
     },
-    // INFO 判断与初始化
+    "TrainingInit": {
+        "desc": "[once][jp] 训练所初始化",
+        "max_hit": 1,
+        // INFO 调试默认值
+        "attach": {
+            "战斗演习": "不进行",
+            "狩猎行动": "六",
+            "拓展训练": "六",
+            "资源筹备": "六"
+        },
+        "action": "Custom",
+        "custom_action": "TrainingInitAct"
+    },
+    /* -------------------- 探测 -------------------- */
     "TrainingProbeHome": {
         "desc": "[end] 在训练所主页面",
         "recognition": "And",
@@ -42,19 +58,7 @@
             "enable": true // 每日一次开关 覆写关闭
         }
     },
-    "TrainingInit": {
-        "desc": "[once][jp] 训练所初始化",
-        "max_hit": 1,
-        // INFO 调试默认值
-        "attach": {
-            "战斗演习": "不进行",
-            "狩猎行动": "六",
-            "拓展训练": "六",
-            "资源筹备": "六"
-        },
-        "action": "Custom",
-        "custom_action": "TrainingInitAct"
-    },
+    /* -------------------- 就位 -------------------- */
     "TrainingEnsureHome": {
         "desc": "[jp] 确保在训练所主页面",
         "recognition": "And",
@@ -72,7 +76,6 @@
             "[JumpBack]BattleEnsureHome"
         ]
     },
-    // INFO 训练所页面
     "TrainingEnterHome": {
         "desc": "[jp] 进入训练所",
         "recognition": "OCR",
@@ -92,6 +95,7 @@
             "TrainingEnterHome"
         ]
     },
+    /* -------------------- 工作 -------------------- */
     "TrainingLoop": {
         "desc": "[Loop] 训练所条件主循环",
         "recognition": "And",
