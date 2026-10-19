@@ -770,6 +770,35 @@ def check_explore_csv() -> list[str]:
     _contains(result.inventory["panel_lines"]["samples"][0]["text"], "实时画面为空", "面板行样例")
     _eq(result.inventory["images"], False, "导出不含图片")
 
+    # 卡在派发层的任务：只有 1 步 node done，但窗口里有 6 次连续未命中 —— 清单要能点名
+    # （`reco` 行没有 task_id，窗口靠该 task 的 Node.NextList 事件撑开，所以这里必须带一条）
+    def nextlist(ts: str, name: str, names: list[str], tid: int) -> str:
+        entries = ",".join('{"anchor":false,"jump_back":false,"name":"%s"}' % n for n in names)
+        return maafw(ts, '!!!OnEventNotify!!! [handle=true] [msg=Node.NextList.Failed] '
+                         f'[details={{"focus":null,"list":[{entries}],"name":"{name}","task_id":{tid}}}] ')
+
+    stall_lines = [
+        nextlist("00:07:00.000", "TaskC", ["CX", "CY"], 333),
+        *[maafw(f"00:07:0{i}.000", 'reco [result={"name":"CX","algorithm":"OCR","box":null,'
+                                    f'"reco_id":3{i}}}]') for i in range(1, 7)],
+        maafw("00:07:07.000", 'PipelineTask node done [result={"name":"TaskC","node_id":9,'
+                              '"reco_id":39,"completed":true}] [task_id_=333]'),
+    ]
+    stall_buffer = _io.StringIO()
+    stall_writer = _csv.writer(stall_buffer, lineterminator="\r\n")
+    stall_writer.writerow(["timestamp", "message"])
+    stall_writer.writerow(["2026-10-14T00:08:00+00:00", "\n".join(stall_lines)])
+    stall = explore_csv.extract(stall_buffer.getvalue())
+    stall_task = next(task for task in stall.tasks if task["task_id"] == 333)
+    _eq(stall_task["node_done"], 1, "空转任务只有 1 步")
+    _eq(stall_task["misses"], 6, "窗口内的未命中次数")
+    _eq(stall_task["stalled_misses"], 6, "最长的一段连续未命中")
+    _eq(stall_task["stalled_at"], "2026-10-14T00:07:01.000", "空转起点（第一条未命中）")
+    _eq(stall_task["window"][0], "2026-10-14T00:07:00.000", "窗口起点取 NextList 记录（早于第一步）")
+    stall_notes = " ".join(stall.inventory["notes"])
+    _contains(stall_notes, "task 333", "清单点名空转任务")
+    _contains(stall_notes, "连续 6 次识别未命中", "清单说明空转形态")
+
     # 列不对 / 路径不对要报清楚，不能混成"解析出 0 行"
     try:
         explore_csv.extract("trace,span.op\n1,db")
@@ -1006,17 +1035,18 @@ def check_flow_parents() -> list[str]:
         parse_log,
         parse_nextlist,
         resolve_parent,
+        stall_notes,
     )
 
     def line(ts: str, msg: str, px: str = "Px1") -> str:
         return f"[2026-10-14 {ts}][INF][{px}][Tx1][Unit.cpp][L1][MaaNS::T] {msg}"
 
     def nextlist(ts: str, name: str, names: list[str], tid: int, jumps: tuple[str, ...] = (),
-                 px: str = "Px1") -> str:
+                 px: str = "Px1", kind: str = "Starting") -> str:
         entries = ",".join(
             '{"anchor":false,"jump_back":%s,"name":"%s"}' % ("true" if n in jumps else "false", n)
             for n in names)
-        return line(ts, '!!!OnEventNotify!!! [handle=true] [msg=Node.NextList.Starting] '
+        return line(ts, f'!!!OnEventNotify!!! [handle=true] [msg=Node.NextList.{kind}] '
                         f'[details={{"focus":null,"list":[{entries}],"name":"{name}","task_id":{tid}}}] ', px)
 
     def done(ts: str, name: str, tid: int, px: str = "Px1") -> str:
@@ -1114,7 +1144,28 @@ def check_flow_parents() -> list[str]:
     ]
     _eq(parent_groups(column), [("Hub", 1, 2), ("A2", 4, 4), ("A2", 6, 6)],
         "连续同父才成组；自派发/未记录/任务起止不入组")
-    return ["候选命中 / 跨 task 隔离 / 自循环 / 折行 / 三种退回 / 时间上限 / 计数口径 / 分组 各自有断言"]
+    # 10) 候选表评估账 + "卡在派发层"的注记：连续 Failed 才是证据（单次 Failed 是循环推进的正常现象）
+    text = "\n".join([
+        nextlist("00:00:01.000", "TaskLoop", ["Entry"], 100, kind="Succeeded"),
+        nextlist("00:00:02.000", "TaskLoop", ["ReplaysStart", "ReplaysEnd"], 100, kind="Failed"),
+        nextlist("00:00:03.000", "TaskLoop", ["ReplaysStart", "ReplaysEnd"], 100, kind="Failed"),
+        nextlist("00:00:04.000", "TaskLoop", ["ReplaysStart", "ReplaysEnd"], 100, kind="Failed"),
+        done("00:00:05.000", "TaskLoop", 100),
+    ])
+    parsed = parse_log(text, None, None, 100, False)
+    stat = parsed.nextlist_stats[(100, "TaskLoop")]
+    _eq((stat.starting, stat.succeeded, stat.failed), (0, 1, 3), "候选表评估账按事件类型分记")
+    _eq(stat.real_candidates, ("ReplaysStart", "ReplaysEnd"),
+        "真实候选表取全未命中那轮的（入口轮是 [自己]，不算）")
+    notes = stall_notes(parsed, 100, {"TaskLoop"})
+    _eq(len(notes), 1, "只报一个派发者")
+    _contains(notes[0], "3 轮全未命中", "注记给出未命中轮数")
+    _contains(notes[0], "一个候选都没跑起来", "候选全没跑起来时的说法")
+    _eq(stall_notes(parsed, 100, {"TaskLoop", "ReplaysStart"})[0].count("跑起来的候选"), 1,
+        "有候选跑起来时改说跑起来的是哪个")
+    _eq(stall_notes(parsed, 999, set()), [], "别的 task 不串台")
+    return ["候选命中 / 跨 task 隔离 / 自循环 / 折行 / 三种退回 / 时间上限 / 计数口径 / 分组 / "
+            "候选表评估账 各自有断言"]
 
 
 CHECKS: tuple[tuple[str, Callable[[], list[str]]], ...] = (

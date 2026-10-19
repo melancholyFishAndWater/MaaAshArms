@@ -180,12 +180,19 @@ python -m tools.sentry.cli explore-csv <csv> [--log-out PATH] [--json-out PATH] 
 | 产物 | 默认路径 | 给谁用 |
 |---|---|---|
 | 日志正文 | `temp/flow/<csv 名>.log` | `flow_from_log.py` / `flow_cases.py --case`（按行内时间排好序，不用再排） |
-| 清单 | `temp/telemetry/<csv 名>.json` | 分析：`tasks`（含 `drawable`）、`markers`、`panel_lines`、`processes`、丢失量 |
+| 清单 | `temp/telemetry/<csv 名>.json` | 分析：`tasks`（含 `drawable`、`misses`、`stalled_at`）、`markers`、`panel_lines`、`processes`、丢失量 |
 
 清单里 `recovered` 是还原账（行数、完整行、面板行、断头、碎片、接回几处、排序前回跳几处），
 `parse` 是解析账（node done / 识别 / 事件 / 被截断的条数，**按记录类型拆**）。实测那份导出：
 10744 行 = 完整 8785 + 面板 766 + 断头 104 + 碎片 1080，接回 85 处；31 条 node done 分属 3 个任务
 （`200000039` 14 条、`200000056` 9 条、`200000013` 8 条）→ 三个都能画。
+
+**`tasks[]` 里还有"卡住"的账**（`node_done` 少不等于没内容）：`window`（任务的活动窗口 =
+它的 `Node.NextList` 记录首末 ∪ node done 首末 ∪ `task end`）、`misses` / `miss_first` / `miss_last`
+（窗口内的识别未命中）、`stalled_at` / `stalled_misses`（最长一段"连续未命中、其间没有任何 node done"，
+≥ 5 次才记）。命中这段时清单 `notes` 会点名，例如
+「task 200000167 只有 2 步 node done，但 09:39:23 起有连续 88 次识别未命中……画它时要带 `--from/--to`」——
+实测那个任务默认窗口只画得出末尾两步，真正的主体是 19 秒的候选全未命中。
 
 **MFA 面板行单独统计**（`[ts][WRN] [cfg=Default] 中文消息`，级别括号后有空格）：截图方式不兼容、
 跨平台解密失败、焦点协议失败这些只在面板里说，maafw 原生日志没有；画图时它们会被解析器跳过，

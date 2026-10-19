@@ -297,20 +297,55 @@ def _panel_summary(lines: Sequence[str]) -> dict[str, Any]:
     return {"count": sum(by_level.values()), "by_level": by_level, "samples": samples}
 
 
-def _task_rows(parsed, lines: Sequence[str]) -> list[dict[str, Any]]:
-    """每个 task 一行：node done 数、时间范围、结束结果、能不能画。
+STALL_MISS_MIN = 5   # 连续这么多次识别未命中、中间没有任何 node done，就认为这段时间"卡在派发层"
 
-    识别记录（`reco [result=]`）里**没有 task_id**，所以不往任务上摊；总数放在 `parse` 里。
+
+def _task_rows(parsed, lines: Sequence[str]) -> list[dict[str, Any]]:
+    """每个 task 一行：node done 数、时间范围、结束结果、能不能画，以及**卡住的那段**。
+
+    识别记录（`reco [result=]`）里**没有 task_id**，所以只能按任务的活动窗口摊：窗口 = 该 task 的
+    `Node.NextList` 记录首末时间 ∪ 它自己的 node done 首末时间 ∪ `task end`。没有 NextList 的日志上
+    窗口退回 node done 的范围（那种日志里识别记录本来也归不到任务上）。
+
+    `stalled_at` 是"连续 ≥ STALL_MISS_MIN 次未命中、其间没有任何 node done"那一段的起点：`200000167`
+    在 09:39:23–42 空了 19 秒、只有 2 步 node done，默认窗口根本看不出这段，靠这个字段才认得出。
     """
     by_task: dict[int, list[Any]] = {}
     for step in parsed.steps:
         if step.task_id is not None:
             by_task.setdefault(step.task_id, []).append(step)
     ends: dict[int, bool] = {}
-    for _ts, _entry, task_id, ret in parsed.task_ends:
+    end_ts: dict[int, Any] = {}
+    for ts, _entry, task_id, ret in parsed.task_ends:
         ends[task_id] = ret
+        end_ts[task_id] = ts
+    nl_first: dict[int, Any] = {}
+    nl_last: dict[int, Any] = {}
+    for (tid, _name), stat in parsed.nextlist_stats.items():
+        if tid is None or stat.first_ts is None or stat.last_ts is None:
+            continue
+        nl_first[tid] = min(nl_first.get(tid, stat.first_ts), stat.first_ts)
+        nl_last[tid] = max(nl_last.get(tid, stat.last_ts), stat.last_ts)
+
+    misses = sorted((a for a in parsed.attempts if a.kind == "miss"), key=lambda a: a.ts)
     rows: list[dict[str, Any]] = []
     for task_id, steps in sorted(by_task.items(), key=lambda kv: -len(kv[1])):
+        lo = min([min(s.ts for s in steps)] + ([nl_first[task_id]] if task_id in nl_first else []))
+        hi = max([max(s.ts for s in steps), end_ts.get(task_id, max(s.ts for s in steps))]
+                 + ([nl_last[task_id]] if task_id in nl_last else []))
+        in_window = [a for a in misses if lo <= a.ts <= hi]
+        # 连续未命中的段：段与段之间必然隔着一次 node done，所以按"两步之间有没有 node done"切
+        step_ts = sorted(s.ts for s in steps)
+        runs: list[list[Any]] = []
+        current: list[Any] = []
+        for a in in_window:
+            if current and any(current[-1].ts < t <= a.ts for t in step_ts):
+                runs.append(current)
+                current = []
+            current.append(a)
+        if current:
+            runs.append(current)
+        best = max(runs, key=len) if runs else []
         rows.append({
             "task_id": task_id,
             "node_done": len(steps),
@@ -319,6 +354,13 @@ def _task_rows(parsed, lines: Sequence[str]) -> list[dict[str, Any]]:
             "ended": task_id in ends,
             "end_ret": ends.get(task_id),
             "drawable": bool(steps),
+            "window": [lo.isoformat(timespec="milliseconds"), hi.isoformat(timespec="milliseconds")],
+            "misses": len(in_window),
+            "miss_first": in_window[0].ts.isoformat(timespec="milliseconds") if in_window else None,
+            "miss_last": in_window[-1].ts.isoformat(timespec="milliseconds") if in_window else None,
+            "stalled_at": (best[0].ts.isoformat(timespec="milliseconds")
+                           if len(best) >= STALL_MISS_MIN else None),
+            "stalled_misses": len(best),
         })
     return rows
 
@@ -366,6 +408,13 @@ def build_inventory(source: CsvSource, lines: Sequence[str], parsed, *,
     notes: list[str] = []
     if not any(task["drawable"] for task in tasks):
         notes.append("这份导出没有 PipelineTask node done：绘图只能出仅事件模式（用识别记录合成步骤）")
+    # 可画但"主体在空转"的任务要点名：默认窗口只看得到 node done，看不出那段时间在反复试候选
+    for task in tasks:
+        if task["stalled_at"] and task["drawable"]:
+            notes.append(
+                f"task {task['task_id']} 只有 {task['node_done']} 步 node done，"
+                f"但 {task['stalled_at'][11:19]} 起有连续 {task['stalled_misses']} 次识别未命中、其间没有任何节点跑完："
+                f"画它时要带 --from/--to 圈住那段（窗口 {task['window'][0][11:19]}~{task['window'][1][11:19]}）")
     if stats.truncated_skipped:
         notes.append(f"{stats.truncated_skipped} 条记录被截断读不出（reco/action/node done），已跳过")
     notes.append("这份导出不含图片，绘图时不会有画面格")
