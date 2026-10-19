@@ -429,6 +429,8 @@
     "TrainMoveToBottom": {
         "desc": "[once] 移动到STATION底部",
         "max_hit": 1, // 在 agent 侧的 TrainLoopAcceptableReco 重置
+        "timeout": 30000,
+        "rate_limit": 1000,
         "next": [
             "IsFreezes",
             "[JumpBack]TrainMoveUp"
