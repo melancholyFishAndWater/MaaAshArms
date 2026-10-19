@@ -193,8 +193,6 @@ ANNOTATION_RE = re.compile(
 )
 DOC_VERSION_RE = re.compile(r"版本号\s*[:：]\s*v(\d+\.\d+)")
 ANY_VERSION_RE = re.compile(r"v(\d+\.\d+)")
-# Ensure 的骨架候选，不算"业务 Loop 混进 next"（node-naming.md §3 的节点内部顺序里有它）
-ENSURE_SKELETON_REFS = frozenset({"LoopErrorByTimes"})
 
 
 def version_tuple(text: str) -> tuple[int, int]:
@@ -1188,7 +1186,6 @@ def check_a13_references(ctx: Ctx) -> None:
                     and key == "next"
                     and target
                     and target.endswith("Loop")
-                    and target not in ENSURE_SKELETON_REFS
                 ):
                     ctx.add(
                         "A13-ensure-loop-next",
@@ -1958,7 +1955,7 @@ def self_test() -> int:
             "TaskX": {"next": ["XEnterHome"]},
             "XEnterHome": {"action": "Click", "next": ["XEnsureHome"]},
             "XEnsureHome": {"next": ["XLoop"]},
-            "XLoop": {"next": ["XEnsureHome", "LoopErrorByTimes"]},
+            "XLoop": {"next": ["XEnsureHome"]},
         }
     )
     check_a13_references(ref_ctx)
@@ -1966,10 +1963,6 @@ def self_test() -> int:
     checks += [
         ("A13-ensure-jumpback" in ref_ids, "引用就位节点未带 [JumpBack] 会被拦"),
         ("A13-ensure-loop-next" in ref_ids, "就位节点的 next 里放 Loop 会被拦"),
-        (
-            not any("LoopErrorByTimes" in f.message for f in ref_ctx.findings),
-            "LoopErrorByTimes 属骨架，不误报",
-        ),
     ]
 
     naming_ctx = synth_ctx(
@@ -2032,7 +2025,7 @@ def self_test() -> int:
             "XLoopMainLoop": {
                 "recognition": "And",
                 "all_of": ["XProbeHome"],
-                "next": ["[JumpBack]XLoopSubLoop", "LoopErrorByTimes"],
+                "next": ["[JumpBack]XLoopSubLoop"],
             },
             "XLoopSubLoop": {"recognition": "And", "all_of": ["XProbeHome"]},
             "XProbeHome": {"recognition": "TemplateMatch"},
@@ -2073,7 +2066,7 @@ def self_test() -> int:
         {
             "XProbeTavern": {"recognition": "OCR"},
             "XEnterTavern": {"action": "Click"},
-            "XEnsureHome": {"next": ["XProbeHome", "[JumpBack]XEnsureTavern", "LoopErrorByTimes"]},
+            "XEnsureHome": {"next": ["XProbeHome", "[JumpBack]XEnsureTavern"]},
             "XProbeHome": {"recognition": "OCR"},
             "XEnsureTavern": {"next": ["XProbeTavern", "[JumpBack]XEnterTavern", "XEnsureHome"]},
         }

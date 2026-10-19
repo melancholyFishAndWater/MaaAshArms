@@ -84,7 +84,7 @@ node tools/validation/check_pyright.mjs
 （老文件太多，报了等于噪音），只报"看过的"。一份文件可以同时挂两份规范的注解，落后的那份会被单独报出来。
 
 `A13-*` 里属于**护栏**（今天一条都不报，为的是以后别写错）的几条：引用就位节点必须带 `[JumpBack]`、
-就位节点的 `next` 里不放业务 `Loop`（`LoopErrorByTimes` 属骨架，豁免）、探测节点不该有 `next`、
+就位节点的 `next` 里不放业务 `Loop`、探测节点不该有 `next`、
 工作循环必须有 `next`、参数键 snake_case、pipeline 片段文件名 snake_case、不用 `ClickYes` 这类同义写法。
 
 `A15-error-branch-*` 是同一类护栏，管通用错误分支 `BaseBranchError`（`base.json`）挂在哪：引用必须带

@@ -210,7 +210,7 @@ def resolve_parent(pending: list[Dispatcher], task_id: int | None, name: str,
     返回 (记录, 间隔秒数)；取不到时给 (None, inf)。规则有三条，都是为了别把父节点认错：
 
     - 只认**这个 task_id** 的记录。同一条 trace 里常并排跑多个任务，别的任务的候选表里有同名节点
-      （就位链的 `LoopErrorByTimes`、`MoveUp` 这类公共节点）时，按名字跨任务匹配会认错爹。
+      （`ProbeBlackPage`、`MoveUp` 这类各任务共用的节点）时，按名字跨任务匹配会认错爹。
     - 优先取**不晚于这一步**的最近一条：晚于它的记录说明那时候选表已经换过，不再是它的父节点。
     - 间隔超过 `NEXTLIST_MAX_GAP_SECONDS` 就不认，免得拿几十分钟前那一轮的记录当父节点。
     """
