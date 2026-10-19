@@ -71,7 +71,8 @@ from typing import Any
 # 渲染器改了却不重画。
 # 3：任务判定窗口的右端改用本任务自己的 task end。4：框里多了"父节点"一行。
 # 5：父节点从"一行小字"变成浅色分组框 + 左上角实心角标。
-RENDERER_VERSION = 5
+# 6：图第二行多了"卡在派发层"的注记（候选表连续全未命中）；`--list` 多了父节点评估账。
+RENDERER_VERSION = 6
 
 # 框里最多列几个候选，多的折成"另 N 项"（`--list` 不受这个限制）。
 # 默认只列 2 个：父节点名字 + 本次真跑的那个候选是这一行最要紧的两件事，
@@ -108,7 +109,7 @@ WALK_RE = re.compile(r"\[cur_node_=([^\]]+)\] \[list=(\[.*\])\]")
 # `re.search(r'\[details=(\{.*\})\s*$', 'x [details={"a":1}] ')` 返回 None，加上 `\]` 就正常），
 # 只按 `$` 收尾会静默匹配不上——与仓库里 RECO_RE / NODE_DONE_RE 的写法保持一致。
 NEXTLIST_RE = re.compile(
-    r"node\.nextlist\.(?:starting|succeeded|failed)\b.*?\[details(?:_json)?=(\{.*\})\]\s*$",
+    r"node\.nextlist\.(?P<kind>starting|succeeded|failed)\b.*?\[details(?:_json)?=(\{.*\})\]\s*$",
     re.IGNORECASE,
 )
 TIMEOUT_RE = re.compile(
@@ -164,7 +165,12 @@ def short(texts: Iterable[str], limit: int = 26) -> str:
 
 @dataclass(frozen=True)
 class Dispatcher:
-    """一条 `Node.NextList.*` 记录：谁在评估 next 表、那一刻排着什么。"""
+    """一条 `Node.NextList.*` 记录：谁在评估 next 表、那一刻排着什么。
+
+    `kind` 是这条事件的类型：`starting` = 开始评估、`succeeded` = 有候选命中、`failed` = 整个候选表
+    一个都没命中。**同一条候选表上连续的 `failed` 就是"卡在派发层"的直接证据**（任务一直重试候选、
+    没有任何子节点跑起来），所以它要单独统计，不能只用来推父节点。
+    """
 
     ts: datetime
     task_id: int | None
@@ -172,6 +178,30 @@ class Dispatcher:
     name: str
     candidates: tuple[str, ...]
     jumps: tuple[str, ...]
+    kind: str = "starting"
+
+
+@dataclass
+class NextListStat:
+    """一个 (task_id, 派发者) 的候选表评估账。
+
+    `candidates` 是第一次见到的候选表（入口那一轮往往是 `[自己]` 的自派发，不代表真实候选），
+    `failed_candidates` 记的是**全未命中那一轮**的候选表——排查"卡在派发层"时要看的是这一份。
+    """
+
+    name: str
+    candidates: tuple[str, ...] = ()
+    failed_candidates: tuple[str, ...] = ()
+    starting: int = 0
+    succeeded: int = 0
+    failed: int = 0
+    first_ts: datetime | None = None
+    last_ts: datetime | None = None
+
+    @property
+    def real_candidates(self) -> tuple[str, ...]:
+        """真实候选表：优先取全未命中那轮的，其次取第一次见到的。"""
+        return self.failed_candidates or self.candidates
 
 
 def parse_nextlist(msg: str, ts: datetime, px: str) -> Dispatcher | None:
@@ -185,7 +215,7 @@ def parse_nextlist(msg: str, ts: datetime, px: str) -> Dispatcher | None:
     if not match:
         return None
     try:
-        detail = json.loads(match.group(1))
+        detail = json.loads(match.group(2))
     except json.JSONDecodeError:
         return None
     if not isinstance(detail, dict):
@@ -200,7 +230,8 @@ def parse_nextlist(msg: str, ts: datetime, px: str) -> Dispatcher | None:
                   if e.get("jump_back") and isinstance(e.get("name"), str))
     raw_task = detail.get("task_id")
     task_id = raw_task if isinstance(raw_task, int) else None
-    return Dispatcher(ts=ts, task_id=task_id, px=px, name=name, candidates=candidates, jumps=jumps)
+    return Dispatcher(ts=ts, task_id=task_id, px=px, name=name, candidates=candidates,
+                      jumps=jumps, kind=match.group("kind").lower())
 
 
 def resolve_parent(pending: list[Dispatcher], task_id: int | None, name: str,
@@ -353,6 +384,9 @@ class ParsedLog:
     # 选中任务的起止（`--task-id` 且日志里有它的步骤时才有）：
     # 未命中聚合与事件挂载都靠它把窗口夹在任务自己的活动区间内，见 task_span()
     span: tuple[datetime, datetime] | None = None
+    # (task_id, 派发者) -> 候选表评估账。`failed` 连续出现 = 卡在派发层（候选一个都没命中），
+    # 是"node done 很少却过了很久"那类任务唯一能拿到的证据（`reco` 行没有 task_id）。
+    nextlist_stats: dict[tuple[int | None, str], NextListStat] = field(default_factory=dict)
 
 
 def _open_log_lines(source) -> Iterator[str]:
@@ -553,11 +587,25 @@ def parse_log(path, t_from: datetime | None, t_to: datetime | None,
         px = m.group("px")
         msg = m.group("msg")
 
-        # 谁在评估 next 表（父节点 + 候选表）
+        # 谁在评估 next 表（父节点 + 候选表）；同时记一份"评估账"——
+        # 连续的 failed 就是卡在派发层的证据，见 NextListStat 的注释。
         record = parse_nextlist(msg, ts, px)
         if record is not None:
             nextlists.append(record)
             stats.nextlist_seen += 1
+            key = (record.task_id, record.name)
+            stat = out.nextlist_stats.get(key)
+            if stat is None:
+                stat = NextListStat(name=record.name, candidates=record.candidates, first_ts=ts)
+                out.nextlist_stats[key] = stat
+            stat.last_ts = ts
+            if record.kind == "succeeded":
+                stat.succeeded += 1
+            elif record.kind == "failed":
+                stat.failed += 1
+                stat.failed_candidates = record.candidates
+            else:
+                stat.starting += 1
             continue
 
         # 当前在走谁的 next 表（只知道派发者、不知道候选表，作为退回）
@@ -1887,6 +1935,45 @@ def describe_empty_window(parsed: ParsedLog, opts: FlowOptions, source: Any) -> 
             f"也没有可用的识别结果（reco [result=...]）{extra}。{window}")
 
 
+def nextlist_stats_of(parsed: ParsedLog, task_id: int | None) -> list[NextListStat]:
+    """按 task 取"候选表评估账"，没命中轮次多的排前面。
+
+    `task_id is None` 时返回全部（整份日志里所有任务），调用方自己决定要不要限定。
+    """
+    stats = [s for (tid, _name), s in parsed.nextlist_stats.items()
+             if task_id is None or tid == task_id]
+    return sorted(stats, key=lambda s: (-s.failed, -(s.starting + s.succeeded)))
+
+
+def stall_notes(parsed: ParsedLog, task_id: int | None, step_names: set[str],
+                limit: int = 2) -> list[str]:
+    """把"卡在派发层"的任务说清楚：某派发者的候选表连续 N 轮一个都没命中。
+
+    这是"node done 只有两三步、时间却过了十几秒"那类任务的**唯一可复现证据**——`reco [result=]`
+    行不带 `task_id`，只能由带 `task_id` 的 `Node.NextList` 事件来说明"这段时间在反复试哪些候选"。
+
+    只报 `failed >= 2` 的（1 轮无命中是循环推进的正常现象），按没命中轮数取前 `limit` 个。
+    """
+    notes: list[str] = []
+    for stat in nextlist_stats_of(parsed, task_id):
+        if len(notes) >= limit:
+            break
+        if stat.failed < 2:
+            continue
+        ran = [c for c in stat.real_candidates if c in step_names]
+        head = f"{stat.name} 的候选表 {stat.failed} 轮全未命中"
+        if stat.real_candidates:
+            shown = " ・ ".join(stat.real_candidates[:4])
+            more = f" 另 {len(stat.real_candidates) - 4} 项" if len(stat.real_candidates) > 4 else ""
+            head += f"（候选 {shown}{more}）"
+        if not ran:
+            head += "，一个候选都没跑起来：任务一直停在派发层"
+        else:
+            head += f"，跑起来的候选：{' ・ '.join(ran[:4])}"
+        notes.append(head)
+    return notes
+
+
 def build_notes(parsed: ParsedLog, opts: FlowOptions) -> list[str]:
     """图上第二行与终端提示共用的诊断注记。
 
@@ -1900,6 +1987,12 @@ def build_notes(parsed: ParsedLog, opts: FlowOptions) -> list[str]:
             notes.append("识别范围已按该 task 的起始时间夹住")
         elif opts.task_id:
             notes.append("识别记录里没有 task_id，同窗口其他任务可能混入")
+    # 卡在派发层：只在"图只涉及一个 task"时报（多任务混在一张图上点名某个 task 的候选表会误导）
+    task_ids = {s.task_id for s in parsed.steps if s.task_id is not None}
+    if opts.task_id is not None:
+        notes.extend(stall_notes(parsed, opts.task_id, {s.name for s in parsed.steps}))
+    elif len(task_ids) == 1:
+        notes.extend(stall_notes(parsed, next(iter(task_ids)), {s.name for s in parsed.steps}))
     # 父节点只在"日志里确实有派发记录、却有步骤没归上"时才提示；全归上了就不刷屏
     if st.nextlist_seen and (st.parent_fallback_entry or st.parent_unknown):
         missed = st.parent_fallback_entry + st.parent_unknown
@@ -1978,6 +2071,23 @@ def render_flow(log,
         lines.append(f"\n共 {len(parsed.steps)} 步 / {len(rounds)} 轮；"
                      f"锚点={opts.anchor or anchor_of(raw, rounds)}；"
                      f"分轮节点={','.join(sorted(cut))}")
+        # 父节点评估账：node done 很少时，这里是"这段时间到底在干什么"的唯一证据
+        # （`reco` 行没有 task_id，只能靠带 task_id 的 Node.NextList 事件说清）
+        pairs = [(tid, stat) for (tid, _n), stat in parsed.nextlist_stats.items()
+                 if opts.task_id is None or tid == opts.task_id]
+        pairs.sort(key=lambda kv: (-kv[1].failed, -(kv[1].starting + kv[1].succeeded)))
+        if pairs:
+            multi_task = len({t for t, _s in pairs if t is not None}) > 1
+            lines.append("\n--- 父节点评估（Node.NextList）---")
+            width = max(len(stat.name) for _t, stat in pairs) + 2
+            for tid, stat in pairs[:12]:
+                where = f" task={tid}" if multi_task and tid is not None else ""
+                lines.append(f"  {stat.name:<{width}}未命中 {stat.failed:>3} 轮 / 开始 {stat.starting:>3} / "
+                             f"命中 {stat.succeeded:>3}{where}")
+                if stat.real_candidates:
+                    lines.append(f"  {'':<{width}}候选：{' ・ '.join(stat.real_candidates)}")
+            if len(pairs) > 12:
+                lines.append(f"  ……另有 {len(pairs) - 12} 个派发者（按未命中轮数排前 12）")
         for note in notes:
             lines.append(f"提示：{note}")
         return "\n".join(lines)

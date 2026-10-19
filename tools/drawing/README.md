@@ -23,6 +23,7 @@
 | 还原被导出截断的行 | 截断的 JSON 猜出来的内容会变成图上的假事实 | 用完整 `maafw.log` / `debug` 目录；工具会统计并提示跳过了多少条 |
 | 把 Explore 导出的 CSV 直接当输入 | 导出的正文按块切碎（每格约 3.3 KB、块首块尾丢头去尾），格子顺序也不是时间顺序，直接拼会拼出假行 | 先还原：`python -m tools.sentry.cli explore-csv <csv>`，再拿它产出的 `temp/flow/<csv 名>.log` 来画 |
 | 把连续未命中折成一格后仍标注时间跨度 | 框文本经 `fit_text` 截断，先被切掉的正是末尾的数字 | `--collapse 1`：每次识别各占一列，逐列看时间 |
+| 加 `--include-attempts` 把失败识别并进 node-done 视图 | 两套记录口径不同：`reco` 行**没有 `task_id`**，并进步骤后既可能混进别的任务（同窗口一起跑的任务），又会和「未命中（聚合）」框画重；"卡住"这件事 `Node.NextList` 的连续 `Failed` 已经能精确说清（见「解析口径」），不需要改步骤来源 | 看图第二行的 `N 轮全未命中` 注记，或 `--list` 末尾的「父节点评估」账；要看逐次识别用 `--from/--to` 圈住那段，它会走"由识别记录还原" |
 | 加 `--keep-order` 之类的开关保留原始行序 | 时间戳回跳是数据坏了，按时间重排是修数据而不是风格选择 | 要看原始顺序直接读日志文件 |
 
 判据都写在代码里：`round_steps()`、`compose_columns()`、`describe_empty_window()` 的文档字符串。
@@ -35,7 +36,7 @@ python tools/drawing/flow_from_log.py <安装根>/debug/maafw.log \
     --vision <安装根>/debug/vision \
     --from "2026-10-11 21:39:56" --to "2026-10-11 21:43:29"
 
-# 只解析、不画图（父节点那一行也给全，不折叠候选）
+# 只解析、不画图（父节点那一行也给全，不折叠候选；末尾附"父节点评估"账）
 python tools/drawing/flow_from_log.py <安装根>/debug/maafw.log --task-id 200000013 --list
 
 # 2. 证据包（debug 目录 / MFA 导出 zip / 多卷）→ 流程图，带 manifest 幂等
@@ -77,6 +78,16 @@ python tools/drawing/whiteboard_images.py --dry-run   # 报告将要做什么，
     （没有被选中进候选表的 `Task timeout` pretask 查不到，属正常）。
   - **整张图一条候选都没有时**（日志里没有 `Node.NextList`，例如只导出到某一段）：不逐个框写"父 未记录"，
     只在图上第二行注记一次；`--no-parents` 关掉分组框与那一行（图会矮一截）。`--list` 始终打印候选，不折叠。
+- **"卡在派发层"要点名**（图第二行 + `--list` 末尾的「父节点评估」账）：`Node.NextList` 分三种事件——
+  `Starting`（开始评估）、`Succeeded`（有候选命中）、`Failed`（整张候选表一个都没命中）。**同一条候选表
+  连续 `Failed` 就是"任务一直重试候选、没有任何子节点跑起来"的直接证据**，而 `reco` 行不带 `task_id`，
+  这是唯一能说清那段时间在干什么的数据。
+  - 图上的注记形如「`TaskReplays` 的候选表 13 轮全未命中（候选 `ReplaysInit ・ …`），跑起来的候选：`LoopErrorByTimes`」；
+    只报 `Failed ≥ 2` 的派发者（1 轮无命中是循环推进的正常现象），最多两条，且只在"图只涉及一个 task"时报。
+  - `--list` 末尾追加 `--- 父节点评估（Node.NextList）---`：按派发者列出 `未命中 N 轮 / 开始 N / 命中 N`
+    与**真实候选表**（取全未命中那一轮的 `list`——入口轮是 `[自己]` 的自派发，不能当候选表）。
+  - 实测（`PYTHON-J`，task 200000167）：只有 2 条 `PipelineTask node done`，但 `TaskReplays` 的候选表
+    **13 轮全未命中**、`LoopErrorByTimes` 随后 → `TaskStopError`——旧版图只看得到末尾两步。
 - **按时间重排**：日志时间戳回跳时（Explore 导出的 CSV 是分块拼接的）先按时间戳稳定排序再解析，
   图上印一行「日志时间戳有回跳，已按时间重排（N 行）」。不再有"遇到第一条晚于 `--to` 的行就停"这一步——
   它会把窗口内的记录整段丢掉，还报成"窗口内没有记录"。
