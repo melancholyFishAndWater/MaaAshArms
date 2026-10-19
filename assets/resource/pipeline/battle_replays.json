@@ -7,6 +7,7 @@
             "ReplaysStartClickAttack",
             "ReplaysStartInConfirm",
             "ReplaysStartInBattle",
+            "[JumpBack]ReplaysEnd",
             "[JumpBack]BaseBranchError"
         ]
     },
@@ -146,6 +147,12 @@
         "desc": "代理正常结束",
         "recognition": "OCR",
         "expected": "已完成\\d+次代理指挥",
+        "roi": [
+            355,
+            198,
+            575,
+            342
+        ],
         "action": "Custom",
         "custom_action": "ReplaysEndAct",
         "next": [
