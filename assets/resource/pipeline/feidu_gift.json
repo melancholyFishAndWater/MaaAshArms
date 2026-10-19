@@ -253,8 +253,7 @@
             "GiftProbeNoMaxFavorability",
             "[JumpBack]GiftChooseFavorability",
             "[JumpBack]BaseBranchError",
-            "[JumpBack]GiftEnsureRules",
-            "LoopErrorByTimes"
+            "[JumpBack]GiftEnsureRules"
         ]
     },
     "GiftChooseFavorability": {
@@ -269,7 +268,9 @@
         ],
         "action": "Click",
         "next": [
-            "GiftClickSortConfirm"
+            "GiftClickSortConfirm",
+            "[JumpBack]BaseBranchError",
+            "GiftProbeCharacters"
         ],
         "post_wait_freezes": 2000
     },
@@ -285,7 +286,9 @@
         ],
         "action": "Click",
         "next": [
-            "GiftChooseReverse"
+            "GiftChooseReverse",
+            "[JumpBack]BaseBranchError",
+            "GiftProbeCharacters"
         ],
         "post_wait_freezes": 2000
     },
@@ -303,7 +306,9 @@
         ],
         "action": "Click",
         "next": [
-            "GiftClickFirstcharacter"
+            "GiftClickFirstcharacter",
+            "[JumpBack]BaseBranchError",
+            "GiftProbeCharacters"
         ],
         "post_wait_freezes": 2000
     },
