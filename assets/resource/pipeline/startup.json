@@ -34,7 +34,10 @@
             "StartUpClickSignIn"
         ],
         "post_wait_freezes": 5000,
-        "timeout": 300000
+        "timeout": 300000,
+        "on_error": [
+            "StartUpFailed"
+        ]
     },
     "StartUpAshArms": {
         "desc": "使用安装包启动",
