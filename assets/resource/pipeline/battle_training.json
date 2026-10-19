@@ -106,8 +106,7 @@
             "[JumpBack]TrainingGetStatus",
             "[JumpBack]TrainingEnterOne",
             "TrainingCheckEnd",
-            "[JumpBack]BaseBranchError",
-            "[JumpBack]TrainingEnsureHome"
+            "[JumpBack]BaseBranchError"
             // TODO 自律战斗失败的逻辑、不可代理的逻辑
         ]
     },
