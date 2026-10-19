@@ -8,8 +8,8 @@
     "TaskMaintenance": {
         "desc": "维修会任务",
         "next": [
-            "[JumpBack]MaintenanceLoopFinish",
             "[JumpBack]MaintenanceBranchAble",
+            "[JumpBack]MaintenanceLoopFinish",
             "[JumpBack]BaseBranchError",
             "[JumpBack]MaintenanceEnsureHome",
             "MaintenanceProbeAllBusy" // INFO 为了优化识别
@@ -185,7 +185,7 @@
         ],
         "timeout": 30000,
         "next": [
-            "MaintenanceProbeHome",
+            "MaintenanceProbeAble", // INFO 前提: 先接后领
             "[JumpBack]MaintenanceClickCharacterConfirm",
             "[JumpBack]MaintenanceClickCharacterType",
             "[JumpBack]MaintenanceClickFinish",
