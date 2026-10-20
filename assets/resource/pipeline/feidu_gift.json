@@ -316,10 +316,10 @@
         "recognition": "OCR",
         "expected": "\\d?\\d",
         "roi": [
-            201,
-            292,
-            74,
-            37
+            166,
+            158,
+            140,
+            231
         ],
         "action": "Click",
         "post_wait_freezes": 2000
