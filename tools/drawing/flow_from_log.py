@@ -61,6 +61,7 @@ import os
 import re
 import sys
 import zipfile
+import zlib
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -1124,13 +1125,6 @@ class OnErrorIndex:
 # --------------------------------------------------------------------------- #
 
 
-try:                                  # pill​ow 只为取一个异常类型，缺了也不该 import 就炸
-    from PIL import UnidentifiedImageError as _UnidentifiedImage
-except ImportError:                   # pragma: no cover - 没装 Pillow 时走到这里
-    class _UnidentifiedImage(Exception):  # type: ignore[no-redef]
-        """Pillow 缺失时的占位：真正画图时会在别处报出"需要 Pillow"。"""
-
-
 def load_font(size: int, bold: bool = False):
     from PIL import ImageFont
 
@@ -1723,10 +1717,16 @@ def draw_flow(parsed: ParsedLog, options: FlowOptions, out_path: str) -> tuple[i
             if got:
                 try:
                     draw_thumb(st, got[0], got[1], got[2], x, y, w, h)
-                except (OSError, ValueError, _UnidentifiedImage) as exc:
+                except (OSError, ValueError, zipfile.BadZipFile, EOFError, zlib.error) as exc:
                     # 不吞异常：图贴不上必须能看出来（遥测的证据包可能是被截断的分卷、
                     # 也可能图片已被 log_dir 的 7 天清理删掉，两种都表现为读图失败）。
-                    # 但有界——一次几百张图读不了时不能刷满屏幕。
+                    # 但一张坏图不该掀掉整张图，这一类"字节是坏的"异常都要接住：
+                    #   * `PIL.UnidentifiedImageError` 与图片截断都是 `OSError` 子类
+                    #     （Pillow 12.2 实测 MRO）；
+                    #   * 归档条目坏 CRC 抛 `BadZipFile`，deflate 流坏抛 `zlib.error`，
+                    #     压缩流比记录的短抛 `EOFError`（`zipfile.ZipExtFile._read2`），
+                    #     偏移为负抛 `ValueError`——四个都不是 OSError。
+                    # 有界——一次几百张图读不了时不能刷满屏幕。
                     thumb_errors.append(f"{got[0].member}: {type(exc).__name__}: {exc}")
                     if len(thumb_errors) <= WARN_THUMB_LIMIT:
                         print(f"[警告] 贴图失败 {thumb_errors[-1]}", file=sys.stderr)

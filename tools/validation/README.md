@@ -92,6 +92,19 @@ python tools/drawing/flow_cases.py --help
   （`maa_option.json` 是标量键值），且该目录在 `.gitignore` 里；不跳过时本机会多 5 条
   `is not of type 'object'` 假 error。判据只看顶层，任务片段里真叫 `config` 的子目录照常校验。
 
+**一处会漏检的盲区：第三方库的类型错误**（2026-10-20 实测）
+
+pyright 在本机拿不到 `site-packages`（仓库里没有 venv），配置又把 `reportMissingImports` 降成 warning，
+所以**装在本机解释器里的第三方库不参与类型检查**。2026-10 那条 `reportAssignmentType`
+（`type[UnidentifiedImageError]` 不可分配给 `type[_UnidentifiedImage]`）就是这样漏掉的：编辑器能看到
+已装的 Pillow、因此报红，`check_pyright.mjs` 却是 0 error。
+
+要查这一层，临时往 `tools/validation/pyright.config.json` 的 `extraPaths` 里加本机的
+`...\Lib\site-packages`（Windows 全局安装形如
+`C:/Users/<用户>/AppData/Local/Programs/Python/Python3xx/Lib/site-packages`），跑一次
+`node tools/validation/check_pyright.mjs`，**看完把那一行删掉**（本机路径不能入库）。
+判据同第 4 步：0 error；`Import "PIL" could not be resolved` 那几条 warning 消失，说明这次真解析上了。
+
 ## `check_python.py` 查什么
 
 四类，都是**别的工具查不出来**的仓库特有约定：
