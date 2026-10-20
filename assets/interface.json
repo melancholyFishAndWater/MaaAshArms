@@ -174,7 +174,7 @@
                 "资源筹备"
             ],
             "pipeline_override": {
-                "BattleWinSuccess": {
+                "BattleProbeWinEnd": {
                     "next": [
                         "TrainingBattleWin"
                     ]

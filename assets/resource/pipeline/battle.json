@@ -1,6 +1,9 @@
 {
     /*
     INFO 通用战斗
+
+    使用任务链结构 v1.7 校验年月日 26/10/20
+    使用节点命名与分类 v1.8 校验年月日 26/10/20
     */
     /* -------------------- 探测 -------------------- */
     "BattleProbeHome": {
@@ -8,6 +11,136 @@
         "recognition": "TemplateMatch",
         "template": "Battle/MainPageFlag/",
         "threshold": 0.9
+    },
+    "BattleProbeLoading": {
+        "desc": "在加载战斗界面",
+        "recognition": "Or",
+        "any_of": [
+            "BattleProbeTips",
+            "ProbeBlackPage"
+        ],
+        "post_delay": 3000
+    },
+    "BattleProbeFormation": {
+        "desc": "[end] 在战斗编队页面",
+        "recognition": "And",
+        "all_of": [
+            "BattleProbeFormationName",
+            "BattleProbeAction"
+        ]
+    },
+    "BattleProbeTips": {
+        "desc": "[end] 在Tips页面",
+        "recognition": "OCR",
+        "expected": "Tips",
+        "roi": [
+            0,
+            649,
+            1280,
+            71
+        ],
+        "post_delay": 3000
+    },
+    "BattleProbeNow": {
+        "desc": "[end] 正在战斗",
+        "recognition": "Or",
+        "any_of": [
+            "BattleProbeReplayNow",
+            "BattleProbeAutoNow"
+        ],
+        "post_delay": 3000
+    },
+    "BattleProbeWin": {
+        "desc": "[end] 战斗胜利",
+        "recognition": "OCR",
+        "expected": "战斗胜利",
+        "roi": [
+            1030,
+            464,
+            240,
+            78
+        ]
+    },
+    "BattleProbeWinEnd": {
+        "desc": "[end] 检测战斗胜利是否结束",
+        "recognition": "Or",
+        "any_of": [
+            "BattleProbeFormation",
+            "TrainingProbeHomeName"
+        ]
+    },
+    "BattleProbeReplayNow": {
+        "desc": "[end] 正在代理作战",
+        "recognition": "OCR",
+        "expected": "接管作战",
+        "roi": [
+            664,
+            638,
+            217,
+            65
+        ]
+    },
+    "BattleProbeAutoNow": {
+        "desc": "[end] 正在自律作战",
+        "recognition": "TemplateMatch",
+        "template": "Battle/AutoLight.png",
+        "threshold": 0.8,
+        "method": 5,
+        "roi": [
+            119,
+            0,
+            201,
+            121
+        ]
+    },
+    "BattleProbeFormationName": {
+        "desc": "[end] 有编队文字",
+        "recognition": "OCR",
+        "expected": "编队",
+        "roi": [
+            102,
+            10,
+            254,
+            48
+        ]
+    },
+    "BattleProbeAction": {
+        "desc": "[end] 有出击按钮",
+        "recognition": "TemplateMatch",
+        "template": [
+            "Battle/BattleButton.png",
+            "Battle/BattleButtonDart.png"
+        ],
+        "roi": [
+            854,
+            563,
+            296,
+            157
+        ]
+    },
+    "BattleProbeActionLight": {
+        "desc": "[end] 出击按钮亮",
+        "recognition": "TemplateMatch",
+        "template": "Battle/BattleButton.png",
+        "roi": [
+            854,
+            563,
+            296,
+            157
+        ]
+    },
+    "BattleProbeReplayLight": {
+        "desc": "[end] 代理作战已开启",
+        "recognition": "TemplateMatch",
+        "template": "Battle/ReplayBattleLightGreen.png",
+        "green_mask": true,
+        "method": 10001,
+        "roi": [
+            890,
+            522,
+            299,
+            70
+        ]
     },
     /* -------------------- 就位 -------------------- */
     "BattleEnsureHome": {
@@ -38,145 +171,57 @@
         "action": "Click",
         "post_wait_freezes": 1000
     },
-    // TODO
-    "BattleInFormation": {
-        "desc": "在战斗编队页面",
-        "recognition": "And",
-        "all_of": [
-            {
-                "recognition": "TemplateMatch",
-                "template": [
-                    "Battle/BattleButton.png",
-                    "Battle/BattleButtonDart.png"
-                ],
-                "roi": [
-                    854,
-                    563,
-                    296,
-                    157
-                ]
-            },
-            {
-                "recognition": "OCR",
-                "expected": "编队",
-                "roi": [
-                    102,
-                    10,
-                    254,
-                    48
-                ]
-            }
-        ]
-    },
-    // INFO 两个战斗入口
-    "TaskBattleAuto": {
-        "desc": "代理战斗 否则使用自律作战战斗",
-        "recognition": "And",
-        "all_of": [
-            "BattleInFormation"
+    /* -------------------- 工作 -------------------- */
+    // INFO 无法出击
+    "BattleStopNoProps": {
+        "desc": "[end] 战役道具不足",
+        "recognition": "OCR",
+        "expected": "道具不足",
+        "roi": [
+            356,
+            344,
+            617,
+            34
         ],
-        "next": [
-            "BattleReplayLight",
-            "BattleClickReplay",
-            "BattleClickAuto",
-            "[JumpBack]BaseBranchError"
-        ]
+        "action": "StopTask",
+        "focus": {
+            "Node.Recognition.Succeeded": "道具不足 任务结束"
+        }
     },
-    "TaskBattleReplay": {
-        "desc": "使用代理作战战斗",
-        "recognition": "And",
-        "all_of": [
-            "BattleInFormation"
+    "BattleStopActionDart": {
+        "desc": "[end] 出击按钮暗淡",
+        "recognition": "TemplateMatch",
+        "template": "Battle/BattleButtonDart.png",
+        "roi": [
+            854,
+            563,
+            296,
+            157
         ],
-        "next": [
-            "BattleReplayLight",
-            "BattleClickReplay",
-            "BattleIsReplayLocked",
-            "[JumpBack]BaseBranchError"
-        ]
+        "action": "StopTask",
+        "focus": {
+            "Node.Recognition.Succeeded": "无法出击 任务结束"
+        }
     },
-    // INFO 终止节点
-    "BattleIsReplayLocked": {
-        "desc": "代理作战锁定则结束任务链",
+    "BattleStopReplayLocked": {
+        "desc": "[end] 代理作战锁定",
         "recognition": "TemplateMatch",
         "template": "Battle/ReplayBattleLocked.png",
-        "action": "StopTask",
         "threshold": 0.85,
         "roi": [
             890,
             522,
             220,
             70
-        ]
-    },
-    // INFO 自动作战
-    "BattleClickAuto": {
-        "desc": "点击自律作战按钮",
-        "recognition": "TemplateMatch",
-        "template": "Battle/AutoButtonDart.png",
-        "next": [
-            "BattleIsAutoLight"
         ],
-        "roi": [
-            1085,
-            572,
-            195,
-            143
-        ]
+        "action": "StopTask",
+        "focus": {
+            "Node.Recognition.Succeeded": "代理作战锁定 任务结束"
+        }
     },
-    "BattleIsAutoLight": {
-        "desc": "自律作战已开启",
-        "recognition": "TemplateMatch",
-        "template": "Battle/AutoButtonLight.png",
-        "roi": [
-            1085,
-            572,
-            195,
-            143
-        ],
-        "next": [
-            "[JumpBack]BattleNeedReplenish",
-            "BattleClickAttack"
-        ]
-    },
-    // INFO 代理作战
-    "BattleClickReplay": {
-        "desc": "点击暗淡的代理作战按钮",
-        "recognition": "TemplateMatch",
-        "template": "Battle/ReplayBattleDart.png",
-        "action": "Click",
-        "roi": [
-            887,
-            488,
-            306,
-            141
-        ],
-        "next": [
-            "BattleReplayLight",
-            "BattleClickReplay",
-            "[JumpBack]BaseBranchError"
-        ],
-        "post_wait_freezes": 3000
-    },
-    "BattleReplayLight": {
-        "desc": "代理作战已开启",
-        "recognition": "TemplateMatch",
-        "template": "Battle/ReplayBattleLightGreen.png",
-        "green_mask": true,
-        "method": 10001,
-        "roi": [
-            890,
-            522,
-            299,
-            70
-        ],
-        "next": [
-            "[JumpBack]BattleNeedReplenish",
-            "BattleClickAttack"
-        ]
-    },
+    // TODO 补充数量不够
     // INFO 补充成员
-    "BattleNeedReplenish": {
+    "BattleBranchReplenish": {
         "desc": "补充成员数",
         "recognition": "TemplateMatch",
         "template": "Battle/NeedReplenish.png",
@@ -190,7 +235,6 @@
             "BattleClickReplenish"
         ]
     },
-    // TODO 补充数量不够
     "BattleClickReplenish": {
         "desc": "点击补充按钮",
         "recognition": "OCR",
@@ -206,9 +250,103 @@
             "Node.Action.Succeeded": "补充小队成员"
         }
     },
-    // INFO 战斗流程
+    // INFO 两个战斗入口
+    // TODO 自动作战
+    // "BattleBranchAuto": {
+    //     "desc": "代理战斗 否则使用自律作战战斗",
+    //     "recognition": "And",
+    //     "all_of": [
+    //         "BattleProbeFormation"
+    //     ],
+    //     "next": [
+    //         "BattleBranchReplayLight",
+    //         "BattleClickReplay",
+    //         "BattleClickAuto",
+    //         "[JumpBack]BaseBranchError"
+    //     ]
+    // },
+    // "BattleClickAuto": {
+    //     "desc": "[jp] 点击自律作战按钮",
+    //     "recognition": "TemplateMatch",
+    //     "template": "Battle/AutoButtonDart.png",
+    //     "roi": [
+    //         1085,
+    //         572,
+    //         195,
+    //         143
+    //     ]
+    // },
+    // "BattleBranchAutoLight": {
+    //     "desc": "自律作战已开启",
+    //     "recognition": "TemplateMatch",
+    //     "template": "Battle/AutoButtonLight.png",
+    //     "roi": [
+    //         1085,
+    //         572,
+    //         195,
+    //         143
+    //     ],
+    //     "next": [
+    //         "[JumpBack]BattleBranchReplenish",
+    //         "BattleClickAttack"
+    //     ]
+    // },
+    // TODO 部分活动作战无代理和自律
+    // INFO 代理作战 编队
+    "BattleLoopReplayFormation": {
+        "desc": "使用代理作战战斗",
+        "recognition": "And",
+        "all_of": [
+            "BattleProbeFormation"
+        ],
+        "timeout": 30000,
+        "next": [
+            "[JumpBack]BattleBranchReplenish",
+            "BattleLoopReplayLight",
+            "[JumpBack]BattleClickReplay",
+            "BattleStopActionDart",
+            "BattleStopReplayLocked",
+            "[JumpBack]BaseBranchError"
+        ],
+        "focus": {
+            "Node.PipelineNode.Failed": "代理作战编队失败"
+        }
+    },
+    "BattleClickReplay": {
+        "desc": "[jp] 点击暗淡的代理作战按钮",
+        "recognition": "TemplateMatch",
+        "template": "Battle/ReplayBattleDart.png",
+        "action": "Click",
+        "roi": [
+            887,
+            488,
+            306,
+            141
+        ],
+        "post_wait_freezes": 1000
+    },
+    // INFO 代理作战 出发
+    "BattleLoopReplayLight": {
+        "desc": "[Loop] 代理作战准备就绪",
+        "recognition": "And",
+        "all_of": [
+            "BattleProbeActionLight",
+            "BattleProbeReplayLight"
+        ],
+        "timeout": 30000,
+        "next": [
+            "IsNoMetal",
+            "BattleStopNoProps",
+            "BattleLoopBattle",
+            "[JumpBack]BattleClickAttack",
+            "[JumpBack]BaseBranchError"
+        ],
+        "focus": {
+            "Node.PipelineNode.Failed": "代理作战出发失败"
+        }
+    },
     "BattleClickAttack": {
-        "desc": "[Loop] 点击出击按钮 即使是灰色的",
+        "desc": "[jp] 点击出击按钮",
         "recognition": "OCR",
         "expected": "出击",
         "roi": [
@@ -218,105 +356,90 @@
             73
         ],
         "action": "Click",
-        "timeout": 40000,
-        "rate_limit": 3000,
-        "next": [
-            "[JumpBack]BattleNow",
-            "[JumpBack]BattleIsLoading",
-            "BattleWin",
-            "IsNoMetal",
-            "[JumpBack]BaseBranchError",
-            "BattleClickAttack"
-        ]
-    },
-    "BattleIsLoading": {
-        "desc": "在加载战斗界面",
-        "recognition": "Or",
-        "any_of": [
-            "BattleInTips",
-            "ProbeBlackPage"
-        ],
-        "post_wait_freezes": 3000
-    },
-    "BattleInTips": {
-        "desc": "在Tips页面",
-        "recognition": "OCR",
-        "expected": "Tips",
-        "roi": [
-            0,
-            649,
-            1280,
-            71
-        ],
-        "post_wait_freezes": 3000
-    },
-    // TODO 战斗异常
-    "BattleNow": {
-        "desc": "正在战斗",
-        "recognition": "Or",
-        "any_of": [
-            "BattleReplayNow",
-            "BattleAutoNow"
-        ],
-        "post_wait_freezes": 3000
-    },
-    "BattleReplayNow": {
-        "desc": "正在代理作战",
-        "recognition": "OCR",
-        "expected": "接管作战",
-        "roi": [
-            664,
-            638,
-            217,
-            65
-        ],
-        "post_wait_freezes": 3000
-    },
-    "BattleAutoNow": {
-        "desc": "正在自律作战",
-        "recognition": "TemplateMatch",
-        "template": "Battle/AutoLight.png",
-        "threshold": 0.8,
-        "method": 5,
-        "roi": [
-            119,
-            0,
-            201,
-            121
-        ],
-        "post_wait_freezes": 3000
-    },
-    // TODO 战败
-    "BattleWin": {
-        "desc": "战斗胜利",
-        "recognition": "OCR",
-        "expected": "战斗胜利",
-        "action": "Click",
-        "target": [
-            600,
-            650
-        ],
-        "roi": [
-            1030,
-            464,
-            240,
-            78
-        ],
-        "next": [
-            "[JumpBack]IsGetReward",
-            "BattleWin",
-            "[JumpBack]BaseBranchError",
-            "BattleWinSuccess"
-        ],
         "post_wait_freezes": 1000
     },
-    "BattleWinSuccess": {
-        "desc": "战斗胜利的出口节点",
-        "recognition": "OCR",
-        "expected": "战斗胜利",
-        "inverse": true,
+    // INFO 战斗
+    "BattleLoopBattle": {
+        "desc": "[Loop] 战斗直到结束",
+        "recognition": "Or",
+        "any_of": [
+            "BattleProbeTips",
+            "BattleProbeLoading",
+            "BattleProbeNow",
+            "BattleProbeWin",
+            "IsGetReward"
+        ],
+        "timeout": 45000,
+        "next": [
+            "[JumpBack]BattleProbeNow",
+            "[JumpBack]BattleProbeLoading",
+            "BattleLoopWin",
+            "[JumpBack]BaseBranchError"
+        ],
         "focus": {
-            "Node.Recognition.Starting": "战斗胜利"
+            // INFO 失败难以回退 交由用户处理
+            "Node.PipelineNode.Failed": {
+                "content": "等待战斗结束失败",
+                "display": [
+                    "log",
+                    "notification",
+                    "modal"
+                ]
+            }
         }
+    },
+    // INFO 通用作战 胜利
+    "BattleLoopWin": {
+        "desc": "[Loop] 通用作战胜利",
+        "recognition": "Or",
+        "any_of": [
+            "BattleProbeWin",
+            "BaseProbeReward"
+        ],
+        "timeout": 30000,
+        "next": [
+            // INFO 单次战斗不需要点击确认
+            "BattleProbeWinEnd",
+            "[JumpBack]BattleClickFinish",
+            "[JumpBack]BattleBranchClickTap",
+            "[JumpBack]BaseBranchError"
+        ],
+        "focus": {
+            // INFO 失败难以回退 交由用户处理
+            "Node.Recognition.Starting": "战斗胜利",
+            "Node.PipelineNode.Failed": {
+                "content": "领取战斗奖励失败",
+                "display": [
+                    "log",
+                    "notification",
+                    "modal"
+                ]
+            }
+        }
+    },
+    "BattleClickFinish": {
+        "desc": "[jp] 点击完成按钮",
+        "recognition": "OCR",
+        "expected": "完成",
+        "roi": [
+            754,
+            628,
+            222,
+            65
+        ],
+        "action": "Click",
+        "post_wait_freezes": 1000
+    },
+    "BattleBranchClickTap": {
+        "desc": "[jp] 条件点击tap区域",
+        "recognition": "Or",
+        "any_of": [
+            "BattleProbeWin",
+            "BaseProbeReward"
+        ],
+        "next": [
+            "ClickTap"
+        ]
     }
+    // TODO 战败
 }

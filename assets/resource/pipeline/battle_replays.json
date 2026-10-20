@@ -1,102 +1,83 @@
 {
-    // INFO 自动代理节点
+    /*
+    INFO 自动代理节点
+
+    使用任务链结构 v1.7 校验年月日 26/10/20
+    使用节点命名与分类 v1.8 校验年月日 26/10/20
+    */
     "TaskReplays": {
         "desc": "自动代理任务",
         "next": [
             "[JumpBack]ReplaysInit",
-            "ReplaysStartClickAttack",
-            "ReplaysStartInConfirm",
-            "ReplaysStartInBattle",
-            "[JumpBack]ReplaysEnd",
+            "ReplaysLoopFormation",
+            "ReplaysLoopBattle",
+            "ReplaysLoopDefaultEnd",
+            "ReplaysLoopMetalFinish",
             "[JumpBack]BaseBranchError"
         ]
     },
     "ReplaysInit": {
-        "desc": "初始化agent全局变量",
+        "desc": "[max] 初始化agent全局变量",
+        "max_hit": 1,
         "action": "Custom",
         "custom_action": "ReplaysInitAct",
         "custom_action_param": {
-            "times": 5 // 执行次数
-        },
-        "max_hit": 1
+            "times": 2 // 执行次数
+        }
     },
-    // INFO 启动任务时的多种情况
-    "ReplaysStartInBattle": {
-        "desc": "任务开始时处于战斗中",
+    /* -------------------- 工作 -------------------- */
+    "ReplaysLoopFormation": {
+        "desc": "[Loop] 多次代理编队 循环",
         "recognition": "And",
         "all_of": [
-            "ReplaysInBattle"
+            "BattleProbeFormation"
         ],
+        "timeout": 30000,
         "next": [
-            "[JumpBack]ReplaysInBattle",
-            "ReplaysStartClickAttack"
-        ]
-    },
-    "ReplaysStartInConfirm": {
-        "desc": "在确认界面",
-        "recognition": "And",
-        "all_of": [
-            "ClickConfirm"
-        ],
-        "next": [
-            "[JumpBack]ReplaysEnd",
-            "ReplaysMetalEnd",
-            "ReplaysStartClickAttack",
+            "[JumpBack]BattleBranchReplenish",
+            "ReplaysLoopLight",
+            "BattleStopActionDart",
+            "[JumpBack]BattleClickReplay",
+            "BattleStopReplayLocked",
             "[JumpBack]BaseBranchError"
         ]
     },
-    "ReplaysStartClickAttack": {
-        "desc": "[Loop] 任务开始处于编队界面 点击出击按钮 即使是灰色的",
-        "recognition": "OCR",
-        "expected": "出击",
-        "roi": [
-            901,
-            612,
-            199,
-            73
+    "ReplaysLoopLight": {
+        "desc": "[Loop] 多次代理准备就绪",
+        "recognition": "And",
+        "all_of": [
+            "BattleProbeActionLight",
+            "BattleProbeReplayLight"
         ],
-        "action": "Click",
-        "post_wait_freezes": 1000,
-        "timeout": -1,
+        "timeout": 30000,
         "next": [
-            "ReplaysNoProps",
             "IsNoMetal",
-            "[JumpBack]ReplaysInBattle",
-            "[JumpBack]BaseBranchError",
-            "ReplaysStartClickAttack"
+            "BattleStopNoProps",
+            "ReplaysLoopBattle",
+            "[JumpBack]BattleClickAttack",
+            "[JumpBack]BaseBranchError"
         ]
     },
-    "ReplaysInBattle": {
+    "ReplaysLoopBattle": {
         "desc": "[Loop] 正在战斗",
         "recognition": "Or",
         "any_of": [
-            "BattleIsLoading",
-            "BattleNow"
+            "BattleProbeLoading",
+            "BattleProbeNow"
         ],
-        "post_wait_freezes": 3000,
-        "timeout": -1,
-        "rate_limit": 3000,
+        "timeout": 150000,
         "next": [
-            "[JumpBack]BattleNow",
-            "[JumpBack]BattleIsLoading",
-            "[JumpBack]ReplaysWin",
-            "ReplaysEnd",
-            "ReplaysMetalEnd",
+            "[JumpBack]BattleProbeNow",
+            "[JumpBack]BattleProbeLoading",
+            "[JumpBack]BattleProbeWin",
+            "ReplaysLoopDefaultEnd",
+            "ReplaysLoopMetalFinish",
             "[JumpBack]BaseBranchError"
         ]
     },
-    // INFO 战斗胜利等待分支
-    "ReplaysWin": {
-        "desc": "战斗结算，等游戏自己进下一场",
-        "recognition": "And",
-        "all_of": [
-            "BattleWin"
-        ],
-        "post_wait_freezes": 3000
-    },
-    // INFO 金属不足结束分支
-    "ReplaysMetalEnd": {
-        "desc": "金属不足结束",
+    // INFO 金属不足
+    "ReplaysLoopMetalFinish": {
+        "desc": "[Loop] 金属不足结束",
         "recognition": "OCR",
         "expected": "体力不足",
         "roi": [
@@ -106,45 +87,27 @@
             51
         ],
         "next": [
+            "ReplaysStopMetalFinish",
             "[JumpBack]ClickConfirm",
             "[JumpBack]IsGetReward",
-            "ReplaysClickFinish"
-        ]
-    },
-    "ReplaysClickFinish": {
-        "desc": "点击完成",
-        "recognition": "OCR",
-        "expected": "完成",
-        "roi": [
-            793,
-            633,
-            147,
-            52
-        ],
-        "action": "Click",
-        "max_hit": 8,
-        "next": [
-            "ReplaysClickFinishSuccess",
-            "ReplaysClickFinish",
+            "[JumpBack]BattleClickFinish",
             "[JumpBack]BaseBranchError"
         ]
     },
-    "ReplaysClickFinishSuccess": {
-        "desc": "点击完成成功",
+    "ReplaysStopMetalFinish": {
+        "desc": "[end] 金属不足 任务结束",
         "recognition": "And",
         "all_of": [
-            "ReplaysClickFinish"
+            "BattleProbeFormation"
         ],
-        "next": [
-            "TaskStop"
-        ],
+        "action": "StopTask",
         "focus": {
             "Node.Action.Succeeded": "金属不足，任务结束"
         }
     },
-    // INFO 代理结束结束分支
-    "ReplaysEnd": {
-        "desc": "代理正常结束",
+    // INFO 正常结束
+    "ReplaysLoopDefaultEnd": {
+        "desc": "[Loop] 代理正常结束",
         "recognition": "OCR",
         "expected": "已完成\\d+次代理指挥",
         "roi": [
@@ -154,15 +117,18 @@
             342
         ],
         "action": "Custom",
-        "custom_action": "ReplaysEndAct",
+        "custom_action": "ReplaysLoopDefaultEndAct",
+        "timeout": 30000,
         "next": [
+            "ReplaysBranchNextFormation",
             "[JumpBack]ClickConfirm",
             "[JumpBack]IsGetReward",
-            "ReplaysChooseReattack"
+            "[JumpBack]ReplaysClickReattack",
+            "[JumpBack]BaseBranchError"
         ]
     },
-    "ReplaysChooseReattack": {
-        "desc": "点击再次出击 进入编队页面",
+    "ReplaysClickReattack": {
+        "desc": "[jp] 点击再次出击 进入编队页面",
         "recognition": "OCR",
         "expected": "再次出击",
         "roi": [
@@ -172,37 +138,23 @@
             50
         ],
         "action": "Click",
-        "next": [
-            "[JumpBack]BaseBranchError",
-            "ReplaysChooseReattackSuccess",
-            "ReplaysChooseReattack"
-        ],
         "post_wait_freezes": 1000
     },
-    "ReplaysChooseReattackSuccess": {
-        "desc": "点击再次出击成功",
+    "ReplaysBranchNextFormation": {
+        "desc": "战斗胜利 回到编队页面 判断是结束还是进行下一次战斗",
         "recognition": "And",
         "all_of": [
-            "ReplaysChooseReattack"
+            "BattleProbeFormation"
         ],
-        "action": "Custom",
-        "custom_action": "ReplaysChooseReattackSuccessAct",
-        "inverse": true
+        "next": [
+            "ReplaysStopTimes",
+            "ReplaysLoopFormation" // INFO 使用大循环 以避开无限时间小循环
+        ]
     },
-    // INFO 战役道具缺失
-    "ReplaysNoProps": {
-        "desc": "道具不足",
-        "recognition": "OCR",
-        "expected": "道具不足",
-        "roi": [
-            356,
-            344,
-            617,
-            34
-        ],
-        "action": "StopTask",
-        "focus": {
-            "Node.Recognition.Succeeded": "道具不足，任务结束"
-        }
+    "ReplaysStopTimes": {
+        "desc": "[end] 满足代理次数 任务结束",
+        "recognition": "Custom",
+        "custom_recognition": "ReplaysStopTimesReco",
+        "action": "StopTask"
     }
 }

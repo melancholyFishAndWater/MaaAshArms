@@ -149,7 +149,7 @@
         },
         "action": "Click",
         "next": [
-            "TaskBattleReplay",
+            "BattleLoopReplayFormation",
             "[JumpBack]BaseBranchError",
             "[JumpBack]ProbeBlackPage"
         ],

@@ -1,14 +1,30 @@
 from maa.agent.agent_server import AgentServer
+from maa.custom_recognition import CustomRecognition
 from maa.custom_action import CustomAction
 from maa.context import Context
 
 from agentlog import log
 from params import parse_params
+from rect import DEFAULT_HIT_BOX
 
 # 自律完成次数
 _finish_count = 0
 # 最大完成次数
 _max_count = 5
+
+
+# ---------- Reco ----------
+
+
+# 判断是否满足结束次数
+@AgentServer.custom_recognition("ReplaysStopTimesReco")
+class ReplaysStopTimesReco(CustomRecognition):
+    def analyze(
+        self, context: Context, argv: CustomRecognition.AnalyzeArg
+    ) -> list[int] | None:
+        if _finish_count >= _max_count:
+            log.info(f"代理结束，已完成次数：{context.get_hit_count(argv.node_name)}")
+            return DEFAULT_HIT_BOX
 
 
 # ---------- Act ----------
@@ -31,28 +47,18 @@ class ReplaysInitAct(CustomAction):
         except Exception as e:
             log.warn(f"{argv.node_name} 解析param失败: {e}")
 
+        log.info(f"代理次数: {_max_count}")
+
         return True
 
 
-# 点击再次出击成功 离开奖励页面 完成数自增
-@AgentServer.custom_action("ReplaysChooseReattackSuccessAct")
-class ReplaysChooseReattackSuccessAct(CustomAction):
+# 完成数自增
+@AgentServer.custom_action("ReplaysLoopDefaultEndAct")
+class ReplaysLoopDefaultEndAct(CustomAction):
     def run(
         self, context: Context, argv: CustomAction.RunArg
     ) -> CustomAction.RunResult | bool:
         global _finish_count
         _finish_count += 1
-        if _max_count > 0 and _finish_count >= _max_count:
-            log.info("满足结束次数，任务结束")
-            context.run_action("TaskStop")
-        return True
-
-
-# 代理结束 往面板输出日志
-@AgentServer.custom_action("ReplaysEndAct")
-class ReplaysEndAct(CustomAction):
-    def run(
-        self, context: Context, argv: CustomAction.RunArg
-    ) -> CustomAction.RunResult | bool:
-        log.info(f"代理结束，已完成次数：{context.get_hit_count(argv.node_name)}")
+        log.info(f"第 {_finish_count} 次代理作战结束")
         return True
