@@ -91,25 +91,85 @@ ROWS_TOTAL: list[dict[str, Any]] = [
 
 ROWS_STATUS: list[dict[str, Any]] = [
     {"description": "训练所", "status": "ok", "release": RELEASE_D38, "_count": 44},
-    {"description": "训练所", "status": "internal_error", "release": RELEASE_D38, "_count": 5},
-    {"description": "训练所", "status": "cancelled", "release": RELEASE_D38, "_count": 1},
-    {"description": "训练所", "status": "ok", "release": RELEASE_D37_OLD_MFA, "_count": 20},
-    {"description": "训练所", "status": "internal_error", "release": RELEASE_D37_OLD_MFA, "_count": 1},
-    {"description": "训练所", "status": "ok", "release": RELEASE_D37_NEW_MFA, "_count": 19},
+    {
+        "description": "训练所",
+        "status": "internal_error",
+        "release": RELEASE_D38,
+        "_count": 5,
+    },
+    {
+        "description": "训练所",
+        "status": "cancelled",
+        "release": RELEASE_D38,
+        "_count": 1,
+    },
+    {
+        "description": "训练所",
+        "status": "ok",
+        "release": RELEASE_D37_OLD_MFA,
+        "_count": 20,
+    },
+    {
+        "description": "训练所",
+        "status": "internal_error",
+        "release": RELEASE_D37_OLD_MFA,
+        "_count": 1,
+    },
+    {
+        "description": "训练所",
+        "status": "ok",
+        "release": RELEASE_D37_NEW_MFA,
+        "_count": 19,
+    },
     {"description": "训练所", "status": "ok", "release": RELEASE_D36, "_count": 30},
     {"description": "联络人", "status": "ok", "release": RELEASE_D38, "_count": 40},
-    {"description": "联络人", "status": "ok", "release": RELEASE_D37_OLD_MFA, "_count": 38},
-    {"description": "联络人", "status": "internal_error", "release": RELEASE_D37_OLD_MFA, "_count": 2},
+    {
+        "description": "联络人",
+        "status": "ok",
+        "release": RELEASE_D37_OLD_MFA,
+        "_count": 38,
+    },
+    {
+        "description": "联络人",
+        "status": "internal_error",
+        "release": RELEASE_D37_OLD_MFA,
+        "_count": 2,
+    },
     {"description": "联络人", "status": "ok", "release": RELEASE_D36, "_count": 30},
     {"description": "消耗合金", "status": "ok", "release": RELEASE_D38, "_count": 2},
-    {"description": "消耗合金", "status": "internal_error", "release": RELEASE_D38, "_count": 1},
-    {"description": "消耗合金", "status": "ok", "release": RELEASE_D37_OLD_MFA, "_count": 3},
+    {
+        "description": "消耗合金",
+        "status": "internal_error",
+        "release": RELEASE_D38,
+        "_count": 1,
+    },
+    {
+        "description": "消耗合金",
+        "status": "ok",
+        "release": RELEASE_D37_OLD_MFA,
+        "_count": 3,
+    },
     {"description": "订单工厂", "status": "ok", "release": RELEASE_D36, "_count": 30},
-    {"description": "已下线任务", "status": "ok", "release": RELEASE_D37_OLD_MFA, "_count": 1},
+    {
+        "description": "已下线任务",
+        "status": "ok",
+        "release": RELEASE_D37_OLD_MFA,
+        "_count": 1,
+    },
     {"description": "启动游戏", "status": "ok", "release": RELEASE_D36, "_count": 40},
     # 只在失败时上报的内部 span：必须进失败标记表，不能进任务表。
-    {"description": "HomeFlag", "status": "internal_error", "release": RELEASE_D38, "_count": 3},
-    {"description": "ReturnMain", "status": "internal_error", "release": RELEASE_D37_OLD_MFA, "_count": 2},
+    {
+        "description": "HomeFlag",
+        "status": "internal_error",
+        "release": RELEASE_D38,
+        "_count": 3,
+    },
+    {
+        "description": "ReturnMain",
+        "status": "internal_error",
+        "release": RELEASE_D37_OLD_MFA,
+        "_count": 2,
+    },
 ]
 
 ROWS_RUN_TOTAL: list[dict[str, Any]] = [
@@ -164,7 +224,12 @@ def build_probe_artifact() -> Artifact:
             name: Measurement(
                 name=name,
                 rows=rows,
-                fields=("span.description", "span.status", "release", "count_unique(trace)"),
+                fields=(
+                    "span.description",
+                    "span.status",
+                    "release",
+                    "count_unique(trace)",
+                ),
             )
             for name, rows in MEASUREMENTS.items()
         },
@@ -207,7 +272,11 @@ def check_release_parsing() -> list[str]:
         ("MFA@v2.16.1+MaaAshArms@v1.0.0-alpha.1", (1, 0, 0, -1, 1), "v1.0.0-alpha.1"),
     ]
     for release, expected_key, expected_label in cases:
-        _eq(release_version_key(release), expected_key, f"release_version_key({release!r})")
+        _eq(
+            release_version_key(release),
+            expected_key,
+            f"release_version_key({release!r})",
+        )
         _eq(version_label(release), expected_label, f"version_label({release!r})")
         lines.append(f"  {release} → {expected_label}")
     return lines
@@ -250,44 +319,70 @@ def check_task_rows() -> list[str]:
     lines: list[str] = []
     version_key = release_version_key(RELEASE_D38)
 
-    tasks, markers = task_failure_report.build_task_rows(ROWS_TOTAL, ROWS_STATUS, version_key)
+    tasks, markers = task_failure_report.build_task_rows(
+        ROWS_TOTAL, ROWS_STATUS, version_key
+    )
     names = [row.task for row in tasks]
     # 同失败数时按总次数降序（消耗合金 3 次 > 联络人 0 次），最后按任务名，保证输出稳定。
     _eq(names, ["训练所", "消耗合金", "联络人"], "beta.38 任务表（按失败数降序）")
     trained = tasks[0]
-    _eq((trained.total, trained.failed, trained.cancelled), (50, 5, 1), "训练所 beta.38 计数")
+    _eq(
+        (trained.total, trained.failed, trained.cancelled),
+        (50, 5, 1),
+        "训练所 beta.38 计数",
+    )
     if abs((trained.failure_rate or 0) - 0.1) > 1e-9:
-        raise CheckFailure(f"训练所 beta.38 失败率应为 0.1，实际 {trained.failure_rate}")
+        raise CheckFailure(
+            f"训练所 beta.38 失败率应为 0.1，实际 {trained.failure_rate}"
+        )
 
     marker_names = [row.task for row in markers]
     _eq(marker_names, ["HomeFlag"], "beta.38 失败标记表（只在失败时上报）")
     if any(row.failure_rate is not None for row in markers):
         raise CheckFailure("失败标记不该有失败率")
 
-    by_rate, _ = task_failure_report.build_task_rows(ROWS_TOTAL, ROWS_STATUS, version_key, sort="rate")
+    by_rate, _ = task_failure_report.build_task_rows(
+        ROWS_TOTAL, ROWS_STATUS, version_key, sort="rate"
+    )
     _eq([row.task for row in by_rate], ["消耗合金", "训练所", "联络人"], "按失败率降序")
 
-    limited, _ = task_failure_report.build_task_rows(ROWS_TOTAL, ROWS_STATUS, version_key, limit=2)
+    limited, _ = task_failure_report.build_task_rows(
+        ROWS_TOTAL, ROWS_STATUS, version_key, limit=2
+    )
     _eq(len(limited), 2, "--limit 2 生效")
 
     # 不指定版本时应覆盖所有 release。
-    all_tasks, all_markers = task_failure_report.build_task_rows(ROWS_TOTAL, ROWS_STATUS, None)
+    all_tasks, all_markers = task_failure_report.build_task_rows(
+        ROWS_TOTAL, ROWS_STATUS, None
+    )
     _eq(
         sorted(row.task for row in all_tasks),
         sorted(["训练所", "联络人", "消耗合金", "订单工厂", "已下线任务", "启动游戏"]),
         "不限版本时的任务全集",
     )
-    _eq(sorted(row.task for row in all_markers), ["HomeFlag", "ReturnMain"], "不限版本时的标记全集")
+    _eq(
+        sorted(row.task for row in all_markers),
+        ["HomeFlag", "ReturnMain"],
+        "不限版本时的标记全集",
+    )
 
     # 同一版本跨两个渠道 release 合并：beta.37 的总数必须是 20+20。
-    beta37_tasks, _ = task_failure_report.build_task_rows(ROWS_TOTAL, ROWS_STATUS, release_version_key(RELEASE_D37_NEW_MFA))
+    beta37_tasks, _ = task_failure_report.build_task_rows(
+        ROWS_TOTAL, ROWS_STATUS, release_version_key(RELEASE_D37_NEW_MFA)
+    )
     beta37_trained = next(row for row in beta37_tasks if row.task == "训练所")
     _eq(beta37_trained.total, EXPECTED_BETA37_TOTAL, "beta.37 跨渠道合并后的训练所总数")
-    _eq(beta37_trained.failed, EXPECTED_BETA37_FAILED, "beta.37 跨渠道合并后的训练所失败数")
+    _eq(
+        beta37_trained.failed,
+        EXPECTED_BETA37_FAILED,
+        "beta.37 跨渠道合并后的训练所失败数",
+    )
 
     lines.append(f"  beta.38 任务表: {', '.join(names)}")
     lines.append(f"  beta.38 失败标记: {', '.join(marker_names)}")
-    lines.append(f"  beta.37 跨渠道合并: 训练所 {beta37_trained.total} 次 / {beta37_trained.failed} 失败")
+    lines.append(
+        f"  beta.37 跨渠道合并: 训练所 {beta37_trained.total} 次 / {beta37_trained.failed} 失败"
+    )
     return lines
 
 
@@ -297,7 +392,11 @@ def check_release_rows() -> list[str]:
     runs = task_failure_report.build_release_rows(
         ROWS_RUN_TOTAL, ROWS_RUN_FAILED, release_version_key(RELEASE_D38)
     )
-    _eq([row.release for row in runs], [RELEASE_D38], "beta.38 的运行失败率只含本版本渠道")
+    _eq(
+        [row.release for row in runs],
+        [RELEASE_D38],
+        "beta.38 的运行失败率只含本版本渠道",
+    )
     _eq((runs[0].total, runs[0].failed), (20, 4), "beta.38 运行计数")
     if abs(runs[0].failure_rate - 0.2) > 1e-9:
         raise CheckFailure(f"beta.38 运行失败率应为 0.2，实际 {runs[0].failure_rate}")
@@ -329,7 +428,9 @@ def check_context_rows() -> list[str]:
 def check_trend() -> list[str]:
     """跨版本趋势：版本发现、Δpp 方向、小样本仍进表。"""
     lines: list[str] = []
-    versions = task_trend_report.discover_versions(ROWS_RELEASE_USERS, count=3, min_users=CONFIG.min_release_unique_users)
+    versions = task_trend_report.discover_versions(
+        ROWS_RELEASE_USERS, count=3, min_users=CONFIG.min_release_unique_users
+    )
     # 选版本按**数据量**排（β37 的用户分散在两条渠道 release 里共 8 个，比 β38 的 6 多），
     # 但输出一律按**版本号降序**——Δpp 的语义是"相对更早的版本"，顺序错会把 Δpp 算到未来版本上。
     # β35 用户数为 0，被门槛滤掉。
@@ -355,18 +456,34 @@ def check_trend() -> list[str]:
     )
     margin_names = {row.task for row in margin}
     if "已下线任务" in margin_names:
-        raise CheckFailure("累计只有 1 次的任务不该进趋势表（不满足 2×min_latest_runs）")
+        raise CheckFailure(
+            "累计只有 1 次的任务不该进趋势表（不满足 2×min_latest_runs）"
+        )
     if "订单工厂" not in margin_names:
-        raise CheckFailure("订单工厂累计 30 次 ≥ 2×1，应进趋势表（只是最新版本暂无样本）")
+        raise CheckFailure(
+            "订单工厂累计 30 次 ≥ 2×1，应进趋势表（只是最新版本暂无样本）"
+        )
 
     trained_rate = by_task["训练所"].version_rates[V38]
-    _eq(trained_rate is not None and round(trained_rate, 4), 0.1, "训练所 beta.38 失败率")
+    _eq(
+        trained_rate is not None and round(trained_rate, 4),
+        0.1,
+        "训练所 beta.38 失败率",
+    )
     trained_delta = by_task["训练所"].version_deltas[V38]
     # β37 跨两个渠道合并后是 1/40 = 2.5%，β38 是 6/50 = 12.5%？否——5/50 = 10.0%，
     # 所以 Δpp = 10.0 - 2.5 = +7.5。若解析取到 MFA 版本或渠道没合并，这个数就不是 7.5。
-    _eq(trained_delta is not None and round(trained_delta, 1), 7.5, "训练所 Δpp 应为 +7.5pp（相对合并后的 β37）")
+    _eq(
+        trained_delta is not None and round(trained_delta, 1),
+        7.5,
+        "训练所 Δpp 应为 +7.5pp（相对合并后的 β37）",
+    )
     contact_delta = by_task["联络人"].version_deltas[V38]
-    _eq(contact_delta is not None and round(contact_delta, 1), -5.0, "联络人 Δpp 应为 -5.0pp")
+    _eq(
+        contact_delta is not None and round(contact_delta, 1),
+        -5.0,
+        "联络人 Δpp 应为 -5.0pp",
+    )
 
     # 最早展示版本没有更早的基准，Δpp 必须是 None 而不是 0。
     _eq(by_task["训练所"].version_deltas[V36], None, "最老版本的 Δpp 应为 None")
@@ -387,8 +504,11 @@ def check_trend() -> list[str]:
     _eq([stat.total for stat in detailed], [50, 40, 30], "单任务明细的各版本运行数")
 
     lines.append(f"  版本序列: {', '.join(versions)}")
-    lines.append(f"  训练所 Δpp={trained_delta:+.1f}pp，联络人 Δpp={contact_delta:+.1f}pp")
+    lines.append(
+        f"  训练所 Δpp={trained_delta:+.1f}pp，联络人 Δpp={contact_delta:+.1f}pp"
+    )
     return lines
+
 
 def check_artifact_roundtrip() -> list[str]:
     """工件写盘 → 读回 → 报告内容必须与直接喂行完全一致。"""
@@ -407,9 +527,18 @@ def check_artifact_roundtrip() -> list[str]:
         # 走一遍真正的离线路径（collect_report 吃工件），而不是只比 build_report 的输出——
         # 报告命令的 `--input` 分支就在那条路上，从没被执行到的话它坏了也发现不了。
         offline = task_failure_report.collect_report(
-            sentry_command=None, release=RELEASE_D38, target=CONFIG.target, period="7d",
-            artifact=loaded, sort="failures", reverse=False, limit=None, fresh=True,
-            timeout_seconds=1.0, verbose=False, quiet=True,
+            sentry_command=None,
+            release=RELEASE_D38,
+            target=CONFIG.target,
+            period="7d",
+            artifact=loaded,
+            sort="failures",
+            reverse=False,
+            limit=None,
+            fresh=True,
+            timeout_seconds=1.0,
+            verbose=False,
+            quiet=True,
         )
         direct = task_failure_report.build_report(
             MEASUREMENTS, release=RELEASE_D38, period="7d", provenance="direct"
@@ -418,13 +547,22 @@ def check_artifact_roundtrip() -> list[str]:
         _eq(offline.runs, direct.runs, "工件路径与直连路径的运行失败率")
         _eq(offline.context, direct.context, "工件路径与直连路径的环境分布")
         if loaded.path is None or loaded.path.name not in offline.provenance:
-            raise CheckFailure(f"离线路径的 provenance 没带上工件路径：{offline.provenance}")
-        lines.append(f"  往返一致：{len(direct.tasks)} 个任务 / {len(direct.runs)} 条 release；collect_report 离线路径可用")
+            raise CheckFailure(
+                f"离线路径的 provenance 没带上工件路径：{offline.provenance}"
+            )
+        lines.append(
+            f"  往返一致：{len(direct.tasks)} 个任务 / {len(direct.runs)} 条 release；collect_report 离线路径可用"
+        )
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
 
     # 缺 measurement 时要点名缺哪个。
-    thin = Artifact(target=CONFIG.target, period="7d", measurements={}, generated_at="2026-01-01T00:00:00Z")
+    thin = Artifact(
+        target=CONFIG.target,
+        period="7d",
+        measurements={},
+        generated_at="2026-01-01T00:00:00Z",
+    )
     try:
         thin.get("task_total", "task-failure")
     except ValueError as error:
@@ -447,7 +585,9 @@ def check_version_filter_messages() -> list[str]:
     _eq(stable_only_empty, [], "--stable-only 无候选")
 
     # 真版本能被选出（回归前置）
-    got = task_trend_report.discover_versions(ROWS_RELEASE_USERS, count=3, min_users=1, quiet=True)
+    got = task_trend_report.discover_versions(
+        ROWS_RELEASE_USERS, count=3, min_users=1, quiet=True
+    )
     _eq(got[:3], [V38, V37, V36], "默认口径选出三个 beta")
 
     # 走到 collect_report 的报错分支：工件 + --stable-only
@@ -457,17 +597,33 @@ def check_version_filter_messages() -> list[str]:
         loaded = save_probe_artifact(path)
         try:
             task_trend_report.collect_report(
-                sentry_command=None, target=CONFIG.target, period="7d", artifact=loaded,
-                versions_count=3, include_prerelease=False, task_filter=None, min_latest_runs=1,
-                sort="runs", reverse=False, limit=None, fresh=True, timeout_seconds=1.0,
-                verbose=False, quiet=True, min_users=1,
+                sentry_command=None,
+                target=CONFIG.target,
+                period="7d",
+                artifact=loaded,
+                versions_count=3,
+                include_prerelease=False,
+                task_filter=None,
+                min_latest_runs=1,
+                sort="runs",
+                reverse=False,
+                limit=None,
+                fresh=True,
+                timeout_seconds=1.0,
+                verbose=False,
+                quiet=True,
+                min_users=1,
             )
         except ValueError as error:
             message = str(error)
-            _contains(message, "stable-only", "--stable-only 的报错要说明是这个开关造成的")
+            _contains(
+                message, "stable-only", "--stable-only 的报错要说明是这个开关造成的"
+            )
             _contains(message, "正式版", "--stable-only 的报错要说清缺的是正式版")
             if "release_pattern" in message:
-                raise CheckFailure(f"报错把原因指向了 release_pattern（错的）：{message}")
+                raise CheckFailure(
+                    f"报错把原因指向了 release_pattern（错的）：{message}"
+                )
         else:
             raise CheckFailure("--stable-only 无候选时没有报错")
     finally:
@@ -504,7 +660,11 @@ def check_renderers() -> list[str]:
 
     versions = [V38, V37, V36]
     trend_report = task_trend_report.build_report(
-        MEASUREMENTS, versions=versions, period="30d", provenance="selftest", min_latest_runs=1
+        MEASUREMENTS,
+        versions=versions,
+        period="30d",
+        provenance="selftest",
+        min_latest_runs=1,
     )
     trend_console = io.StringIO()
     task_trend_report.write_console(trend_report, trend_console)
@@ -514,7 +674,11 @@ def check_renderers() -> list[str]:
     _contains(trend_text, "样本不足", "趋势报告应标出小样本")
     trend_json = io.StringIO()
     task_trend_report.write_json(trend_report, trend_json)
-    _eq(json_module.loads(trend_json.getvalue())["versions"], versions, "趋势 json 的版本序列")
+    _eq(
+        json_module.loads(trend_json.getvalue())["versions"],
+        versions,
+        "趋势 json 的版本序列",
+    )
 
     lines.append("  console / markdown / json 三种渲染均可读")
     return lines
@@ -535,35 +699,41 @@ def check_flow_parser() -> list[str]:
         sys.path.insert(0, str(root))
     from tools.drawing.flow_from_log import _first_log_ts, _open_log_lines, parse_log
 
-    sample = "\n".join([
-        "[2026-10-14 00:30:00.050][INF][Px1][Tx1][Utils/EventDispatcher.hpp][L65][A::notify] "
-        '!!!OnEventNotify!!! [handle=true] [msg=Node.NextList.Starting] '
-        '[details={"focus":null,"list":[{"anchor":false,"jump_back":false,"name":"BattleNow"},'
-        '{"anchor":false,"jump_back":true,"name":"BattleEnter"}],"name":"BattleLoop","task_id":200000118}] ',
-        "[2026-10-14 00:30:00.100][INF][Px1][Tx1][Recognizer.cpp][L1][A::b] "
-        'recognize_list [cur_node_=BattleNow] [list=[{name=BattleNow}]]',
-        "[2026-10-14 00:30:00.200][INF][Px1][Tx1][Recognizer.cpp][L2][A::c] "
-        'reco [result={"name":"BattleNow","algorithm":"OCR","box":[1,2,3,4],"reco_id":11,"detail":{"text":"接管作战"}}]',
-        "[2026-10-14 00:30:00.300][INF][Px1][Tx1][TaskBase.cpp][L3][A::d] "
-        'action [i=0] [data.repeat=1] [result={"action":"Click","success":true,"action_id":21}]',
-        "[2026-10-14 00:30:00.400][INF][Px1][Tx1][PipelineTask.cpp][L4][A::e] "
-        'PipelineTask node done [result={"name":"BattleNow","node_id":5,"reco_id":11,"action_id":21,'
-        '"completed":true}] [task_id_=200000118]',
-        # 不是日志行，必须被跳过且不影响结果
-        "Total 0 files, 0 bytes",
-    ])
+    sample = "\n".join(
+        [
+            "[2026-10-14 00:30:00.050][INF][Px1][Tx1][Utils/EventDispatcher.hpp][L65][A::notify] "
+            "!!!OnEventNotify!!! [handle=true] [msg=Node.NextList.Starting] "
+            '[details={"focus":null,"list":[{"anchor":false,"jump_back":false,"name":"BattleProbeNow"},'
+            '{"anchor":false,"jump_back":true,"name":"BattleEnter"}],"name":"BattleLoop","task_id":200000118}] ',
+            "[2026-10-14 00:30:00.100][INF][Px1][Tx1][Recognizer.cpp][L1][A::b] "
+            "recognize_list [cur_node_=BattleProbeNow] [list=[{name=BattleProbeNow}]]",
+            "[2026-10-14 00:30:00.200][INF][Px1][Tx1][Recognizer.cpp][L2][A::c] "
+            'reco [result={"name":"BattleProbeNow","algorithm":"OCR","box":[1,2,3,4],"reco_id":11,"detail":{"text":"接管作战"}}]',
+            "[2026-10-14 00:30:00.300][INF][Px1][Tx1][TaskBase.cpp][L3][A::d] "
+            'action [i=0] [data.repeat=1] [result={"action":"Click","success":true,"action_id":21}]',
+            "[2026-10-14 00:30:00.400][INF][Px1][Tx1][PipelineTask.cpp][L4][A::e] "
+            'PipelineTask node done [result={"name":"BattleProbeNow","node_id":5,"reco_id":11,"action_id":21,'
+            '"completed":true}] [task_id_=200000118]',
+            # 不是日志行，必须被跳过且不影响结果
+            "Total 0 files, 0 bytes",
+        ]
+    )
 
     from_text = parse_log(sample, None, None, None, False)
     from_stream = parse_log(io.StringIO(sample), None, None, None, False)
     _eq(len(from_text.steps), 1, "文本输入的步数")
-    _eq([s.name for s in from_text.steps], ["BattleNow"], "文本输入解析出的节点")
-    _eq([s.name for s in from_stream.steps], ["BattleNow"], "文本流输入的节点")
+    _eq([s.name for s in from_text.steps], ["BattleProbeNow"], "文本输入解析出的节点")
+    _eq([s.name for s in from_stream.steps], ["BattleProbeNow"], "文本流输入的节点")
     _eq(from_text.steps[0].texts, ["接管作战"], "文本输入抓到的 OCR 文本")
     _eq(from_text.steps[0].action, "Click", "文本输入抓到的动作")
     # 同一份日志里的 NextList 事件要认出来（小写 + 行尾那个 `]` 都实测踩过）
     _eq(from_text.stats.nextlist_seen, 1, "NextList 事件计数")
     _eq(from_text.steps[0].parent, "BattleLoop", "父节点从 NextList 的 name 来")
-    _eq(from_text.steps[0].candidates, ["BattleNow", "BattleEnter"], "候选表按 list 顺序")
+    _eq(
+        from_text.steps[0].candidates,
+        ["BattleProbeNow", "BattleEnter"],
+        "候选表按 list 顺序",
+    )
     _eq(from_text.steps[0].jumps, ["BattleEnter"], "带 [JumpBack] 的候选")
     _eq(from_text.steps[0].parent_source, "nextlist", "父节点来源")
     # `_first_log_ts` 可能返回 None（不是 maafw.log 的文本），直接 .strftime 会抛
@@ -571,13 +741,19 @@ def check_flow_parser() -> list[str]:
     first_ts = _first_log_ts(sample)
     if first_ts is None:
         raise CheckFailure("_first_log_ts 没解析出首行时间戳")
-    _eq(first_ts.strftime("%H:%M:%S.%f")[:-3], "00:30:00.050", "_first_log_ts 取首行时间戳")
+    _eq(
+        first_ts.strftime("%H:%M:%S.%f")[:-3],
+        "00:30:00.050",
+        "_first_log_ts 取首行时间戳",
+    )
 
     # 路径输入路径仍要可用（本地工具的主用法）
     lines = list(_open_log_lines(sample))
     _eq(len(lines), 6, "文本按行切分")
-    return [f"  文本 / 文本流 / 路径 三种入参一致（{len(from_text.steps)} 步，"
-            f"父节点={from_text.steps[0].parent}）"]
+    return [
+        f"  文本 / 文本流 / 路径 三种入参一致（{len(from_text.steps)} 步，"
+        f"父节点={from_text.steps[0].parent}）"
+    ]
 
 
 def check_flow_diagnostics() -> list[str]:
@@ -603,106 +779,171 @@ def check_flow_diagnostics() -> list[str]:
     )
 
     def raw(ts: str, msg: str, px: str = "Px1") -> str:
-        return f"[2026-10-14 {ts}][INF][{px}][Tx1][PipelineTask.cpp][L1][MaaNS::T] {msg}"
+        return (
+            f"[2026-10-14 {ts}][INF][{px}][Tx1][PipelineTask.cpp][L1][MaaNS::T] {msg}"
+        )
 
     def done(ts: str, name: str, tid: int = 100, px: str = "Px1") -> str:
-        return raw(ts, f'PipelineTask node done [result={{"name":"{name}","node_id":1,'
-                       f'"reco_id":1,"completed":true}}] [task_id_={tid}]', px=px)
+        return raw(
+            ts,
+            f'PipelineTask node done [result={{"name":"{name}","node_id":1,'
+            f'"reco_id":1,"completed":true}}] [task_id_={tid}]',
+            px=px,
+        )
 
     def reco(ts: str, name: str, box: str = "[1,2,3,4]") -> str:
-        return raw(ts, f'reco [result={{"name":"{name}","algorithm":"OCR","box":{box},'
-                       f'"reco_id":1,"detail":{{}}}}]')
+        return raw(
+            ts,
+            f'reco [result={{"name":"{name}","algorithm":"OCR","box":{box},'
+            f'"reco_id":1,"detail":{{}}}}]',
+        )
 
     out: list[str] = []
 
     # 1) 时间戳回跳：行要按时间重排，两条都要在
-    shuffled = "\n".join([done("00:30:02.000", "Second"), done("00:30:01.000", "First")])
+    shuffled = "\n".join(
+        [done("00:30:02.000", "Second"), done("00:30:01.000", "First")]
+    )
     parsed = parse_log(shuffled, None, None, None, False)
     _eq(parsed.stats.out_of_order, 1, "回跳行数")
     _eq([s.name for s in parsed.steps], ["First", "Second"], "回跳后按时间重排的顺序")
     _contains("".join(build_notes(parsed, FlowOptions())), "已按时间重排", "回跳注记")
 
     # 2) 只有识别事件：用识别记录合成步骤，不再抛"没有解析到任何节点执行记录"
-    only_events = "\n".join([reco("00:31:01.000", "EntrustChooseLevel", box="null")] * 4)
+    only_events = "\n".join(
+        [reco("00:31:01.000", "EntrustChooseLevel", box="null")] * 4
+    )
     parsed = parse_log(only_events, None, None, None, False)
     _eq(parsed.derived_from, "attempts", "仅事件模式的来源")
     _eq(len(parsed.steps), 4, "合成出的步骤数")
     _eq(len(round_steps(parsed, FlowOptions(collapse=3))), 1, "--collapse 3 折成一格")
     _eq(len(round_steps(parsed, FlowOptions(collapse=1))), 4, "--collapse 1 每次一格")
-    _contains("".join(build_notes(parsed, FlowOptions())), "由识别记录还原", "仅事件模式注记")
+    _contains(
+        "".join(build_notes(parsed, FlowOptions())), "由识别记录还原", "仅事件模式注记"
+    )
 
     # 3) 行尾被截断的 Task timeout：仍要出现，并标明数字不全
-    truncated = raw("00:32:00.000", "Task timeout [pretask.name=EntrustMoveToFind] "
-                                    "[duration_since(start_")
+    truncated = raw(
+        "00:32:00.000",
+        "Task timeout [pretask.name=EntrustMoveToFind] " "[duration_since(start_",
+    )
     parsed = parse_log(truncated, None, None, None, False)
-    _eq([e.name for e in parsed.events], ["Task timeout EntrustMoveToFind"], "截断超时事件")
+    _eq(
+        [e.name for e in parsed.events],
+        ["Task timeout EntrustMoveToFind"],
+        "截断超时事件",
+    )
     _contains(parsed.events[0].action, "行尾被截断", "截断超时的说明")
     _eq(parsed.stats.truncated_kept, 1, "截断但保留的条数")
 
     # 4) 行尾被截断的 reco：读不出就计数，不能抛
-    parsed = parse_log(raw("00:33:00.000", 'reco [result={"name":"A","box":null'), None, None, None, False)
+    parsed = parse_log(
+        raw("00:33:00.000", 'reco [result={"name":"A","box":null'),
+        None,
+        None,
+        None,
+        False,
+    )
     _eq(parsed.stats.truncated_skipped, 1, "截断被跳过的条数")
 
     # 5) 路径写错：必须是"没有这个文件"，不能混进"窗口内没有记录"
     opts = FlowOptions()
     missing = "no/such/dir/vision"
-    message = describe_empty_window(parse_log(missing, None, None, None, False), opts, missing)
+    message = describe_empty_window(
+        parse_log(missing, None, None, None, False), opts, missing
+    )
     _contains(message, "磁盘上没有这个文件", "路径写错的说法")
     _contains(message, "日志正文", "路径写错的说法")
 
     # 6) 窗口落在日志时间范围外：报出日志自己的时间范围
     elsewhere = done("00:34:00.000", "Only")
     from datetime import datetime as _dt
+
     opts = FlowOptions(t_from=_dt(2030, 1, 1), t_to=_dt(2030, 1, 2))
-    message = describe_empty_window(parse_log(elsewhere, opts.t_from, opts.t_to, None, False),
-                                    opts, elsewhere)
+    message = describe_empty_window(
+        parse_log(elsewhere, opts.t_from, opts.t_to, None, False), opts, elsewhere
+    )
     _contains(message, "2026-10-14 00:34:00.000", "空窗口时的日志时间范围")
 
     # 7) --task-id 严格过滤：别的任务的失败收尾不能进图，框架级事件要留
-    mixed = "\n".join([
-        done("00:35:00.000", "Mine", tid=100),
-        raw("00:35:01.000", 'task end: [cb_detail={"entry":"Other","task_id":999}] [ret=false]'),
-        raw("00:35:02.000", "invalid node id, handle error [node.name=Mine]"),
-    ])
+    mixed = "\n".join(
+        [
+            done("00:35:00.000", "Mine", tid=100),
+            raw(
+                "00:35:01.000",
+                'task end: [cb_detail={"entry":"Other","task_id":999}] [ret=false]',
+            ),
+            raw("00:35:02.000", "invalid node id, handle error [node.name=Mine]"),
+        ]
+    )
     parsed = parse_log(mixed, None, None, 100, False)
-    _eq([e.name for e in parsed.events], ["invalid node id"], "别的任务的失败收尾被排掉")
+    _eq(
+        [e.name for e in parsed.events], ["invalid node id"], "别的任务的失败收尾被排掉"
+    )
     _eq(parsed.stats.events_dropped, 1, "被排掉的失败事件数")
-    _contains("".join(build_notes(parsed, FlowOptions(task_id=100))), "已排除其他 task", "排掉事件的注记")
+    _contains(
+        "".join(build_notes(parsed, FlowOptions(task_id=100))),
+        "已排除其他 task",
+        "排掉事件的注记",
+    )
 
     # 8) 窗口内全是别的 task：说法要指向 task_id，而不是"窗口内没有记录"
     other = done("00:36:00.000", "Theirs", tid=999)
     opts = FlowOptions(task_id=100)
-    message = describe_empty_window(parse_log(other, None, None, 100, False), opts, other)
+    message = describe_empty_window(
+        parse_log(other, None, None, 100, False), opts, other
+    )
     _contains(message, "其他 task_id", "全是别人的 task 时的说法")
 
     # 9) 任务判定窗口：框架级事件没有 task_id，"下一个别的任务的第一步"之外的那些要排掉
     #    （实测：一份装了多次运行的导出把 23:59 那趟训练的 node not completed 画进了 13:11 的图上）
-    span_log = "\n".join([
-        done("00:40:00.000", "Mine", tid=100),
-        done("00:40:05.000", "Mine", tid=100),
-        raw("00:40:06.000", "invalid node id, handle error [node.name=Mine]"),      # 自己的失败标记：留
-        done("01:10:00.000", "Theirs", tid=200),                                    # 别的任务开始了：右界
-        raw("01:10:05.000", "node not completed, handle error [node.name=Theirs]"),  # 别的运行的：排掉
-    ])
+    span_log = "\n".join(
+        [
+            done("00:40:00.000", "Mine", tid=100),
+            done("00:40:05.000", "Mine", tid=100),
+            raw(
+                "00:40:06.000", "invalid node id, handle error [node.name=Mine]"
+            ),  # 自己的失败标记：留
+            done("01:10:00.000", "Theirs", tid=200),  # 别的任务开始了：右界
+            raw(
+                "01:10:05.000", "node not completed, handle error [node.name=Theirs]"
+            ),  # 别的运行的：排掉
+        ]
+    )
     parsed = parse_log(span_log, None, None, 100, False)
-    _eq([e.name for e in parsed.events], ["invalid node id"], "自己的失败标记留、别的运行的排掉")
+    _eq(
+        [e.name for e in parsed.events],
+        ["invalid node id"],
+        "自己的失败标记留、别的运行的排掉",
+    )
     _eq(parsed.stats.events_dropped, 1, "窗口外被排掉的事件数")
     _eq(parsed.span is not None, True, "选中任务的判定窗口")
     _eq(len(parsed.steps), 2, "窗口只影响事件与未命中聚合，不动步骤")
 
     # 10) 有 task end 时右端就是它自己：别的任务连步骤都没有也不能漏进来
     #     （实测 200000054 的图里混进过同一运行里 200000062 的 Task timeout 与 invalid node id）
-    ended_log = "\n".join([
-        done("00:50:00.000", "Mine", tid=100),
-        raw("00:50:09.000", 'task end: [cb_detail={"entry":"TaskMine","task_id":100}] [ret=false]'),
-        raw("00:50:37.000", "invalid node id, handle error [node.name=Later]"),
-    ])
+    ended_log = "\n".join(
+        [
+            done("00:50:00.000", "Mine", tid=100),
+            raw(
+                "00:50:09.000",
+                'task end: [cb_detail={"entry":"TaskMine","task_id":100}] [ret=false]',
+            ),
+            raw("00:50:37.000", "invalid node id, handle error [node.name=Later]"),
+        ]
+    )
     parsed = parse_log(ended_log, None, None, 100, False)
-    _eq([e.name for e in parsed.events], ["任务结束 TaskMine 失败"], "自己的 task end 之外的框架事件被排掉")
+    _eq(
+        [e.name for e in parsed.events],
+        ["任务结束 TaskMine 失败"],
+        "自己的 task end 之外的框架事件被排掉",
+    )
     _eq(parsed.stats.events_dropped, 1, "task end 之外被排掉的事件数")
 
-    out.append("  回跳重排 / 仅事件模式（4 条识别合成步骤）/ 截断行 / 三类空窗口 / 严格 task 过滤 / "
-               "任务区间 各自有说法")
+    out.append(
+        "  回跳重排 / 仅事件模式（4 条识别合成步骤）/ 截断行 / 三类空窗口 / 严格 task 过滤 / "
+        "任务区间 各自有说法"
+    )
     return out
 
 
@@ -724,27 +965,41 @@ def check_explore_csv() -> list[str]:
     from tools.sentry import explore_csv
 
     def maafw(ts: str, msg: str, px: str = "Px1") -> str:
-        return f"[2026-10-14 {ts}][INF][{px}][Tx1][PipelineTask.cpp][L1][MaaNS::T] {msg}"
+        return (
+            f"[2026-10-14 {ts}][INF][{px}][Tx1][PipelineTask.cpp][L1][MaaNS::T] {msg}"
+        )
 
-    node_a = maafw("00:01:00.000", 'PipelineTask node done [result={"name":"TaskA","node_id":1,'
-                                   '"reco_id":11,"completed":true}] [task_id_=111]')
-    node_b = maafw("00:05:00.000", 'PipelineTask node done [result={"name":"TaskB","node_id":2,'
-                                   '"reco_id":21,"completed":true}] [task_id_=222]')
-    head = "[2026-10-14 00:04:00.000][INF][Px1][Tx1"          # 第一格末行：断头（下一格接着）
+    node_a = maafw(
+        "00:01:00.000",
+        'PipelineTask node done [result={"name":"TaskA","node_id":1,'
+        '"reco_id":11,"completed":true}] [task_id_=111]',
+    )
+    node_b = maafw(
+        "00:05:00.000",
+        'PipelineTask node done [result={"name":"TaskB","node_id":2,'
+        '"reco_id":21,"completed":true}] [task_id_=222]',
+    )
+    head = "[2026-10-14 00:04:00.000][INF][Px1][Tx1"  # 第一格末行：断头（下一格接着）
     tail = "][Utils/EventDispatcher.hpp][L65][MaaNS::EventDispatcher::notify] !!!OnEventNotify!!!"
-    dangling = "[2026-10-14 00:06:00.000][INF][Px1][Tx1"      # 第二格末行：没人接的断头
-    cell_one = "\n".join([
-        'ls={"focus":null,"list":[]}',                        # 碎片（没有时间戳）
-        node_a,
-        maafw("00:03:00.000", 'reco [result={"name":"A","algorithm":"OCR","box":null'),   # 被裁断
-        head,
-    ])
-    cell_two = "\n".join([
-        tail,                                                  # 接上第一格的断头
-        node_b,
-        "[2026-10-14 00:00:50.306][WRN] [cfg=Default] 实时画面为空：截图方式=EmulatorExtras",
-        dangling,
-    ])
+    dangling = "[2026-10-14 00:06:00.000][INF][Px1][Tx1"  # 第二格末行：没人接的断头
+    cell_one = "\n".join(
+        [
+            'ls={"focus":null,"list":[]}',  # 碎片（没有时间戳）
+            node_a,
+            maafw(
+                "00:03:00.000", 'reco [result={"name":"A","algorithm":"OCR","box":null'
+            ),  # 被裁断
+            head,
+        ]
+    )
+    cell_two = "\n".join(
+        [
+            tail,  # 接上第一格的断头
+            node_b,
+            "[2026-10-14 00:00:50.306][WRN] [cfg=Default] 实时画面为空：截图方式=EmulatorExtras",
+            dangling,
+        ]
+    )
     buffer = _io.StringIO()
     writer = _csv.writer(buffer, lineterminator="\r\n")
     writer.writerow(["timestamp", "message"])
@@ -756,7 +1011,11 @@ def check_explore_csv() -> list[str]:
     recovered, parse = result.inventory["recovered"], result.inventory["parse"]
     _eq(result.inventory["source"]["csv_rows"], 2, "数据行数")
     _eq(recovered["boundaries_joined"], 1, "接回的跨格断行数")
-    _eq(recovered["lines_complete"], 4, "结构完整的行（两条 node done + 接回的那条 + 被裁断的 reco）")
+    _eq(
+        recovered["lines_complete"],
+        4,
+        "结构完整的行（两条 node done + 接回的那条 + 被裁断的 reco）",
+    )
     _eq(recovered["lines_panel"], 1, "面板行数")
     _eq(recovered["lines_head_cut"], 1, "断头行数（没人接的那条）")
     _eq(recovered["lines_fragment"], 1, "碎片行数")
@@ -767,22 +1026,40 @@ def check_explore_csv() -> list[str]:
     _eq([task["task_id"] for task in result.tasks], [111, 222], "清单里的任务")
     _eq([task["drawable"] for task in result.tasks], [True, True], "两个任务都可画")
     _eq(result.inventory["panel_lines"]["count"], 1, "面板行计数")
-    _contains(result.inventory["panel_lines"]["samples"][0]["text"], "实时画面为空", "面板行样例")
+    _contains(
+        result.inventory["panel_lines"]["samples"][0]["text"],
+        "实时画面为空",
+        "面板行样例",
+    )
     _eq(result.inventory["images"], False, "导出不含图片")
 
     # 卡在派发层的任务：只有 1 步 node done，但窗口里有 6 次连续未命中 —— 清单要能点名
     # （`reco` 行没有 task_id，窗口靠该 task 的 Node.NextList 事件撑开，所以这里必须带一条）
     def nextlist(ts: str, name: str, names: list[str], tid: int) -> str:
-        entries = ",".join('{"anchor":false,"jump_back":false,"name":"%s"}' % n for n in names)
-        return maafw(ts, '!!!OnEventNotify!!! [handle=true] [msg=Node.NextList.Failed] '
-                         f'[details={{"focus":null,"list":[{entries}],"name":"{name}","task_id":{tid}}}] ')
+        entries = ",".join(
+            '{"anchor":false,"jump_back":false,"name":"%s"}' % n for n in names
+        )
+        return maafw(
+            ts,
+            "!!!OnEventNotify!!! [handle=true] [msg=Node.NextList.Failed] "
+            f'[details={{"focus":null,"list":[{entries}],"name":"{name}","task_id":{tid}}}] ',
+        )
 
     stall_lines = [
         nextlist("00:07:00.000", "TaskC", ["CX", "CY"], 333),
-        *[maafw(f"00:07:0{i}.000", 'reco [result={"name":"CX","algorithm":"OCR","box":null,'
-                                    f'"reco_id":3{i}}}]') for i in range(1, 7)],
-        maafw("00:07:07.000", 'PipelineTask node done [result={"name":"TaskC","node_id":9,'
-                              '"reco_id":39,"completed":true}] [task_id_=333]'),
+        *[
+            maafw(
+                f"00:07:0{i}.000",
+                'reco [result={"name":"CX","algorithm":"OCR","box":null,'
+                f'"reco_id":3{i}}}]',
+            )
+            for i in range(1, 7)
+        ],
+        maafw(
+            "00:07:07.000",
+            'PipelineTask node done [result={"name":"TaskC","node_id":9,'
+            '"reco_id":39,"completed":true}] [task_id_=333]',
+        ),
     ]
     stall_buffer = _io.StringIO()
     stall_writer = _csv.writer(stall_buffer, lineterminator="\r\n")
@@ -794,7 +1071,11 @@ def check_explore_csv() -> list[str]:
     _eq(stall_task["misses"], 6, "窗口内的未命中次数")
     _eq(stall_task["stalled_misses"], 6, "最长的一段连续未命中")
     _eq(stall_task["stalled_at"], "2026-10-14T00:07:01.000", "空转起点（第一条未命中）")
-    _eq(stall_task["window"][0], "2026-10-14T00:07:00.000", "窗口起点取 NextList 记录（早于第一步）")
+    _eq(
+        stall_task["window"][0],
+        "2026-10-14T00:07:00.000",
+        "窗口起点取 NextList 记录（早于第一步）",
+    )
     stall_notes = " ".join(stall.inventory["notes"])
     _contains(stall_notes, "task 333", "清单点名空转任务")
     _contains(stall_notes, "连续 6 次识别未命中", "清单说明空转形态")
@@ -813,9 +1094,11 @@ def check_explore_csv() -> list[str]:
     else:
         raise CheckFailure("路径写错时没有报错")
 
-    return [f"  2 格 CSV → {recovered['lines']} 行（完整 {recovered['lines_complete']} / 面板 "
-            f"{recovered['lines_panel']}），接回 {recovered['boundaries_joined']} 处断行，"
-            f"{len(result.tasks)} 个任务可画"]
+    return [
+        f"  2 格 CSV → {recovered['lines']} 行（完整 {recovered['lines_complete']} / 面板 "
+        f"{recovered['lines_panel']}），接回 {recovered['boundaries_joined']} 处断行，"
+        f"{len(result.tasks)} 个任务可画"
+    ]
 
 
 def check_evidence() -> list[str]:
@@ -833,47 +1116,88 @@ def check_evidence() -> list[str]:
     from tools.sentry import evidence as ev
 
     # 1) 解包白名单：zip slip 与绝对路径都丢掉，`debug/…` 保留
-    names = ["debug/on_error/2026.10.14-19.20.00.789_TrainingBattleWin.png", "../evil.txt",
-             "/abs.png", "C:\\abs.png", "debug/", ""]
-    _eq(ev.safe_members(names), ["debug/on_error/2026.10.14-19.20.00.789_TrainingBattleWin.png"],
-        "解包白名单")
+    names = [
+        "debug/on_error/2026.10.14-19.20.00.789_TrainingBattleWin.png",
+        "../evil.txt",
+        "/abs.png",
+        "C:\\abs.png",
+        "debug/",
+        "",
+    ]
+    _eq(
+        ev.safe_members(names),
+        ["debug/on_error/2026.10.14-19.20.00.789_TrainingBattleWin.png"],
+        "解包白名单",
+    )
 
     # 2) 附件名 → task_id（`--task-id` 就是靠它拼出来的）
-    _eq(ev.parse_task_id("mfa-task-failure-3204f818b4e04a3494b29d911ec47724-200000062-screenshots.zip"),
-        200000062, "附件名里的 task_id")
+    _eq(
+        ev.parse_task_id(
+            "mfa-task-failure-3204f818b4e04a3494b29d911ec47724-200000062-screenshots.zip"
+        ),
+        200000062,
+        "附件名里的 task_id",
+    )
     _eq(ev.parse_task_id("log_20261014-part01.zip"), None, "非附件名不瞎猜")
 
     # 3) 逐字节相同的行要合并（MFA 续写的 64 KB 前缀重叠）
     _eq(ev.dedupe_lines(["a", "b", "a", "c", "b"]), (["a", "b", "c"], 2), "重复行合并")
 
     # 4) context 的键名点号是字符串的一部分，不是层级
-    ctx = ev.issue_context({"context": {"attachment.status": "attached", "logs.status": "captured",
-                                        "failure.task_id": 200000062, "instance.task_count": 11}})
+    ctx = ev.issue_context(
+        {
+            "context": {
+                "attachment.status": "attached",
+                "logs.status": "captured",
+                "failure.task_id": 200000062,
+                "instance.task_count": 11,
+            }
+        }
+    )
     _eq(ctx["attachment_status"], "attached", "attachment.status 取值")
     _eq(ctx["failure_task_id"], 200000062, "failure.task_id 取值")
     _eq(ev.wants_images(ctx), True, "attached 才下图")
     _eq(ev.wants_log(ctx), True, "captured 才下日志")
 
     # 5) 失败标记认得出节点名
-    markers = ev.marker_lines([
-        "[2026-10-14 19:20:37.887][WRN][Px1][Tx1][PipelineTask.cpp][L155][MaaNS::T] "
-        "Task timeout [pretask.name=EntrustEnterMainLine] [duration_since(start_clock)=20410ms] "
-        "[pretask.reco_timeout=20000ms]",
-        "[2026-10-14 19:20:37.888][WRN][Px1][Tx1][PipelineTask.cpp][L83][MaaNS::T] "
-        "invalid node id, handle error [node.name=EntrustEnterMainLine]",
-    ])
+    markers = ev.marker_lines(
+        [
+            "[2026-10-14 19:20:37.887][WRN][Px1][Tx1][PipelineTask.cpp][L155][MaaNS::T] "
+            "Task timeout [pretask.name=EntrustEnterMainLine] [duration_since(start_clock)=20410ms] "
+            "[pretask.reco_timeout=20000ms]",
+            "[2026-10-14 19:20:37.888][WRN][Px1][Tx1][PipelineTask.cpp][L83][MaaNS::T] "
+            "invalid node id, handle error [node.name=EntrustEnterMainLine]",
+        ]
+    )
     _contains(" ".join(markers), "EntrustEnterMainLine", "失败标记的节点名")
 
     # 6) 命令里必须带上 failure.task_id；没日志时不给 flow 的命令
-    issue = ev.Issue(short_id="PYTHON-14", title="", count=2, last_seen="", event_id="e",
-                     trace_id="t", evidence=ctx)
-    hints = ev.build_hints(_Path("temp/evidence/PYTHON-14"), issue, log_rel="debug/maafw.log", has_images=True)
+    issue = ev.Issue(
+        short_id="PYTHON-14",
+        title="",
+        count=2,
+        last_seen="",
+        event_id="e",
+        trace_id="t",
+        evidence=ctx,
+    )
+    hints = ev.build_hints(
+        _Path("temp/evidence/PYTHON-14"),
+        issue,
+        log_rel="debug/maafw.log",
+        has_images=True,
+    )
     _eq(len(hints), 2, "有图有日志时给两条命令")
     for hint in hints:
         _contains(hint, "--task-id 200000062", "命令里的 task_id")
     _contains(hints[0], "--case temp/evidence/PYTHON-14/debug", "目录 case 命令")
-    _eq(ev.build_hints(_Path("temp/evidence/PYTHON-14"), issue, log_rel=None, has_images=True), [],
-        "没有日志就没有可画的东西")
+    _eq(
+        ev.build_hints(
+            _Path("temp/evidence/PYTHON-14"), issue, log_rel=None, has_images=True
+        ),
+        [],
+        "没有日志就没有可画的东西",
+    )
 
     # 7) 状态表：一眼看出哪些有图、哪些只有日志
     buffer = _io.StringIO()
@@ -881,8 +1205,10 @@ def check_evidence() -> list[str]:
     _contains(buffer.getvalue(), "图 + 日志", "状态表的标记")
 
     _eq(ev.MAX_LOG_LIMIT, 1000, "trace logs 的 limit 上限")
-    return [f"解包白名单 / 附件名取 task_id / 去重 / 扁平 context / 失败标记 / 命令 各自有断言"
-            f"（schema {ev.EVIDENCE_SCHEMA}）"]
+    return [
+        f"解包白名单 / 附件名取 task_id / 去重 / 扁平 context / 失败标记 / 命令 各自有断言"
+        f"（schema {ev.EVIDENCE_SCHEMA}）"
+    ]
 
 
 def check_evidence_disk_agreement() -> list[str]:
@@ -910,16 +1236,31 @@ def check_evidence_disk_agreement() -> list[str]:
         log_bytes = "tail(512KB)\n".encode()
         blank = bytes.fromhex("89504e470d0a1a0a")
         (directory / "debug" / "maafw.log").write_bytes(log_bytes)
-        (directory / "debug" / "on_error" / "2026.10.14-19.20.37.889_EntrustEnterMainLine.png").write_bytes(blank)
-        (directory / "debug" / "on_error" / "readme.txt").write_text("不是现场图", encoding="utf-8")
+        (
+            directory
+            / "debug"
+            / "on_error"
+            / "2026.10.14-19.20.37.889_EntrustEnterMainLine.png"
+        ).write_bytes(blank)
+        (directory / "debug" / "on_error" / "readme.txt").write_text(
+            "不是现场图", encoding="utf-8"
+        )
 
         log_rel, images = ev.existing_artifacts(directory)
         _eq(log_rel, "debug/maafw.log", "扫到磁盘上的日志")
-        _eq(images, ["debug/on_error/2026.10.14-19.20.37.889_EntrustEnterMainLine.png"],
-            "只算 on_error/*.png")
+        _eq(
+            images,
+            ["debug/on_error/2026.10.14-19.20.37.889_EntrustEnterMainLine.png"],
+            "只算 on_error/*.png",
+        )
 
         # 本次没下任何东西（--force --no-log）：磁盘上有的都要补进清单并给出提示
-        written: dict[str, Any] = {"log": None, "log_bytes": 0, "images": [], "zip_bytes": 0}
+        written: dict[str, Any] = {
+            "log": None,
+            "log_bytes": 0,
+            "images": [],
+            "zip_bytes": 0,
+        }
         notes: list[str] = []
         ev.reconcile_written(directory, written, log_rel, images, notes)
         _eq(written["log"], "debug/maafw.log", "磁盘上的日志进了 written")
@@ -927,28 +1268,59 @@ def check_evidence_disk_agreement() -> list[str]:
         _eq(len(written["images"]), 1, "磁盘上的现场图进了 written")
         _contains(notes[0], "原有的", "记清楚了是原有的、不是本次下的")
 
-        issue = ev.Issue(short_id="PYTHON-14", title="", count=1, last_seen="", event_id="e", trace_id="t")
-        hints = ev.build_hints(directory, issue, log_rel=str(written["log"]),
-                               has_images=bool(written["images"]))
+        issue = ev.Issue(
+            short_id="PYTHON-14",
+            title="",
+            count=1,
+            last_seen="",
+            event_id="e",
+            trace_id="t",
+        )
+        hints = ev.build_hints(
+            directory,
+            issue,
+            log_rel=str(written["log"]),
+            has_images=bool(written["images"]),
+        )
         _eq(len(hints), 2, "补进 written 后就有可复制的绘图命令")
         _contains(hints[0], "--case", "目录 case 那条命令")
         _contains(hints[1], "--on-error", "有现场图就带 --on-error")
-        _eq(ev.build_hints(directory, issue, log_rel=None, has_images=False), [],
-            "没有日志就没有可画的东西")
+        _eq(
+            ev.build_hints(directory, issue, log_rel=None, has_images=False),
+            [],
+            "没有日志就没有可画的东西",
+        )
 
         # 本次下了日志：保留本次的字节数，不拿磁盘上的旧值盖掉，也不重复记图片
-        again: dict[str, Any] = {"log": "debug/maafw.log", "log_bytes": 999, "images": [images[0]],
-                                 "zip_bytes": 1}
+        again: dict[str, Any] = {
+            "log": "debug/maafw.log",
+            "log_bytes": 999,
+            "images": [images[0]],
+            "zip_bytes": 1,
+        }
         more: list[str] = []
         ev.reconcile_written(directory, again, log_rel, images, more)
-        _eq((again["log_bytes"], len(again["images"]), more), (999, 1, []), "本次下过就不动它")
+        _eq(
+            (again["log_bytes"], len(again["images"]), more),
+            (999, 1, []),
+            "本次下过就不动它",
+        )
 
         # 空目录：不能凭空记出东西来
         empty = scratch / "empty"
         empty.mkdir(parents=True, exist_ok=True)
-        blank_written: dict[str, Any] = {"log": None, "log_bytes": 0, "images": [], "zip_bytes": 0}
+        blank_written: dict[str, Any] = {
+            "log": None,
+            "log_bytes": 0,
+            "images": [],
+            "zip_bytes": 0,
+        }
         ev.reconcile_written(empty, blank_written, *ev.existing_artifacts(empty), [])
-        _eq((blank_written["log"], blank_written["images"]), (None, []), "空目录不补任何东西")
+        _eq(
+            (blank_written["log"], blank_written["images"]),
+            (None, []),
+            "空目录不补任何东西",
+        )
         _eq(ev.existing_artifacts(empty), (None, []), "空目录扫出来是空的")
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
@@ -1041,41 +1413,74 @@ def check_flow_parents() -> list[str]:
     def line(ts: str, msg: str, px: str = "Px1") -> str:
         return f"[2026-10-14 {ts}][INF][{px}][Tx1][Unit.cpp][L1][MaaNS::T] {msg}"
 
-    def nextlist(ts: str, name: str, names: list[str], tid: int, jumps: tuple[str, ...] = (),
-                 px: str = "Px1", kind: str = "Starting") -> str:
+    def nextlist(
+        ts: str,
+        name: str,
+        names: list[str],
+        tid: int,
+        jumps: tuple[str, ...] = (),
+        px: str = "Px1",
+        kind: str = "Starting",
+    ) -> str:
         entries = ",".join(
-            '{"anchor":false,"jump_back":%s,"name":"%s"}' % ("true" if n in jumps else "false", n)
-            for n in names)
-        return line(ts, f'!!!OnEventNotify!!! [handle=true] [msg=Node.NextList.{kind}] '
-                        f'[details={{"focus":null,"list":[{entries}],"name":"{name}","task_id":{tid}}}] ', px)
+            '{"anchor":false,"jump_back":%s,"name":"%s"}'
+            % ("true" if n in jumps else "false", n)
+            for n in names
+        )
+        return line(
+            ts,
+            f"!!!OnEventNotify!!! [handle=true] [msg=Node.NextList.{kind}] "
+            f'[details={{"focus":null,"list":[{entries}],"name":"{name}","task_id":{tid}}}] ',
+            px,
+        )
 
     def done(ts: str, name: str, tid: int, px: str = "Px1") -> str:
-        return line(ts, 'PipelineTask node done [result={"name":"%s","node_id":1,"reco_id":1,'
-                        '"action_id":1,"completed":true}] [task_id_=%d]' % (name, tid), px)
+        return line(
+            ts,
+            'PipelineTask node done [result={"name":"%s","node_id":1,"reco_id":1,'
+            '"action_id":1,"completed":true}] [task_id_=%d]' % (name, tid),
+            px,
+        )
 
     # 1) 候选表里同时有本步与别的候选：父节点 = 派发者，候选表与 [JumpBack] 照抄
-    text = "\n".join([
-        nextlist("00:00:01.000", "TrainingLoop", ["TrainingGetStatus", "TrainingEnterOne"], 100),
-        done("00:00:02.000", "TrainingEnterOne", 100),
-    ])
+    text = "\n".join(
+        [
+            nextlist(
+                "00:00:01.000",
+                "TrainingLoop",
+                ["TrainingGetStatus", "TrainingEnterOne"],
+                100,
+            ),
+            done("00:00:02.000", "TrainingEnterOne", 100),
+        ]
+    )
     step = parse_log(text, None, None, 100, False).steps[0]
     _eq(step.parent, "TrainingLoop", "父节点 = 派发者")
     _eq(step.candidates, ["TrainingGetStatus", "TrainingEnterOne"], "候选表原样带上")
-    _eq(step.parent_detail(), "候选：TrainingGetStatus ・ √TrainingEnterOne",
-        "框里那一行（派发者名字在分组框角标里，这一行只写候选）")
+    _eq(
+        step.parent_detail(),
+        "候选：TrainingGetStatus ・ √TrainingEnterOne",
+        "框里那一行（派发者名字在分组框角标里，这一行只写候选）",
+    )
 
     # 2) 自循环 / 入口合成轮：list 里含自己 → 不画成父子，写成"自派发/自循环"
-    text = "\n".join([
-        nextlist("00:00:01.000", "BattleWin", ["IsGetReward", "BattleWin"], 100),
-        done("00:00:02.000", "BattleWin", 100),
-    ])
+    text = "\n".join(
+        [
+            nextlist("00:00:01.000", "BattleWin", ["IsGetReward", "BattleWin"], 100),
+            done("00:00:02.000", "BattleWin", 100),
+        ]
+    )
     step = parse_log(text, None, None, 100, False).steps[0]
     _eq(step.dispatched, True, "自己派发自己")
     _eq(step.parent_detail(), "父 BattleWin（自派发/自循环）", "自循环的说法")
 
     # 3) 候选多于 PARENT_CHOICE_LIMIT 项：框里折成"另 N 项"；--list 用 full=True 给全
-    text = "\n".join([nextlist("00:00:01.000", "Hub", ["A", "B", "C", "D", "E"], 100),
-                      done("00:00:02.000", "D", 100)])
+    text = "\n".join(
+        [
+            nextlist("00:00:01.000", "Hub", ["A", "B", "C", "D", "E"], 100),
+            done("00:00:02.000", "D", 100),
+        ]
+    )
     step = parse_log(text, None, None, 100, False).steps[0]
     _contains(step.parent_detail(), "另 3 项", "框里折起来的候选数")
     _eq(step.parent_detail().count("√"), 0, "被折掉的那个不在框里")
@@ -1083,89 +1488,181 @@ def check_flow_parents() -> list[str]:
     _eq(step.parent_detail(full=True).count("・"), 4, "全量时五个候选都在")
 
     # 4) 跨 task 隔离：同名公共节点出现在别的任务的候选表里，不能认成它的父节点
-    text = "\n".join([
-        nextlist("00:00:01.000", "EntrustLoop", ["EntrustTouchDown", "MoveUp"], 200),
-        nextlist("00:00:01.500", "BattleLoop", ["BattleNow", "MoveUp"], 100),
-        done("00:00:02.000", "MoveUp", 100),
-    ])
-    _eq(parse_log(text, None, None, 100, False).steps[0].parent, "BattleLoop", "只认同 task 的派发记录")
+    text = "\n".join(
+        [
+            nextlist(
+                "00:00:01.000", "EntrustLoop", ["EntrustTouchDown", "MoveUp"], 200
+            ),
+            nextlist("00:00:01.500", "BattleLoop", ["BattleProbeNow", "MoveUp"], 100),
+            done("00:00:02.000", "MoveUp", 100),
+        ]
+    )
+    _eq(
+        parse_log(text, None, None, 100, False).steps[0].parent,
+        "BattleLoop",
+        "只认同 task 的派发记录",
+    )
 
     # 5) 退回顺序：没有候选记录时用 [cur_node_=X]；连它也没有时留空（图上写"未记录"）
-    text = "\n".join([
-        line("00:00:01.000", "recognize_list [cur_node_=BattleLoop] [list=[{name=BattleNow}]]"),
-        done("00:00:02.000", "BattleNow", 100),
-    ])
+    text = "\n".join(
+        [
+            line(
+                "00:00:01.000",
+                "recognize_list [cur_node_=BattleLoop] [list=[{name=BattleProbeNow}]]",
+            ),
+            done("00:00:02.000", "BattleProbeNow", 100),
+        ]
+    )
     step = parse_log(text, None, None, 100, False).steps[0]
-    _eq((step.parent, step.parent_source, step.candidates), ("BattleLoop", "walk", []), "退回 cur_node_")
-    step = parse_log(done("00:00:02.000", "BattleNow", 100), None, None, 100, False).steps[0]
-    _eq((step.parent, step.parent_source, step.parent_detail()), ("", "none", "父 未记录"), "取不到就留空")
+    _eq(
+        (step.parent, step.parent_source, step.candidates),
+        ("BattleLoop", "walk", []),
+        "退回 cur_node_",
+    )
+    step = parse_log(
+        done("00:00:02.000", "BattleProbeNow", 100), None, None, 100, False
+    ).steps[0]
+    _eq(
+        (step.parent, step.parent_source, step.parent_detail()),
+        ("", "none", "父 未记录"),
+        "取不到就留空",
+    )
 
     # 6) agent 进程那种形态（`details_json`）**不能**用来判父节点：它的载荷只有 focus + list，
     #    没有 name / task_id（实测本机日志 16 条全是这样）→ 必须返回 None，不能猜。
-    agent_line = ('[2026-10-14 00:00:01.000][TRC][Px2][Tx1][AgentClient.cpp][L1]'
-                  '[MaaNS::A::ctx_event_sink] [handle=true] [message=Node.NextList.Starting] '
-                  '[details_json={"focus":null,"list":[{"anchor":false,"jump_back":false,"name":"X"}]}] ')
-    _eq(parse_nextlist(agent_line, datetime(2026, 10, 14, 0, 0, 1), "Px2"), None,
-        "没有 name 的 details_json 不参与父节点归属")
+    agent_line = (
+        "[2026-10-14 00:00:01.000][TRC][Px2][Tx1][AgentClient.cpp][L1]"
+        "[MaaNS::A::ctx_event_sink] [handle=true] [message=Node.NextList.Starting] "
+        '[details_json={"focus":null,"list":[{"anchor":false,"jump_back":false,"name":"X"}]}] '
+    )
+    _eq(
+        parse_nextlist(agent_line, datetime(2026, 10, 14, 0, 0, 1), "Px2"),
+        None,
+        "没有 name 的 details_json 不参与父节点归属",
+    )
     # 但行尾那个 `]` 与大小写要认：同一个正则也得吃下 details_json 里带 name 的写法
     named = agent_line.replace('"focus":null', '"focus":null,"name":"Hub","task_id":7')
     record = parse_nextlist(named, datetime(2026, 10, 14, 0, 0, 1), "Px2")
     if record is None:
         raise CheckFailure("带 name 的 details_json 形态没解析出来")
-    _eq((record.name, record.task_id, record.candidates), ("Hub", 7, ("X",)), "details_json 形态")
+    _eq(
+        (record.name, record.task_id, record.candidates),
+        ("Hub", 7, ("X",)),
+        "details_json 形态",
+    )
 
     # 7) 时间上限：几十分钟前那条派发记录不再算这一步的父节点
-    stale = parse_nextlist(nextlist("00:00:01.000", "Hub", ["A"], 100),
-                           datetime(2026, 10, 14, 0, 0, 1), "Px1")
+    stale = parse_nextlist(
+        nextlist("00:00:01.000", "Hub", ["A"], 100),
+        datetime(2026, 10, 14, 0, 0, 1),
+        "Px1",
+    )
     if stale is None:
         raise CheckFailure("合成的 NextList 行没解析出来")
-    _eq(resolve_parent([stale], 100, "A", datetime(2026, 10, 14, 1, 0, 1))[0], None,
-        "超过 NEXTLIST_MAX_GAP_SECONDS 的派发记录不认")
+    _eq(
+        resolve_parent([stale], 100, "A", datetime(2026, 10, 14, 1, 0, 1))[0],
+        None,
+        "超过 NEXTLIST_MAX_GAP_SECONDS 的派发记录不认",
+    )
 
     # 8) 账按**进图的步骤**算，不按解析过的所有记录（`--task-id` 会滤掉别的任务的步骤）
-    only_done = parse_log(done("00:00:02.000", "BattleNow", 100), None, None, 100, False)
-    _eq((only_done.stats.parent_unknown, only_done.stats.parent_resolved), (1, 0), "未归属计数")
-    _contains(" ".join(build_notes(only_done, FlowOptions(task_id=100))), "父节点只能留空",
-              "没有 NextList 事件时的注记")
+    only_done = parse_log(
+        done("00:00:02.000", "BattleProbeNow", 100), None, None, 100, False
+    )
+    _eq(
+        (only_done.stats.parent_unknown, only_done.stats.parent_resolved),
+        (1, 0),
+        "未归属计数",
+    )
+    _contains(
+        " ".join(build_notes(only_done, FlowOptions(task_id=100))),
+        "父节点只能留空",
+        "没有 NextList 事件时的注记",
+    )
 
     # 9) 分组（图上套框 + 左上角标）：连续同父才算一组，父节点自己 / 未记录 / 任务起止都不入组
-    def step(name: str, parent: str, kind: str = "hit", candidates: tuple[str, ...] = ("x",)) -> Any:
+    def step(
+        name: str, parent: str, kind: str = "hit", candidates: tuple[str, ...] = ("x",)
+    ) -> Any:
         from tools.drawing.flow_from_log import Step as _Step
-        return _Step(ts=datetime(2026, 10, 14, 0, 0, 1), name=name, completed=True, kind=kind,
-                     dispatcher=parent, candidates=list(candidates) if parent != name else [])
+
+        return _Step(
+            ts=datetime(2026, 10, 14, 0, 0, 1),
+            name=name,
+            completed=True,
+            kind=kind,
+            dispatcher=parent,
+            candidates=list(candidates) if parent != name else [],
+        )
 
     column = [
-        step("TaskA", "TaskA", kind="task"),          # 任务起始：不入组
-        step("A1", "Hub"), step("A2", "Hub"),         # 同一个父节点连着两步 → 一组
-        step("Hub", "Hub"),                           # 自派发（父就是自己）→ 不入组，自己隔开
-        step("B1", "A2"),                             # 父换了 → 新组
-        step("none1", ""),                            # 父未记录 → 不入组
-        step("C1", "A2"),                             # 与 B1 不连续 → 另起一组（同父不同组）
+        step("TaskA", "TaskA", kind="task"),  # 任务起始：不入组
+        step("A1", "Hub"),
+        step("A2", "Hub"),  # 同一个父节点连着两步 → 一组
+        step("Hub", "Hub"),  # 自派发（父就是自己）→ 不入组，自己隔开
+        step("B1", "A2"),  # 父换了 → 新组
+        step("none1", ""),  # 父未记录 → 不入组
+        step("C1", "A2"),  # 与 B1 不连续 → 另起一组（同父不同组）
     ]
-    _eq(parent_groups(column), [("Hub", 1, 2), ("A2", 4, 4), ("A2", 6, 6)],
-        "连续同父才成组；自派发/未记录/任务起止不入组")
+    _eq(
+        parent_groups(column),
+        [("Hub", 1, 2), ("A2", 4, 4), ("A2", 6, 6)],
+        "连续同父才成组；自派发/未记录/任务起止不入组",
+    )
     # 10) 候选表评估账 + "卡在派发层"的注记：连续 Failed 才是证据（单次 Failed 是循环推进的正常现象）
-    text = "\n".join([
-        nextlist("00:00:01.000", "TaskLoop", ["Entry"], 100, kind="Succeeded"),
-        nextlist("00:00:02.000", "TaskLoop", ["ReplaysStart", "ReplaysEnd"], 100, kind="Failed"),
-        nextlist("00:00:03.000", "TaskLoop", ["ReplaysStart", "ReplaysEnd"], 100, kind="Failed"),
-        nextlist("00:00:04.000", "TaskLoop", ["ReplaysStart", "ReplaysEnd"], 100, kind="Failed"),
-        done("00:00:05.000", "TaskLoop", 100),
-    ])
+    text = "\n".join(
+        [
+            nextlist("00:00:01.000", "TaskLoop", ["Entry"], 100, kind="Succeeded"),
+            nextlist(
+                "00:00:02.000",
+                "TaskLoop",
+                ["ReplaysStart", "ReplaysEnd"],
+                100,
+                kind="Failed",
+            ),
+            nextlist(
+                "00:00:03.000",
+                "TaskLoop",
+                ["ReplaysStart", "ReplaysEnd"],
+                100,
+                kind="Failed",
+            ),
+            nextlist(
+                "00:00:04.000",
+                "TaskLoop",
+                ["ReplaysStart", "ReplaysEnd"],
+                100,
+                kind="Failed",
+            ),
+            done("00:00:05.000", "TaskLoop", 100),
+        ]
+    )
     parsed = parse_log(text, None, None, 100, False)
     stat = parsed.nextlist_stats[(100, "TaskLoop")]
-    _eq((stat.starting, stat.succeeded, stat.failed), (0, 1, 3), "候选表评估账按事件类型分记")
-    _eq(stat.real_candidates, ("ReplaysStart", "ReplaysEnd"),
-        "真实候选表取全未命中那轮的（入口轮是 [自己]，不算）")
+    _eq(
+        (stat.starting, stat.succeeded, stat.failed),
+        (0, 1, 3),
+        "候选表评估账按事件类型分记",
+    )
+    _eq(
+        stat.real_candidates,
+        ("ReplaysStart", "ReplaysEnd"),
+        "真实候选表取全未命中那轮的（入口轮是 [自己]，不算）",
+    )
     notes = stall_notes(parsed, 100, {"TaskLoop"})
     _eq(len(notes), 1, "只报一个派发者")
     _contains(notes[0], "3 轮全未命中", "注记给出未命中轮数")
     _contains(notes[0], "一个候选都没跑起来", "候选全没跑起来时的说法")
-    _eq(stall_notes(parsed, 100, {"TaskLoop", "ReplaysStart"})[0].count("跑起来的候选"), 1,
-        "有候选跑起来时改说跑起来的是哪个")
+    _eq(
+        stall_notes(parsed, 100, {"TaskLoop", "ReplaysStart"})[0].count("跑起来的候选"),
+        1,
+        "有候选跑起来时改说跑起来的是哪个",
+    )
     _eq(stall_notes(parsed, 999, set()), [], "别的 task 不串台")
-    return ["候选命中 / 跨 task 隔离 / 自循环 / 折行 / 三种退回 / 时间上限 / 计数口径 / 分组 / "
-            "候选表评估账 各自有断言"]
+    return [
+        "候选命中 / 跨 task 隔离 / 自循环 / 折行 / 三种退回 / 时间上限 / 计数口径 / 分组 / "
+        "候选表评估账 各自有断言"
+    ]
 
 
 CHECKS: tuple[tuple[str, Callable[[], list[str]]], ...] = (
@@ -1199,7 +1696,9 @@ def run_selftest(emit: Emit = print, *, quiet: bool = False) -> int:
             failures += 1
             emit(f"[失败] {title}: {error}")
             continue
-        except Exception as error:  # noqa: BLE001 - 自检要把任何异常都报成失败而不是崩掉
+        # 自检要把任何异常都报成失败而不是崩掉；抑制注释与 `except` 写在同一行，
+        # 因为多行 `except (\n Exception\n):  # 抑制` 在 ruff 0.17 起会被判成"抑制未使用"。
+        except Exception as error:  # noqa: BLE001
             failures += 1
             emit(f"[失败] {title}: 未预期异常 {type(error).__name__}: {error}")
             continue

@@ -8,6 +8,10 @@
 只出表格与结论，不画图（图在 [`tools/drawing`](../drawing/README.md)）；只在人调用时跑一次，
 不常驻、不自动报警。同一份数据必须能用 `--input` 工件离线复现出同样的结论——这一条决定了下面「功能取舍」里的几条。
 
+> **改完本目录的脚本要校验并修到全绿才结束**：清单见
+> [`tools/validation` 的「改完脚本的验收」](../validation/README.md#改完脚本的验收)
+> （`check_python` / `validate_refs` / `ruff` / `pyright`，加上本目录的 `selftest` 与 `check_sentry_offline.py`）。
+
 ## 功能取舍
 
 | 不做 | 为什么 | 要它怎么办 |

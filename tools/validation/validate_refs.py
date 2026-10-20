@@ -21,6 +21,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import re
@@ -2571,21 +2572,16 @@ def _ensure_printable_stdout() -> None:
     """
     if sys.stdout is None:
         return
-    # `except` 与抑制注释必须写在同一行：ruff 0.17 起，多行 `except (\n Exception\n):  # 抑制` 会把
-    # 抑制当成"未使用"（RUF100）而把 S110/BLE001 报出来，那是两个版本行为不同造成的假红。
-    try:
+    # 用 `contextlib.suppress` 而不是 try/except：抑制注释的放置规则会随 ruff 版本变
+    # （0.17 起多行 `except (\n Exception\n):` 后再挂抑制，会被判成"抑制未使用"并连带报
+    # S110/BLE001；被格式化工具折行后又会重新变红），suppress 两个版本都不报，也不怕折行。
+    with contextlib.suppress(Exception):
+        # 探测 isatty 失败就当"不是终端"，继续往下改编码
         if sys.stdout.isatty():
             return
-    except (
-        Exception
-    ):  # noqa: BLE001, S110 - 探测 isatty 失败就当"不是终端"，继续往下改编码
-        pass
-    try:
+    with contextlib.suppress(Exception):
+        # 老解释器/被包装过的 stdout 没有 reconfigure，保持原样即可
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
-    except (
-        Exception
-    ):  # noqa: BLE001, S110 - 老解释器/被包装过的 stdout 没有 reconfigure，保持原样即可
-        pass
 
 
 def main(argv: list[str] | None = None) -> int:

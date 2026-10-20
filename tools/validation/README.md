@@ -4,6 +4,8 @@
 与 `tools/drawing/`（产出图片）、`tools/sentry/`（遥测分析）分开归置；构建与发布链路用的脚本
 仍在 `tools/` 根与 `tools/ci/`。
 
+**改完 `tools/` 下的脚本要按下面「[改完脚本的验收](#改完脚本的验收)」跑一遍并修到没报错才结束。**
+
 ## 功能取舍
 
 | 不做 | 为什么 | 要它怎么办 |
@@ -38,6 +40,9 @@ python tools/validation/validate_schema.py \
     --schema-dir deps/tools --resource-dirs assets/resource \
     --exclude-dirs assets/resource/announcement assets/resource/tasks \
     --interface-files assets/interface.json --task-dirs assets/resource/tasks
+# 资源目录**顶层**的 config/ 会被自动跳过：那是 MaaCore 的运行时选项（maa_option.json：
+# draw_quality / logging / save_draw …，标量键值），且该目录在 .gitignore 里，CI 干净检出时不存在。
+# 不跳过的话本机每次都会多 5 条 "is not of type 'object'" 的假 error。
 
 # 4. Sentry 遥测工具的离线自检（零网络、零凭证）
 python tools/validation/check_sentry_offline.py
@@ -47,6 +52,45 @@ node tools/validation/check_pyright.mjs
 ```
 
 `npm run check:refs` / `check:refs:github` 是第 2 步的快捷方式。
+
+## 改完脚本的验收
+
+**改完 `tools/` 下任何脚本（新建、改逻辑、改注释、改依赖、改文档里的命令都算）都要跑校验并修到没报错才结束。**
+按这个顺序跑，全部 exit 0 才算完；有报错就修，修完从头再跑一遍。
+
+```bash
+python tools/validation/check_python.py --root tools      # 1. 语法 / 悬空工具路径 / __doc__ 直取 / 仓库根级数
+python tools/validation/validate_refs.py --self-test      # 2. 跨文件引用与规范版本（纯函数断言）
+python tools/validation/validate_refs.py                  #    全量：必须是 error 0
+uvx ruff check tools --select F401,F841,E722,FURB162,S110,PLW1510,BLE001,RUF100   # 3. 真实缺陷类 lint
+node tools/validation/check_pyright.mjs                   # 4. 类型检查（需 npx，首次要网络）
+
+# 5. 改到哪个脚本，就跑它自己的 CLI 与自检
+python -m tools.sentry.cli selftest                       # 遥测工具：17 项
+python tools/validation/check_sentry_offline.py
+python tools/drawing/flow_from_log.py --help
+python tools/drawing/flow_cases.py --help
+```
+
+**通过判据**
+
+- `check_python.py`、`ruff`、`check_pyright.mjs` 必须 **0 error / 0 命中**；`validate_refs.py` 必须 `error 0`。
+  它的 `warn` / `info` 不算失败，但要么是仓库既有的已知项（旧 `Is` 前缀、非 CamelCase 图片名、
+  `max_hit` 预算、过期头部注解），要么在结论里说清为什么留下。
+- 脚本有自己的自检（`--self-test`、`selftest` 子命令）时**必须全过**；新加的可复用逻辑要补进自检。
+- 某个校验**跑不了**（需要网络、缺包、缺设备）时，在结论里写明"没跑 + 为什么"，不能默认通过。
+- 改的是 CI 会调的入口（本目录三个 `.py`），再跑一遍 CI 实际用的命令（见上「怎么跑」第 1–3 步）。
+- 改了渲染口径的（`tools/drawing/flow_from_log.py`）还要按 [`tools/drawing`](../drawing/README.md) 的
+  「已知坑」bump `RENDERER_VERSION` 并重画一张核对。
+
+**两处会制造"假红"的坑**（2026-10-20 实测）
+
+- **多行 `except (` 后面挂抑制注释**：ruff 0.17 起会把抑制判成"未使用"（`RUF100`）并连带报 `S110`/`BLE001`。
+  用 `contextlib.suppress(Exception)`，或把抑制留在**单行** `except` 上（理由另起一行注释）。
+  格式化工具会把长行折行，别依赖"正好没折"——那次"规范化代码格式"提交就让 8 条假红回归过。
+- **`validate_schema.py` 跳过资源目录顶层的 `config/`**：那是 MaaCore 的运行时选项
+  （`maa_option.json` 是标量键值），且该目录在 `.gitignore` 里；不跳过时本机会多 5 条
+  `is not of type 'object'` 假 error。判据只看顶层，任务片段里真叫 `config` 的子目录照常校验。
 
 ## `check_python.py` 查什么
 
@@ -123,8 +167,16 @@ node tools/validation/check_pyright.mjs
 - **`ruff` 的默认规则集里有大量本仓库从未采纳的风格偏好**（`TRY004` 异常类型判定、`PERF402`
   列表拷贝、`SIM102` 嵌套 if 合并等）。本仓库只把"真实缺陷"类当门槛：
   `F401`（未使用导入）、`F841`（未使用变量）、`E722`（裸 except）、`FURB162`、`S110`、`BLE001`、
-  `PLW1510`、`RUF100`。这些已清零：
+  `PLW1510`、`RUF100`。门槛**只覆盖 `tools/`**（`tools/sentry` + `tools/validation` 是常查对象）；
+  `agent/` 不进这个门槛：`agent/main.py` 的那批 import 是注册入口（名字一个都不在本文件里用，
+  删掉就静默丢注册，已在该文件加 `# ruff: noqa: F401` 说明），`agent/**` 里 `ble001` 的广捕获是
+  "回调异常别让任务崩"的既定写法且都打了日志。要查 `agent/` 就去掉 `BLE001` 单独跑。这些已清零：
 
   ```bash
   uvx ruff check tools --select F401,F841,E722,FURB162,S110,PLW1510,BLE001,RUF100
   ```
+- **抑制注释会被格式化工具"折"失效**：`except (\n Exception\n):  # noqa: BLE001, S110` 这种多行写法
+  在 ruff 0.17 起会被判成"抑制未使用"（`RUF100`）并连带把 `S110`/`BLE001` 报出来——2026-10-20 的
+  "规范化代码格式"提交就把上一版**单行**写法折成了多行，8 条又回来了。`validate_refs.py` 现在用
+  `contextlib.suppress(Exception)`（不是 try/except，两个版本都不报、也不怕折行）；确实要 `as error`
+  取异常对象的地方（`selftest.py`）把抑制留在**单行** `except` 上，理由另起一行注释。

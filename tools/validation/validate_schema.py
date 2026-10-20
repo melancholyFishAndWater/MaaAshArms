@@ -16,6 +16,11 @@ HAS_REFERENCING = find_spec("referencing") is not None
 # 资源目录根部的默认值文件：形状不是节点定义，不能按 pipeline.schema.json 校验
 DEFAULT_PIPELINE_NAME = "default_pipeline.json"
 DEFAULT_PIPELINE_SCHEMA = "tools/vscode/default_pipeline.schema.json"
+# 资源目录顶层的 config/ 放的是 **MaaCore 的运行时选项**（`maa_option.json`：draw_quality / logging /
+# save_draw / save_on_error / stdout_level，标量键值，不是节点定义），而且该目录在 .gitignore 里
+# （`.gitignore` 的 `config` 一行）——CI 干净检出时根本不存在。按 pipeline schema 校验它只会在本机
+# 报 5 条"is not of type 'object'"的假 error，所以按运行时文件跳过。
+RUNTIME_OPTION_DIRS = frozenset({"config"})
 
 if HAS_REFERENCING:
     from referencing import Registry, Resource
@@ -304,6 +309,15 @@ def main():
                 continue
         return False
 
+    def is_runtime_option(file_path, resource_path):
+        """资源目录**顶层**的 config/ 是 MaaCore 运行时选项，不是 pipeline 内容（只看顶层，
+        避免把任务片段里真叫 config 的子目录也一起放过）。"""
+        try:
+            rel = Path(file_path).resolve().relative_to(Path(resource_path).resolve())
+        except ValueError:
+            return False
+        return len(rel.parts) > 1 and rel.parts[0] in RUNTIME_OPTION_DIRS
+
     print("Validating pipeline resources...")
     # 验证 pipeline 资源文件
     for resource_dir in args.resource_dirs:
@@ -315,13 +329,21 @@ def main():
             continue
 
         for file_path in resource_path.rglob("*.json"):
-            if is_excluded(file_path) or file_path.name == DEFAULT_PIPELINE_NAME:
+            if (
+                is_excluded(file_path)
+                or is_runtime_option(file_path, resource_path)
+                or file_path.name == DEFAULT_PIPELINE_NAME
+            ):
                 continue
             if not validate_file(file_path, pipeline_validator):
                 all_valid = False
 
         for file_path in resource_path.rglob("*.jsonc"):
-            if is_excluded(file_path) or file_path.name == DEFAULT_PIPELINE_NAME:
+            if (
+                is_excluded(file_path)
+                or is_runtime_option(file_path, resource_path)
+                or file_path.name == DEFAULT_PIPELINE_NAME
+            ):
                 continue
             if not validate_file(file_path, pipeline_validator):
                 all_valid = False
