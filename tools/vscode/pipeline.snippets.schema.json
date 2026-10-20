@@ -43,7 +43,7 @@
                             "$2"
                         ],
                         "inverse": true,
-                        "rate_limit": 2000,
+                        "rate_limit": 1000,
                         "timeout": 30000,
                         "next": [
                             "$0"
@@ -54,12 +54,12 @@
                     "label": "Loop 工作节点",
                     "$comment": "守卫可用 Probe 或 Custom（Custom 的未命中必须是“不在页面”）；出口只有守卫失效与有限 timeout 两条，不设计数兜底；一页多段工作拆子 Loop，用 [JumpBack]<子 Loop> 串联（结构文档 §3/§4/§5）",
                     "body": {
-                        "desc": "[Loop] $1 循环",
+                        "desc": "[Loop] $1",
                         "recognition": "And",
                         "all_of": [
                             "$2"
                         ],
-                        "rate_limit": 2000,
+                        "rate_limit": 1000,
                         "timeout": 30000,
                         "next": [
                             "$0"
