@@ -15,8 +15,7 @@
     "telemetry": {
         "sentry": {
             "dsn": "https://f231f330aaf9138fe2fd690d70f82d94@o4512197377523712.ingest.us.sentry.io/4512197395480576",
-            "failure_attachments_sample_rate": 1,
-            "environment": "production"
+            "failure_attachments_sample_rate": 1
         }
     },
     // Mirror酱为第三方分发服务，新项目默认关闭
