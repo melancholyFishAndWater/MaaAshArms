@@ -1,3 +1,5 @@
+# ruff: noqa: F401 —— 下面这批 import 是**注册入口**（装饰器在 import 时执行），
+# 名字一个都不在本文件里用；删掉任何一个都会让对应模块的自定义识别/动作静默消失。
 import os
 import sys
 from pathlib import Path

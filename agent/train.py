@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-import json
 from re import search
 from numpy import ndarray
-from typing import Any, Literal
+from typing import Literal
 
 from maa.agent.agent_server import AgentServer
 from maa.custom_recognition import CustomRecognition
@@ -387,8 +386,8 @@ class TrainClickAcceptInfoReco(CustomRecognition):
         try:
             p = parse_params(argv.custom_recognition_param, "targets")
             param = p["targets"]
-        except Exception as e:
-            log.warn("解析param失败 配置的优先选择路线将不生效")
+        except Exception as e:  # noqa: BLE001 - 参数坏了不该让任务失败，打日志后继续
+            log.warn(f"解析param失败 配置的优先选择路线将不生效: {e}")
         log.debug(f"候选路线为: {param}")
 
         # 识别并记录当前画面路线解锁状态 若满足候选列表则返回box

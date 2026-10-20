@@ -16,16 +16,12 @@ from maa.custom_action import CustomAction
 from maa.custom_recognition import CustomRecognition
 from maa.context import (
     Context,
-    ContextEventSink,
     JRecognitionType,
 )
 from maa.define import OCRResult
-from maa.event_sink import NotificationType
 from maa.pipeline import JOCR, JTemplateMatch
 
 from agentlog import log
-from params import parse_params
-from parent_tracker import father_name
 from rect import DEFAULT_HIT_BOX
 
 # ---------- Reco ----------
