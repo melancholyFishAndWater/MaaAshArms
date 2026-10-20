@@ -30,6 +30,24 @@ _current_level_name: str = ""
 # ---------- Reco ----------
 
 
+# 判断是否在训练所某一个关卡内
+@AgentServer.custom_recognition("TrainingProbeOneReco")
+class TrainingProbeOneReco(CustomRecognition):
+    def analyze(
+        self, context: Context, argv: CustomRecognition.AnalyzeArg
+    ) -> CustomRecognition.AnalyzeResult | Rect | list[int] | None:
+        node_name = argv.node_name
+
+        r = context.run_recognition_direct(
+            JRecognitionType.OCR, JOCR(_all, roi=(630, 481, 203, 149)), argv.image
+        )
+        if r is None or not r.hit:
+            log.debug(f"{node_name} 识别训练所名失败")
+            return
+
+        return r.box
+
+
 # 识别所有已完成关卡的关卡名
 @AgentServer.custom_recognition("TrainingGetStatusReco")
 class TrainingGetStatusReco(CustomRecognition):

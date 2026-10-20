@@ -58,6 +58,11 @@
             "enable": true // 每日一次开关 覆写关闭
         }
     },
+    "TrainingProbeOne": {
+        "desc": "[end] 在某个训练所关卡内",
+        "recognition": "Custom",
+        "custom_recognition": "TrainingProbeOneReco"
+    },
     /* -------------------- 就位 -------------------- */
     "TrainingEnsureHome": {
         "desc": "[jp] 确保在训练所主页面",
@@ -72,7 +77,6 @@
             "[JumpBack]BaseBranchError",
             "[JumpBack]ProbeBlackPage",
             "[JumpBack]TrainingEnterHome",
-            "[JumpBack]BackButton", // INFO 尝试返回按钮(为兼容在关卡内)
             "[JumpBack]BattleEnsureHome"
         ]
     },
@@ -106,8 +110,20 @@
             "[JumpBack]TrainingGetStatus",
             "[JumpBack]TrainingEnterOne",
             "TrainingCheckEnd",
-            "[JumpBack]BaseBranchError"
+            "[JumpBack]BaseBranchError",
+            "[JumpBack]TrainingBranchBack"
             // TODO 自律战斗失败的逻辑、不可代理的逻辑
+        ]
+    },
+    "TrainingBranchBack": {
+        "desc": "[jp] 条件返回上一页",
+        "recognition": "And",
+        "all_of": [
+            "TrainingProbeOne"
+        ],
+        "inverse": true,
+        "next": [
+            "BackButton"
         ]
     },
     "TrainingGetStatus": {
