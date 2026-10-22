@@ -25,9 +25,6 @@ RUNTIME_OPTION_DIRS = frozenset({"config"})
 if HAS_REFERENCING:
     from referencing import Registry, Resource
     from referencing.jsonschema import DRAFT7, DRAFT202012
-else:
-    # 没有 referencing 库时，回退到旧的 RefResolver
-    from jsonschema import RefResolver
 
 
 def strip_jsonc_comments(text):
@@ -185,15 +182,22 @@ def validate_file(file_path, validator):
 
 
 def create_validator(schema, schema_store):
-    """创建 validator，使用新的 referencing API 或回退到 RefResolver"""
-    ValidatorClass = get_validator_class(schema)
+    """创建 validator，使用新的 referencing API 或回退到 RefResolver。
+
+    **不把 `get_validator_class()` 的结果存进变量再调用**：它的返回类型是
+    `type[Draft7Validator] | type[Draft202012Validator]`，pyright 会按联合类型求交去核对
+    `__init__`，然后报一串 "Argument missing for parameter schema" / "No parameter named
+    registry"（Pylance 口径实测 7 条，全是假红）。所以这里按 schema 分两支、各自直接实例化，
+    让每个调用点的类型都是单一类。
+    """
+    is_2020 = get_validator_class(schema) is Draft202012Validator
 
     if HAS_REFERENCING:
         # 使用新的 referencing API
         registry = Registry()
 
         # 根据 schema 类型选择规范
-        spec = DRAFT202012 if ValidatorClass == Draft202012Validator else DRAFT7
+        spec = DRAFT202012 if is_2020 else DRAFT7
 
         # 添加所有 schema 到 registry
         for uri, schema_content in schema_store.items():
@@ -202,9 +206,14 @@ def create_validator(schema, schema_store):
             )
             registry = registry.with_resource(uri, resource)
 
-        return ValidatorClass(schema, registry=registry)
+        if is_2020:
+            return Draft202012Validator(schema, registry=registry)
+        return Draft7Validator(schema, registry=registry)
     else:
-        # 回退到旧的 RefResolver
+        # 回退到旧的 RefResolver。**在分支里 import**：`referencing` 装了的时候上面那个
+        # 分支根本不会执行，放模块级会被类型检查判成不可达。
+        from jsonschema import RefResolver
+
         # 从 schema_store 中找到主 schema 的 URI
         schema_uri = None
         for uri, content in schema_store.items():
@@ -215,8 +224,16 @@ def create_validator(schema, schema_store):
         if schema_uri is None:
             schema_uri = "file:///schema.json"
 
-        resolver = RefResolver(base_uri=schema_uri, referrer=schema, store=schema_store)
-        return ValidatorClass(schema, resolver=resolver)
+        # 这一行挂抑制而不是改写法：`jsonschema.RefResolver` 是 `jsonschema/validators.py`
+        # 模块级 `__getattr__` 动态返回的（`elif name == "RefResolver": return _RefResolver`，
+        # 只为发 DeprecationWarning），静态类型检查看不到它是类，于是判成"不可调用"并连带
+        # 6 条 reportCallIssue（Pylance 口径实测）。也不能改用 `jsonschema.validators._RefResolver`——
+        # 没有 jsonschema stub 的环境里那是个"未知导入符号"，仓库自己的 pyright 门槛会报 error。
+        # **抑制必须与报错同一行**：拆成多行时 pyright 报在参数那一行，行首挂的抑制压不住。
+        resolver = RefResolver(base_uri=schema_uri, referrer=schema, store=schema_store)  # type: ignore
+        if is_2020:
+            return Draft202012Validator(schema, resolver=resolver)
+        return Draft7Validator(schema, resolver=resolver)
 
 
 def main():

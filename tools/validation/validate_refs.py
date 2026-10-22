@@ -143,6 +143,14 @@ GENERIC_ERROR_BRANCH = "BaseBranchError"
 CONFIRM_NODE_NAMES = frozenset({"BaseProbeConfirm", "ClickConfirm"})
 CONFIRM_WORDS = ("确认",)
 
+# pipeline-structure.md §10：识别预算上限。
+# 单层 `Ensure` 固定 5 次识别（守卫 + 首项探针 + 兜底 + 进入动作 + 末项），末项是上一级
+# `Ensure` 时那一层再付 5 次——深度 5 就是 24 次。第 3 层起改用 `Branch` 平铺。
+MAX_ENSURE_DEPTH = 2
+# 失败候选也要付识别，列表越长单轮成本越高；超限通常是"把好几件事塞进一个列表"。
+MAX_NEXT_TASK_ENSURE = 4
+MAX_NEXT_LOOP = 5
+
 # --------------------------------------------------------------------------
 # 规范版本
 # --------------------------------------------------------------------------
@@ -151,9 +159,9 @@ CONFIRM_WORDS = ("确认",)
 # 不一致时报 E2，提醒人复核新规则要不要收进脚本——版本号只印在输出里而没人对，等于没有。
 # 两份都收：结构类判据（A4/A5/A7/A8/A9/A14…）按 pipeline-structure.md 实现，只对命名规范算版本
 # 等于让结构文档改了规则没人提醒。
-NAMING_SPEC_VERSION = "v1.8"
+NAMING_SPEC_VERSION = "v1.9"
 NAMING_SPEC = Path("docs/zh_cn/develop/node-naming.md")
-STRUCT_SPEC_VERSION = "v1.7"
+STRUCT_SPEC_VERSION = "v1.8"
 STRUCT_SPEC = Path("docs/zh_cn/develop/pipeline-structure.md")
 
 
@@ -1391,6 +1399,140 @@ def check_a15_error_branch(ctx: Ctx) -> None:
                     break
 
 
+def ensure_parent(node: Node) -> str | None:
+    """`Ensure.next` 里指向的上一级 `Ensure`（嵌套链的下一个环）。
+
+    从末项往前找第一个 `Ensure` 引用：合规写法末项就是上一级；末项是别的兜底候选、
+    中间夹着上一级 `Ensure` 的写法（`EntrustEnsureStage`）由 A9 单独报顺序问题，
+    但嵌套深度照样要算——它一样会逐级往下退。
+    一个 `Ensure` 都没有时返回 None（单层 `Ensure`，末项是 `ReturnMain` 之类）。
+    """
+    for item in reversed(to_list(node.data.get("next"))):
+        name = parse_ref(item)[0]
+        if name and ENSURE_RE.search(name):
+            return name
+    return None
+
+
+def ensure_depth(name: str, nodes: dict[str, Node]) -> int:
+    """一个 `Ensure` 的嵌套深度：自身算 1，每有一级上一级 `Ensure` 加 1。
+
+    链上出现环时在第一次重复处停下（环本身由 A7 报），避免死循环。
+    """
+    depth = 1
+    seen = {name}
+    current = nodes.get(name)
+    while current is not None:
+        parent = ensure_parent(current)
+        if parent is None or parent in seen:
+            break
+        seen.add(parent)
+        depth += 1
+        current = nodes.get(parent)
+    return depth
+
+
+def guard_probes(node: dict) -> set[str]:
+    """本节点 `recognition` 直接引用到的探针名（`And` / `Or` 的字符串子项）。
+
+    只取一层：`And[Probe]` 与 `Or[A, B]` 都算，内联对象子项跳过（拿不到名字）。
+    """
+    if node.get("recognition") not in ("And", "Or"):
+        return set()
+    subs = node.get("all_of") if node.get("recognition") == "And" else node.get("any_of")
+    if not isinstance(subs, list):
+        return set()
+    return {
+        _TAG_RE.sub("", s).strip()
+        for s in subs
+        if isinstance(s, str) and _TAG_RE.sub("", s).strip()
+    }
+
+
+def check_a16_ensure_depth(ctx: Ctx) -> None:
+    """`Ensure` 嵌套深度上限（pipeline-structure.md §10）。
+
+    单层 `Ensure` 固定 5 次识别（守卫 + 首项探针 + 兜底 + 进入动作 + 末项），
+    末项是上一级 `Ensure` 时那一层再付 5 次，所以深度 5 就是 24 次。第 3 层往上
+    改用 `Branch` 平铺到调用方 `next`，同样效果只要 1 次守卫。
+    """
+    for node in ctx.nodes.values():
+        if not ENSURE_RE.search(node.name):
+            continue
+        parent = ensure_parent(node)
+        if parent is None:
+            continue
+        depth = ensure_depth(node.name, ctx.nodes)
+        if depth <= MAX_ENSURE_DEPTH:
+            continue
+        ctx.add(
+            "A16-ensure-depth",
+            "warn",
+            node.file,
+            find_line(node.file, node.name),
+            f"{node.name} 的 Ensure 嵌套深度 {depth}（上限 {MAX_ENSURE_DEPTH}）："
+            f"单层固定 5 次识别、每多一层再付 5 次，深度 {depth} 约 {5 * depth - 1} 次；"
+            f"结构文档 §10 要求第 3 层起改用 Branch 平铺到调用方 next",
+        )
+
+
+def check_a17_guard_in_next(ctx: Ctx) -> None:
+    """守卫探针在 `next` 里重复（pipeline-structure.md §10）。
+
+    `Ensure.next` 首项常常是守卫里那个探针（"刚说不在，再问一遍"），救回率高的该留、
+    低的该删。这里只报"同一轮会问两遍"这个事实，留删由人按实测救回率定。
+    """
+    for node in ctx.nodes.values():
+        probes = guard_probes(node.data)
+        if not probes:
+            continue
+        for key, items in ref_lists(node.data):
+            hits = []
+            for item in items:
+                name = parse_ref(item)[0]
+                if name and name in probes:
+                    hits.append(name)
+            if not hits:
+                continue
+            ctx.add(
+                "A17-guard-in-next",
+                "info",
+                node.file,
+                find_line(node.file, node.name),
+                f"{node.name}.{key} 含守卫已用过的探针 {', '.join(hits)}："
+                f"同一轮会识别两遍；救回率 <25% 时删掉它（结构文档 §10）",
+            )
+
+
+def check_a18_next_length(ctx: Ctx) -> None:
+    """`next` 列表长度上限（pipeline-structure.md §10）。
+
+    失败候选也要付识别，列表越长单轮成本越高。上限按类别分：`Task` / `Ensure` 4 项、
+    `Loop` 5 项。超限通常是"把好几件事塞进一个列表"，该拆 `Branch` 或子 `Loop`。
+    """
+    for node in ctx.nodes.values():
+        items = to_list(node.data.get("next"))
+        if not items:
+            continue
+        name = node.name
+        if ENSURE_RE.search(name) or name.startswith("Task"):
+            limit, kind = MAX_NEXT_TASK_ENSURE, "Task/Ensure"
+        elif name.endswith("Loop"):
+            limit, kind = MAX_NEXT_LOOP, "Loop"
+        else:
+            continue
+        if len(items) <= limit:
+            continue
+        ctx.add(
+            "A18-next-length",
+            "warn",
+            node.file,
+            find_line(node.file, name),
+            f"{name}.next 有 {len(items)} 项（{kind} 上限 {limit}）："
+            f"每项失败也要付识别；结构文档 §10 建议拆 Branch 或子 Loop",
+        )
+
+
 def annotations_of(text: str) -> list[tuple[Spec, str, str | None]]:
     """把一段文本里所有「使用<规范名> vX.Y [校验年月日 YY/MM/DD]」抽出来。
 
@@ -2248,7 +2390,7 @@ def self_test() -> int:
         return verdict[0] if verdict else ""
 
     checks += [
-        (vf_id("1.9") == "E2-spec-version", "文档版本更高 → 报 E2"),
+        (vf_id("9.9") == "E2-spec-version", "文档版本更高 → 报 E2"),
         (vf_id("1.2") == "E2-spec-version", "文档版本更低 → 也报 E2"),
         (vf_id(NAMING_SPEC_VERSION.lstrip("v")) == "", "版本一致 → 不报"),
         (vf_id(None) == "E1-spec-missing", "找不到版本号 → E1"),
@@ -2337,6 +2479,136 @@ def self_test() -> int:
         ),
     ]
 
+
+    # A16：Ensure 嵌套深度上限（pipeline-structure.md §10）
+    depth_ctx = synth_ctx(
+        {
+            "XProbeHome": {"recognition": "OCR"},
+            "XEnsureHome": {"recognition": "And", "all_of": ["XProbeHome"]},
+            "XEnsureMid": {
+                "recognition": "And",
+                "all_of": ["XProbeHome"],
+                "next": ["XProbeHome", "XEnsureHome"],
+            },
+            "XEnsureDeep": {
+                "recognition": "And",
+                "all_of": ["XProbeHome"],
+                "next": ["XProbeHome", "XEnsureMid"],
+            },
+        }
+    )
+    check_a16_ensure_depth(depth_ctx)
+    checks += [
+        (
+            not any("XEnsureMid" in f.message for f in depth_ctx.findings),
+            "深度 2 的 Ensure → 不报 A16",
+        ),
+        (
+            any(
+                f.id == "A16-ensure-depth" and "XEnsureDeep" in f.message
+                for f in depth_ctx.findings
+            ),
+            "深度 3 的 Ensure → 报 A16",
+        ),
+    ]
+
+    # A17：守卫探针在 next 里重复（pipeline-structure.md §10）
+    guard_ctx = synth_ctx(
+        {
+            "XProbeHome": {"recognition": "OCR"},
+            "XProbeOther": {"recognition": "OCR"},
+            "XEnsureDup": {
+                "recognition": "And",
+                "all_of": ["XProbeHome"],
+                "inverse": True,
+                "next": ["XProbeHome", "XProbeOther"],
+            },
+            "XEnsureNoDup": {
+                "recognition": "And",
+                "all_of": ["XProbeHome"],
+                "inverse": True,
+                "next": ["XProbeOther"],
+            },
+        }
+    )
+    check_a17_guard_in_next(guard_ctx)
+    checks += [
+        (
+            any(
+                f.id == "A17-guard-in-next" and "XEnsureDup" in f.message
+                for f in guard_ctx.findings
+            ),
+            "next 里重复守卫探针 → 报 A17（info）",
+        ),
+        (
+            not any("XEnsureNoDup" in f.message for f in guard_ctx.findings),
+            "next 里没有守卫探针 → 不报 A17",
+        ),
+    ]
+
+    # A18：next 列表长度上限（pipeline-structure.md §10）
+    length_ctx = synth_ctx(
+        {
+            "XProbeA": {"recognition": "OCR"},
+            "XProbeB": {"recognition": "OCR"},
+            "XProbeC": {"recognition": "OCR"},
+            "XProbeD": {"recognition": "OCR"},
+            "XProbeE": {"recognition": "OCR"},
+            "XProbeF": {"recognition": "OCR"},
+            "TaskShort": {"next": ["XProbeA", "XProbeB", "XProbeC", "XProbeD"]},
+            "TaskLong": {
+                "next": ["XProbeA", "XProbeB", "XProbeC", "XProbeD", "XProbeE"]
+            },
+            "XFiveLoop": {
+                "recognition": "And",
+                "all_of": ["XProbeA"],
+                "next": [
+                    "XProbeA",
+                    "XProbeB",
+                    "XProbeC",
+                    "XProbeD",
+                    "XProbeE",
+                ],
+            },
+            "XSixLoop": {
+                "recognition": "And",
+                "all_of": ["XProbeA"],
+                "next": [
+                    "XProbeA",
+                    "XProbeB",
+                    "XProbeC",
+                    "XProbeD",
+                    "XProbeE",
+                    "XProbeF",
+                ],
+            },
+        }
+    )
+    check_a18_next_length(length_ctx)
+    checks += [
+        (
+            not any("TaskShort" in f.message for f in length_ctx.findings),
+            "Task 4 项 → 不报 A18",
+        ),
+        (
+            any(
+                f.id == "A18-next-length" and "TaskLong" in f.message
+                for f in length_ctx.findings
+            ),
+            "Task 5 项 → 报 A18",
+        ),
+        (
+            not any("XFiveLoop" in f.message for f in length_ctx.findings),
+            "Loop 5 项 → 不报 A18（Loop 上限 5）",
+        ),
+        (
+            any(
+                f.id == "A18-next-length" and "XSixLoop" in f.message
+                for f in length_ctx.findings
+            ),
+            "Loop 6 项 → 报 A18",
+        ),
+    ]
     bad = [name for ok, name in checks if not ok]
     if bad:
         for name in bad:
@@ -2630,6 +2902,9 @@ def main(argv: list[str] | None = None) -> int:
         check_a13_references(ctx)
         check_a14_loop_fallback(ctx)
         check_a15_error_branch(ctx)
+        check_a16_ensure_depth(ctx)
+        check_a17_guard_in_next(ctx)
+        check_a18_next_length(ctx)
     # 规范版本与注解新鲜度：不属于任何域，给了 --pipeline 之类也要报
     check_spec_version(ctx)
     if domains["interface"]:

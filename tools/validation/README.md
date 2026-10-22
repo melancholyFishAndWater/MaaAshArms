@@ -105,6 +105,39 @@ pyright 在本机拿不到 `site-packages`（仓库里没有 venv），配置又
 `node tools/validation/check_pyright.mjs`，**看完把那一行删掉**（本机路径不能入库）。
 判据同第 4 步：0 error；`Import "PIL" could not be resolved` 那几条 warning 消失，说明这次真解析上了。
 
+**按 Pylance 的口径查一遍**（2026-10-22 加）
+
+Pylance 是 VS Code 内的 LSP，没有命令行入口（`dist/server.bundle.js` 只在插件宿主里启动），
+所以"用 Pylance 检查"只能拿**同一个引擎 + 同一套设置**复现：`pyright.config.json` 的项目根是
+`tools/validation/`，`tools.*` 这种从仓库根起算的导入在里面解析不到；Pylance 的 rootUri 是仓库根。
+要复现，把下面这份临时配置**放在仓库根**（文件名随便，例如 `pyright.pylance.json`，用完删掉——
+里面的 `site-packages` 是本机路径）：
+
+```json
+{
+    "include": ["tools"],
+    "exclude": ["**/node_modules", "**/__pycache__", "**/build", "**/install", "**/temp", "**/deps"],
+    "extraPaths": [
+        "agent/shared",
+        "C:/Users/<用户>/AppData/Local/Programs/Python/Python3xx/Lib/site-packages"
+    ],
+    "typeCheckingMode": "basic",
+    "reportMissingImports": "warning",
+    "reportMissingTypeStubs": "none",
+    "reportDeprecation": "warning"
+}
+```
+
+`typeCheckingMode` / `reportMissingImports` 抄的是 VS Code 用户设置里的
+`python.analysis.*`（本机是 `basic`）；`extraPaths` 抄工作区 `.vscode/settings.json`
+（那里只有 `./agent/shared`），再补一条解释器的 `site-packages` —— Pylance 用
+`python.defaultInterpreterPath` 选的那个解释器，所以它能看见 Pillow，pyright 裸跑看不见。
+然后 `npx --yes pyright --project pyright.pylance.json`。
+
+2026-10-22 用这份配置查出 14 条 error，全是 `check_pyright.mjs` 两侧都看不见的真问题：
+`steps` 与局部函数 `step` 同名（5 条）、`jsonschema.RefResolver` 是动态属性（9 条）。
+**判据 0 error / 0 warning**；警告数会随 `site-packages` 解析情况变化，只有 error 算失败。
+
 ## `check_python.py` 查什么
 
 四类，都是**别的工具查不出来**的仓库特有约定：
@@ -125,7 +158,7 @@ pyright 在本机拿不到 `site-packages`（仓库里没有 venv），配置又
 
 **本脚本按两份规范的各自版本实现**：`NAMING_SPEC_VERSION`（`node-naming.md`）与
 `STRUCT_SPEC_VERSION`（`pipeline-structure.md`）。运行时会在输出里声明命名规范那一版（console 头部、
-`--format github` 的摘要、`--format json` 的 `spec_version` 字段）；结构类判据（A4/A5/A7/A8/A9/A14…）
+`--format github` 的摘要、`--format json` 的 `spec_version` 字段）；结构类判据（A4/A5/A7/A8/A9/A14/A16…）
 按结构文档实现，所以它的版本也对。
 
 规范、模板、脚本必须对齐，否则"这几条没查"会和"查了没问题"看起来一样：
@@ -148,6 +181,18 @@ pyright 在本机拿不到 `site-packages`（仓库里没有 venv），配置又
 `[JumpBack]`；不能排在取反守卫（`Ensure*` / 顶层 `inverse`）之后——弹窗挡住页面时那些守卫必然命中，错误分支
 永远轮不到；也不能排在自己会点「确认」的候选之前——同一个确认会被当成错误弹窗点掉。只判同一列表内的先后，
 "哪个模板在弹窗下仍会命中"静态判不了，按人工。判据见 `docs/zh_cn/develop/pipeline-structure.md` §9。
+
+`A16` / `A17` / `A18` 管**识别预算**（`pipeline-structure.md` §10）：
+
+| 规则 | 级别 | 判据 | 今天报几条 |
+| --- | --- | --- | --- |
+| `A16-ensure-depth` | warn | `Ensure` 嵌套深度 > 2（单层 5 次识别，每多一层再付 5 次） | 5（`feidu_gift` 3 个、`entrust` 2 个） |
+| `A17-guard-in-next` | info | 节点 `next` 里含本节点 `recognition` 已用过的探针（同一轮识别两遍） | 22 |
+| `A18-next-length` | warn | `Task` / `Ensure` 的 `next` > 4 项，`Loop` > 5 项 | 12 |
+
+`A17` 只报「同一轮会问两遍」这个事实，**留删由人按实测救回率定**（<25% 该删）——救回率要日志实测，
+静态判不了。`A16` 的修法是改用 `Branch` 平铺到调用方 `next`（同样效果只要 1 次守卫），不是把
+`Ensure` 删掉换名字。三条都可以 `--ignore` 单独放行。
 
 ## 依赖与前置
 

@@ -1454,11 +1454,13 @@ def check_flow_parents() -> list[str]:
             done("00:00:02.000", "TrainingEnterOne", 100),
         ]
     )
-    step = parse_log(text, None, None, 100, False).steps[0]
-    _eq(step.parent, "TrainingLoop", "父节点 = 派发者")
-    _eq(step.candidates, ["TrainingGetStatus", "TrainingEnterOne"], "候选表原样带上")
+    # 局部变量叫 `st` 而不是 `step`：下面第 9 项会 `def step(...)`，同名会让类型检查把前面的
+    # 赋值当成 `step` 的声明，后面每次 `step(...)` 调用都报"Step 不可调用"（Pylance 口径实测 5 条）。
+    st = parse_log(text, None, None, 100, False).steps[0]
+    _eq(st.parent, "TrainingLoop", "父节点 = 派发者")
+    _eq(st.candidates, ["TrainingGetStatus", "TrainingEnterOne"], "候选表原样带上")
     _eq(
-        step.parent_detail(),
+        st.parent_detail(),
         "候选：TrainingGetStatus ・ √TrainingEnterOne",
         "框里那一行（派发者名字在分组框角标里，这一行只写候选）",
     )
@@ -1470,9 +1472,9 @@ def check_flow_parents() -> list[str]:
             done("00:00:02.000", "BattleWin", 100),
         ]
     )
-    step = parse_log(text, None, None, 100, False).steps[0]
-    _eq(step.dispatched, True, "自己派发自己")
-    _eq(step.parent_detail(), "父 BattleWin（自派发/自循环）", "自循环的说法")
+    st = parse_log(text, None, None, 100, False).steps[0]
+    _eq(st.dispatched, True, "自己派发自己")
+    _eq(st.parent_detail(), "父 BattleWin（自派发/自循环）", "自循环的说法")
 
     # 3) 候选多于 PARENT_CHOICE_LIMIT 项：框里折成"另 N 项"；--list 用 full=True 给全
     text = "\n".join(
@@ -1481,11 +1483,11 @@ def check_flow_parents() -> list[str]:
             done("00:00:02.000", "D", 100),
         ]
     )
-    step = parse_log(text, None, None, 100, False).steps[0]
-    _contains(step.parent_detail(), "另 3 项", "框里折起来的候选数")
-    _eq(step.parent_detail().count("√"), 0, "被折掉的那个不在框里")
-    _contains(step.parent_detail(full=True), "√D", "全量时标出本次跑的那个")
-    _eq(step.parent_detail(full=True).count("・"), 4, "全量时五个候选都在")
+    st = parse_log(text, None, None, 100, False).steps[0]
+    _contains(st.parent_detail(), "另 3 项", "框里折起来的候选数")
+    _eq(st.parent_detail().count("√"), 0, "被折掉的那个不在框里")
+    _contains(st.parent_detail(full=True), "√D", "全量时标出本次跑的那个")
+    _eq(st.parent_detail(full=True).count("・"), 4, "全量时五个候选都在")
 
     # 4) 跨 task 隔离：同名公共节点出现在别的任务的候选表里，不能认成它的父节点
     text = "\n".join(
@@ -1513,17 +1515,17 @@ def check_flow_parents() -> list[str]:
             done("00:00:02.000", "BattleProbeNow", 100),
         ]
     )
-    step = parse_log(text, None, None, 100, False).steps[0]
+    st = parse_log(text, None, None, 100, False).steps[0]
     _eq(
-        (step.parent, step.parent_source, step.candidates),
+        (st.parent, st.parent_source, st.candidates),
         ("BattleLoop", "walk", []),
         "退回 cur_node_",
     )
-    step = parse_log(
+    st = parse_log(
         done("00:00:02.000", "BattleProbeNow", 100), None, None, 100, False
     ).steps[0]
     _eq(
-        (step.parent, step.parent_source, step.parent_detail()),
+        (st.parent, st.parent_source, st.parent_detail()),
         ("", "none", "父 未记录"),
         "取不到就留空",
     )
@@ -1665,6 +1667,87 @@ def check_flow_parents() -> list[str]:
     ]
 
 
+def check_flow_overlay() -> list[str]:
+    """重复轮次合并（`overlay_repeats`）：只有连续、同形、整轮无图、无失败框才折。"""
+    from datetime import datetime as _dt
+    from pathlib import Path as _Path
+
+    root = _Path(__file__).resolve().parents[2]
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    from tools.drawing.flow_from_log import (
+        ColumnSpan,
+        Step,
+        column_signature,
+        overlay_repeats,
+    )
+
+    def step(name: str, kind: str = "hit", run_len: int = 1, completed: bool = True) -> Step:
+        return Step(ts=_dt(2026, 10, 21, 0, 0, 1), name=name, completed=completed,
+                    kind=kind, run_len=run_len)
+
+    def col(*names: str) -> list[Step]:
+        return [step(n) for n in names]
+
+    def no_thumb(_index: int) -> bool:
+        """这几轮都没贴到图。"""
+        return False
+
+    def all_thumb(_index: int) -> bool:
+        """每一轮都有图（用来验证"有图就不折"）。"""
+        return True
+
+    # 1) 三段同形 → 一列 ×3；用首轮的步骤列表（时间戳真实，不是复制出来的第 2/3 轮）
+    columns = [col("A", "B"), col("A", "B"), col("A", "B")]
+    merged = overlay_repeats(columns, columns, no_thumb, min_span=2)
+    _eq(len(merged), 1, "三段同形应折成一列")
+    _eq(merged[0][1], ColumnSpan(0, 2), "合并范围")
+    _eq(merged[0][0], columns[0], "合并列用首轮的步骤（同一对象，不是副本）")
+
+    # 2) 有图就不折：整组无图才合并，中间任何一轮有图都断开
+    thumbs = {1}
+    merged = overlay_repeats(columns, columns, lambda i: i in thumbs, min_span=2)
+    _eq([m[1] for m in merged], [ColumnSpan(0, 0), ColumnSpan(1, 1), ColumnSpan(2, 2)],
+        "有图的那一轮把重复段切断")
+
+    # 3) 失败框不折：`classify()` 判 error 的框（未完成的 event）不能被 ×N 藏起来
+    bad = col("A", "B") + [step("node not completed", kind="event", completed=False)]
+    merged = overlay_repeats([col("A", "B"), bad, col("A", "B")], [bad] * 3, no_thumb, min_span=2)
+    _eq(len(merged), 3, "带失败框的轮不折")
+
+    # 4) 未命中聚合框进签名：`A,B` 与 `A,B,未命中×6` 形状不同
+    with_miss = col("A", "B") + [step("B", kind="miss", run_len=6)]
+    _eq(column_signature(col("A", "B")) == column_signature(with_miss), False,
+        "未命中聚合框要与命中步骤区分开")
+    merged = overlay_repeats([col("A", "B"), with_miss], [col("A", "B"), with_miss],
+                             no_thumb, min_span=2)
+    _eq(len(merged), 2, "多一个未命中框就不是同形")
+
+    # 5) 折叠次数进签名：`×3` 的一格与三格不等价
+    _eq(column_signature([step("A", run_len=3)]) == column_signature(col("A", "A", "A")), False,
+        "折叠后的 ×N 与逐次记录不等价")
+
+    # 6) 从列首对齐、不做子序列匹配：`A,B,C,D,E` 与 `B,C,D,E` 不合并
+    long, short = col("A", "B", "C", "D", "E"), col("B", "C", "D", "E")
+    merged = overlay_repeats([long, short, short], [long, short, short], no_thumb, min_span=2)
+    _eq([m[1] for m in merged], [ColumnSpan(0, 0), ColumnSpan(1, 2)],
+        "前缀差一步不算重复（后两轮才合并）")
+
+    # 7) 阈值：min_span=2 时两轮就折；min_span=3 时两轮不折
+    two = [col("A"), col("A")]
+    _eq(len(overlay_repeats(two, two, no_thumb, min_span=2)), 1, "两轮同形即折")
+    _eq(len(overlay_repeats(two, two, no_thumb, min_span=3)), 2, "阈值 3 时两轮不折")
+    _eq(len(overlay_repeats(two, two, all_thumb, min_span=2)), 2, "有图不折")
+
+    # 8) 中间夹一轮不同形状 → 断成两段，各自按阈值判
+    a, b = col("A"), col("B")
+    mixed = [a, a, b, a, a]
+    _eq([m[1] for m in overlay_repeats(mixed, mixed, no_thumb, min_span=2)],
+        [ColumnSpan(0, 1), ColumnSpan(2, 2), ColumnSpan(3, 4)], "不连续的重复各自成段")
+
+    return ["同形合并 / 有图断开 / 失败断开 / 未命中进签名 / 前缀不等价 / 阈值 / 不连续 各自有断言"]
+
+
 CHECKS: tuple[tuple[str, Callable[[], list[str]]], ...] = (
     ("release 解析", check_release_parsing),
     ("版本排序", check_ordering),
@@ -1683,6 +1766,7 @@ CHECKS: tuple[tuple[str, Callable[[], list[str]]], ...] = (
     ("证据清单与磁盘一致", check_evidence_disk_agreement),
     ("并发锁的持有者判据", check_report_lock),
     ("流程图的父节点（派发者）", check_flow_parents),
+    ("流程图重复轮次合并", check_flow_overlay),
 )
 
 
