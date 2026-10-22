@@ -1,21 +1,22 @@
 {
     /*
-    INFO 使用命名规范版本 v1.3 校验年月日 26/10/15
-    
     INFO 赠礼
+    
+    使用任务链结构 v1.9 校验年月日 26/10/22
+    使用节点命名与分类 v1.10 校验年月日 26/10/22
     */
     "TaskGift": {
         "desc": "赠礼任务",
         "timeout": 30000,
         "next": [
             "[JumpBack]GiftProbeDaily",
-            "[JumpBack]GiftLoopChoose",
-            "GiftLoopGive",
+            "GiftEnterTavern",
+            "GiftBranchHome",
             "[JumpBack]BaseBranchError",
-            "[JumpBack]GiftEnsureHome"
+            "[JumpBack]FeiduEnsureHome"
         ]
     },
-    // INFO 探测
+    /* -------------------- 探测 -------------------- */
     "GiftProbeDaily": {
         "desc": "[once][jp] 检查每日一次",
         "max_hit": 1,
@@ -29,7 +30,6 @@
         "desc": "[end] 在赠礼主页面",
         "recognition": "Or",
         "any_of": [
-            "GiftProbeCharacters",
             "GiftProbeCharacter",
             "GiftProbeGifts"
         ]
@@ -56,7 +56,6 @@
             40
         ]
     },
-    // TODO 选择礼物用
     "GiftProbeGifts": {
         "desc": "[end] 在选择礼物页面",
         "recognition": "OCR",
@@ -68,80 +67,32 @@
             165
         ]
     },
-    "GiftProbeTavern": {
-        "desc": "[end] 在酒馆夜话页面",
-        "recognition": "OCR",
-        "expected": "深入交流",
-        "roi": [
-            516,
-            203,
-            187,
-            59
-        ]
-    },
-    "GiftProbeRules": {
-        "desc": "[end] 在排序规则页面",
-        "recognition": "OCR",
-        "expected": "基础排序",
-        "roi": [
-            300,
-            150,
-            95,
-            32
-        ]
-    },
     "GiftProbeMaxFavorability": {
-        "desc": "[end] 是满好感角色",
-        "recognition": "And",
-        "all_of": [
-            "GiftProbeHome",
-            {
-                "recognition": "OCR",
-                "expected": "5",
-                "roi": [
-                    133,
-                    113,
-                    54,
-                    29
-                ]
-            }
+        "desc": "[end] 好感数字是5",
+        "recognition": "OCR",
+        "expected": "5",
+        "roi": [
+            133,
+            113,
+            54,
+            29
         ]
     },
     "GiftProbeNoMaxFavorability": {
-        "desc": "[end] 不是满好感角色",
-        "recognition": "And",
-        "all_of": [
-            "GiftProbeHome",
-            {
-                "recognition": "OCR",
-                "expected": "[0-4]",
-                "roi": [
-                    133,
-                    113,
-                    54,
-                    29
-                ]
-            }
+        "desc": "[end] 好感数字不是5",
+        "recognition": "OCR",
+        "expected": "[0-4]",
+        "roi": [
+            133,
+            113,
+            54,
+            29
         ]
     },
-    // INFO 就位-在酒馆页面
-    "GiftEnsureTavern": {
-        "desc": "[jp] 确保在酒馆页面",
-        "recognition": "And",
-        "all_of": [
-            "GiftProbeTavern"
-        ],
-        "inverse": true,
-        "timeout": 30000,
-        "next": [
-            "GiftProbeTavern",
-            "[JumpBack]BaseBranchError",
-            "[JumpBack]GiftEnterTavern",
-            "[JumpBack]FeiduEnsureHome"
-        ]
-    },
-    "GiftEnterTavern": {
-        "desc": "[jp] 进入酒馆页面",
+    /* -------------------- 就位 -------------------- */
+    // INFO 进入酒馆
+    "GiftProbeEnterTavern": {
+        "desc": "[end] 有酒馆夜话文字",
         "recognition": "OCR",
         "expected": "酒馆夜话",
         "roi": [
@@ -149,28 +100,34 @@
             577,
             473,
             143
+        ]
+    },
+    "GiftEnterTavern": {
+        "desc": "从废都进入酒馆",
+        "recognition": "And",
+        "all_of": [
+            "GiftProbeEnterTavern"
+        ],
+        "action": "Click",
+        "post_wait_freezes": 1000,
+        "next": [
+            "GiftEnterHome",
+            "[JumpBack]GiftClickTavernButton",
+            "[JumpBack]BaseBranchError"
+        ]
+    },
+    "GiftClickTavernButton": {
+        "desc": "[jp] 进入酒馆页面",
+        "recognition": "And",
+        "all_of": [
+            "GiftProbeEnterTavern"
         ],
         "action": "Click",
         "post_wait_freezes": 1000
     },
-    // INFO 就位-在赠礼主页面
-    "GiftEnsureHome": {
-        "desc": "[jp] 确保在赠礼主页面",
-        "recognition": "And",
-        "all_of": [
-            "GiftProbeHome"
-        ],
-        "inverse": true,
-        "timeout": 30000,
-        "next": [
-            "GiftProbeHome",
-            "[JumpBack]BaseBranchError",
-            "[JumpBack]GiftEnterHome",
-            "[JumpBack]GiftEnsureTavern"
-        ]
-    },
-    "GiftEnterHome": {
-        "desc": "[jp] 进入赠礼页面",
+    // INFO 进入主页面
+    "GiftProbeEnterHome": {
+        "desc": "[end] 有深入交流文字",
         "recognition": "OCR",
         "expected": "深入交流",
         "roi": [
@@ -178,28 +135,50 @@
             203,
             187,
             59
+        ]
+    },
+    "GiftEnterHome": {
+        "desc": "进入赠礼主页",
+        "recognition": "And",
+        "all_of": [
+            "GiftProbeEnterHome"
+        ],
+        "action": "Click",
+        "post_wait_freezes": 1000,
+        "next": [
+            "GiftBranchHome",
+            "[JumpBack]GiftClickHomeButton",
+            "[JumpBack]BaseBranchError"
+        ]
+    },
+    "GiftClickHomeButton": {
+        "desc": "[jp] 进入赠礼页面",
+        "recognition": "And",
+        "all_of": [
+            "GiftProbeEnterHome"
         ],
         "action": "Click",
         "post_wait_freezes": 1000
     },
-    // INFO 就位-在选择角色页面
-    "GiftEnsureCharacters": {
-        "desc": "[jp] 确保在选择角色页面",
-        "recognition": "And",
-        "all_of": [
-            "GiftProbeCharacters"
-        ],
-        "inverse": true,
-        "timeout": 30000,
-        "next": [
+    // INFO 主页面
+    "GiftBranchHome": {
+        "desc": "主页面分支",
+        "recognition": "Or",
+        "any_of": [
             "GiftProbeCharacters",
-            "[JumpBack]BaseBranchError",
-            "[JumpBack]GiftEnterCharactersPage",
-            "[JumpBack]GiftEnsureHome"
+            "GiftProbeCharacter"
+        ],
+        "next": [
+            "GiftEnterGive",
+            "[JumpBack]GiftEnterRules",
+            "[JumpBack]GiftEnterCharacters",
+            "[JumpBack]BaseBranchError"
         ]
     },
-    "GiftEnterCharactersPage": {
-        "desc": "[jp] 点击切换DOLLS",
+    /* -------------------- 工作-选择角色 -------------------- */
+    // INFO 选择DOLLS页面
+    "GiftProbeEnterCharacters": {
+        "desc": "[end] 有点击切换DOLLS文字",
         "recognition": "OCR",
         "expected": "切换.+",
         "roi": [
@@ -207,28 +186,37 @@
             658,
             119,
             36
-        ],
-        "action": "Click",
-        "post_wait_freezes": 2000
-    },
-    // INFO 就位-在排序页面
-    "GiftEnsureRules": {
-        "desc": "[jp] 确保在排序页面",
-        "recognition": "And",
-        "all_of": [
-            "GiftProbeRules"
-        ],
-        "inverse": true,
-        "timeout": 30000,
-        "next": [
-            "GiftProbeRules",
-            "[JumpBack]BaseBranchError",
-            "[JumpBack]GiftEnterRules",
-            "[JumpBack]GiftEnsureCharacters"
         ]
     },
-    "GiftEnterRules": {
-        "desc": "[jp] 进入排序页面",
+    "GiftEnterCharacters": {
+        "desc": "[jp] 条件进入选择角色页面",
+        "recognition": "And",
+        "all_of": [
+            "GiftProbeEnterCharacters",
+            "GiftProbeMaxFavorability",
+            "GiftProbeHome"
+        ],
+        "box_index": 0,
+        "action": "Click",
+        "post_wait_freezes": 1000,
+        "next": [
+            "GiftEnterRules",
+            "[JumpBack]GiftClickCharactersButton",
+            "[JumpBack]BaseBranchError"
+        ]
+    },
+    "GiftClickCharactersButton": {
+        "desc": "[jp] 进入切换DOLLS页面",
+        "recognition": "And",
+        "all_of": [
+            "GiftProbeEnterCharacters"
+        ],
+        "action": "Click",
+        "post_wait_freezes": 1000
+    },
+    // INFO 排序条件页面
+    "GiftProbeEnterRules": {
+        "desc": "[end] 有排序文字",
         "recognition": "OCR",
         "expected": "排序",
         "roi": [
@@ -236,27 +224,34 @@
             15,
             131,
             54
-        ],
-        "action": "Click",
-        "post_wait_freezes": 2000
-    },
-    // INFO 工作
-    "GiftLoopChoose": {
-        "desc": "[Loop][jp] 选择好感度最低的角色 循环",
-        "recognition": "Or",
-        "any_of": [
-            "GiftProbeCharacters",
-            "GiftProbeMaxFavorability"
-        ],
-        "next": [
-            "GiftProbeNoMaxFavorability",
-            "[JumpBack]GiftChooseFavorability",
-            "[JumpBack]BaseBranchError",
-            "[JumpBack]GiftEnsureRules"
         ]
     },
+    "GiftEnterRules": {
+        "desc": "进入排序规则页面",
+        "recognition": "And",
+        "all_of": [
+            "GiftProbeEnterRules"
+        ],
+        "action": "Click",
+        "post_wait_freezes": 1000,
+        "next": [
+            "GiftChooseFavorability",
+            "[JumpBack]GiftClickRulesButton",
+            "[JumpBack]BaseBranchError"
+        ]
+    },
+    "GiftClickRulesButton": {
+        "desc": "[jp] 进入排序规则页面",
+        "recognition": "And",
+        "all_of": [
+            "GiftProbeEnterRules"
+        ],
+        "action": "Click",
+        "post_wait_freezes": 1000
+    },
+    // INFO 动作链
     "GiftChooseFavorability": {
-        "desc": "[jp] 点击好感度按钮",
+        "desc": "点击好感度按钮",
         "recognition": "OCR",
         "expected": "好感度",
         "roi": [
@@ -266,12 +261,13 @@
             314
         ],
         "action": "Click",
+        "post_wait_freezes": 1000,
         "next": [
             "GiftClickSortConfirm",
             "[JumpBack]BaseBranchError",
-            "GiftProbeCharacters"
-        ],
-        "post_wait_freezes": 2000
+            "GiftProbeCharacters",
+            "GiftProbeEnterCharacters"
+        ]
     },
     "GiftClickSortConfirm": {
         "desc": "点击确认按钮",
@@ -287,9 +283,10 @@
         "next": [
             "GiftChooseReverse",
             "[JumpBack]BaseBranchError",
-            "GiftProbeCharacters"
+            "GiftProbeCharacters",
+            "GiftProbeEnterCharacters"
         ],
-        "post_wait_freezes": 2000
+        "post_wait_freezes": 1000
     },
     "GiftChooseReverse": {
         "desc": "点击反转排序",
@@ -304,60 +301,88 @@
             60
         ],
         "action": "Click",
+        "post_wait_freezes": 1000,
         "next": [
             "GiftClickFirstcharacter",
             "[JumpBack]BaseBranchError",
-            "GiftProbeCharacters"
-        ],
-        "post_wait_freezes": 2000
-    },
-    "GiftClickFirstcharacter": {
-        "desc": "[end] 点击第一个角色",
-        "recognition": "OCR",
-        "expected": "\\d?\\d",
-        "roi": [
-            166,
-            158,
-            140,
-            231
-        ],
-        "action": "Click",
-        "post_wait_freezes": 2000
-    },
-    // INFO 工作-赠礼
-    "GiftLoopGive": {
-        "desc": "[Loop] 赠礼礼物 循环",
-        "recognition": "And",
-        "all_of": [
-            "GiftProbeHome"
-        ],
-        "next": [
-            "GiftClickShowGift",
-            "[JumpBack]BaseBranchError",
-            "[JumpBack]GiftEnsureHome"
+            "GiftProbeCharacters",
+            "GiftProbeEnterCharacters"
         ]
     },
-    "GiftClickShowGift": {
-        "desc": "点击赠礼按钮",
-        "recognition": "TemplateMatch",
-        "template": [
-            "Feidu/ShowGiftButton.png"
+    "GiftClickFirstcharacter": {
+        "desc": "[end] 点击第一个角色位置",
+        "recognition": "And",
+        "all_of": [
+            "GiftProbeCharacters"
+        ],
+        "target": [
+            235,
+            265
         ],
         "action": "Click",
+        "post_wait_freezes": 1000,
         "next": [
-            "GiftChooseFirstGift"
+            "GiftProbeCharacter",
+            "[JumpBack]GiftClickFirstcharacterBox",
+            "[JumpBack]BaseBranchError"
+        ]
+    },
+    "GiftClickFirstcharacterBox": {
+        "desc": "[jp] 点击第一个角色位置",
+        "recognition": "And",
+        "all_of": [
+            "GiftProbeCharacters"
         ],
+        "target": [
+            235,
+            265
+        ],
+        "action": "Click",
+        "post_wait_freezes": 1000
+    },
+    /* -------------------- 工作-赠礼 -------------------- */
+    // INFO 礼物页面
+    "GiftProbeShowGift": {
+        "desc": "[end] 有显示礼物按钮",
+        "recognition": "TemplateMatch",
+        "template": "Feidu/ShowGiftButton.png",
         "roi": [
             1163,
             581,
             95,
             115
+        ]
+    },
+    "GiftEnterGive": {
+        "desc": "赠礼礼物",
+        "recognition": "And",
+        "all_of": [
+            "GiftProbeNoMaxFavorability",
+            "GiftProbeShowGift",
+            "GiftProbeHome"
         ],
+        "box_index": 1,
+        "action": "Click",
+        "post_wait_freezes": 1000,
+        "next": [
+            "GiftChooseFirstGift",
+            "[JumpBack]GiftClickShowGiftButton",
+            "[JumpBack]BaseBranchError"
+        ]
+    },
+    "GiftClickShowGiftButton": {
+        "desc": "点击赠礼按钮",
+        "recognition": "And",
+        "all_of": [
+            "GiftProbeShowGift"
+        ],
+        "action": "Click",
         "post_wait_freezes": 2000
     },
     // TODO 找到最喜欢的礼物
-    "GiftChooseFirstGift": {
-        "desc": "点击当前页面可送的礼物",
+    // INFO 选中礼物
+    "GiftProbeChooseFirstGift": {
+        "desc": "[end] 指定区域有非零数字",
         "recognition": "OCR",
         "expected": "[1-9]",
         "roi": [
@@ -365,6 +390,13 @@
             645,
             1022,
             26
+        ]
+    },
+    "GiftChooseFirstGift": {
+        "desc": "点击当前页面可送的礼物",
+        "recognition": "And",
+        "all_of": [
+            "GiftProbeChooseFirstGift"
         ],
         "target_offset": [
             6,
@@ -373,13 +405,13 @@
             -12
         ],
         "action": "Click",
+        "post_wait_freezes": 1000,
         "next": [
-            "GiftClickGiveThrice"
-        ],
-        "post_wait_freezes": 2000
+            "GiftClickGiveThriceButton"
+        ]
     },
     // XXX 没有验证是否赠送成功/够
-    "GiftClickGiveThrice": {
+    "GiftClickGiveThriceButton": {
         "desc": "赠送三次礼物",
         "recognition": "OCR",
         "expected": "赠送",
