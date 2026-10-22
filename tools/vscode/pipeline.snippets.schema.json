@@ -1,7 +1,7 @@
 {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "type": "object",
-    "$comment": "使用命名规范 v1.9; 使用任务链结构 v1.8",
+    "$comment": "使用命名规范 v1.10; 使用任务链结构 v1.9",
     "patternProperties": {
         "^(?!\\$).*": {
             "defaultSnippets": [
@@ -29,7 +29,8 @@
                             "$2"
                         ],
                         "next": [
-                            "$0"
+                            "$0",
+                            "[JumpBack]BaseBranchError"
                         ]
                     }
                 },
@@ -45,22 +46,8 @@
                         "inverse": true,
                         "timeout": 30000,
                         "next": [
-                            "$0"
-                        ]
-                    }
-                },
-                {
-                    "label": "Loop 工作节点",
-                    "$comment": "守卫可用 Probe 或 Custom（Custom 的未命中必须是“不在页面”）；出口只有守卫失效与有限 timeout 两条，不设计数兜底；一页多段工作拆子 Loop，用 [JumpBack]<子 Loop> 串联（结构文档 §3/§4/§5）",
-                    "body": {
-                        "desc": "[Loop] $1",
-                        "recognition": "And",
-                        "all_of": [
-                            "$2"
-                        ],
-                        "timeout": 30000,
-                        "next": [
-                            "$0"
+                            "$0",
+                            "[JumpBack]BaseBranchError"
                         ]
                     }
                 },
@@ -69,7 +56,7 @@
                     "body": {
                         "desc": "$1",
                         "action": "$0",
-                        "post_delay": 500
+                        "post_wait_freezes": 1000
                     }
                 },
                 {
