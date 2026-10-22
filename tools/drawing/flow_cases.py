@@ -306,13 +306,17 @@ def run_case(case: Case, options: FlowOptions, *, outdir: str, mermaid: bool,
         "steps": result.steps,
         "boxes": result.boxes,
         "rounds": result.rounds,
+        "columns": result.columns,
+        "overlay_groups": result.overlay_groups,
         "truncated_start": result.truncated_start,
         "derived_from": result.derived_from,
         "out_of_order": result.out_of_order,
         "notes": list(result.notes),
         "rendered_at": datetime.now().isoformat(timespec="seconds"),
     }
-    print(f"步骤 {result.steps}（折叠后 {result.boxes} 个框）/ 轮次 {result.rounds}"
+    merged = (f"（{result.overlay_groups} 段重复已合并 → {result.columns} 列）"
+              if result.overlay_groups else "")
+    print(f"步骤 {result.steps}（折叠后 {result.boxes} 个框）/ 轮次 {result.rounds}{merged}"
           f" → {result.path}  ({result.width}×{result.height})")
     if result.mermaid:
         print(f"mermaid → {result.mermaid}")
@@ -344,6 +348,10 @@ def create_argument_parser(prog: str | None = None) -> argparse.ArgumentParser:
     ap.add_argument("--no-thumbs", dest="thumbs", action="store_false", help="不贴截图")
     ap.add_argument("--no-parents", dest="parents", action="store_false",
                     help="框里不写父节点那一行（父节点 = 本轮的派发者，来自 Node.NextList 事件）")
+    ap.add_argument("--no-overlay", dest="overlay", action="store_false",
+                    help="不合并重复轮次（默认把连续、同形、整轮无截图且无失败框的轮次并成一列）")
+    ap.add_argument("--overlay-min", type=int, default=2,
+                    help="连续几轮同形才合并（默认 2；0 或 1 等于关闭）")
     ap.add_argument("--mermaid", action="store_true", help="额外输出 .mmd")
     ap.add_argument("--force", action="store_true", help="忽略 manifest，强制重画")
     ap.add_argument("--list-cases", action="store_true", help="只列出发现的证据包，不画")
@@ -367,7 +375,7 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
     options = FlowOptions(
         t_from=t_from, t_to=t_to, task_id=args.task_id, cut_on=args.cut_on,
         max_rounds=args.max_rounds, collapse=args.collapse, thumbs=args.thumbs,
-        parents=args.parents,
+        parents=args.parents, overlay=args.overlay, overlay_min=args.overlay_min,
     )
 
     single = args.case[0]

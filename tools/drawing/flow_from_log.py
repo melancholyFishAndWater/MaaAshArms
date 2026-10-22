@@ -62,7 +62,7 @@ import re
 import sys
 import zipfile
 import zlib
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
@@ -73,7 +73,11 @@ from typing import Any
 # 3：任务判定窗口的右端改用本任务自己的 task end。4：框里多了"父节点"一行。
 # 5：父节点从"一行小字"变成浅色分组框 + 左上角实心角标。
 # 6：图第二行多了"卡在派发层"的注记（候选表连续全未命中）；`--list` 多了父节点评估账。
-RENDERER_VERSION = 6
+# 7：连续、同形、整轮无截图且无失败框的轮次合并成一列（列头写「第 a–b 轮 · ×N」+ 右侧橙条，
+#    `--no-overlay` 关掉）。默认开启，所以是产物变化。
+# 8：`VisionIndex` 的两处 `sort` 加 member 次键——同时间戳的多张 vision 图不再抛
+#    `TypeError`，且"同时间戳取哪张"从"插入顺序"改成"member 字典序"（产物可能换一张缩略图）。
+RENDERER_VERSION = 8
 
 # 框里最多列几个候选，多的折成"另 N 项"（`--list` 不受这个限制）。
 # 默认只列 2 个：父节点名字 + 本次真跑的那个候选是这一行最要紧的两件事，
@@ -1058,8 +1062,13 @@ class VisionIndex:
             else:
                 self.by_reco[(m.group("name"), int(m.group("tail")))] = entry
             self.frames.append((ts, entry))
-        self.freezes.sort()
-        self.frames.sort()
+        # 按时间排序，但**用 member 名做次键**：文件名毫秒段位数不固定（`.51` 与 `.510`
+        # 解析成同一个 datetime），同一时刻有多张图时，裸 `sort()` 会继续比较 `MediaEntry`
+        # 抛 `TypeError: '<' not supported between instances of 'MediaEntry' …`
+        # （实测 37803 张 vision 图里有 26 组同时间戳）。`find()` 是线性扫、取第一个进 tol 的，
+        # 所以次键只决定"同时间戳时哪张胜出"——给个稳定顺序就够了，不必语义上挑哪张。
+        self.freezes.sort(key=lambda x: (x[0], x[1], x[2].member))
+        self.frames.sort(key=lambda x: (x[0], x[1].member))
 
     def find(self, step: Step, tol: float = 3.0, neighbor_tol: float = 2.0):
         """返回 (MediaEntry, 是否该节点自己的识别图)。找不到返回 (None, False)。"""
@@ -1328,7 +1337,118 @@ def parent_groups(column: list[Step]) -> list[tuple[str, int, int]]:
     return groups
 
 
-def draw_flow(parsed: ParsedLog, options: FlowOptions, out_path: str) -> tuple[int, int, int, int, int]:
+@dataclass(frozen=True)
+class ColumnSpan:
+    """一列在原始轮次里覆盖的范围；`first != last` 说明这一列是合并出来的。"""
+
+    first: int
+    last: int
+
+    @property
+    def count(self) -> int:
+        return self.last - self.first + 1
+
+    @property
+    def merged(self) -> bool:
+        return self.last > self.first
+
+
+def column_signature(column: list[Step]) -> tuple[tuple[str, str, int, bool], ...]:
+    """一列的可比较形状：名字、种类、折叠次数、是否完成。
+
+    四个都要进签名，少一个就会把不同的事折成一列：
+      * 名字 + 种类：`未命中（聚合）` 与"真跑过这个节点"是两件事；
+      * `run_len`：折叠成一格的 `×3` 与原样三格不是同一个东西；
+      * `completed`：跑完与被中止的同一节点也该分开。
+
+    **不做子序列匹配**：只从列首逐项比。`A,B,C,D,E` 与 `B,C,D,E` 因此是两种形状
+    （真日志里"前缀差一步"很常见，但把短的那轮塞进长的那轮会让列头写的轮号区间与实际首尾不符）。
+    """
+    return tuple((st.name, st.kind, st.run_len, st.completed) for st in column)
+
+
+def _has_failure(column: list[Step]) -> bool:
+    """这一列里有失败框（`node not completed` / `Task timeout` / `invalid node id` 等）。
+
+    失败的轮一律不折叠：折进 `×N` 里等于把"这次崩了"藏起来，而读图的人恰恰先找它。
+    """
+    return any(classify(st) == "error" for st in column)
+
+
+def overlay_repeats(columns: list[list[Step]], rounds: list[list[Step]],
+                    has_thumb: Callable[[int], bool], min_span: int = 2
+                    ) -> list[tuple[list[Step], ColumnSpan]]:
+    """把连续、同签名、整轮无贴图、无失败框的轮次合并成一列，返回 [(记这一列的步骤, 轮次范围)]。
+
+    四个条件缺一不可，且**任一侧不满足就在那里断开**（不是整段作废）：
+      1. 签名相同（`column_signature()`，从列首对齐）；
+      2. 相邻（中间夹了别的形状的轮就断）；
+      3. 组里每一轮都没贴到图——有图本身就是信息，折掉就看不出"这几轮有画面、那几轮没有"；
+      4. 组里每一轮都没有失败框。
+    组内轮数 < `min_span` 的不合并（`min_span = 2` 表示"连续两轮才开始折"）。
+
+    `has_thumb(i)` 问的是**第 i 轮的实际贴图结果**，所以只能在 `draw_flow()` 算完 `thumb_of`
+    之后调用：贴图取决于 `--vision` / `--on-error` 的真实命中（含失败现场图回贴到命中节点那条规则），
+    提前按"有没有传 --vision"判断会把其实有图的轮折掉。
+
+    合并列直接用**首轮**的步骤列表（时间戳是真实的，不改 `Step`、不复制），所以分组框、候选行、
+    连线都按首轮画——组内各轮同形，这是预期行为。
+    """
+    if min_span < 2:
+        return [(list(col), ColumnSpan(i, i)) for i, col in enumerate(columns)]
+
+    out: list[tuple[list[Step], ColumnSpan]] = []
+    i = 0
+    while i < len(columns):
+        sig = column_signature(columns[i])
+        end = i
+        while end + 1 < len(columns):
+            k = end + 1
+            if column_signature(columns[k]) != sig:
+                break
+            if has_thumb(k) or has_thumb(end):
+                break
+            if _has_failure(columns[k]) or _has_failure(columns[end]):
+                break
+            end = k
+        if end - i + 1 < min_span or has_thumb(i) or _has_failure(columns[i]):
+            # 只有一轮可合并（或首轮自己就有图/有失败）→ 原样留着，下一轮重新起头
+            out.append((list(columns[i]), ColumnSpan(i, i)))
+            i += 1
+            continue
+        out.append((list(columns[i]), ColumnSpan(i, end)))
+        i = end + 1
+    return out
+
+
+@dataclass
+class DrawResult:
+    """一次画图的产出（`draw_flow()` 的返回值）。
+
+    带上折叠后的轮次与列范围，是为了让 mermaid 也用同一套合并结果——在 `render_flow()` 里
+    重新算一遍轮次的话，`--overlay` 对 .mmd 就静默失效了。
+    """
+
+    width: int
+    height: int
+    steps: int                           # 步数（仅事件模式下按识别记录条数算）
+    boxes: int
+    shown: int
+    rounds: int                          # 原始轮数（折叠前）
+    columns: list[list[Step]]            # 折叠后的列（含未命中/异常框）
+    spans: list[ColumnSpan]
+    rounds_shown: list[list[Step]]       # 折叠后的"命中步骤"轮（mermaid 用）
+
+    @property
+    def overlay_groups(self) -> int:
+        return sum(1 for span in self.spans if span.merged)
+
+    @property
+    def column_count(self) -> int:
+        return len(self.columns)
+
+
+def draw_flow(parsed: ParsedLog, options: FlowOptions, out_path: str) -> DrawResult:
     from PIL import Image, ImageDraw
 
     f_name = load_font(max(11, int(options.font_size * options.scale)), bold=True)
@@ -1424,6 +1544,28 @@ def draw_flow(parsed: ParsedLog, options: FlowOptions, out_path: str) -> tuple[i
                 ci, ri, _st = max(cands, key=lambda x: x[2].ts)
                 thumb_of[(ci, ri)] = (entry, False, "失败现场")
 
+    # ---- 重复且无图的轮次合并成一列（必须在 thumb_of 算完之后：判定要用真实贴图结果）----
+    round_count = len(rounds)
+    round_steps_all = rounds          # 折叠前的原始轮次：列头要用末轮的时间
+    spans: list[ColumnSpan] = [ColumnSpan(i, i) for i in range(len(columns))]
+    if options.overlay and options.overlay_min >= 2:
+        merged = overlay_repeats(
+            columns, rounds,
+            has_thumb=lambda ci: any((ci, ri) in thumb_of for ri in range(len(columns[ci]))),
+            min_span=options.overlay_min)
+        if len(merged) != len(columns):
+            # thumb_of 的键是旧列索引，折叠后必须重排：合并列按定义整轮无图，所以只留
+            # 单列（未合并）那些轮自己的贴图，其余键全部丢弃——否则 --no-thumbs / on_error
+            # 回贴那条路径会带着旧索引把图贴到别的列上。
+            old_of_new = [span.first for _c, span in merged]
+            thumb_of = {(new_ci, ri): value
+                        for new_ci, old_ci in enumerate(old_of_new)
+                        for (ci, ri), value in thumb_of.items() if ci == old_ci}
+            spans = [span for _c, span in merged]
+            columns = [col for col, _s in merged]
+            rounds = [rounds[span.first] for span in spans]
+    overlay_groups = sum(1 for span in spans if span.merged)
+
     bands: list[list[int]] = [list(range(i, min(i + cols_per_band, len(columns))))
                              for i in range(0, len(columns), cols_per_band)]
     # 父节点分组：每列的 [(父, 首, 末)]，套框与角标都用它
@@ -1458,6 +1600,11 @@ def draw_flow(parsed: ParsedLog, options: FlowOptions, out_path: str) -> tuple[i
                 span[ri] = (first, last)
         y = y0 + header_h
         boxes: list[tuple[int, int, int, int]] = []
+        # 合并列的列头（第 a–b 轮 · ×N）是这一列唯一的身份信息，不能被角标压住：
+        # 首格如果开着一组，就补一段角标走廊。**只对合并列**这么做——非合并列维持原样，
+        # 这样 --no-overlay 的产物与改动前逐字节一致（那条是"能退回旧图"的判据）。
+        if spans[ci].merged and 0 in span and span[0][0] == 0:
+            y += group_extra_one
         for ri, st in enumerate(columns[ci]):
             if ri:
                 prev_st = columns[ci][ri - 1]
@@ -1492,10 +1639,13 @@ def draw_flow(parsed: ParsedLog, options: FlowOptions, out_path: str) -> tuple[i
 
     # ---- 标题 ----
     t0 = rounds[0][0].ts if rounds and rounds[0] else None
-    t1 = rounds[-1][-1].ts if rounds and rounds[-1] else None
+    # 末轮时间取**折叠前**的最后一轮：合并列的步骤表来自首轮，用它会把结束时间读早
+    t1 = round_steps_all[-1][-1].ts if round_steps_all and round_steps_all[-1] else None
     title = options.title or f"执行流程  ·  {os.path.basename(options.log)}"
     sub = f"{t0.strftime('%Y-%m-%d %H:%M:%S') if t0 else '?'} → {t1.strftime('%H:%M:%S') if t1 else '?'}"
-    sub += f"   |   {total_steps} 步 / {len(rounds)} 轮"
+    sub += f"   |   {total_steps} 步 / {round_count} 轮"
+    if overlay_groups:
+        sub += f"（{overlay_groups} 段重复已合并 → {len(rounds)} 列）"
     if anchor:
         sub += f"   |   循环锚点 {anchor}"
     if options.task_id:
@@ -1534,10 +1684,29 @@ def draw_flow(parsed: ParsedLog, options: FlowOptions, out_path: str) -> tuple[i
                                      x + box_w + int(14 * options.scale), bottom + int(12 * options.scale)],
                                     radius=int(12 * options.scale), fill=(244, 246, 250))
             r = rounds[ci]
-            label = f"第 {ci + 1} 轮 · {r[0].ts.strftime('%H:%M:%S')}–{r[-1].ts.strftime('%H:%M:%S')} · {len(r)} 步"
+            span = spans[ci]
+            if span.merged:
+                # 合并列：轮号写成区间 + 次数，并把**末轮**的起止时间补回来（首轮的步骤表是这一列
+                # 唯一的一批时间戳，不给末轮时间就没法知道这段重复持续了多久）。
+                last_round = round_steps_all[span.last]
+                label = (f"第 {span.first + 1}–{span.last + 1} 轮 · ×{span.count} 重复 · "
+                         f"{r[0].ts.strftime('%H:%M:%S')}–{last_round[-1].ts.strftime('%H:%M:%S')}")
+            else:
+                # 非合并列的轮号取 span.first：折叠会把后面的列往后挪，用 ci + 1 会写成"第 3 轮"
+                label = (f"第 {span.first + 1} 轮 · {r[0].ts.strftime('%H:%M:%S')}–"
+                         f"{r[-1].ts.strftime('%H:%M:%S')} · {len(r)} 步")
             d.rounded_rectangle([x, y_band, x + box_w, y_band + int(24 * options.scale)],
-                                radius=int(6 * options.scale), fill=(226, 230, 238))
-            d.text((x + int(8 * options.scale), y_band + int(4 * options.scale)), label, font=f_leg, fill=(58, 66, 84))
+                                radius=int(6 * options.scale),
+                                fill=(252, 226, 200) if span.merged else (226, 230, 238),
+                                outline=(206, 140, 70) if span.merged else None,
+                                width=2 if span.merged else 1)
+            d.text((x + int(8 * options.scale), y_band + int(4 * options.scale)),
+                   fit_text(label, f_leg, box_w - int(16 * options.scale)), font=f_leg,
+                   fill=(140, 88, 24) if span.merged else (58, 66, 84))
+            if span.merged:
+                # 右侧一根橙条贯穿整列：远看就能认出"这一列是压出来的"，不用去读列头小字
+                d.rectangle([x + box_w - int(4 * options.scale), y_band,
+                             x + box_w, bottom + int(12 * options.scale)], fill=(214, 140, 60))
         y_band = max(pos[ci][-1][1] + pos[ci][-1][3] for ci in band) + int(96 * options.scale)
 
     # ---- 父节点分组框（在框与连线之前画，只当背景）----
@@ -1745,10 +1914,20 @@ def draw_flow(parsed: ParsedLog, options: FlowOptions, out_path: str) -> tuple[i
                             radius=3, fill=fill, outline=edge)
         d.text((lx + int(22 * options.scale), ly), text, font=f_leg, fill=(70, 76, 92))
         lx += int(22 * options.scale) + int(d.textlength(text, font=f_leg)) + int(22 * options.scale)
+    if overlay_groups:
+        d.rounded_rectangle([lx, ly - int(2 * options.scale),
+                             lx + int(16 * options.scale), ly + int(14 * options.scale)],
+                            radius=3, fill=(252, 226, 200), outline=(206, 140, 70))
+        text = f"合并列（连续重复且无截图，共 {overlay_groups} 段）"
+        d.text((lx + int(22 * options.scale), ly), text, font=f_leg, fill=(140, 88, 24))
 
     img.save(out_path)
+    # 框数按折叠后的列算；轮数与列数分开报（调用方要能说出"合了几列"）
     shown = sum(1 for c in columns for s in c if s.kind == "hit")
-    return img.width, img.height, total_steps, shown, len(rounds)
+    boxes = sum(len(c) for c in columns)
+    return DrawResult(width=img.width, height=img.height, steps=total_steps, boxes=boxes,
+                      shown=shown, rounds=round_count, columns=columns, spans=spans,
+                      rounds_shown=rounds)
 
 
 # --------------------------------------------------------------------------- #
@@ -1780,6 +1959,10 @@ class FlowOptions:
     max_rounds: int = 40
     ports: str = "pos"
     cols_per_band: int = 0
+    # 连续、同形、整轮无截图且无失败框的轮次合并成一列（`overlay_min` 是"连续几轮才合并"，
+    # 0/1 等于关闭）。判定要用真实贴图结果，所以发生在 draw_flow 算完 thumb_of 之后。
+    overlay: bool = True
+    overlay_min: int = 2
     # 框里写"父 X：候选表"（父节点 = 本轮的派发者，来自 Node.NextList 事件）
     parents: bool = True
     # 证据来源：目录 / zip / zip 列表 / MediaResolver / None
@@ -1826,7 +2009,9 @@ class FlowResult:
     height: int
     steps: int
     boxes: int
-    rounds: int
+    rounds: int          # 原始轮数（折叠前）
+    columns: int = 0     # 图上实际列数（= rounds - 被合并掉的轮数）
+    overlay_groups: int = 0   # 合并了多少段（0 = 没有重复可合）
     truncated_start: bool = False   # 日志只剩尾巴：第一行晚于请求的 --from
     notes: list[str] = field(default_factory=list)      # 与图上第二行相同的诊断注记
     derived_from: str = ""          # 非空 = 步骤由识别记录合成（仅事件模式）
@@ -2105,7 +2290,7 @@ def render_flow(log,
     opts.notes = notes
     opts.log = str(log) if isinstance(log, str) and "\n" not in log else _log_basename(log) + ".log"
     try:
-        w, h, n, _shown, nr = draw_flow(parsed, opts, target)
+        drawn = draw_flow(parsed, opts, target)
     except ModuleNotFoundError as exc:
         if (exc.name or "").startswith("PIL"):
             raise ModuleNotFoundError(
@@ -2114,34 +2299,31 @@ def render_flow(log,
             ) from exc
         raise
 
-    parents, _ = roles(raw, opts.repeat_threshold)
-    cut = ({n.strip() for n in opts.cut_on.split(",") if n.strip()} if opts.cut_on
-           else choose_cut_set(raw, parents, opts.min_round_len))
-    hard_cut = {n for n in cut if n not in parents}
-    rounds = build_rounds(raw, opts.min_round_len, cut, hard_cut)[: opts.max_rounds]
-    boxes = sum(len(c) for c in compose_columns(parsed, rounds, opts.miss_min, opts.collapse, opts.miss_max))
-
     mermaid_path: str | None = None
     if mermaid:
         mermaid_path = os.path.splitext(target)[0] + ".mmd"
+        rnds = drawn.rounds_shown
         # 父节点那一行同时作为虚线"派发"边（实线仍是执行顺序，两者含义不同，别混着读）
         with open(mermaid_path, "w", encoding="utf-8") as fh:
             fh.write("flowchart TD\n")
-            for i, r in enumerate(rounds):
-                fh.write(f"  subgraph R{i + 1}[第 {i + 1} 轮]\n    direction TB\n")
+            for i, r in enumerate(rnds):
+                span = drawn.spans[i]
+                head = (f"第 {span.first + 1}–{span.last + 1} 轮 ×{span.count}"
+                        if span.merged else f"第 {span.first + 1} 轮")
+                fh.write(f"  subgraph R{i + 1}[{head}]\n    direction TB\n")
                 for j, s in enumerate(r):
                     fh.write(f'    n{i}_{j}["{s.name}"]\n')
                 for j in range(len(r) - 1):
                     fh.write(f"    n{i}_{j} --> n{i}_{j + 1}\n")
                 fh.write("  end\n")
                 if i:
-                    fh.write(f"  n{i - 1}_{len(rounds[i - 1]) - 1} --> n{i}_0\n")
+                    fh.write(f"  n{i - 1}_{len(rnds[i - 1]) - 1} --> n{i}_0\n")
             if opts.parents:
                 index: dict[str, str] = {}
-                for i, r in enumerate(rounds):
+                for i, r in enumerate(rnds):
                     for j, s in enumerate(r):
                         index.setdefault(s.name, f"n{i}_{j}")
-                for i, r in enumerate(rounds):
+                for i, r in enumerate(rnds):
                     for j, s in enumerate(r):
                         if not s.parent or s.dispatched:
                             continue  # 自派发/自循环画出来只是噪音
@@ -2149,8 +2331,10 @@ def render_flow(log,
                         if src and src != f"n{i}_{j}":
                             fh.write(f"  {src} -.->|派发| n{i}_{j}\n")
 
-    return FlowResult(path=target, mermaid=mermaid_path, width=w, height=h,
-                      steps=n, boxes=boxes, rounds=nr, truncated_start=truncated_start,
+    return FlowResult(path=target, mermaid=mermaid_path, width=drawn.width, height=drawn.height,
+                      steps=drawn.steps, boxes=drawn.boxes, rounds=drawn.rounds,
+                      columns=drawn.column_count, overlay_groups=drawn.overlay_groups,
+                      truncated_start=truncated_start,
                       notes=list(notes), derived_from=parsed.derived_from,
                       out_of_order=parsed.stats.out_of_order)
 
@@ -2199,6 +2383,8 @@ def build_flow_options(args: argparse.Namespace) -> FlowOptions:
         ports=args.ports,
         cols_per_band=args.cols_per_band,
         parents=args.parents,
+        overlay=args.overlay,
+        overlay_min=args.overlay_min,
         vision=_pick_subdir(args.vision, "vision") if args.vision else None,
         on_error=_pick_subdir(args.on_error, "on_error") if args.on_error else None,
         thumbs=args.thumbs,
@@ -2250,6 +2436,12 @@ def create_argument_parser(prog: str | None = None) -> argparse.ArgumentParser:
     ap.add_argument("--no-parents", dest="parents", action="store_false",
                     help="框里不写父节点那一行。父节点 = **本轮的派发者**（来自 Node.NextList 事件），"
                          "不是配置里的层级：next 是有序候选集，同一节点可被多处派发，所以是调用图不是树")
+    ap.add_argument("--no-overlay", dest="overlay", action="store_false",
+                    help="不合并重复轮次。默认把**连续、同形、整轮无截图且无失败框**的轮次并成一列"
+                         "（列头写「第 a–b 轮 · ×N」，右侧橙条标出），图因此窄很多；"
+                         "要看逐轮时间就关掉它")
+    ap.add_argument("--overlay-min", type=int, default=2,
+                    help="连续几轮同形才合并（默认 2；0 或 1 等于关闭）")
     ap.add_argument("--thumb-height", type=int, default=132, help="截图高度 px（默认 132）")
     ap.add_argument("--box-width", type=int, default=470)
     ap.add_argument("--box-height", type=int, default=66)
@@ -2261,7 +2453,7 @@ def create_argument_parser(prog: str | None = None) -> argparse.ArgumentParser:
     ap.add_argument("--title", default=None)
     ap.add_argument("--list", action="store_true", help="只打印解析出的步骤，不画图")
     ap.add_argument("--mermaid", action="store_true", help="额外输出同名 .mmd（Mermaid 文本流程图）")
-    ap.set_defaults(thumbs=True, parents=True)
+    ap.set_defaults(thumbs=True, parents=True, overlay=True)
     return ap
 
 
@@ -2284,7 +2476,9 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     assert isinstance(result, FlowResult)
-    print(f"步骤 {result.steps}（折叠后 {result.boxes} 个框）/ 轮次 {result.rounds}"
+    merged = (f"（{result.overlay_groups} 段重复已合并 → {result.columns} 列）"
+              if result.overlay_groups else "")
+    print(f"步骤 {result.steps}（折叠后 {result.boxes} 个框）/ 轮次 {result.rounds}{merged}"
           f" → {result.path}  ({result.width}×{result.height})")
     if result.truncated_start:
         print("提示：日志第一行晚于 --from，这份日志只包含了窗口的后半段（遥测附件只带 tail），"
