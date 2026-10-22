@@ -86,8 +86,8 @@
     },
     "StartUpDisclaimer": {
         "desc": "隐私策略",
-        "recognition": "TemplateMatch",
-        "template": "Base/DisclaimerAgree.png",
+        "recognition": "OCR",
+        "expected": "同意",
         "roi": [
             630,
             481,
