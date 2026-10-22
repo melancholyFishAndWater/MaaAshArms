@@ -1,6 +1,6 @@
 # 节点命名与分类
 
-版本号: v1.9
+版本号: v1.10
 
 本文约束 pipeline 节点叫什么名、属于哪一类（探测 / 分支 / 就位 / 工作 / 动作），以及 agent 侧注册名、
 参数键、文件名与目录的写法。改节点名、加新节点、拆分子任务时按本文执行。
@@ -10,7 +10,7 @@
 
 **字段怎么配不在本文**：`recognition` / `next` / `pre_wait_freezes` / `rate_limit` / `max_hit` /
 `desc` 标记这些"写法"以编辑器里在用的那套模板为准——`tools/vscode/pipeline.snippets.schema.json`
-（它的 `$comment` 上写着对应的规范版本）。**页面类节点（`Probe` / `Branch` / `Ensure` / `Loop`）放在哪个位置、
+（它的 `$comment` 上写着对应的规范版本）。**页面类节点（`Probe` / `Branch` / `Ensure` / `Loop`（废弃））放在哪个位置、
 `[JumpBack]` 和 `max_hit` 怎么算** 见 [任务链结构](./pipeline-structure.md)；节点该配哪些字段见
 [MaaFramework 文档](https://maafw.com/docs/1.1-QuickStarted)。
 
@@ -37,7 +37,7 @@
 | 探测节点 | `<任务前缀>Probe<页面/状态/元素>` | `EscortProbeHome`、`TrainProbeAcceptable`、`TrainingProbeHomeName` |
 | 就位节点 | `<任务前缀>Ensure<页面>` | `TrainingEnsureHome`、`EnsureMain` |
 | 分支节点 | `<任务前缀>Branch<状态/对象>` | `GiftBranchSortPage`、`BattleBranchClickTap` |
-| 工作循环 | `<任务前缀>Loop` | `TrainingLoop`、`MaintenanceLoop` |
+| 工作循环（废弃） | `<任务前缀>Loop` | `TrainingLoop`、`MaintenanceLoop`；新代码用 `Branch` 平铺 |
 | 子过程入口 | `<任务前缀>Init` | `TrainingInit`、`EntrustInit` |
 | 出口节点 | `<任务前缀><动词>…Success/Failed` | `EscortClickOkEnd`、`FactoryGetRewardFailed` |
 | 日常门控 | `<任务前缀>ProbeDaily` / `<任务前缀>DailyUpdate` | `EntrustProbeDaily`、`GiftDailyUpdate` |
@@ -51,19 +51,19 @@
 | 探测 | `<前缀>Probe<页面/状态/元素>` | 无 | 只回答"现在是不是这样"，命中即终点 |
 | 分支 | `<前缀>Branch<状态/对象>` | 无 | 状态成立就把 `next` 交出去，一次就走 |
 | 就位 | `<前缀>Ensure<页面>` | 有 | 保证"当前处于该页面"，不在就点入口、被弹走就回 |
-| 工作 | `<前缀>Loop<宾语/动词?>` | 可有 | 在该页面里干活 |
+| 工作（废弃） | `<前缀>Loop<宾语/动词?>` | 可有 | 在该页面里干活；新代码用 `Branch` 代替 |
 | 动作 | `<前缀><动词><宾语>` | 有 | 点一下、滑一下、领一次 |
 
 这一列说的是"这一层有没有行为"，**不是"节点上有没有 `action` 字段"**：就位节点实测都不写 `action`
 （`Ensure[A-Z]` 8/8），它把"探针 → 进入动作 → 上一级 `Ensure`"排在自己的 `next` 里，行为落在被引用的
 动作节点上。
 
-以 `Probe` / `Branch` / `Ensure` / `Loop` 开头的节点分别固定属于探测、分支、就位、工作层，其余前缀按第四节选词。
+以 `Probe` / `Branch` / `Ensure` / `Loop`（废弃）开头的节点分别固定属于探测、分支、就位、工作层，其余前缀按第四节选词。
 
 **分支与就位的分工**（v1.9）：`Branch` 命中即转、不保证页面，成本 1 次守卫；`Ensure` 保证在页面、不在就修，成本 5 次/层。页面导航默认用 `Branch` 平铺，只在需要「从任意页面保证到达」时用 `Ensure`。
 
 本节只定"叫什么、属于哪一层"。**每个类别该配哪些字段、`next` 怎么排、限速用哪个键**，照
-`tools/vscode/pipeline.snippets.schema.json` 里的七个骨架（空节点 / Probe / Branch / Ensure / Loop / 动作 / Task）
+`tools/vscode/pipeline.snippets.schema.json` 里的七个骨架（空节点 / Probe / Branch / Ensure / Loop（废弃）/ 动作 / Task）
 写——那是编辑器里实际在用的模板，改写法改那里，不在本文复述。
 
 ### 探测 `Probe`
@@ -73,7 +73,7 @@
 识别之后还要继续走时，不要给它加 `next`，按目的换写法：
 
 - **接着点一下**：把探测条件并进动作节点的 `recognition`（`And` + `all_of: [<探针>]` + `action` + `target`），一个节点同时判和做。
-- **到某页再决定干什么**：那是守卫的职责，用 `Ensure` / `Loop`（自带 `recognition` 判页面），见 [任务链结构](./pipeline-structure.md) 第三节。
+- **到某页再决定干什么**：那是守卫的职责，用 `Ensure` / `Branch`（自带 `recognition` 判页面），见 [任务链结构](./pipeline-structure.md) 第三节。
 
 名字统一用 `Probe` 作前缀，后缀写它在观察什么。
 
@@ -101,7 +101,7 @@
 | 读到状态后转到别处（可能多个候选） | `Branch` |
 | 按页面分流（在 A 页做 A、在 B 页做 B） | `Branch` 平铺到调用方 |
 | 保证当前处于某页 | `Ensure` |
-| 在这一页反复干到有出口 | `Loop` |
+| 在这一页反复干到有出口 | `Branch`（`Loop` 已废弃） |
 
 必须写 `recognition`：没有识别的分支等于无条件跳转，把 `next` 写在上一个节点里就行。`next` 至少一项。
 
@@ -109,7 +109,7 @@
 
 被引用时必须带 `[JumpBack]`（怎么写见 [任务链结构](./pipeline-structure.md)与上面的模板）。
 
-它保证页面正常，自己**不写业务候选**——业务属于工作循环，`Loop` 在 `Task*` 入口命中。它可以嵌套
+它保证页面正常，自己**不写业务候选**——业务属于 `Branch`，在 `Task*` 入口命中。它可以嵌套
 （一层层推进页面），内部按"目标页面的探针 → 进入动作 → 上一级 `Ensure` → 最后一个兜底候选"排候选，
 降级过程封在节点内部，调用方只看到"保证在训练所"这一个词。
 
@@ -120,13 +120,11 @@
 `next` 的末项按嵌套与否分两种：单层 `Ensure`（上面就是枢纽那一级）的末项是最后一个兜底候选，通常是
 回主页/枢纽的那一级；嵌套 `Ensure` 的末项是上一级 `Ensure`。完整写法见 [任务链结构](./pipeline-structure.md)。
 
-### 工作 `Loop`
+### 工作 `Loop`（v1.10 废弃）
 
-页面内的工作循环统一用 `Loop` 结尾；一段活到底该写成 `Loop` / `Ensure` 还是一个自环动作节点，按 [任务链结构](./pipeline-structure.md) 第三节「哪些活不用 `Loop`」的三条判据定。守卫可以是 `Probe*`，也可以是 `Custom` 识别；用 `Custom` 时未命中
-语义必须是"不在这个页面/状态"，并且因为守卫一直命中时链不会自己结束，**必须另有有限 `timeout` 作出口**
-（要受控结束就配 `on_error`）。一页里有多段独立工作时，拆成子 `Loop`，由父 `Loop` 用 `[JumpBack]` 串联
-（语义是"先干完这段再回来"），禁止指向自身、祖先 `Loop` 或别的任务的 `Loop`。细节见
-[任务链结构](./pipeline-structure.md) 第三、四、五节。
+`Loop` 已废弃，职责由 `Branch` 承担（见 §3 分支）：宽守卫圈住页面、收窄候选、守卫失效交还上层。既有 `*Loop*` 节点逐步退役，校验器仍按旧规则报（`A8`/`A10`/`A13-loop-next`/`A14`），退役时间线见 `tools/validation/ISSUES.md`。
+
+新代码不要新建 `Loop`。页面内多段独立工作拆成多个 `Branch`，由 `Task.next` 或父 `Branch.next` 用 `[JumpBack]` 串联。
 
 ### 动作
 
