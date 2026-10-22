@@ -194,7 +194,7 @@
             "label": "自动代理",
             "entry": "TaskReplays",
             "default_check": false,
-            "description": "自动进行代理作战，支持主线和战役<br/>可在编队界面、战斗中、战斗确认界面启动<br/>[color:red]战斗编队页面启动必须设置好代理指挥次数[/color]",
+            "description": "自动进行代理作战。<br/>[color:red]必须在[/color]主线或战役的编队界面、战斗中、战斗确认界面启动。<br/>战斗编队页面启动必须设置好代理指挥次数。",
             "option": [
                 "battle_replays_number"
             ],
