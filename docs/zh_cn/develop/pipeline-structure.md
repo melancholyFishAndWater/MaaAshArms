@@ -1,10 +1,12 @@
 # 任务链结构
 
-版本号: v1.7
+版本号: v1.8
 
 本文约定一个任务从入口到页面循环怎么搭：每类节点放在哪、谁负责动作、`[JumpBack]` 和 `max_hit` 怎么算。加新任务或拆现有任务链时按本文搭。
 
-命名规则（动词、前缀、`Probe` / `Ensure`）见 [节点命名与分类](./node-naming.md)。
+命名规则（动词、前缀、`Probe` / `Ensure` / `Branch`）见 [节点命名与分类](./node-naming.md)。
+
+**第十节「识别预算」是本版新增**：页面导航优先用 `Branch` 平铺，`Ensure` 嵌套深度上限 2。
 
 ## 一、三层职责
 
@@ -18,6 +20,7 @@ TaskX            入口：门控、初始化、选择"去哪"
 | 层 | 只回答 | 允许出现在 `next` 里 |
 | --- | --- | --- |
 | 探测 `<前缀>Probe<对象>` | 现在是不是在对象上 | 无 `action`、无 `next`（命中即终点） |
+| 分支 `<前缀>Branch<状态>` | 这个状态成不成立 | 该状态下的工作候选、`[JumpBack]` 兜底（命中即转，不保证页面） |
 | 就位 `<前缀>Ensure<对象>` | 怎么让当前处于对象上 | 目标页面的探针、进入动作节点、上一级 `Ensure`、最后一个兜底候选 |
 | 工作 `<前缀>Loop` | 在对象上干哪些活 | 业务候选、`[JumpBack]` 自愈入口、`[JumpBack]` 回上级、结束判据 |
 
@@ -28,6 +31,7 @@ TaskX            入口：门控、初始化、选择"去哪"
 ## 二、就位节点
 
 - 上一级 `Ensure` 只用于"连上级页面都找不到了"的降级，例如从主页一步进出击页失败后回主页重来。
+- **嵌套深度上限 2 层**（本版新增，见第十节）：第 3 层往上每多一层多付 5 次识别，改用 `Branch` 平铺到调用方 `next`。
 - 复杂页面做不到稳定上一级 `Ensure` 就不要新增 `Ensure`，而是做好动作守卫。
 - 就位节点不写业务候选。把工作层的候选塞进就位节点的 `next`，会让同一个节点在"从入口来"和"从工作层自愈来"两种调用下都跑一遍业务，同一轮重复派发。
 - `next` 的末项按嵌套与否分两种：**单层 `Ensure`**（服务一个页面、上面就是枢纽那一级）的末项是**最后一个兜底候选**，通常是回主页/枢纽的那一级；**嵌套 `Ensure`** 的末项是上一级 `Ensure`。两者都不点名任何"收尾节点"——嵌套链本质是逐级收缩回主页，结束与否由调用方与守卫决定。
@@ -187,3 +191,110 @@ TaskX            入口：门控、初始化、选择"去哪"
 ### 校验器能查的
 
 `A15-error-branch-jumpback`（引用不带 `[JumpBack]`）、`A15-error-branch-shadowed`（排在取反守卫之后）、`A15-error-branch-conflict`（排在自己会点「确认」的候选之前）。"压暗被误读"那条判不了——哪个模板在弹窗下仍会命中，静态看不出来，按人工。
+
+## 十、识别预算
+
+一次派发的成本 = **守卫识别**（本节点的 `recognition`）+ **候选识别**（`next` 里被依次评估的项）。失败也要付钱，所以 `next` 的顺序与长度就是预算。
+
+### 一次派发付几次识别
+
+| 节点形态 | 守卫 | 每个候选 | 说明 |
+| --- | --- | --- | --- |
+| `DirectHit` | 0 | — | 不识别，白送 |
+| `Probe`（单识别） | 1 | — | OCR / TemplateMatch / ColorMatch / Custom 各算 1 |
+| `And` / `Or` 组合 | 子项之和（短路） | — | 命中即停，未命中才继续下一子项 |
+| 候选是 `And[单探针]` 包装 | 1 | — | 包装本身不额外收费，但多一层事件 |
+
+实测（16 份日志、28023 次派发）：`Loop` 平均 8.1 次、`Ensure` 6.8 次、`Task` 5.7 次、`Branch` 2.9 次。
+
+### `Ensure` 嵌套的成本
+
+单层 `Ensure` 固定 5 次：守卫 1 + 首项探针 1 + 兜底 1 + 进入动作 1 + 末项（上一级 `Ensure` 或兜底）1。
+
+嵌套时末项是上一级 `Ensure`，那一层再付 5 次，所以：
+
+```text
+深度 1 → 5 次   深度 3 → 14 次   深度 5 → 24 次
+公式：5 × 深度 − 1（末层末项是 ReturnMain 而不是 Ensure）
+```
+
+实测最坏的是 `GiftEnsureRules`（深度 5，24 次）：它在 101 分钟的赠礼日志里被评估 593 次，是那次运行 12.2 分钟派发耗时的主要来源。
+
+### 上限：`Ensure` 嵌套不超过 2 层
+
+超过 2 层时改用 `Branch` 平铺（见下一条）。理由：第 3 层往上，每多一层就多 5 次识别，而它换来的只是「再往上退一级」；同样的效果可以靠调用方 `next` 里多排一个 `Branch` 候选达成，成本是 1 次。
+
+### 页面导航：`Branch` 平铺优于 `Ensure` 嵌套
+
+两种写法的语义不同，选哪个看**调用方需不需要「从任意页面保证到达 X」**：
+
+| | `Ensure` 嵌套 | `Branch` 平铺 |
+| --- | --- | --- |
+| 语义 | 保证当前处于 X（不在就修，修不好退一级） | 在 X 就做 Y（不在就轮到下一个候选） |
+| 结构 | `next` 末项指上一级 `Ensure`，形成链 | `next` 里只有工作候选，各 `Branch` 并列在调用方 |
+| 全 miss 成本 | 5 × 层数 | 每个候选 1 次 |
+| 命中成本 | 5 次 | 1 次守卫 + 工作候选 |
+| 适合 | 枢纽页（大厅、出击页），多个任务共用 | 等次页（训练所、维修会、赠礼）自己的链 |
+
+平铺写法：
+
+```json
+"TaskGift": {
+    "next": [
+        "[JumpBack]GiftProbeDaily",
+        "GiftBranchSortPage",      // 在排序页 → 排序 + 点第一个
+        "GiftBranchCharacters",    // 在选择页 → 点好感度
+        "GiftBranchHome",          // 在赠礼主页 → 点赠礼
+        "[JumpBack]BaseBranchError",
+        "[JumpBack]ReturnMain"
+    ]
+},
+"GiftBranchSortPage": {
+    "recognition": "And",
+    "all_of": ["GiftProbeRules"],
+    "next": ["GiftChooseFavorability", "[JumpBack]BaseBranchError"]
+}
+```
+
+每个 `Branch` 只判一个页面、只放该页面的工作候选。不在任何已知页面时依次 miss，落到 `ReturnMain`。
+
+**判断顺序**：命中概率高的页面排前面（少付前面的 miss）。这与第九节「错误分支的位次」不冲突——`BaseBranchError` 仍排在正向探针之后。
+
+### 首项探针只在守卫会误判时保留
+
+`Ensure.next` 的首项通常是守卫里那个探针（「刚说不在，再问一遍」）。它的价值是纠正守卫误判，实测救回率差别很大：
+
+| `Ensure` | 救回率 | 处理 |
+| --- | --- | --- |
+| `GiftEnsureRules` | 50% | 保留 |
+| `FeiduEnsureHome` | 37% | 保留 |
+| `GiftEnsureTavern` | 33% | 保留 |
+| `EscortEnsureHome` | 25% | 保留 |
+| `GiftEnsureHome` | 22% | 删 |
+| `EntrustEnsureStage` | 9% | 删 |
+| `TrainEnsureInfo` | 0% | 删 |
+
+**判据**：救回率 < 25% 就删掉首项，把「确认」并进第一个进入动作的 `next`。救回率必须日志实测，不能凭感觉：在 `maafw.log` 里数这个 `Ensure` 作为派发者时首个候选的 `Node.Recognition.Succeeded` / `Failed` 次数，命中数 ÷ 总数就是救回率。
+
+### 等待也是预算
+
+`post_wait_freezes` / `post_delay` / `rate_limit` 不消耗识别，但占墙钟。实测 69% 的 `wait_freezes` 恰好停在 `time + rate_limit`，说明画面早已静止、等待是纯开销。
+
+| 写法 | 什么时候用 |
+| --- | --- |
+| `post_wait_freezes` ≤ 1000 | 默认；下一轮候选的探针本身就是「到没到」的判据 |
+| `post_wait_freezes` 2000–3000 | 只在页面切换动画确实超过 1 秒时用，并在注释写明是哪个动画 |
+| 探针节点上不写 `post_delay` | 探针不改画面，延迟纯属限速；限速用所在 `Loop` 的 `rate_limit` |
+
+`rate_limit` 是**每轮识别的最低间隔**，写在 `Loop` / `Ensure` 上比散在各个探针上更容易核对。
+
+### 校验器能查的
+
+| 规则 | 级别 | 判据 |
+| --- | --- | --- |
+| `A16-ensure-depth` | warn | `Ensure` 的 `next` 里指向另一个 `Ensure`，且从它算起嵌套深度 > 2 |
+| `A17-guard-in-next` | info | 节点的 `next` 里含本节点 `recognition` 用到的同一个探针（重复识别） |
+| `A18-next-length` | warn | `Task` / `Ensure` 的 `next` > 4 项，`Loop` > 5 项 |
+
+判不了的：救回率、动画实际时长、哪个候选命中率最高——都要日志实测（`debug/maafw.log` 里的 `Node.NextList.*` / `Node.Recognition.*` / `Node.WaitFreezes.*` 事件流）。
+

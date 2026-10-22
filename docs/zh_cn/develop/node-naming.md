@@ -1,13 +1,16 @@
 # 节点命名与分类
 
-版本号: v1.8
+版本号: v1.9
 
-本文约束 pipeline 节点叫什么名、属于哪一类（探测 / 就位 / 工作 / 动作），以及 agent 侧注册名、
+本文约束 pipeline 节点叫什么名、属于哪一类（探测 / 分支 / 就位 / 工作 / 动作），以及 agent 侧注册名、
 参数键、文件名与目录的写法。改节点名、加新节点、拆分子任务时按本文执行。
+
+**v1.9 新增**：`Branch` 是页面导航的默认写法，`Ensure` 嵌套深度上限 2 层、首项探针按救回率取舍。
+判据与实测数据见 [任务链结构](./pipeline-structure.md) 第十节「识别预算」。
 
 **字段怎么配不在本文**：`recognition` / `next` / `pre_wait_freezes` / `rate_limit` / `max_hit` /
 `desc` 标记这些"写法"以编辑器里在用的那套模板为准——`tools/vscode/pipeline.snippets.schema.json`
-（它的 `$comment` 上写着对应的规范版本）。**页面类节点（`Probe` / `Ensure` / `Loop`）放在哪个位置、
+（它的 `$comment` 上写着对应的规范版本）。**页面类节点（`Probe` / `Branch` / `Ensure` / `Loop`）放在哪个位置、
 `[JumpBack]` 和 `max_hit` 怎么算** 见 [任务链结构](./pipeline-structure.md)；节点该配哪些字段见
 [MaaFramework 文档](https://maafw.com/docs/1.1-QuickStarted)。
 
@@ -33,6 +36,7 @@
 | 动作节点 | `<任务前缀><动词><宾语>` | `EscortClickOk`、`FactoryChooseNumber` |
 | 探测节点 | `<任务前缀>Probe<页面/状态/元素>` | `EscortProbeHome`、`TrainProbeAcceptable`、`TrainingProbeHomeName` |
 | 就位节点 | `<任务前缀>Ensure<页面>` | `TrainingEnsureHome`、`EnsureMain` |
+| 分支节点 | `<任务前缀>Branch<状态/对象>` | `GiftBranchSortPage`、`BattleBranchClickTap` |
 | 工作循环 | `<任务前缀>Loop` | `TrainingLoop`、`MaintenanceLoop` |
 | 子过程入口 | `<任务前缀>Init` | `TrainingInit`、`EntrustInit` |
 | 出口节点 | `<任务前缀><动词>…Success/Failed` | `EscortClickOkEnd`、`FactoryGetRewardFailed` |
@@ -55,6 +59,8 @@
 动作节点上。
 
 以 `Probe` / `Branch` / `Ensure` / `Loop` 开头的节点分别固定属于探测、分支、就位、工作层，其余前缀按第四节选词。
+
+**分支与就位的分工**（v1.9）：`Branch` 命中即转、不保证页面，成本 1 次守卫；`Ensure` 保证在页面、不在就修，成本 5 次/层。页面导航默认用 `Branch` 平铺，只在需要「从任意页面保证到达」时用 `Ensure`。
 
 本节只定"叫什么、属于哪一层"。**每个类别该配哪些字段、`next` 怎么排、限速用哪个键**，照
 `tools/vscode/pipeline.snippets.schema.json` 里的七个骨架（空节点 / Probe / Branch / Ensure / Loop / 动作 / Task）
@@ -85,12 +91,15 @@
 
 只回答"这个状态成不成立"，成立就把 `next` 里的候选交出去：不写 `action`、不保证页面、不回到自己。
 
+**它也是页面导航的默认写法**（v1.9 新增）：把每个页面的守卫各写成一个 `Branch`，并列排进调用方的 `next`，代替嵌套的 `Ensure`。`Ensure` 每层固定 5 次识别，`Branch` 每次只要 1 次守卫；判据与示例见 [任务链结构](./pipeline-structure.md) 第十节。
+
 用在"一个入口下按状态分流"的地方（点了按钮之后看是哪种结果）：
 
 | 想做的事 | 用 |
 | --- | --- |
 | 读状态，命中即终点 | `Probe` |
 | 读到状态后转到别处（可能多个候选） | `Branch` |
+| 按页面分流（在 A 页做 A、在 B 页做 B） | `Branch` 平铺到调用方 |
 | 保证当前处于某页 | `Ensure` |
 | 在这一页反复干到有出口 | `Loop` |
 
@@ -103,6 +112,10 @@
 它保证页面正常，自己**不写业务候选**——业务属于工作循环，`Loop` 在 `Task*` 入口命中。它可以嵌套
 （一层层推进页面），内部按"目标页面的探针 → 进入动作 → 上一级 `Ensure` → 最后一个兜底候选"排候选，
 降级过程封在节点内部，调用方只看到"保证在训练所"这一个词。
+
+**嵌套深度上限 2 层**（v1.9 新增）：单层 5 次识别、每多一层再付 5 次，深度 5 就是 24 次。需要第 3 层时改用 `Branch` 平铺，见 [任务链结构](./pipeline-structure.md) 第十节。
+
+**首项探针只在守卫会误判时保留**（v1.9 新增）：`next` 首项通常是守卫里那个探针（"刚说不在，再问一遍"），救回率 < 25% 就删掉。实测数据与判据见 [任务链结构](./pipeline-structure.md) 第十节。
 
 `next` 的末项按嵌套与否分两种：单层 `Ensure`（上面就是枢纽那一级）的末项是最后一个兜底候选，通常是
 回主页/枢纽的那一级；嵌套 `Ensure` 的末项是上一级 `Ensure`。完整写法见 [任务链结构](./pipeline-structure.md)。
