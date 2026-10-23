@@ -70,7 +70,7 @@
     "GiftProbeMaxFavorability": {
         "desc": "[end] 好感数字是5",
         "recognition": "OCR",
-        "expected": "5",
+        "expected": ".*5.*",
         "roi": [
             133,
             113,
@@ -81,7 +81,7 @@
     "GiftProbeNoMaxFavorability": {
         "desc": "[end] 好感数字不是5",
         "recognition": "OCR",
-        "expected": "[0-4]",
+        "expected": ".*[0-4].*",
         "roi": [
             133,
             113,
