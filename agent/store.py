@@ -171,10 +171,12 @@ class Store(Generic[T]):
     #         del self._data[key]
     #         self._save()
 
-    def reco(
-        self, context: Context, argv: CustomRecognition.AnalyzeArg
-    ) -> list[int] | None:
-        """若今日没执行过，返回非 None"""
+    def reco(self, context: Context, argv: CustomRecognition.AnalyzeArg) -> list[int]:
+        """若今日执行过，则结束任务
+
+        Returns:
+            list[int]: 识别成功标志
+        """
 
         # 校验日期
         self._ensure_today()
@@ -199,8 +201,7 @@ class Store(Generic[T]):
                 },
             )
             if b is None or not b.success:
-                log.warn(f"{argv.node_name} 执行 TaskStop 失败")
-            return None
+                log.error(f"结束任务失败")
         return DEFAULT_HIT_BOX
 
     def act(self, argv: CustomAction.RunArg, value: T) -> CustomAction.RunResult | bool:
@@ -238,8 +239,8 @@ class GiftDailyUpdateAct(CustomAction):
 _factory = Store[int]("daily_factory.json", default=0, func=lambda x: x >= 3)
 
 
-@AgentServer.custom_recognition("TaskFactoryReco")
-class TaskFactoryReco(CustomRecognition):
+@AgentServer.custom_recognition("FactoryProbeDailyReco")
+class FactoryProbeDailyReco(CustomRecognition):
     def analyze(
         self, context: Context, argv: CustomRecognition.AnalyzeArg
     ) -> list[int] | None:

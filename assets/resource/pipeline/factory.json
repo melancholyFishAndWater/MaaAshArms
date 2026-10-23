@@ -1,17 +1,22 @@
 {
     // INFO 工厂任务入口
     "TaskFactory": {
-        "desc": "开始订单工厂任务",
-        "recognition": "Custom",
-        "custom_recognition": "TaskFactoryReco",
-        "custom_recognition_param": {
-            "enable": true // 每日一次开关 覆写关闭
-        },
+        "desc": "订单工厂任务",
         "next": [
+            "[JumpBack]FactoryProbeDaily",
             "TaskFactoryInHome",
             "[JumpBack]BaseBranchError",
             "[JumpBack]ReturnFactory"
         ]
+    },
+    "FactoryProbeDaily": {
+        "desc": "[jp][once] 检查每日一次",
+        "max_hit": 1,
+        "recognition": "Custom",
+        "custom_recognition": "FactoryProbeDailyReco",
+        "custom_recognition_param": {
+            "enable": true // 每日一次开关 覆写关闭
+        }
     },
     // 返回工厂页面
     "ReturnFactory": {
