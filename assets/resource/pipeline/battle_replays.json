@@ -14,7 +14,13 @@
             "ReplaysLoopDefaultEnd",
             "ReplaysLoopMetalFinish",
             "[JumpBack]BaseBranchError"
-        ]
+        ],
+        "focus": {
+            "Node.PipelineNode.Failed": {
+                "content": "请阅读此任务详情 确保没有在错误的地方运行",
+                "trace": false
+            }
+        }
     },
     "ReplaysInit": {
         "desc": "[max] 初始化agent全局变量",
