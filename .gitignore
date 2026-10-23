@@ -471,3 +471,4 @@ AGENTS.md
 .pytest_cache
 pytest-cache-files-*
 tests/.store-tmp
+.firecrawl/*
