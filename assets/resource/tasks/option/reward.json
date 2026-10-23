@@ -1,22 +1,46 @@
 {
     "option": {
-        "siku_reward_switch": {
-            "label": "领取司库部奖励",
-            "type": "switch",
-            "default_case": "Yes",
+        "reward": {
+            "type": "checkbox",
+            "label": "",
+            "default_case": [
+                "siku_reward_switch"
+            ],
             "cases": [
                 {
-                    "name": "Yes"
-                },
-                {
-                    "name": "No",
+                    "name": "siku_reward_switch",
+                    "label": "司库部奖励",
                     "pipeline_override": {
                         "SikuBranchReward": {
-                            "enabled": false
+                            "enabled": true
                         }
                     }
+                },
+                {
+                    "name": "shop",
+                    "label": "采购中心",
+                    "pipeline_override": {
+                        "ShopEnterHome": {
+                            "enabled": true
+                        }
+                    }
+                    // "option": [
+                    //     "shop_battle_daily"
+                    // ]
                 }
             ]
         }
+        // TODO
+        // "shop_battle_daily": {
+        //     "type": "switch",
+        //     "cases": [
+        //         {
+        //             "name": "Yes"
+        //         },
+        //         {
+        //             "name": "No"
+        //         }
+        //     ]
+        // }
     }
 }

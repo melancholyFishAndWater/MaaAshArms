@@ -33,6 +33,14 @@
             53
         ]
     },
+    "BaseProbeNoReward": {
+        "desc": "[end] 不在获得一览",
+        "recognition": "And",
+        "all_of": [
+            "BaseProbeReward"
+        ],
+        "inverse": true
+    },
     "BaseProbeConfirm": {
         "desc": "[end] 有确认按钮",
         "recognition": "OCR",

@@ -186,7 +186,7 @@
             "entry": "TaskReward",
             "default_check": true,
             "option": [
-                "siku_reward_switch"
+                "reward"
             ]
         },
         {

@@ -1,0 +1,252 @@
+{
+    /*
+    INFO 采购中心
+    
+    使用任务链结构 v1.9 校验年月日 26/10/23
+    使用节点命名与分类 v1.10 校验年月日 26/10/23
+    */
+    /* -------------------- 通用探测 -------------------- */
+    "ShopProbeBattle": {
+        "desc": "[end] 在作战企划室",
+        "recognition": "OCR",
+        "expected": "作战企划室",
+        "roi": [
+            889,
+            628,
+            245,
+            68
+        ]
+    },
+    /* -------------------- 就位 -------------------- */
+    // INFO 采购中心
+    "ShopProbeEnterText": {
+        "desc": "[end] 有采购中心文字",
+        "recognition": "OCR",
+        "expected": "采购中心",
+        "roi": [
+            549,
+            670,
+            81,
+            38
+        ]
+    },
+    "ShopEnterHome": {
+        "desc": "[jp][once] 领取采购中心奖励",
+        "max_hit": 1,
+        "enabled": false, // INFO 测试时要注释掉
+        "recognition": "And",
+        "all_of": [
+            "ShopProbeEnterText",
+            "BaseProbeHome"
+        ],
+        "box_index": 0,
+        "action": "Click",
+        "post_wait_freezes": 1000,
+        "next": [
+            "ShopBranchHome",
+            "[JumpBack]ShopClickHomeButton",
+            "[JumpBack]BaseBranchError"
+        ]
+    },
+    "ShopClickHomeButton": {
+        "desc": "[jp] 点击采购中心按钮",
+        "recognition": "And",
+        "all_of": [
+            "ShopProbeEnterText"
+        ],
+        "action": "Click",
+        "post_wait_freezes": 1000
+    },
+    // INFO 主页面
+    "ShopProbeHome": {
+        "desc": "[end] 在主页面",
+        "recognition": "OCR",
+        "expected": "物资采购中心",
+        "roi": [
+            939,
+            589,
+            320,
+            79
+        ]
+    },
+    "ShopBranchHome": {
+        "desc": "主页面分支",
+        "recognition": "And",
+        "all_of": [
+            "ShopProbeHome"
+        ],
+        "next": [
+            "[JumpBack]ShopEnterBattle",
+            "[JumpBack]ShopBranchBack",
+            "[JumpBack]BaseBranchError",
+            "ShopProbeHome"
+        ]
+    },
+    "ShopBranchBack": {
+        "desc": "[jp] 条件点击返回按钮",
+        "recognition": "Or",
+        "any_of": [
+            "ShopProbeBattle"
+        ],
+        "next": [
+            "[JumpBack]BaseBranchError",
+            "BackButton"
+        ]
+    },
+    /* -------------------- 工作-作战企划室 -------------------- */
+    // INFO 进入作战企划室
+    // TODO
+    // "ShopProbeBattleDaily": {
+    //     "desc": "[end] 检测作战企划室每日一次",
+    //     "recognition": "",
+    //     "roi": []
+    // },
+    "ShopEnterBattle": {
+        "desc": "[once][jp] 进入作战企划室",
+        "max_hit": 1,
+        "target": [
+            153,
+            576
+        ],
+        "action": "Click",
+        "post_wait_freezes": 1000,
+        "next": [
+            "ShopFindBattle",
+            "[JumpBack]BaseBranchError",
+            "[JumpBack]ShopClickBattleBox"
+        ]
+    },
+    "ShopClickBattleBox": {
+        "desc": "[jp] 点击进入作战企划室区域",
+        "target": [
+            153,
+            576
+        ],
+        "action": "Click",
+        "post_wait_freezes": 1000
+    },
+    // INFO 找可领取礼包
+    "ShopFindBattle": {
+        "desc": "找免费礼包",
+        "recognition": "And",
+        "all_of": [
+            "ShopProbeBattle"
+        ],
+        "next": [
+            "ShopProbeBattleEnd",
+            "[JumpBack]ShopEnterBattleFree",
+            "[JumpBack]MoveLeft",
+            "[JumpBack]BaseBranchError"
+        ]
+    },
+    "ShopProbeBattleEnd": {
+        "desc": "[end] 检测作战企划室任务是否结束",
+        "recognition": "TemplateMatch",
+        "template": "Base/BlueMarkGreen.png",
+        "green_mask": true,
+        "roi": [
+            50,
+            96,
+            56,
+            60
+        ],
+        "inverse": true
+    },
+    // INFO 点击免费礼包
+    "ShopProbeBattleFreeText": {
+        "desc": "[end] 有免费文字",
+        "recognition": "OCR",
+        "expected": "免费",
+        "roi": [
+            201,
+            106,
+            728,
+            487
+        ]
+    },
+    "ShopEnterBattleFree": {
+        "desc": "[jp] 进入免费礼包购买确认页面",
+        "recognition": "And",
+        "all_of": [
+            "ShopProbeBattleFreeText"
+        ],
+        "action": "Click",
+        "post_wait_freezes": 1000,
+        "next": [
+            "ShopClickBuy",
+            "[JumpBack]ShopClickBattleFree",
+            "[JumpBack]BaseBranchError"
+        ]
+    },
+    "ShopClickBattleFree": {
+        "desc": "[jp] 点击免费礼包",
+        "recognition": "And",
+        "all_of": [
+            "ShopProbeBattleFreeText"
+        ],
+        "action": "Click",
+        "post_wait_freezes": 1000
+    },
+    // INFO 点击购买
+    "ShopProbeBuyText": {
+        "desc": "[end] 有购买文字",
+        "recognition": "OCR",
+        "expected": "购买",
+        "roi": [
+            815,
+            580,
+            136,
+            48
+        ]
+    },
+    "ShopClickBuy": {
+        "desc": "点击购买",
+        "recognition": "And",
+        "all_of": [
+            "ShopProbeBuyText"
+        ],
+        "action": "Click",
+        "post_wait_freezes": 1000,
+        "next": [
+            "ShopClickTap",
+            "[JumpBack]ShopClickBuyBotton",
+            "[JumpBack]BaseBranchError"
+        ]
+    },
+    "ShopClickBuyBotton": {
+        "desc": "[jp] 点击购买按钮",
+        "recognition": "And",
+        "all_of": [
+            "ShopProbeBuyText"
+        ],
+        "action": "Click",
+        "post_wait_freezes": 1000
+    },
+    // INFO 确认获得
+    "ShopClickTap": {
+        "desc": "确认获得物品",
+        "recognition": "And",
+        "all_of": [
+            "BaseProbeReward"
+        ],
+        "action": "Click",
+        "target": [
+            640,
+            620
+        ],
+        "next": [
+            "[JumpBack]BaseBranchError",
+            "BaseProbeNoReward",
+            "[JumpBack]ShopClickTapBox"
+        ]
+    },
+    "ShopClickTapBox": {
+        "desc": "[jp] 点击tap区域",
+        "action": "Click",
+        "target": [
+            640,
+            620
+        ],
+        "post_wait_freezes": 1000
+    }
+}

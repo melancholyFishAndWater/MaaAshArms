@@ -8,6 +8,7 @@
     "SikuBranchReward": {
         "desc": "[jp][once] 司库部任务分支",
         "max_hit": 1,
+        "enabled": false,
         "recognition": "And",
         "all_of": [
             "BaseProbeHome"
