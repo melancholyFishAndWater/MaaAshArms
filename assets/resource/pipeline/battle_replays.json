@@ -90,7 +90,7 @@
             "ReplaysStopMetalFinish",
             "[JumpBack]ClickConfirm",
             "[JumpBack]IsGetReward",
-            "[JumpBack]BattleClickFinish",
+            "[JumpBack]ReplaysClickReattack",
             "[JumpBack]BaseBranchError"
         ]
     },
