@@ -247,6 +247,35 @@
             130
         ]
     },
+    // INFO 点击获得一览Tap
+    "BaseClickRewardTap": {
+        "desc": "点击获得一览Tap",
+        "recognition": "And",
+        "all_of": [
+            "BaseProbeReward"
+        ],
+        "target": [
+            640,
+            620
+        ],
+        "action": "Click",
+        "post_wait_freezes": 1000,
+        "next": [
+            "[JumpBack]BaseBranchError",
+            "BaseProbeNoReward",
+            "[JumpBack]BaseClickRewardTapBox"
+        ]
+    },
+    "BaseClickRewardTapBox": {
+        "desc": "[jp] 点击获得一览Tap区域",
+        "target": [
+            640,
+            620
+        ],
+        "action": "Click",
+        "post_wait_freezes": 1000
+    },
+    // FIXME 迁移至新版本
     "IsGetReward": {
         "desc": "领取奖励",
         "recognition": "And",
