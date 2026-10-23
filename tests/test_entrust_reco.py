@@ -3,8 +3,6 @@
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 
-import pytest
-
 import entrust
 from rect import DEFAULT_HIT_BOX
 

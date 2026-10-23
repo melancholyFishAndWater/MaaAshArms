@@ -57,7 +57,12 @@ def test_cross_day_resets(daily):
     assert daily.get("TaskGift") is False
 
 
-def test_reco_skips_when_done(daily):
+def test_reco_always_hits_but_stops_when_done(daily):
+    """reco 恒命中（返回 DEFAULT_HIT_BOX）；今日已做时额外跑 TaskStop 结束任务。
+
+    跳过不再用"返回 None"表达：识别恒命中，结束只由 TaskStop 负责——
+    未命中会让 `[once]` 探测节点静默失败，任务收不到明确的停止指令。
+    """
     calls = []
     ctx = SimpleNamespace(
         run_action=lambda name, pipeline_override=None: (
@@ -65,14 +70,22 @@ def test_reco_skips_when_done(daily):
         )
     )
 
-    # 今日未做 → 正常命中
+    # 今日未做 → 命中，不跑 TaskStop
     assert daily.reco(ctx, _argv()) is DEFAULT_HIT_BOX
     assert calls == []
 
-    # 今日已做 → 执行 TaskStop 并返回未命中
+    # 今日已做 → 仍命中（恒返回 box），但已跑 TaskStop
     daily.set("TaskGift", True)
-    assert daily.reco(ctx, _argv()) is None
+    assert daily.reco(ctx, _argv()) is DEFAULT_HIT_BOX
     assert calls == ["TaskStop"]
+
+
+def test_reco_still_stops_when_taskstop_fails(daily):
+    """TaskStop 跑失败也要返回命中：识别结果与收尾动作互不牵连。"""
+    ctx = SimpleNamespace(run_action=lambda name, pipeline_override=None: None)
+
+    daily.set("TaskGift", True)
+    assert daily.reco(ctx, _argv()) is DEFAULT_HIT_BOX
 
 
 def test_reco_skipped_entirely_when_disabled(daily):
