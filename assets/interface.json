@@ -122,10 +122,10 @@
             "pipeline_override": {
                 "IsFreezes": {
                     "roi": [
-                        0,
-                        0,
-                        1280,
-                        481
+                        150,
+                        50,
+                        1130,
+                        431
                     ],
                     "next": [
                         "TaskStop"
