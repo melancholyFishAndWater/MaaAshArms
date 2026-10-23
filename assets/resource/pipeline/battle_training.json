@@ -157,7 +157,8 @@
         "post_wait_freezes": 2000
     },
     "TrainingEnterFormation": {
-        "desc": "进入编队页面",
+        "desc": "[max] 进入编队页面",
+        "max_hit": 10,
         "recognition": "Custom",
         "custom_recognition": "TrainingEnterFormationReco",
         "custom_recognition_param": {
@@ -167,7 +168,8 @@
         "next": [
             "BattleLoopReplayFormation",
             "[JumpBack]BaseBranchError",
-            "[JumpBack]ProbeBlackPage"
+            "[JumpBack]ProbeBlackPage",
+            "TrainingEnterFormation"
         ],
         "post_wait_freezes": 2000
     },
