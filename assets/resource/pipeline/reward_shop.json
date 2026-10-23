@@ -193,10 +193,10 @@
         "recognition": "OCR",
         "expected": "购买",
         "roi": [
-            815,
-            580,
-            136,
-            48
+            697,
+            561,
+            254,
+            79
         ]
     },
     "ShopClickBuy": {
