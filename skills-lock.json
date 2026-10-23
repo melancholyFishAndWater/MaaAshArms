@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "skills": {
+    "sentry-cli": {
+      "source": "cli.sentry.dev",
+      "sourceUrl": "https://cli.sentry.dev",
+      "sourceType": "well-known",
+      "computedHash": "5c4ad508ccc3d980158604271847da68c00f832d02a48688ffcfb342f6888db9",
+      "wellKnownDigest": "sha256:51cf883c6b5bab2e089db992c3f3b999a6b0e50a4df05e5097de9288d6e86b5e"
+    }
+  }
+}
