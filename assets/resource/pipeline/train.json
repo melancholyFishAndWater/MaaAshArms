@@ -388,7 +388,7 @@
             "TrainClickAcceptInfo",
             "[JumpBack]BaseBranchError",
             "[JumpBack]TrainEnsureHome",
-            "[JumpBack]TrainInfoMover" // XXX 不会触发
+            "[JumpBack]TrainInfoMover"
         ]
     },
     "TrainClickAcceptInfo": {
@@ -403,6 +403,7 @@
         "next": [
             "TrainEnterAcceptPage",
             "TrainClickAcceptInfo",
+            "[JumpBack]TrainInfoMover",
             "[JumpBack]BaseBranchError"
         ]
     },
@@ -413,10 +414,10 @@
         "method": 10001,
         "roi": "TrainClickAcceptInfo",
         "roi_offset": [
-            118,
-            -10,
-            -18,
-            47
+            115,
+            -46,
+            -23,
+            103
         ],
         "next": [
             "[JumpBack]TrainMoveToBottom",
