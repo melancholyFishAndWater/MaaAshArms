@@ -34,12 +34,21 @@ for _path in (_HERE, _ROOT):
         sys.path.insert(0, _path)
 
 try:
-    from . import evidence, explore_csv, fetch, report_common, task_failure_report, task_trend_report
+    from . import (
+        evidence,
+        explore_csv,
+        fetch,
+        report_common,
+        speed_report,
+        task_failure_report,
+        task_trend_report,
+    )
 except ImportError:
     import evidence  # type: ignore[no-redef]
     import explore_csv  # type: ignore[no-redef]
     import fetch  # type: ignore[no-redef]
     import report_common  # type: ignore[no-redef]
+    import speed_report  # type: ignore[no-redef]
     import task_failure_report  # type: ignore[no-redef]
     import task_trend_report  # type: ignore[no-redef]
 
@@ -54,6 +63,7 @@ REPORTS: dict[str, tuple[str, ReportMain]] = {
     "fetch": ("下载遥测聚合数据到 JSON 工件", fetch.main),
     "task-failure": ("单版本任务失败率深度体检", task_failure_report.main),
     "task-trend": ("跨版本失败率趋势与 Δpp 对比", task_trend_report.main),
+    "speed": ("跨版本耗时趋势与重构前后对比（可出 small multiples 图）", speed_report.main),
     "context": ("只看运行环境分布（os / environment）", task_failure_report.main),
     "evidence": ("把失败现场图与那次运行的日志拉到本地", evidence.main),
     "explore-csv": ("把 Explore 导出的 CSV 还原成日志正文 + 清单", explore_csv.main),

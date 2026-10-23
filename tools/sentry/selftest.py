@@ -257,6 +257,22 @@ def _contains(haystack: str, needle: str, what: str) -> None:
         raise CheckFailure(f"{what}: 输出里找不到 {needle!r}")
 
 
+def _raises(action: Callable[[], Any], error: type[Exception], what: str) -> None:
+    """断言动作抛出指定异常类型（入参错误这类路径要能测到）。
+
+    这里必须捕任意 `Exception` 再报成断言失败：目的是"把意外的异常类型也讲清楚"，
+    而不是让自检自己崩掉。抑制与 `except` 写在同一行——多行 `except (` 会被 ruff
+    判成"抑制未使用"并连带报 S110/BLE001（见 tools/validation/README 的假红那节）。
+    """
+    try:
+        action()
+    except error:
+        return
+    except Exception as unexpected:  # noqa: BLE001
+        raise CheckFailure(f"{what}: 期望 {error.__name__}，实际 {type(unexpected).__name__}") from None
+    raise CheckFailure(f"{what}: 期望抛 {error.__name__}，但没有抛")
+
+
 def check_release_parsing() -> list[str]:
     """release 解析：双 @ 拼接取资源版本，不能命中前面的 MFA 版本。"""
     lines: list[str] = []
@@ -945,6 +961,154 @@ def check_flow_diagnostics() -> list[str]:
         "任务区间 各自有说法"
     )
     return out
+
+
+def check_speed_report() -> list[str]:
+    """速度报告：版本排序、截断、样本量门槛、重构对比判定、系统伪任务排除。"""
+    import io as _io
+
+    root = Path(__file__).resolve().parents[2]
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    from tools.sentry.speed_report import (
+        DEFAULT_COMPARE_MIN_COUNT,
+        DEFAULT_LAST,
+        build_speed_report,
+        format_ms,
+        write_console,
+        write_json,
+        write_markdown,
+    )
+
+    def row(task: str, release: str, p50: float, count: int) -> dict:
+        return {
+            "description": task,
+            "release": release,
+            "_count": count,
+            "p50(span_duration)": p50,
+            "p95(span_duration)": p50 * 2,
+            "avg(span_duration)": p50,
+        }
+
+    def rel(tag: str) -> str:
+        return f"MaaAshArms@v1.0.0-{tag}"
+
+    rows = [
+        # 同一任务跨 5 个版本；beta.2 只有 n=1（样本不足）
+        row("Training", rel("beta.1"), 100.0, 6),
+        row("Training", rel("beta.2"), 5.0, 1),
+        row("Training", rel("beta.10"), 200.0, 7),
+        row("Training", rel("beta.9"), 120.0, 8),
+        # 框架伪任务：应被排除
+        row("连接", rel("beta.1"), 4.8, 50),
+        row("开始前脚本", rel("beta.1"), 9.7, 50),
+        # mfa. 前缀同样是系统伪任务
+        row("mfa.task_run", rel("beta.1"), 44385.0, 50),
+    ]
+
+    report = build_speed_report(rows, last=0, min_count=2)
+
+    # 1) 版本按语义排序：beta.9 必须在 beta.10 之前（字典序会排错，这是实测踩过的坑）
+    _eq(
+        [v for v in report.versions],
+        ["v1.0.0-beta.1", "v1.0.0-beta.2", "v1.0.0-beta.9", "v1.0.0-beta.10"],
+        "版本按版本号排序而非字典序（RELEASE_PATTERN 带包名前缀，喂短标签会全失配）",
+    )
+
+    # 2) 系统伪任务被排除
+    _eq(report.tasks, ("Training",), "mfa.* 与 config.system_labels 里的伪任务不进任务表")
+
+    # 3) 样本量门槛：n=1 的格子不算够样本
+    enough = {v: report.enough(report.cell("Training", v)) for v in report.versions}
+    _eq(
+        enough,
+        {
+            "v1.0.0-beta.1": True,
+            "v1.0.0-beta.2": False,
+            "v1.0.0-beta.9": True,
+            "v1.0.0-beta.10": True,
+        },
+        "n=1 的版本不达门槛",
+    )
+
+    # 4) 截断：只留最近 N 个版本
+    short = build_speed_report(rows, last=2, min_count=2)
+    _eq(
+        short.versions,
+        ("v1.0.0-beta.9", "v1.0.0-beta.10"),
+        f"--last 2 只留最近两个版本（默认 {DEFAULT_LAST}）",
+    )
+
+    # 5) 重构对比：beta.1(100ms) → beta.10(200ms) 是变慢
+    slow = build_speed_report(rows, last=0, min_count=2, compare="v1.0.0-beta.1..v1.0.0-beta.10")
+    _eq(len(slow.compares), 1, "只有两版都有数据的任务才进对比")
+    _eq(slow.compares[0].verdict, "regressed", "p50 翻倍判为变慢")
+    _eq(round(slow.compares[0].ratio, 3), 2.0, "比值 = 新版/基线")
+
+    # 6) 噪声内：需要一对比值落在 [1/1.15, 1.15] ≈ [0.87, 1.15] 的组合。
+    #    beta.1=100 → beta.9=120 是 1.20（超出，判变慢）；beta.10=200 → beta.9=120 是 0.60（超出，判改善）。
+    #    所以专门加一对接近的：beta.3=100 → beta.4=105，比值 1.05。
+    noise_rows = rows + [
+        row("Training", rel("beta.3"), 100.0, 6),
+        row("Training", rel("beta.4"), 105.0, 6),
+    ]
+    near = build_speed_report(noise_rows, last=0, min_count=2, compare="v1.0.0-beta.3..v1.0.0-beta.4")
+    _eq(near.compares[0].verdict, "noise", "比值 1.05 落在噪声带内，不硬给方向")
+    over = build_speed_report(rows, last=0, min_count=2, compare="v1.0.0-beta.1..v1.0.0-beta.9")
+    _eq(over.compares[0].verdict, "regressed", "比值 1.20 超出阈值 1.15 判变慢")
+
+    # 6b) 改善：beta.10(200ms) → beta.1(100ms) 是 0.50x，明显改善
+    better = build_speed_report(rows, last=0, min_count=2, compare="v1.0.0-beta.10..v1.0.0-beta.1")
+    _eq(better.compares[0].verdict, "improved", "比值 0.50 低于 1/1.15 判改善")
+
+    # 7) 样本不足的两版 → 证据不足（不是"改善"）
+    thin_rows = [
+        row("Gift", rel("beta.1"), 128400.0, 2),   # n=2 < compare 门槛 3
+        row("Gift", rel("beta.2"), 801.1, 4),
+    ]
+    thin = build_speed_report(thin_rows, last=0, min_count=2, compare="v1.0.0-beta.1..v1.0.0-beta.2")
+    _eq(thin.compares[0].verdict, "insufficient", "一侧样本不足时给证据不足而不是方向")
+    _eq(
+        (thin.compares[0].base_count, thin.compares[0].new_count),
+        (2, 4),
+        "判定里带两侧样本数",
+    )
+    _eq(DEFAULT_COMPARE_MIN_COUNT, 3, "对比门槛比展示门槛更严")
+
+    # 8) --compare 的版本必须在窗口内
+    _raises(
+        lambda: build_speed_report(rows, last=1, compare="v1.0.0-beta.1..v1.0.0-beta.10"),
+        ValueError,
+        "--compare 的版本不在窗口内",
+    )
+    _raises(
+        lambda: build_speed_report(rows, last=0, compare="beta1"),
+        ValueError,
+        "--compare 缺 A..B 形式",
+    )
+
+    # 9) 输出：console 表要有样本密度提示，markdown/json 也要能出
+    buffer = _io.StringIO()
+    write_console(report, buffer)
+    text = buffer.getvalue()
+    _contains(text, "样本密度", "表格底部报样本密度")
+    _contains(text, "n=1", "样本不足的格子标 n=N")
+
+    buffer = _io.StringIO()
+    write_markdown(report, buffer)
+    _contains(buffer.getvalue(), "| 任务 |", "markdown 表头")
+
+    buffer = _io.StringIO()
+    write_json(report, buffer)
+    _contains(buffer.getvalue(), '"min_count"', "json 报告带门槛参数")
+
+    # 10) 毫秒/秒的人读格式
+    _eq(format_ms(801.1), "801.1ms", "亚秒级用 ms")
+    _eq(format_ms(246134.0), "246.1s", "超秒级换算成 s")
+
+    return [
+        "版本排序 / 伪任务排除 / 样本门槛 / 截断 / 对比判定 / 证据不足 / 三种输出 / 毫秒格式 各自有断言"
+    ]
 
 
 def check_explore_csv() -> list[str]:
@@ -1767,6 +1931,7 @@ CHECKS: tuple[tuple[str, Callable[[], list[str]]], ...] = (
     ("并发锁的持有者判据", check_report_lock),
     ("流程图的父节点（派发者）", check_flow_parents),
     ("流程图重复轮次合并", check_flow_overlay),
+    ("跨版本耗时报告", check_speed_report),
 )
 
 

@@ -29,6 +29,8 @@
 | 还原被截断的行、猜丢失的内容 | 导出按字节裁过（实测 53 条 reco/action/node-done 读不出、104 行断头、1080 块碎片），猜出来的内容会变成假事实 | 只统计并提示；要完整证据用本机 `debug/` 目录 |
 | 把 Sentry 按字节块切碎的续行并回原记录 | 实测收益接近零、还有反作用：`PYTHON-18` 落盘的 `maafw.log`（10698 行）有 968 条续行（`内存管理]释放了2.97 MB` / `Adb, resource=B 服…` / `-10-14 13:01:26.284]…` 这类不以 `[时间]` 开头的碎片），并回后 `steps` 仍是 34、轮数与框数不变、只多 2 条 `attempts`（168→170）、`truncated_skipped` 64→61；而 `PYTHON-16` 那份并回后 `truncated` 从 38 变 39——把碎片粘到一条**本来完整**的记录尾巴上会毁掉它（`reco`/`node done` 的正则都以 `$` 收尾）。**"某任务只画出 2 步"不是这个原因**：那 2 条 `PipelineTask node done` 是日志里真有的（`logs_truncated: true`，Sentry 只留 1 MB），968 条续行里没有一条含 `node done` | 要看某任务完整过程：拉更长的窗口（`--limit` 已到上限 1000）或本机 `debug/`；没有 `node done` 时画图会退到"由识别记录还原"模式 |
 | 合并 `!!!OnEventNotify!!!` 与 `ctx_event_sink` 两份记录 | 同一次识别在日志里有两行，按行计数会翻倍；两份的字段也不完全一样 | 只计数，需要去重时按 `reco_id`（且注意它是进程内计数） |
+| 把 `fetch` 的聚合工件喂给 `flow` / `flow_from_log` 画图 | 聚合行只有 `span.description` / `span.status` / `release` / `p50(...)`，**没有行时间戳也没有节点 id**，本来就不是日志；解析器只认 `[时间] …` 开头的 maafw 行，喂进去必然报「没有一行匹配日志格式」 | 要看单次运行的图走 `evidence --issue <ID>`（它把那次运行的 `trace logs` 写成 `debug/maafw.log`），之后 `flow --case temp/evidence/<ID>/debug` 正常出图 |
+| 把「任务 × 版本」的速度矩阵画成一张多序列折线图 | 25 任务 × 39 版本塞进一张图没人能读出单条曲线；且版本轴跳号、每版样本量 5~33 不等，画出来会像"稳定演进" | `speed` 出 **small multiples**（每任务一格、共享 x 轴）+ 表格；表里每格带 `n`，样本不足显示 `n=N` |
 
 ## 前置条件
 
@@ -69,6 +71,7 @@ Python 侧零第三方依赖——只用标准库和 `sentry` 命令行。
 | `fetch` | 下载遥测聚合数据到 JSON 工件，可离线复用 | `7d` |
 | `task-failure` | 单版本任务失败率深度体检 | `7d` |
 | `task-trend` | 跨版本失败率趋势与 Δpp 对比 | `30d` |
+| `speed` | 跨版本耗时趋势与重构前后对比（可出 small multiples 图） | 离线，读工件 |
 | `context` | 只看运行环境（os / environment）分布 | `7d` |
 | `evidence` | 把失败现场图与**那次运行**的日志拉到本地（联网；不画图，只打印命令） | `7d` |
 | `explore-csv` | 把浏览器导出的 Explore CSV 还原成日志正文 + 清单（不联网） | — |
@@ -255,6 +258,65 @@ python tools/drawing/flow_cases.py --case D:/MaaAshArms/debug --list-cases
 限制是 `--limit ≤ 1000` 且没有游标：超长运行只能取最新那段（失败在末尾）。
 这份日志里还带着 `Node.NextList` 事件，所以画出来的图上**每一步的父节点（本轮派发者）与它的候选表**也有
 （见 [`tools/drawing` 的「解析口径」](../drawing/README.md#解析口径读图前先看这里)）——不需要本机 `debug/` 才能看父子链。
+
+## speed：跨版本耗时趋势
+
+`speed` 读 `fetch` 取回的耗时聚合（`--field "p50(span.duration)"` / `p95` / `avg`），把
+「任务 × 版本」这个二维矩阵变成可读的表，并支持**两版对比**与 **small multiples 图**。
+
+```bash
+# 取数（一次性，联网）。四个条件缺一不可，少一个口径就变了：
+#   --period 30d      默认 7d 只覆盖最近 9 个版本，--last 8 之外的历史不在工件里
+#   span.op:mfa.task  否则 55 个内部节点 span（TaskGift / TrainEnsureHome…）混进任务表
+#   span.status:ok    mfa.task 的 internal_error 是毫秒级"快速失败"，混进 p50 会把正常耗时压低
+#   span.duration:<1800000  排除"挂着不动几小时再继续"的运行（见下面「已知坑」里的 avg）
+python -m tools.sentry.cli fetch --name task_speed_op --period 30d \
+    --query "span.op:mfa.task span.status:ok span.duration:<1800000" \
+    --field span.description --field release \
+    --field "count_unique(trace)" \
+    --field "p50(span.duration)" --field "p95(span.duration)" --field "avg(span.duration)" \
+    -o temp/speed/task_speed_op.json
+
+# 看表（离线）
+python -m tools.sentry.cli speed --input temp/speed/task_speed_op.json
+
+# 只看最近 5 个版本 / 只看某几个任务
+python -m tools.sentry.cli speed --input temp/speed/task_speed_op.json --last 5 --task Training,Gift
+
+# 重构前后对比：哪几个任务真的变慢/变快
+python -m tools.sentry.cli speed --input temp/speed/task_speed_op.json \
+    --compare v1.0.0-beta.46..v1.0.0-beta.49
+
+# 再画一张图（small multiples，每任务一格；需要 Pillow）
+python -m tools.sentry.cli speed --input temp/speed/task_speed_op.json \
+    --chart temp/speed/task_speed_op.png
+```
+
+三个关键设计，每条都对应一个实测事实（数据来自 30 天窗口、按上面的命令取到的 588 行 / 39 个版本，
+去掉系统伪任务后 25 个业务任务共 434 个格子）：
+
+1. **样本量门槛**（`--min-count`，默认 2）。p50 在 `n=1` 时没有稳定含义——实测 `Training`
+   相邻版本的 p50 波动中位数 **95.4%**、最大 11737%，且 **61.5% 的格子是 n=1**。低于门槛的
+   版本**显示 `n=N` 而不是耗时**，图上留白不连线。门槛是参数：用户量上来后调高即可。
+2. **窗口截断**（`--last`，默认 8）。全量 434 行没人读；最近 8 版是实测里还能看到一些达标
+   数据的窗口。版本按**版本号**排序（不是字典序，`beta.9` 不会排到 `beta.10` 后面），
+   跳号版本（`beta.49` 之后没有 `beta.48`）保持在其位置。
+3. **重构对比**（`--compare A..B`）输出 p50 比值与四种判定：**改善 / 变慢 / 噪声内 / 证据不足**。
+   判定要**两侧都达到 `--compare-min-count`（默认 3）**才给方向——实测 `Gift` 从 128.4s 到
+   801ms（0.01x）看着快了 160 倍，但两侧只有 n=4 / n=3，更可能是那几趟跑的不是同一关卡。
+   把"证据不足"和"噪声内"分开是有出处的：FrontierRefactor 那篇基准里，1080 次重构有
+   **21.9% 的"提升"其实落在测量噪声内**、19.3% 是真的变慢，两者必须分开报。
+
+表格底部会报**样本密度**（`36/250 个格子达到 n≥2`）——当前装机量下样本极稀，这个数不写出来，
+读者会以为空格是"没有这个版本"。
+
+图用 **small multiples**（每任务一格、共享 x 轴）而不是一张多序列折线图：25 条序列塞进一张图
+没人能读出单条曲线，这是业界处理多序列的标准做法（trellising）。只画**有 ≥2 个达标点**的任务，
+按点数降序排；每格独立 y 轴、标出该格的极值。`v1.0.0-` 前缀在轴上省略。
+
+> `speed` 的判定阈值（`--min-count` / `--compare-min-count` / `--noise-factor`）都是参数，
+> **为用户量增长留了余地**：样本上来后把门槛调高、噪声阈值收紧到 1.1，报告结构不用改。
+> 耗时阈值刻意**不读 `config.json`**——速度与失败率的口径不同（前者跟平台噪声，后者跟业务）。
 
 ## 统计口径
 
@@ -451,6 +513,13 @@ python -m tools.sentry.cli fetch --name probe \
 
 - **时间窗口受 Sentry 限制**：超过约 30 天绝对计数不可用；更早的数据由 Sentry 端保留策略决定，
   脚本不缓存历史（「功能取舍」里有对应条目）。
+- **`avg(span.duration)` 不能当耗时用**：存在"挂着不动几小时再继续"的运行（实测某版本 `Friend` 的
+  p95 = 9.9e6 ms，合出来的 `avg` 是 21.3 分钟而 p50 只有 6.4 秒）。全表 `avg/p50` 的中位数是
+  1.0x 但**最大 2845x**——中位数正常只是因为大多数版本没有长尾跑。**只看 p50 / p95**，
+  或取数时加 `span.duration:<1800000` 排除挂机跑（上面那条 `fetch` 命令已经带了）。
+- **`--query` 按 release 过滤必须带通配符**：`release:MaaAshArms@v1.0.0-beta.37`、`release:beta.37`、
+  裸写 `MaaAshArms@v1.0.0-beta.37` **都返回 0 行且不报错**，只有 `release:*beta.37` 命中（同窗口实测 83 行）。
+  按版本切数据前先用 `--field release` 核对写法，否则会把"过滤没生效"读成"该版本没数据"。
 - **配额**：失败附件实测 0.97 / 1.24 MB（`failure_attachments_sample_rate: 1`），12 个 issue 里只有 2 个带附件。
   读报告时若看到某天失败数暴增，先确认是不是一次启动失败后队列继续跑出一串失败。
 - **受限沙箱下 `sentry` 一律 `Fatal: Error: unable to open database file`**（连 `--version` 也一样）：
