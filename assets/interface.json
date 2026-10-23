@@ -91,11 +91,6 @@
                 "entrust_daily",
                 "entrust_inputs"
             ],
-            "pipeline_override": {
-                "MoveRight": {
-                    "max_hit": 20
-                }
-            },
             "description": "此任务必须位于[任务奖励]前，才能领取今日委派奖励"
         },
         {
@@ -135,9 +130,6 @@
                     "next": [
                         "TaskStop"
                     ]
-                },
-                "MoveRight": {
-                    "max_hit": 15
                 }
             }
         },
