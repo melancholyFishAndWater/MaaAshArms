@@ -99,9 +99,9 @@
         "template": "Train/CancelTrain.png",
         "roi": [
             886,
-            128,
+            105,
             119,
-            533
+            585
         ]
     },
     // INFO 就位-一览
@@ -163,7 +163,13 @@
     "TrainInit": {
         "desc": "[end] 列车初始化 获取列车状态",
         "recognition": "Custom",
-        "custom_recognition": "TrainInitReco"
+        "custom_recognition": "TrainInitReco",
+        "attach": {
+            "level_one": "",
+            "level_one_number": 99,
+            "level_two": "",
+            "level_two_number": 99
+        }
     },
     // INFO 就位-出发按钮亮
     "TrainEnsureGoButtonLight": {
@@ -181,7 +187,8 @@
             "[JumpBack]TrainClickRecommend",
             "[JumpBack]TrainOverrideConfirm",
             "[JumpBack]TrainResetCancel",
-            "[JumpBack]TrainClickGoButtonDart"
+            "[JumpBack]TrainClickGoButtonDart",
+            "TrainProbeHomeName" // INFO 防止卡死
         ]
     },
     "TrainClickRecommend": {
@@ -396,9 +403,6 @@
         "max_hit": 10,
         "recognition": "Custom",
         "custom_recognition": "TrainClickAcceptInfoReco",
-        "custom_recognition_param": {
-            "targets": [] // 目标路线
-        },
         "action": "Click",
         "next": [
             "TrainEnterAcceptPage",
@@ -420,40 +424,16 @@
             103
         ],
         "next": [
-            "[JumpBack]TrainMoveToBottom",
             "TrainLoopFormation",
-            "[JumpBack]TrainEnterFormation"
-            // "[JumpBack]TrainMoveDown" // TODO 移动到目标路线
+            "[JumpBack]TrainEnterFormation",
+            "[JumpBack]TrainMoveUp"
         ],
         "post_wait_freezes": 2500
     },
-    "TrainMoveToBottom": {
-        "desc": "[once] 移动到STATION底部",
-        "max_hit": 1, // 在 agent 侧的 TrainLoopAcceptableReco 重置
-        "timeout": 30000,
-        "rate_limit": 1000,
-        "next": [
-            "IsFreezes",
-            "[JumpBack]TrainMoveUp"
-        ]
-    },
     "TrainEnterFormation": {
-        "desc": "[jp] 进入当前页面最下面的STATION编队页面",
-        // TODO 目标 STATION
-        // "recognition": "Custom",
-        // "custom_recognition": "TrainAcceptReco",
-        "recognition": "TemplateMatch",
-        "template": "Train/CanTrainButton.png",
-        "roi": [
-            886,
-            128,
-            119,
-            533
-        ],
-        "order_by": "Vertical",
-        "index": -1,
-        "method": 10001,
-        "threshold": 0.85,
+        "desc": "[jp] 进入目标STATION编队页面",
+        "recognition": "Custom",
+        "custom_recognition": "TrainEnterFormationReco",
         "action": "Click",
         "post_wait_freezes": 3000 //防止点太快点到其他按钮
     },

@@ -19,7 +19,7 @@ from maa.pipeline import JTarget, JTemplateMatch, JOCR, JSwipe
 
 from agentlog import log
 from rect import DEFAULT_HIT_BOX, toTuple
-from params import parse_params
+from params import parse_attach
 
 _TrainStatus = Literal["acceptable", "rewardable", "busy"]
 
@@ -27,6 +27,20 @@ _TrainStatus = Literal["acceptable", "rewardable", "busy"]
 _train_list: list[_Train] = []
 # 当前路线名
 _current_info_name = ""
+# 目标路线列表
+_targets: dict[str, int] = {}
+# 总路线
+_ROUTE: dict[str, int] = {
+    "荒原": 7,
+    "沙漠": 6,
+    "冰原": 6,
+    "森丘": 6,
+    "熔被": 6,
+    "警区": 6,
+    "辐射区": 6,
+    "遗迹": 6,
+    "新大陆": 6,
+}
 
 
 # 列车类
@@ -138,6 +152,78 @@ class TrainCheckEndReco(CustomRecognition):
             return DEFAULT_HIT_BOX
 
 
+# 返回目标STATION
+@AgentServer.custom_recognition("TrainEnterFormationReco")
+class TrainEnterFormationReco(CustomRecognition):
+    def analyze(
+        self, context: Context, argv: CustomRecognition.AnalyzeArg
+    ) -> Rect | None:
+        import numpy as np
+        from train_station import extract_station_digits
+
+        node_name = argv.node_name
+        if _targets and _current_info_name in _targets.keys():
+            target_number = _targets[_current_info_name]
+            log.debug(f"{node_name} 使用候选 {_current_info_name}: {target_number}")
+        else:
+            target_number = _ROUTE[_current_info_name]
+            log.debug(f"{node_name} 使用备用 {_current_info_name}: {target_number}")
+
+        # 1) 切分：拿到每张卡片的 (屏幕坐标 box, 黑字抹除后的灰度切图)
+        crops = extract_station_digits(argv.image)
+
+        # 站号, 屏幕box
+        for box, view in crops:
+            # 2) 灰度切图 (H, W) 转 3 通道 —— run_recognition_direct 要 (H, W, 3)
+            img = np.stack([view] * 3, axis=2)
+
+            # 3) only_rec=true：跳过检测，直接把 roi 区域当一行文本识别
+            #    roi 必须精确到整张切图；expected 限定单个数字；threshold 收紧到 0.3
+            r = context.run_recognition_direct(
+                JRecognitionType.OCR,
+                JOCR(
+                    [r"\d"],
+                    roi=(0, 0, view.shape[1], view.shape[0]),
+                    only_rec=True,
+                    threshold=0.3,
+                ),
+                img,
+            )
+            if r is None or not r.hit:
+                log.debug(f"{node_name} 识别STATION数字失败")
+                continue
+
+            # 4) 取结果
+            number: int = 0
+            for i in r.filtered_results:
+                if isinstance(i, OCRResult) and i.text.isdigit():
+                    number = int(i.text)
+                    break
+            else:
+                log.debug(f"{node_name} ocr识别数字失败")
+                continue
+
+            # 5) 比对数字是否匹配
+            if target_number != number:
+                continue
+
+            # 6) 识别发车按钮
+            t_r = context.run_recognition_direct(
+                JRecognitionType.TemplateMatch,
+                JTemplateMatch(
+                    ["Train/CanTrainButton.png"],
+                    roi=box,
+                    roi_offset=(511, -27, 75, 96),
+                ),
+                argv.image,
+            )
+
+            if t_r is None or not t_r.hit:
+                log.debug(f"{node_name} 识别发车按钮失败")
+                return
+            return t_r.box
+
+
 # ---------- Action ----------
 
 
@@ -222,13 +308,34 @@ class TrainInitReco(CustomRecognition):
         )
         assert name_result and name_result.hit
         assert name_result.best_result and type(name_result.best_result) == OCRResult
-        _train_list.append(_Train(stutus, name_result.best_result.text + "路线"))
+        _train_list.append(_Train(stutus, name_result.best_result.text))
 
     def analyze(
         self, context: Context, argv: CustomRecognition.AnalyzeArg
     ) -> Rect | None:
+        global _targets
         # 提取变量
         node_name = argv.node_name
+
+        attach = {}
+        try:
+            attach = parse_attach(
+                context,
+                argv,
+                "level_one",
+                "level_one_number",
+                "level_two",
+                "level_two_number",
+            )
+
+            def f(s: str):
+                _targets[attach[f"level_{s}"]] = attach[f"level_{s}_number"]
+
+            f("one")
+            f("two")
+        except Exception as e:
+            log.debug(f"{node_name} 解析attach失败: {e!r}")
+            log.warn(f"解析attach失败 配置的优先选择路线将不生效")
 
         # 识别派遣数
         r = _get_train_status_number(context, argv.image, (331, 129, 60, 53))
@@ -341,28 +448,13 @@ class TrainLoopAcceptableReco(CustomRecognition):
         self, context: Context, argv: CustomRecognition.AnalyzeArg
     ) -> list[int] | None:
         if any(i.stutus != "busy" for i in _train_list):
-            context.clear_hit_count("TrainMoveToBottom")
             return DEFAULT_HIT_BOX
 
 
-# 返回路线名称box 或 None
+# 返回目标路线名称box 或 None
 # 候选词数小于2则按解锁状态返回返回 优先最新路线
 @AgentServer.custom_recognition("TrainClickAcceptInfoReco")
 class TrainClickAcceptInfoReco(CustomRecognition):
-    # 新路线的时候更新
-    _ROUTE = [
-        "新大陆",
-        "遗迹",
-        "辐射区",
-        "警区",
-        "熔被",
-        "森丘",
-        "冰原",
-        "沙漠",
-        "荒原",
-    ]
-
-    # TODO 按主线进度或存储？
     # 路线解锁状态
     route_status: dict[str, bool] = {}
 
@@ -381,20 +473,15 @@ class TrainClickAcceptInfoReco(CustomRecognition):
             log.debug(f"{node_name} 路线名称识别失败")
             return
 
-        # 候选列表
-        param: list[str] = []
-        try:
-            p = parse_params(argv.custom_recognition_param, "targets")
-            param = p["targets"]
-        except Exception as e:  # noqa: BLE001 - 参数坏了不该让任务失败，打日志后继续
-            log.warn(f"解析param失败 配置的优先选择路线将不生效: {e}")
-        log.debug(f"候选路线为: {param}")
-
         # 识别并记录当前画面路线解锁状态 若满足候选列表则返回box
         for i in r.filtered_results:
             # 提取变量
             assert type(i) == OCRResult
-            text = i.text
+            text = i.text.replace("路线", "")
+
+            # 去杂项
+            if "武装押运" in text:
+                continue
             keys = self.route_status.keys()
 
             # 若没识别过此路线
@@ -413,7 +500,7 @@ class TrainClickAcceptInfoReco(CustomRecognition):
                 if r2 and r2.hit:
                     self.route_status[text] = True
                     log.debug(f"{node_name} 识别到路线 {text} 已解锁")
-                elif r2:
+                elif r2 is not None:
                     # 没有匹配到箭头 尝试匹配锁的图片
                     r3 = context.run_recognition_direct(
                         JRecognitionType.TemplateMatch,
@@ -433,22 +520,26 @@ class TrainClickAcceptInfoReco(CustomRecognition):
                 else:
                     log.debug(f"{node_name} 识别路线箭头失败")
 
+            # 若路线繁忙 跳过此路线
+            if any(text in i.route for i in _train_list):
+                continue
+
             # 若在候选词中 且 路线解锁 则 返回路线名称box
-            if text in param:
+            if text in _targets.keys():
                 if text in self.route_status.keys() and self.route_status[text]:
                     log.info(f"选择候选关卡: {text}")
                     _current_info_name = text
                     return i.box
 
         # 若候选词列表长度大于等于2 则跳过默认返回
-        if len(param) >= 2:
+        if len(_targets) >= 2:
             log.debug(f"{node_name} 候选词充足，跳过使用备选候选词")
             return
 
         # 依次匹配备选关卡
         r_text: dict[str, Rect | None] = {i.text: i.box for i in r.filtered_results}  # type: ignore
-        for i in self._ROUTE:
-            text = i + "路线"
+        for i in reversed(_ROUTE.keys()):
+            text = i
 
             # 未获得该路线状态 匹配结束
             if text not in self.route_status.keys():
@@ -466,7 +557,7 @@ class TrainClickAcceptInfoReco(CustomRecognition):
                 continue
 
             if text in r_text.keys():
-                _current_info_name = text
+                _current_info_name = text.replace("路线", "")
                 log.info(f"选择路线: {text}")
                 return r_text[text]
 
@@ -514,10 +605,3 @@ class TrainInfoMoverAct(CustomAction):
             log.debug(f"{n_name} 下滑路线")
 
         return r and r.success or False
-
-
-# TODO 目标路线
-# @AgentServer.custom_recognition("TrainAcceptReco")
-# class TrainAcceptReco(CustomRecognition):
-#     def analyze(self, context: Context, argv: CustomRecognition.AnalyzeArg) -> CustomRecognition.AnalyzeResult | Rect | list[int] | ndarray[tuple[Any, ...], dtype[Any]] | tuple[int, int, int, int] | None:
-#         return super().analyze(context, argv)

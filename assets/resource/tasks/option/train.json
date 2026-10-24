@@ -1,0 +1,42 @@
+{
+    "option": {
+        "train_option": {
+            "type": "input",
+            "label": "",
+            "inputs": [
+                {
+                    "name": "level_one",
+                    "label": "优先路线名一",
+                    "pipeline_type": "string"
+                },
+                {
+                    "name": "level_one_number",
+                    "label": "路线名一STATION数字",
+                    "verify": "^[1-7]?$",
+                    "pipeline_type": "int"
+                },
+                {
+                    "name": "level_two",
+                    "label": "优先路线名二",
+                    "pipeline_type": "string"
+                },
+                {
+                    "name": "level_two_number",
+                    "label": "路线名二STATION数字",
+                    "verify": "^[1-7]?$",
+                    "pipeline_type": "int"
+                }
+            ],
+            "pipeline_override": {
+                "TrainInit": {
+                    "attach": {
+                        "level_one": "{level_one}",
+                        "level_one_number": "{level_one_number}",
+                        "level_two": "{level_two}",
+                        "level_two_number": "{level_two_number}"
+                    }
+                }
+            }
+        }
+    }
+}

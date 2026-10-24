@@ -111,7 +111,7 @@
                 "metal"
             ],
             "option": [
-                // TODO 路线选择
+                "train_option"
             ]
         },
         {
@@ -224,12 +224,13 @@
         }
     ],
     "import": [
+        "resource/tasks/preset/default.json",
         "resource/tasks/option/battle_training.json",
         "resource/tasks/option/factory.json",
         "resource/tasks/option/feidu_gift.json",
         "resource/tasks/option/entrust.json",
         "resource/tasks/option/battle_replays.json",
         "resource/tasks/option/reward.json",
-        "resource/tasks/preset/default.json"
+        "resource/tasks/option/train.json"
     ]
 }
