@@ -2,7 +2,7 @@
     "option": {
         "reward": {
             "type": "checkbox",
-            "label": "",
+            "label": "更多设置",
             "default_case": [
                 "siku_reward_switch"
             ],
