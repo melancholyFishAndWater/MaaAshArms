@@ -159,9 +159,12 @@ MAX_NEXT_LOOP = 5
 # 不一致时报 E2，提醒人复核新规则要不要收进脚本——版本号只印在输出里而没人对，等于没有。
 # 两份都收：结构类判据（A4/A5/A7/A8/A9/A14…）按 pipeline-structure.md 实现，只对命名规范算版本
 # 等于让结构文档改了规则没人提醒。
-NAMING_SPEC_VERSION = "v1.9"
+# v2.1：两份规范升到 v2.1（新增「Probe + 主动作 + 兜底动作 + 分支」四角色）。
+# 脚本没有新增对应的自动判据——那套角色里有几条要靠语义判断（兜底动作带 next 是"补一刀"
+# 还是"重做整段"），按 README「功能取舍」那一条不写成校验规则。这里只对齐版本号。
+NAMING_SPEC_VERSION = "v2.1"
 NAMING_SPEC = Path("docs/zh_cn/develop/node-naming.md")
-STRUCT_SPEC_VERSION = "v1.8"
+STRUCT_SPEC_VERSION = "v2.1"
 STRUCT_SPEC = Path("docs/zh_cn/develop/pipeline-structure.md")
 
 
