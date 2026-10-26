@@ -26,7 +26,7 @@ def test_acceptable_when_any_free(monkeypatch):
     )
 
     assert (
-        train.TrainLoopAcceptableReco().analyze(
+        train.TrainBranchAcceptableReco().analyze(
             ctx, SimpleNamespace(node_name="TrainLoopAcceptable")
         )
         is DEFAULT_HIT_BOX
@@ -39,7 +39,7 @@ def test_not_acceptable_when_all_busy(monkeypatch):
     monkeypatch.setattr(train, "_train_list", [SimpleNamespace(stutus="busy")])
 
     assert (
-        train.TrainLoopAcceptableReco().analyze(
+        train.TrainBranchAcceptableReco().analyze(
             ctx, SimpleNamespace(node_name="TrainLoopAcceptable")
         )
         is None
@@ -52,7 +52,7 @@ def test_not_acceptable_on_empty_list(monkeypatch):
     monkeypatch.setattr(train, "_train_list", [])
 
     assert (
-        train.TrainLoopAcceptableReco().analyze(
+        train.TrainBranchAcceptableReco().analyze(
             ctx, SimpleNamespace(node_name="TrainLoopAcceptable")
         )
         is None
