@@ -12,11 +12,12 @@
 - 连带：`A7-jumpback-target` 的 `elif "Loop" in name` 分支（:902）、`A18-next-length` 的 Loop 档（`MAX_NEXT_LOOP`，:1520）、`CLASS_SUFFIXES` 里的 `"Loop"`（:131）。
 - 绕过：暂不改脚本，按现状报。等 `TrainLoop`/`TrainingLoop` 等剩余 21 个 `*Loop*` 节点退役时，一并把上面 5 条判据改成按语义（守卫 + next 含该守卫探针族）而不是名字后缀，或直接删掉。
 
-## `feidu_gift.json` 改成 Branch+动作后，A13-branch-action 不再误报
+## `B7-default-case` 对 `checkbox` 误报（`default_case` 是数组）
 
 - 命令：`python tools/validation/validate_refs.py`
-- 现象：上一版 `GiftBranchEnterTavern` 等 6 个节点带 `action` 触发 `A13-branch-action`。当前版已把动作节点改名 `GiftEnter*`/`GiftClick*`（动词开头），Branch 节点不带 `action`，6 条告警消失。
-- 状态：已解决，留作记录。
+- 现象：`assets/resource/tasks/option/reward.json` 的 `reward` 是 `checkbox`，按协议 `default_case` 就是数组（`["siku_reward_switch"]`）；`check_option_shape` 用 `cases[0].get("name") != default_case` 做标量比较，字符串永远不等于数组 → 恒报 `option reward 的 default_case=['siku_reward_switch'] 与 cases[0]='siku_reward_switch' 不一致`。
+- 绕过：按现状报（是误报，不动 option 文件——改成字符串反而违反 checkbox 语义）。要修就改 `check_option_shape`：`default_case` 是 list 时判断 `cases[0].get("name") in default_case`，并补进 `--self-test`（「checkbox 的数组 default_case 不报 B7」）。
+- 出处：`tools/validation/validate_refs.py:1662-1676`、`.agents/interface.md` 的「switch / select 的默认项必须放 `cases[0]`」（checkbox 走 `SelectedCases`，与 `Index` 无关）
 
 ---
 
