@@ -1019,7 +1019,12 @@ def check_speed_report() -> list[str]:
     _eq(report.tasks, ("Training",), "mfa.* 与 config.system_labels 里的伪任务不进任务表")
 
     # 3) 样本量门槛：n=1 的格子不算够样本
-    enough = {v: report.enough(report.cell("Training", v)) for v in report.versions}
+    #    cell() 对没有样本的版本返回 None，那种格子一律算"不够样本"（enough() 入参是 SpeedCell，
+    #    None 要在这里先滤掉）；有格子的版本照样参与。
+    enough: dict[str, bool] = {}
+    for v in report.versions:
+        cell = report.cell("Training", v)
+        enough[v] = report.enough(cell) if cell is not None else False
     _eq(
         enough,
         {

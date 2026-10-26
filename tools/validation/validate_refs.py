@@ -14,8 +14,8 @@
   --agent       agent/*.py：模块是否被 main.py 导入、注册名唯一性与后缀
   --image       image/：模板引用存在性（含 agent 里的模板字面量）、未引用图片、非 png
 
-只读，不修改任何文件。纯标准库：本机装不上 jsonschema（.agents/project.md），
-所以这里不 import tools/validation/validate_schema.py。
+只读，不修改任何文件。纯标准库（不装任何包也能跑），所以这里不 import
+tools/validation/validate_schema.py——那个要 jsonschema。
 """
 
 from __future__ import annotations
@@ -1536,6 +1536,101 @@ def check_a18_next_length(ctx: Ctx) -> None:
         )
 
 
+# node-naming.md §6：`desc` 的方括号标记一共五个，含义固定。
+DESC_MARKERS = ("end", "jp", "once", "max", "Loop")
+# 「命中即终点」的终点节点：`[end]` 的 next 只收在这些节点上才算"不往下走"。
+DESC_END_TARGETS = frozenset({"TaskStop", "TaskStopError"})
+
+
+def desc_tags(desc: str) -> list[str]:
+    """`desc` 开头的方括号标记序列。
+
+    只认**开头连续**的那几个（`[once][jp] …`）：标记是前缀，后面才是正文（node-naming.md §6
+    的五个标记、写法模板 `pipeline.snippets.schema.json` 的 `"desc": "[end] $1"` 都是前缀）。
+    正文里当括号用的字（如"点击[确认]按钮"）不算标记，所以不参与判据。
+    """
+    tags: list[str] = []
+    for match in re.finditer(r"\[([^\[\]]+)\]", desc):
+        if match.start() != len("".join(f"[{t}]" for t in tags)):
+            break
+        tags.append(match.group(1))
+    return tags
+
+
+def check_a19_desc_markers(ctx: Ctx) -> None:
+    """`desc` 的方括号标记（node-naming.md §6）。
+
+    三条判据，都只查"标了标记、但节点字段与标记含义对不上"：
+
+    - 五个固定标记之外的写法（含大小写不符）→ `A19-desc-marker-unknown`（warn）；
+    - `[max]` 没有 `max_hit`、`[once]` 的 `max_hit` 不是 1、`[Loop]` 标在名字不含 `Loop`
+      的节点上 → `A19-desc-marker-mismatch`（warn）；
+    - `[end]` 却有 `next`，且 next 里不是只收终点节点 → `A19-desc-marker-end`（info：
+      "这一段的终点"未必是 `TaskStop`，人工复核；标了 `[end]` 又整条 next 收在
+      `TaskStop` / `TaskStopError` 上的不报）。
+
+    **不查"该标没标"**：`desc` 由模板生成，而 `[jp]` 按 §3 只是提示标记——那里记的实测是 100 个
+    兜底动作里只有 51 个带 `[jp]`、9 个就位 `Ensure` 全带上却不是兜底动作，所以缺标记不构成判据。
+    """
+    for node in ctx.nodes.values():
+        desc = node.data.get("desc")
+        if not isinstance(desc, str):
+            continue
+        tags = desc_tags(desc)
+        if not tags:
+            continue
+        line = find_line(node.file, node.name)
+        unknown = [tag for tag in tags if tag not in DESC_MARKERS]
+        if unknown:
+            ctx.add(
+                "A19-desc-marker-unknown",
+                "warn",
+                node.file,
+                line,
+                f"{node.name}.desc 用了五个固定标记之外的 "
+                f"{', '.join(f'[{tag}]' for tag in unknown)}：只认 "
+                f"{' / '.join(f'[{m}]' for m in DESC_MARKERS)}（node-naming.md §6）",
+            )
+        if "max" in tags and node.data.get("max_hit") is None:
+            ctx.add(
+                "A19-desc-marker-mismatch",
+                "warn",
+                node.file,
+                line,
+                f"{node.name}.desc 标了 [max]（命中次数有上限）却没有 max_hit",
+            )
+        if "once" in tags and node.data.get("max_hit") != 1:
+            ctx.add(
+                "A19-desc-marker-mismatch",
+                "warn",
+                node.file,
+                line,
+                f"{node.name}.desc 标了 [once]（一个 task 内只做一次）但 max_hit="
+                f"{node.data.get('max_hit')!r}：这个形态写 max_hit: 1",
+            )
+        if "Loop" in tags and "Loop" not in node.name:
+            ctx.add(
+                "A19-desc-marker-mismatch",
+                "warn",
+                node.file,
+                line,
+                f"{node.name}.desc 标了 [Loop]（工作循环）但名字里没有 Loop："
+                f"工作层节点按 node-naming.md §3 命名",
+            )
+        if "end" in tags:
+            names = [parse_ref(item)[0] for item in to_list(node.data.get("next"))]
+            loose = [n for n in names if n and n not in DESC_END_TARGETS]
+            if loose:
+                ctx.add(
+                    "A19-desc-marker-end",
+                    "info",
+                    node.file,
+                    line,
+                    f"{node.name}.desc 标了 [end]（命中即终点，不往下走）但 next 里还有 "
+                    f"{', '.join(loose)}：要么收在 TaskStop / TaskStopError 上，要么不标 [end]",
+                )
+
+
 def annotations_of(text: str) -> list[tuple[Spec, str, str | None]]:
     """把一段文本里所有「使用<规范名> vX.Y [校验年月日 YY/MM/DD]」抽出来。
 
@@ -2053,6 +2148,14 @@ def self_test() -> int:
         (
             parse_ref("[JumpBack]Foo")[:2] == ("Foo", True),
             "parse_ref 字符串 + JumpBack",
+        ),
+        (
+            desc_tags("[once][jp] 每日一次") == ["once", "jp"],
+            "desc 前缀标记逐个解析",
+        ),
+        (
+            desc_tags("点击[确认]按钮") == [],
+            "正文里的方括号不算标记",
         ),
         (
             parse_ref({"name": "Bar", "max_hit": 1})[:2] == ("Bar", False),
@@ -2612,6 +2715,64 @@ def self_test() -> int:
             "Loop 6 项 → 报 A18",
         ),
     ]
+
+    # A19：desc 的方括号标记。左边是四条该报的，右边是三条合规的不该报
+    marker_ctx = synth_ctx(
+        {
+            "XTagUnknown": {"desc": "[ends] 写错的标记"},
+            "XTagMax": {"desc": "[max] 限次点击", "action": "Click"},
+            "XTagOnce": {"desc": "[once] 每日一次", "max_hit": 2},
+            "XTagWork": {"desc": "[Loop] 标在工作节点上", "action": "Click"},
+            "XTagEndLoose": {"desc": "[end] 其实还要往下", "next": ["XTagMax"]},
+            "XTagMaxOk": {"desc": "[max] 限次点击", "max_hit": 3, "action": "Click"},
+            "XTagOnceOk": {"desc": "[once] 每日一次", "max_hit": 1},
+            "XTagWorkLoop": {"desc": "[Loop] 工作循环", "next": ["XTagMaxOk"]},
+            "XTagEndOk": {"desc": "[end] 收尾", "next": ["TaskStop"]},
+            "XTagPlain": {"desc": "没有标记", "action": "Click"},
+            "XTagProse": {"desc": "点击[确认]按钮", "action": "Click"},
+        }
+    )
+    check_a19_desc_markers(marker_ctx)
+    marker_ids = {f.id for f in marker_ctx.findings}
+    checks += [
+        ("A19-desc-marker-unknown" in marker_ids, "[ends] 这种自造标记会被拦"),
+        (
+            any(
+                f.id == "A19-desc-marker-mismatch" and "XTagMax" in f.message
+                for f in marker_ctx.findings
+            ),
+            "[max] 没有 max_hit 会被拦",
+        ),
+        (
+            any(
+                f.id == "A19-desc-marker-mismatch" and "XTagOnce" in f.message
+                for f in marker_ctx.findings
+            ),
+            "[once] 的 max_hit 不是 1 会被拦",
+        ),
+        (
+            any(
+                f.id == "A19-desc-marker-mismatch" and "XTagWork" in f.message
+                for f in marker_ctx.findings
+            ),
+            "[Loop] 标在名字不含 Loop 的节点上会被拦",
+        ),
+        (
+            any(
+                f.id == "A19-desc-marker-end" and "XTagEndLoose" in f.message
+                for f in marker_ctx.findings
+            ),
+            "[end] 带非终点 next 会被拦",
+        ),
+        (
+            not any(
+                f.id.startswith("A19") and tag in f.message
+                for f in marker_ctx.findings
+                for tag in ("XTagMaxOk", "XTagOnceOk", "XTagWorkLoop", "XTagEndOk", "XTagPlain", "XTagProse")
+            ),
+            "合规的标记（含 [end] 收在 TaskStop 上）不报 A19",
+        ),
+    ]
     bad = [name for ok, name in checks if not ok]
     if bad:
         for name in bad:
@@ -2908,6 +3069,7 @@ def main(argv: list[str] | None = None) -> int:
         check_a16_ensure_depth(ctx)
         check_a17_guard_in_next(ctx)
         check_a18_next_length(ctx)
+        check_a19_desc_markers(ctx)
     # 规范版本与注解新鲜度：不属于任何域，给了 --pipeline 之类也要报
     check_spec_version(ctx)
     if domains["interface"]:

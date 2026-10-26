@@ -11,31 +11,35 @@
 | 不做 | 为什么 | 要它怎么办 |
 | --- | --- | --- |
 | 格式化、自动修 | 目的只是"判对错"；会改文件的工具不该混进 CI 的校验步骤 | 各自编辑器/formatter，或单独提一个 PR |
-| 把 `ruff` 默认规则集当门槛 | 默认集里大量是本仓库从未采纳的风格偏好（`TRY004`、`PERF402`、`SIM102` 等 178 条），当门槛只会训练人无视它 | 只把"真实缺陷"类当门槛（`F401`/`F841`/`E722`/`FURB162`/`S110`/`BLE001`/`PLW1510`/`RUF100`），现为零；要全量看就 `uvx ruff check tools`（受限沙箱下 `uv` 自己的三个目录都在工作区外、会被拒写，先 `UV_CACHE_DIR` / `UV_TOOL_DIR` / `UV_TOOL_BIN_DIR` 指进 `temp/`；`--no-cache` 不够，装工具那一步仍要写 `%APPDATA%\uv\tools`） |
+| 把 `ruff` 默认规则集当门槛 | 默认集里大量是本仓库从未采纳的风格偏好（2026-10-26 实测 47 条：`ISC004` 13、`TRY004` 11、`PERF402` 3 等），当门槛只会训练人无视它 | 只把"真实缺陷"类当门槛（`F401`/`F841`/`E722`/`FURB162`/`S110`/`BLE001`/`PLW1510`/`RUF100`），现为零；要全量看就 `uvx ruff check tools`（沙箱下 `uv` 的目录要指进工作区，见「已知坑」） |
 | 把 `pyright` 写进 `package.json` | 两份 lockfile（`package-lock.json` 与 `pnpm-lock.yaml`）都是入库文件，加一个带平台二进制的依赖要重新生成两份 | 走 `npx`（`check_pyright.mjs`），首次需要网络 |
 | 扫 vendored 目录 | `.python-runtime*/`、`install/`、`build/`、`node_modules/` 里有几千个第三方文件，查它们只会淹没真问题 | 只扫 `tools/**`、`agent/**`、`scripts/**` |
 | 校验资源语义（数值范围、图片内容） | 那是 schema 与 maa-tools 的职责，本目录只查"引用与命名对不对得上" | `validate_schema.py`、`npx @nekosu/maa-tools check` |
 | 不查需要语义判断的命名规则 | 只做结构层能判的：把"层级同义词"套成关键字会误报（`FeiduGetPart` 里的 `Part` 是拿"部件"这个宾语，不是层级）；"模块级可变状态"与"导出的配置"在源码里长得一样（都没有 `_` 前缀），静态判不出；"就位节点该不该有 `action`"实测 8 个就位节点都没有 `action`，规则与数据不符 | 人来判，写进评审意见 |
-| 不写回文件头部的规范版本注解 | 校验脚本只读；写文件会让 CI 跑完工作区变脏 | 自己按 E3 的提示把 `使用命名规范版本 vX.Y` 改成当前版本 |
+| 不写回文件头部的规范版本注解 | 校验脚本只读；写文件会让 CI 跑完工作区变脏 | 自己按 E3 的提示改注解版本（三种写法都认，见「规范版本」一节） |
+| 查 `desc` 该标没标标记 | 标记是给人读的提示，不是字段：`desc` 由模板生成，`[jp]` 按 `node-naming.md` §3 不标也成立（今天 83 个带 `[jp]` 的节点里 29 个还带 `next`） | 评审时人工看；机器能判的是"标了但字段对不上"，即 `A19-desc-marker-*` 那三条 |
 | 联网 | 除 pyright 首次拉取与 CI 里装 `jsonschema` 外不联网 | — |
 
 ## 怎么跑
 
-按这个顺序，前面的失败会掩盖后面的结论：
+本目录五条，加上 CI 的 `check` 工作流另外跑的两条，按这个顺序跑：前面的失败会掩盖后面的结论。
 
 ```bash
 # 1. 静态检查（零依赖、秒级）—— CI 里跑的就是它
-python tools/validation/check_python.py
+python tools/validation/check_python.py                     # 不传 --root 时扫 tools / agent / scripts / tests
 python tools/validation/check_python.py --format github     # CI 注解格式
-python tools/validation/check_python.py --root agent        # 只查某个根
+python tools/validation/check_python.py --root agent        # 只查某个根（可重复）
 
-# 2. 跨文件名字与约定（纯标准库）
+# 2. 跨文件名字与约定（纯标准库）—— 不传域参数就是全量
 python tools/validation/validate_refs.py
 python tools/validation/validate_refs.py --format github
-python tools/validation/validate_refs.py --pipeline         # 只查某一域，可选 --tasks/--agent/--image/--interface
+python tools/validation/validate_refs.py --pipeline assets/resource/pipeline   # 只查某一域，路径可重复
+python tools/validation/validate_refs.py --tasks assets/resource/tasks         # 另有 --agent / --image / --interface
 python tools/validation/validate_refs.py --self-test        # 只跑内置断言（纯函数），不读资源
+python tools/validation/validate_refs.py --ignore A17-guard-in-next   # 放行指定 id（逗号分隔，可重复）
+python tools/validation/validate_refs.py --fail-on warn     # 把 warn 也算失败（默认只算 error；当前仓库 warn 非零，这条会 exit 1）
 
-# 3. JSON Schema 校验（需要额外装包，见下）
+# 3. JSON Schema 校验（要 jsonschema + referencing；本机已装，见「依赖与前置」）
 python tools/validation/validate_schema.py \
     --schema-dir deps/tools --resource-dirs assets/resource \
     --exclude-dirs assets/resource/announcement assets/resource/tasks \
@@ -43,15 +47,32 @@ python tools/validation/validate_schema.py \
 # 资源目录**顶层**的 config/ 会被自动跳过：那是 MaaCore 的运行时选项（maa_option.json：
 # draw_quality / logging / save_draw …，标量键值），且该目录在 .gitignore 里，CI 干净检出时不存在。
 # 不跳过的话本机每次都会多 5 条 "is not of type 'object'" 的假 error。
+# 控制台编码不用先设：脚本自己把输出固定成 UTF-8，回显乱码见「已知坑」。
 
-# 4. Sentry 遥测工具的离线自检（零网络、零凭证）
+# 4. Sentry 遥测工具的离线自检（零网络、零凭证；没有参数，跑起来就是自检）
 python tools/validation/check_sentry_offline.py
 
 # 5. 类型检查（需网络首次拉取 pyright）
 node tools/validation/check_pyright.mjs
+
+# 6. CI 的 check 工作流还跑两条本目录之外的
+npx @nekosu/maa-tools check     # 资源结构与数值；先 npm ci，首次要网络
+python -m pytest -q tests       # agent 纯逻辑打桩，不连设备
 ```
 
-`npm run check:refs` / `check:refs:github` 是第 2 步的快捷方式。
+三条使用要点：
+
+- **域参数都带路径**：`--pipeline` / `--tasks` / `--agent` / `--image` / `--interface` 各收一个路径、可重复，
+  漏写路径 argparse 直接报 `expected one argument`。`E` 类判据（文档版本、文件头注解）不分域，每次都会一起报。
+- **放宽或放行**：`--fail-on warn` 把 warn 也算失败（默认只算 error）；`--ignore <id>` 放行单条判据，可重复、逗号分隔。
+- **快捷方式只覆盖 agent 域**：`npm run check:refs` / `check:refs:github` 就是 `--agent agent`
+  （agent 域 + `E` 类注解），不是全量；要全量直接跑第 2 步第一条。
+
+第 6 步那两条不在本目录，但 CI 的 `check` 工作流会跑，跑不了就照实说明：`npx @nekosu/maa-tools check`
+要先 `npm ci` 且首次要网络；`python -m pytest -q tests` 要装 `pytest`，本机是全局解释器、没装就用
+`uv run --with pytest --no-project python -m pytest -q tests`（`maa` 由 `maafw` 提供，本机已有）。
+2026-10-26 本机实测：`npx @nekosu/maa-tools check` 只打 npm notice、exit 1，直接
+`node node_modules/@nekosu/maa-tools/bin/maa-tools check` 也是 exit 1 且没有输出——这一条以 CI 为准。
 
 ## 改完脚本的验收
 
@@ -66,20 +87,21 @@ uvx ruff check tools --select F401,F841,E722,FURB162,S110,PLW1510,BLE001,RUF100 
 node tools/validation/check_pyright.mjs                   # 4. 类型检查（需 npx，首次要网络）
 
 # 5. 改到哪个脚本，就跑它自己的 CLI 与自检
-python -m tools.sentry.cli selftest                       # 遥测工具：17 项
+python -m tools.sentry.cli selftest                       # 遥测工具：19 项
 python tools/validation/check_sentry_offline.py
 python tools/drawing/flow_from_log.py --help
 python tools/drawing/flow_cases.py --help
 ```
 
-**通过判据**
+**通过判据**  
 
 - `check_python.py`、`ruff`、`check_pyright.mjs` 必须 **0 error / 0 命中**；`validate_refs.py` 必须 `error 0`。
   它的 `warn` / `info` 不算失败，但要么是仓库既有的已知项（旧 `Is` 前缀、非 CamelCase 图片名、
   `max_hit` 预算、过期头部注解），要么在结论里说清为什么留下。
 - 脚本有自己的自检（`--self-test`、`selftest` 子命令）时**必须全过**；新加的可复用逻辑要补进自检。
 - 某个校验**跑不了**（需要网络、缺包、缺设备）时，在结论里写明"没跑 + 为什么"，不能默认通过。
-- 改的是 CI 会调的入口（本目录三个 `.py`），再跑一遍 CI 实际用的命令（见上「怎么跑」第 1–3 步）。
+- 改的是 CI 会调的入口（本目录三个 `.py`），再跑一遍 CI 实际用的命令（见上「怎么跑」第 1–3 步）；
+  同时改了 `agent/` 或 pipeline 数据的，第 6 步那两条也要跑。
 - 改了渲染口径的（`tools/drawing/flow_from_log.py`）还要按 [`tools/drawing`](../drawing/README.md) 的
   「已知坑」bump `RENDERER_VERSION` 并重画一张核对。
 
@@ -149,17 +171,18 @@ Pylance 是 VS Code 内的 LSP，没有命令行入口（`dist/server.bundle.js`
 | `doc-access` | `__doc__.splitlines()` 这种直取：`__doc__` 可为 `None`，直接用抛 `AttributeError`；用 `report_common.module_summary(__doc__)` |
 | `repo-root` | 声明的上溯级数与文件实际深度不符。**改了目录层级最容易静默搞错的就是它**——默认产出目录会落到 `tools/<子目录>/temp/...` 而不是仓库根 `temp/...` |
 
-只在 `tools/**`、`agent/**`、`scripts/**` 里扫，不动 `.python-runtime*/`、`install/`、`build/`、
-`node_modules/`（那里有几千个 vendored 文件）。
+默认扫 `tools/`、`agent/`、`scripts/`、`tests/` 四个根（`--root` 可换、可重复），不动
+`.python-runtime*/`、`install/`、`build/`、`node_modules/`（那里有几千个 vendored 文件）。
 
 退出码 0 = 无 error；1 = 有 error。`warn` 不影响退出码。
 
 ## 规范版本（`validate_refs.py`）
 
 **本脚本按两份规范的各自版本实现**：`NAMING_SPEC_VERSION`（`node-naming.md`）与
-`STRUCT_SPEC_VERSION`（`pipeline-structure.md`）。运行时会在输出里声明命名规范那一版（console 头部、
-`--format github` 的摘要、`--format json` 的 `spec_version` 字段）；结构类判据（A4/A5/A7/A8/A9/A14/A16…）
-按结构文档实现，所以它的版本也对。
+`STRUCT_SPEC_VERSION`（`pipeline-structure.md`）。运行时只在输出里声明命名规范那一版（console 头部、
+`--format github` 的摘要、`--format json` 的 `spec_version` 字段）。命名类判据（`A13-*` / `A19-*` …）
+按命名文档实现，结构类判据（A4/A5/A7/A8/A9/A14/A16…）按结构文档实现，所以两份常量都要跟着对齐，
+哪一份落后都在 `E2` 里报。
 
 规范、模板、脚本必须对齐，否则"这几条没查"会和"查了没问题"看起来一样：
 
@@ -182,13 +205,25 @@ Pylance 是 VS Code 内的 LSP，没有命令行入口（`dist/server.bundle.js`
 永远轮不到；也不能排在自己会点「确认」的候选之前——同一个确认会被当成错误弹窗点掉。只判同一列表内的先后，
 "哪个模板在弹窗下仍会命中"静态判不了，按人工。判据见 `docs/zh_cn/develop/pipeline-structure.md` §9。
 
+`A19-desc-marker-*` 管 `desc` 里的方括号标记（`node-naming.md` §6：一共五个，含义固定）：
+
+| 规则 | 级别 | 判据 | 2026-10-26 实测 |
+| --- | --- | --- | --- |
+| `A19-desc-marker-unknown` | warn | 用了 `[end]` / `[jp]` / `[once]` / `[max]` / `[Loop]` 之外的写法（含大小写不符） | 0 |
+| `A19-desc-marker-mismatch` | warn | `[max]` 没有 `max_hit`；`[once]` 的 `max_hit` 不是 1；`[Loop]` 标在名字不含 `Loop` 的节点上 | 1（`EntrustClickNextChapter` 标了 `[max]` 却没有 `max_hit`） |
+| `A19-desc-marker-end` | info | `[end]` 却有 `next`，且不是只收 `TaskStop` / `TaskStopError` | 2（`EscortClickCancel`、`GiftClickFirstcharacter`） |
+
+**只查"标了标记、字段对不上"，不查"该标没标"**：`desc` 由模板生成，而 `[jp]` 按 §3 只是提示标记——
+今天 83 个带 `[jp]` 的节点里有 29 个还带 `next`，标不标都不构成判据。标记按**开头连续**的那几个算
+（`[once][jp] …`），正文里当括号用的字（"点击[确认]按钮"）不算，所以那类不会误报。三条都能 `--ignore` 单独放行。
+
 `A16` / `A17` / `A18` 管**识别预算**（`pipeline-structure.md` §10）：
 
-| 规则 | 级别 | 判据 | 今天报几条 |
+| 规则 | 级别 | 判据 | 2026-10-26 实测 |
 | --- | --- | --- | --- |
-| `A16-ensure-depth` | warn | `Ensure` 嵌套深度 > 2（单层 5 次识别，每多一层再付 5 次） | 5（`feidu_gift` 3 个、`entrust` 2 个） |
-| `A17-guard-in-next` | info | 节点 `next` 里含本节点 `recognition` 已用过的探针（同一轮识别两遍） | 22 |
-| `A18-next-length` | warn | `Task` / `Ensure` 的 `next` > 4 项，`Loop` > 5 项 | 12 |
+| `A16-ensure-depth` | warn | `Ensure` 嵌套深度 > 2（单层 5 次识别，每多一层再付 5 次） | 2（都在 `entrust`：`EntrustEnsureStage` 深度 3、`EntrustEnsureLevelInfo` 深度 4） |
+| `A17-guard-in-next` | info | 节点 `next` 里含本节点 `recognition` 已用过的探针（同一轮识别两遍） | 14 |
+| `A18-next-length` | warn | `Task` / `Ensure` 的 `next` > 4 项，`Loop` > 5 项 | 10（全是 Task/Ensure 档，没有 `Loop` 档） |
 
 `A17` 只报「同一轮会问两遍」这个事实，**留删由人按实测救回率定**（<25% 该删）——救回率要日志实测，
 静态判不了。`A16` 的修法是改用 `Branch` 平铺到调用方 `next`（同样效果只要 1 次守卫），不是把
@@ -197,17 +232,19 @@ Pylance 是 VS Code 内的 LSP，没有命令行入口（`dist/server.bundle.js`
 ## 依赖与前置
 
 - `check_python.py`、`validate_refs.py`、`check_sentry_offline.py`：**零第三方依赖**（纯标准库）。
-- `validate_schema.py`：需要 `jsonschema==4.26.0` + `referencing==0.37.0`（CI 里现装）。`referencing`
-  可选——没有就退回 `jsonschema` 自带的 `RefResolver`。
+- `validate_schema.py`：需要 `jsonschema==4.26.0` + `referencing==0.37.0`。CI 里现装，本机全局解释器
+  里这两个版本也已就位（2026-10-26 实测）。`referencing` 可选——没有就退回 `jsonschema` 自带的
+  `RefResolver`。
 - `check_pyright.mjs`：需要 `npx`（首次要网络拉 pyright）。它把 npm 缓存指到 `temp/npm-cache`，
   跑完可删。**刻意不把 pyright 写进 `package.json`**：两份 lockfile（`package-lock.json` 与
   `pnpm-lock.yaml`）都是入库文件，加一个带平台二进制的依赖要重新生成两份 lock，收益不抵成本。
 
 ## 已知坑
 
-- **本机装不上 `jsonschema`**：写沙箱临时目录报 `Permission denied`，改 `--target` 后两个镜像
-  双双超时。所以本机只能核对 `validate_schema.py` 的参数与文件集，跑不了实校验。详见
-  `.agents/evidence/project.md` 的「本机跑校验的环境坑」。
+- **`validate_schema.py` 的输出编码**：`validate_refs.py` 与 `validate_schema.py` 把 stdout 固定成
+  UTF-8，`check_python.py` 与 `check_sentry_offline.py` 只把编不出的字符换成替代字符。所以控制台不是
+  UTF-8 时校验不会中断，但中文与 `✓` / `❌` 会显示成乱码——先设 `[Console]::OutputEncoding` 或
+  `PYTHONIOENCODING=utf-8` 再看回显（2026-10-26 核对）。
 - **pyright 会报一批 `reportMissingImports` warning**（PIL / maa / jsonschema）。那是解析环境
   的事，不是代码问题——`pyright.config.json` 里已把该规则降成 warning，error 计数不受影响。
   `agent/` 的兄弟式 import（`from rect import ...`）靠配置文件里的 `extraPaths` 才解析得到，
@@ -220,8 +257,10 @@ Pylance 是 VS Code 内的 LSP，没有命令行入口（`dist/server.bundle.js`
   agent 里搜到"会静默漏掉它们。`--agent` 传子目录只收窄**报告范围**（`report().in_scope`），
   载入集取并集——传单个文件也不会让同一棵树里注册的自定义名变成 `A2-unknown-custom`
   （早先的实现是替换载入集，`--agent agent/entrust.py` 会误报 3 条 error）。
-- **`uvx ruff` 能跑但要注意目录**：受限沙箱下 `UV_TOOL_DIR` / `UV_CACHE_DIR` 要指到工作区内，
-  否则报 `failed to create directory ... os error 5`。
+- **`uvx ruff` 能跑但要注意目录**：受限沙箱下 `UV_CACHE_DIR` 与 `UV_TOOL_DIR` 都要指到工作区内
+  （`temp/uvcache`、`temp/uvtools`）。少了缓存目录报 `failed to create directory ... os error 5`；
+  只设缓存目录、工具目录仍留在 `%APPDATA%\uv\tools` 时，报的是
+  `failed to open file ...\uv\tools\.lock: 拒绝访问`（2026-10-26 两次实测）。
 - **`ruff` 的默认规则集里有大量本仓库从未采纳的风格偏好**（`TRY004` 异常类型判定、`PERF402`
   列表拷贝、`SIM102` 嵌套 if 合并等）。本仓库只把"真实缺陷"类当门槛：
   `F401`（未使用导入）、`F841`（未使用变量）、`E722`（裸 except）、`FURB162`、`S110`、`BLE001`、
@@ -233,6 +272,7 @@ Pylance 是 VS Code 内的 LSP，没有命令行入口（`dist/server.bundle.js`
   ```bash
   uvx ruff check tools --select F401,F841,E722,FURB162,S110,PLW1510,BLE001,RUF100
   ```
+
 - **抑制注释会被格式化工具"折"失效**：`except (\n Exception\n):  # noqa: BLE001, S110` 这种多行写法
   在 ruff 0.17 起会被判成"抑制未使用"（`RUF100`）并连带把 `S110`/`BLE001` 报出来——2026-10-20 的
   "规范化代码格式"提交就把上一版**单行**写法折成了多行，8 条又回来了。`validate_refs.py` 现在用

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import io
 import json
 import sys
 import tempfile
@@ -237,6 +238,15 @@ def create_validator(schema, schema_store):
 
 
 def main():
+    # 控制台不是 UTF-8 时（本机 cp936、Windows runner cp1252），下面打的 ✓ / ❌ 编不出来会抛
+    # UnicodeEncodeError；那个异常正好落在 validate_file 的 except 里、再打一次 ❌ 又抛一次，脚本在
+    # 第一个文件上就崩掉，后面一个文件也没校验。这里把输出固定成 UTF-8（编不出来的换替代字符）：
+    # 整轮校验不会中断，✓ / ❌ 在 UTF-8 的消费端（CI 日志、重定向的文件）也照常显示。
+    for stream in (sys.stdout, sys.stderr):
+        # reconfigure() 定义在 io.TextIOWrapper 上，而 sys.stdout 的静态类型是 typing.TextIO
+        if isinstance(stream, io.TextIOWrapper):
+            stream.reconfigure(encoding="utf-8", errors="replace")
+
     parser = argparse.ArgumentParser(
         description="Validate JSON/JSONC files against JSON Schema"
     )
