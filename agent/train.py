@@ -15,7 +15,7 @@ from maa.context import (
     TemplateMatchResult,
     OCRResult,
 )
-from maa.pipeline import JTarget, JTemplateMatch, JOCR, JSwipe
+from maa.pipeline import JStopTask, JTarget, JTemplateMatch, JOCR, JSwipe
 
 from agentlog import log
 from rect import DEFAULT_HIT_BOX, toTuple
@@ -28,7 +28,7 @@ _train_list: list[_Train] = []
 # 当前路线名
 _current_info_name = ""
 # 目标路线列表
-_targets: dict[str, int] = {}
+_targets: dict[str, list[int]] = {}
 # 总路线
 _ROUTE: dict[str, int] = {
     "荒原": 7,
@@ -136,8 +136,8 @@ def _log_train_list():
 
 
 # 判断是否任务结束
-@AgentServer.custom_recognition("TrainCheckEndReco")
-class TrainCheckEndReco(CustomRecognition):
+@AgentServer.custom_recognition("TrainStopAllBusyReco")
+class TrainStopAllBusyReco(CustomRecognition):
     def analyze(
         self, context: Context, argv: CustomRecognition.AnalyzeArg
     ) -> list[int] | None:
@@ -152,76 +152,38 @@ class TrainCheckEndReco(CustomRecognition):
             return DEFAULT_HIT_BOX
 
 
-# 返回目标STATION
-@AgentServer.custom_recognition("TrainEnterFormationReco")
-class TrainEnterFormationReco(CustomRecognition):
+# 若合金不足 返回box
+@AgentServer.custom_recognition("TrainStopNoMetalReco")
+class TrainStopNoMetalReco(CustomRecognition):
     def analyze(
         self, context: Context, argv: CustomRecognition.AnalyzeArg
-    ) -> Rect | None:
-        import numpy as np
-        from train_station import extract_station_digits
-
+    ) -> list[int] | None:
         node_name = argv.node_name
-        if _targets and _current_info_name in _targets.keys():
-            target_number = _targets[_current_info_name]
-            log.debug(f"{node_name} 使用候选 {_current_info_name}: {target_number}")
-        else:
-            target_number = _ROUTE[_current_info_name]
-            log.debug(f"{node_name} 使用备用 {_current_info_name}: {target_number}")
 
-        # 1) 切分：拿到每张卡片的 (屏幕坐标 box, 黑字抹除后的灰度切图)
-        crops = extract_station_digits(argv.image)
+        ocr_1 = context.run_recognition_direct(
+            JRecognitionType.OCR, JOCR([r"\d+"], roi=(682, 642, 62, 37)), argv.image
+        )
+        if ocr_1 is None or not ocr_1.hit:
+            log.debug(f"{node_name} 识别发车消耗失败")
+            return
 
-        # 站号, 屏幕box
-        for box, view in crops:
-            # 2) 灰度切图 (H, W) 转 3 通道 —— run_recognition_direct 要 (H, W, 3)
-            img = np.stack([view] * 3, axis=2)
+        ocr_2 = context.run_recognition_direct(
+            JRecognitionType.OCR, JOCR([r"\d+"], roi=(964, 11, 108, 42)), argv.image
+        )
+        if ocr_2 is None or not ocr_2.hit:
+            log.debug(f"{node_name} 识别剩余金属失败")
+            return
 
-            # 3) only_rec=true：跳过检测，直接把 roi 区域当一行文本识别
-            #    roi 必须精确到整张切图；expected 限定单个数字；threshold 收紧到 0.3
-            r = context.run_recognition_direct(
-                JRecognitionType.OCR,
-                JOCR(
-                    [r"\d"],
-                    roi=(0, 0, view.shape[1], view.shape[0]),
-                    only_rec=True,
-                    threshold=0.3,
-                ),
-                img,
-            )
-            if r is None or not r.hit:
-                log.debug(f"{node_name} 识别STATION数字失败")
-                continue
+        b_ocr_1 = ocr_1.best_result
+        b_ocr_2 = ocr_2.best_result
+        assert type(b_ocr_1) == OCRResult
+        assert type(b_ocr_2) == OCRResult
+        i_ocr_1 = int(b_ocr_1.text)
+        i_ocr_2 = int(b_ocr_2.text)
 
-            # 4) 取结果
-            number: int = 0
-            for i in r.filtered_results:
-                if isinstance(i, OCRResult) and i.text.isdigit():
-                    number = int(i.text)
-                    break
-            else:
-                log.debug(f"{node_name} ocr识别数字失败")
-                continue
-
-            # 5) 比对数字是否匹配
-            if target_number != number:
-                continue
-
-            # 6) 识别发车按钮
-            t_r = context.run_recognition_direct(
-                JRecognitionType.TemplateMatch,
-                JTemplateMatch(
-                    ["Train/CanTrainButton.png"],
-                    roi=box,
-                    roi_offset=(511, -27, 75, 96),
-                ),
-                argv.image,
-            )
-
-            if t_r is None or not t_r.hit:
-                log.debug(f"{node_name} 识别发车按钮失败")
-                return
-            return t_r.box
+        log.debug(f"{node_name} 发车消耗/剩余消耗: {i_ocr_1}/{i_ocr_2}")
+        if i_ocr_1 > i_ocr_2:
+            return DEFAULT_HIT_BOX
 
 
 # ---------- Action ----------
@@ -273,18 +235,9 @@ class TrainGetRewardSuccessAct(CustomAction):
 # ----- Init -----
 
 
-# 是否初始化过
-@AgentServer.custom_recognition("TrainProbeInitReco")
-class TrainProbeInitReco(CustomRecognition):
-    def analyze(
-        self, context: Context, argv: CustomRecognition.AnalyzeArg
-    ) -> list[int] | None:
-        return DEFAULT_HIT_BOX if len(_train_list) > 0 else None
-
-
 # 从一览页面获取列车状态并记录出发数，若非全部出发，则返回点击box
-@AgentServer.custom_recognition("TrainInitReco")
-class TrainInitReco(CustomRecognition):
+@AgentServer.custom_recognition("TrainProbeStatusReco")
+class TrainProbeStatusReco(CustomRecognition):
     def append_train(
         self,
         context: Context,
@@ -316,6 +269,7 @@ class TrainInitReco(CustomRecognition):
         global _targets
         # 提取变量
         node_name = argv.node_name
+        _targets.clear()
 
         attach = {}
         try:
@@ -329,7 +283,25 @@ class TrainInitReco(CustomRecognition):
             )
 
             def f(s: str):
-                _targets[attach[f"level_{s}"]] = attach[f"level_{s}_number"]
+                key: str = attach[f"level_{s}"]
+                key = key.replace("路线", "")
+                value: int = attach[f"level_{s}_number"]
+
+                # 校验
+                if key == "":
+                    log.debug(f"{node_name} key为空 跳过 {s}")
+                elif value == "":  # INFO 输入为空时转换结果为空字符串
+                    log.warn(f"请检查武装押运配置 是否忘记填写 {s} 的站点数字")
+                elif key not in _ROUTE:
+                    log.warn(f"非法的路线名称 {key}")
+                elif value > _ROUTE[key]:
+                    log.warn(f"非法的路线站点 {key}:{value}")
+                else:
+                    # 转换数据
+                    if key in _targets.keys():
+                        _targets[key].append(value)
+                    else:
+                        _targets[key] = [value]
 
             f("one")
             f("two")
@@ -351,14 +323,14 @@ class TrainInitReco(CustomRecognition):
         # 识别未抵达列车
         busy_result = context.run_recognition_direct(
             JRecognitionType.TemplateMatch,
-            JTemplateMatch(["Train/TrainPending.png"]),
+            JTemplateMatch(["Train/TrainPending.png"], roi=(41, 189, 319, 165)),
             argv.image,
         )
         if busy_result and busy_result.hit:
             # 若识别均忙 提前结束
             if len(busy_result.filtered_results) == max_:
-                log.debug("关闭列车状态页面")
-                context.run_task("TrainClickStatusArrow")
+                log.info("所有列车未抵达 任务结束")
+                context.run_action_direct(JActionType.StopTask, JStopTask())
                 _log_train_list()
                 return
 
@@ -425,12 +397,155 @@ class TrainInitReco(CustomRecognition):
         _log_train_list()
 
 
+# ----- 接取页面 -----
+
+# PERF 持久化？
+# 不能接取的站点
+_can_not_enter_number: int | None = None
+
+
+# 返回目标STATION
+@AgentServer.custom_recognition("TrainProbeEnterFormationReco")
+class TrainProbeEnterFormationReco(CustomRecognition):
+    def analyze(
+        self, context: Context, argv: CustomRecognition.AnalyzeArg
+    ) -> Rect | None:
+        import numpy as np
+        from train_station import extract_station_digits
+
+        node_name = argv.node_name
+        if (
+            _targets
+            and _current_info_name in _targets.keys()
+            and _targets[_current_info_name]
+        ):
+            target_numbers: list[int] = _targets[_current_info_name]
+            log.debug(f"{node_name} 使用候选 {_current_info_name}: {target_numbers}")
+        else:
+            target_numbers: list[int] = [_ROUTE[_current_info_name]]
+            log.debug(f"{node_name} 使用备用 {_current_info_name}: {target_numbers}")
+
+        # 1) 切分：拿到每张卡片的 (屏幕坐标 box, 黑字抹除后的灰度切图)
+        crops = extract_station_digits(argv.image)
+
+        # 站号, 屏幕box
+        stations_set: set[int] = set()
+        for box, view in crops:
+            # 2) 灰度切图 (H, W) 转 3 通道 —— run_recognition_direct 要 (H, W, 3)
+            img = np.stack([view] * 3, axis=2)
+
+            # 3) only_rec=true：跳过检测，直接把 roi 区域当一行文本识别
+            #    roi 必须精确到整张切图；expected 限定单个数字；threshold 收紧到 0.3
+            r = context.run_recognition_direct(
+                JRecognitionType.OCR,
+                JOCR(
+                    [r"\d"],
+                    roi=(0, 0, view.shape[1], view.shape[0]),
+                    only_rec=True,
+                    threshold=0.3,
+                ),
+                img,
+            )
+            if r is None or not r.hit:
+                log.debug(f"{node_name} 识别STATION数字失败")
+                continue
+
+            # 4) 取结果
+            number = 0
+            for i in r.filtered_results:
+                if isinstance(i, OCRResult) and i.text.isdigit():
+                    number = int(i.text)
+                    stations_set.add(number)
+                    break
+            else:
+                log.debug(f"{node_name} ocr识别数字失败")
+                continue
+
+            # 5) 比对数字是否匹配路线的第一个站点候选
+            if number != target_numbers[0]:
+                continue
+
+            # 6) 识别发车按钮
+            t_r = context.run_recognition_direct(
+                JRecognitionType.TemplateMatch,
+                JTemplateMatch(
+                    ["Train/CanTrainButton.png"],
+                    roi=box,
+                    roi_offset=(511, -27, 75, 96),
+                ),
+                argv.image,
+            )
+            if t_r is None or not t_r.hit:
+                log.debug(f"{node_name} 识别发车按钮失败")
+                break
+
+            return t_r.box
+
+        # 7) 条件识别完成文字
+        if len(stations_set) < 2:
+            log.debug(f"{node_name} 识别数字不足2 跳过分析")
+            return
+
+        stations_list = sorted(stations_set)
+        log.debug(f"{node_name} stations_list: {stations_list}")
+        for i in range(len(stations_list) - 1):
+            i_1 = stations_list[i]
+            i_2 = stations_list[i + 1]
+
+            if i_2 - i_1 == 1:
+                log.debug(f"{node_name} 数字连续 跳过")
+                continue
+            elif i_2 - i_1 != 2:
+                log.debug(f"{node_name} 数字不符合间隔 跳过: {i_2}/{i_1}")
+                continue
+
+            # 8) 数字不连续，尝试匹配可派遣次数
+            ocr_r = context.run_recognition_direct(
+                JRecognitionType.OCR,
+                JOCR(["完成"], roi=(890, 178, 109, 479)),
+                argv.image,
+            )
+            if ocr_r is None or not ocr_r.hit:
+                log.debug(f"{node_name} 匹配文字 完成 失败")
+                continue
+
+            # 9) 赋值
+            global _can_not_enter_number
+            _can_not_enter_number = i_2 - 1
+
+
+# 若当前判断的目标路线无法发车 返回box
+@AgentServer.custom_recognition("TrainProbeEnterFailedReco")
+class TrainProbeEnterFailedReco(CustomRecognition):
+    def analyze(
+        self, context: Context, argv: CustomRecognition.AnalyzeArg
+    ) -> list[int] | None:
+        global _can_not_enter_number
+        if _can_not_enter_number is not None:
+
+            # 尝试移除
+            try:
+                if len(_targets[_current_info_name]) > 1:
+                    _targets[_current_info_name].remove(_can_not_enter_number)
+                else:
+                    del _targets[_current_info_name]
+            except Exception as e:
+                log.error(
+                    f"{argv.node_name} 从 {_targets} 中移除 {_current_info_name} 站点 {_can_not_enter_number} 错误: {e!r}"
+                )
+                raise
+
+            log.debug(f"{argv.node_name} 将站点 {_can_not_enter_number} 设置为不可发车")
+            _can_not_enter_number = None
+            return DEFAULT_HIT_BOX
+
+
 # ----- 领取 -----
 
 
 # 判断是否可以领取火车奖励
-@AgentServer.custom_recognition("TrainLoopRewardReco")
-class TrainLoopRewardReco(CustomRecognition):
+@AgentServer.custom_recognition("TrainBranchRewardReco")
+class TrainBranchRewardReco(CustomRecognition):
     def analyze(
         self, context: Context, argv: CustomRecognition.AnalyzeArg
     ) -> list[int] | None:
@@ -442,8 +557,8 @@ class TrainLoopRewardReco(CustomRecognition):
 
 
 # 判断是否可以发车
-@AgentServer.custom_recognition("TrainLoopAcceptableReco")
-class TrainLoopAcceptableReco(CustomRecognition):
+@AgentServer.custom_recognition("TrainBranchAcceptableReco")
+class TrainBranchAcceptableReco(CustomRecognition):
     def analyze(
         self, context: Context, argv: CustomRecognition.AnalyzeArg
     ) -> list[int] | None:
@@ -453,8 +568,8 @@ class TrainLoopAcceptableReco(CustomRecognition):
 
 # 返回目标路线名称box 或 None
 # 候选词数小于2则按解锁状态返回返回 优先最新路线
-@AgentServer.custom_recognition("TrainClickAcceptInfoReco")
-class TrainClickAcceptInfoReco(CustomRecognition):
+@AgentServer.custom_recognition("TrainProbeAcceptInfoReco")
+class TrainProbeAcceptInfoReco(CustomRecognition):
     # 路线解锁状态
     route_status: dict[str, bool] = {}
 
@@ -474,6 +589,7 @@ class TrainClickAcceptInfoReco(CustomRecognition):
             return
 
         # 识别并记录当前画面路线解锁状态 若满足候选列表则返回box
+        r_text: dict[str, Rect | None] = {}
         for i in r.filtered_results:
             # 提取变量
             assert type(i) == OCRResult
@@ -482,9 +598,10 @@ class TrainClickAcceptInfoReco(CustomRecognition):
             # 去杂项
             if "武装押运" in text:
                 continue
-            keys = self.route_status.keys()
+            r_text[text] = i.box
 
             # 若没识别过此路线
+            keys = self.route_status.keys()
             if text not in keys:
                 # 识别路线是否解锁
                 r2 = context.run_recognition_direct(
@@ -531,35 +648,34 @@ class TrainClickAcceptInfoReco(CustomRecognition):
                     _current_info_name = text
                     return i.box
 
-        # 若候选词列表长度大于等于2 则跳过默认返回
+        # 若候选词字典长度大于等于2 则跳过默认返回
         if len(_targets) >= 2:
             log.debug(f"{node_name} 候选词充足，跳过使用备选候选词")
             return
 
         # 依次匹配备选关卡
-        r_text: dict[str, Rect | None] = {i.text: i.box for i in r.filtered_results}  # type: ignore
         for i in reversed(_ROUTE.keys()):
-            text = i
 
             # 未获得该路线状态 匹配结束
-            if text not in self.route_status.keys():
-                log.debug(f"{node_name} 未获得路线 {text} 状态，跳过返回")
+            if i not in self.route_status.keys():
+                log.debug(f"{node_name} 未获得路线 {i} 状态，跳过返回")
                 break
 
             # 路线未解锁 匹配下一个
-            if not self.route_status[text]:
-                log.debug(f"{node_name} 路线 {text} 未解锁，匹配下一个")
+            if not self.route_status[i]:
+                log.debug(f"{node_name} 路线 {i} 未解锁，匹配下一个")
                 continue
 
             # 路线正在忙碌 匹配下一个
-            if any(j.stutus == "busy" and j.route == text for j in _train_list):
-                log.debug(f"{node_name} 路线 {text} 未抵达，匹配下一个")
+            if any(j.stutus == "busy" and j.route == i for j in _train_list):
+                log.debug(f"{node_name} 路线 {i} 未抵达，匹配下一个")
                 continue
 
-            if text in r_text.keys():
-                _current_info_name = text.replace("路线", "")
-                log.info(f"选择路线: {text}")
-                return r_text[text]
+            # 画面中有此路线 box
+            if i in r_text.keys():
+                _current_info_name = i.replace("路线", "")
+                log.debug(f"选择路线: {i}")
+                return r_text[i]
 
 
 # ----- 移动路线列表 -----
@@ -604,4 +720,4 @@ class TrainInfoMoverAct(CustomAction):
             r = _info_move_down(context)
             log.debug(f"{n_name} 下滑路线")
 
-        return r and r.success or False
+        return r is not None and r.success

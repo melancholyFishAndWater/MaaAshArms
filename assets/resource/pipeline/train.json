@@ -1,26 +1,85 @@
 {
     /*
     INFO 武装押运
-    
-    使用任务链结构 v1.1 校验年月日 26/10/16
-    使用节点命名与分类 v1.3 校验年月日 26/10/16
+
+    使用任务链结构 v2.1 校验年月日 26/10/24
+    使用节点命名与分类 v2.1 校验年月日 26/10/24
     */
     "TaskTrain": {
         "desc": "武装押运任务",
         "next": [
-            "TrainLoop",
+            "TrainEnterOverview",
+            "TrainEnterHome",
             "[JumpBack]BaseBranchError",
-            "[JumpBack]TrainEnsureHome"
+            "[JumpBack]ReturnMain"
         ]
     },
-    // INFO 探测
-    "TrainProbeInit": {
-        "desc": "[end] 是否初始化过",
-        "recognition": "Custom",
-        "custom_recognition": "TrainProbeInitReco"
+    /* -------------------- 通用探测 -------------------- */
+    "TrainProbeGoButtonLight": {
+        "desc": "[end] 出发按钮亮",
+        "recognition": "TemplateMatch",
+        "template": "Train/GoTrainLight.png",
+        "roi": [
+            951,
+            603,
+            262,
+            99
+        ]
     },
-    "TrainProbeInfo": {
-        "desc": "[end] 在一览页面",
+    /* -------------------- 就位-进入一览 -------------------- */
+    "TrainEnterOverview": {
+        "desc": "进入武装押运一览",
+        "recognition": "And",
+        "all_of": [
+            "TrainProbeEnterOverview"
+        ],
+        "action": "Click",
+        "post_wait_freezes": 1000,
+        "next": [
+            "TrainEnterHome",
+            "[JumpBack]TrainClickOverviewButton",
+            "[JumpBack]BaseBranchError"
+        ]
+    },
+    "TrainProbeEnterOverview": {
+        "desc": "[end] 有列车押运蓝色箭头",
+        "recognition": "TemplateMatch",
+        "template": "Train/TrainButton.png",
+        "roi": [
+            0,
+            122,
+            126,
+            138
+        ]
+    },
+    "TrainClickOverviewButton": {
+        "desc": "[jp] 点击列车押运蓝色箭头",
+        "recognition": "And",
+        "all_of": [
+            "TrainProbeEnterOverview"
+        ],
+        "action": "Click",
+        "post_wait_freezes": 1000
+    },
+    /* -------------------- 就位-进入主页面 -------------------- */
+    "TrainEnterHome": {
+        "desc": "从一览进入武装押运主界面",
+        "recognition": "And",
+        "all_of": [
+            "TrainProbeOverview",
+            "TrainProbeStatus"
+        ],
+        "box_index": 1,
+        "action": "Click",
+        "post_wait_freezes": 1000,
+        "next": [
+            "TrainBranchHome",
+            "[JumpBack]TrainClickHomeButton",
+            "[JumpBack]BaseBranchError"
+        ]
+    },
+    "TrainProbeOverview": {
+        "desc": "[end] 在武装押运一览",
         "recognition": "OCR",
         "expected": "武装押运一览",
         "roi": [
@@ -28,6 +87,37 @@
             141,
             167,
             38
+        ]
+    },
+    "TrainProbeStatus": {
+        "desc": "[end] 读取列车状态 派遣数与列车列表 返回点击位置",
+        "recognition": "Custom",
+        "custom_recognition": "TrainProbeStatusReco",
+        "attach": {
+            "level_one": "",
+            "level_one_number": 99,
+            "level_two": "",
+            "level_two_number": 99
+        }
+    },
+    "TrainClickHomeButton": {
+        "desc": "[jp] 点击进入武装押运主界面",
+        "target": "TrainProbeStatus", // INFO 极低风险 但高性能
+        "action": "Click",
+        "post_wait_freezes": 1000
+    },
+    /* -------------------- 工作-主页面分支 -------------------- */
+    "TrainBranchHome": {
+        "desc": "武装押运主页面分支",
+        "recognition": "And",
+        "all_of": [
+            "TrainProbeHomeName"
+        ],
+        "next": [
+            "TrainStopAllBusy",
+            "[JumpBack]TrainBranchReward",
+            "[JumpBack]TrainBranchAcceptable",
+            "[JumpBack]BaseBranchError"
         ]
     },
     "TrainProbeHomeName": {
@@ -41,16 +131,280 @@
             63
         ]
     },
-    "TrainProbeHomeReady": {
-        "desc": "[end] 在主页面且已经初始化",
-        "recognition": "And",
-        "all_of": [
-            "TrainProbeHomeName",
-            "TrainProbeInit"
+    "TrainStopAllBusy": {
+        "desc": "[end] 全部列车忙碌 任务结束",
+        "recognition": "Custom",
+        "custom_recognition": "TrainStopAllBusyReco",
+        "action": "StopTask",
+        "focus": {
+            "Node.Action.Succeeded": "全部列车忙碌 任务结束"
+        }
+    },
+    /* -------------------- 分支-领取奖励 -------------------- */
+    "TrainBranchReward": {
+        "desc": "有可领取奖励 分支",
+        "recognition": "Custom",
+        "custom_recognition": "TrainBranchRewardReco",
+        "next": [
+            "TrainClickRewardInfo",
+            "[JumpBack]TrainInfoMover",
+            "[JumpBack]BaseBranchError"
         ]
     },
+    // INFO 点击箭头
+    "TrainClickRewardInfo": {
+        "desc": "点击可以领取奖励的路线",
+        "recognition": "And",
+        "all_of": [
+            "TrainProbeRewardRoute"
+        ],
+        "target_offset": [
+            -33,
+            41,
+            0,
+            0
+        ],
+        "action": "Click",
+        "post_wait_freezes": 1000,
+        "next": [
+            "TrainBranchRewardPage",
+            "[JumpBack]TrainClickRewardInfoButton",
+            "[JumpBack]BaseBranchError"
+        ]
+    },
+    "TrainProbeRewardRoute": {
+        "desc": "[end] 有可领取奖励的路线",
+        "recognition": "TemplateMatch",
+        "template": "Base/BlueMarkGreen.png",
+        "green_mask": true,
+        "roi": [
+            201,
+            122,
+            89,
+            501
+        ]
+    },
+    "TrainClickRewardInfoButton": {
+        "desc": "[jp] 点击可领取奖励的路线按钮",
+        "recognition": "And",
+        "all_of": [
+            "TrainProbeRewardRoute"
+        ],
+        "target_offset": [
+            -33,
+            41,
+            0,
+            0
+        ],
+        "action": "Click",
+        "post_wait_freezes": 1000
+    },
+    // INFO 奖励页面
+    "TrainBranchRewardPage": {
+        "desc": "奖励详情页分支",
+        "recognition": "And",
+        "all_of": [
+            "TrainProbeRewardPage"
+        ],
+        "next": [
+            "TrainGetReward",
+            "[JumpBack]TrainMoveUp",
+            "[JumpBack]BaseBranchError"
+        ]
+    },
+    "TrainProbeRewardPage": {
+        "desc": "[end] 在奖励详情页",
+        "recognition": "TemplateMatch",
+        "template": "Train/Locked.png",
+        "roi": [
+            886,
+            128,
+            119,
+            533
+        ]
+    },
+    // INFO 领取奖励
+    "TrainGetReward": {
+        "desc": "领取列车奖励",
+        "recognition": "And",
+        "all_of": [
+            "TrainProbeRewardButton"
+        ],
+        "action": "Click",
+        "post_wait_freezes": 1000,
+        "next": [
+            "TrainGetRewardSuccess",
+            "[JumpBack]BaseClickRewardTapBox",
+            "[JumpBack]TrainClickRewardButton",
+            "[JumpBack]BaseBranchError"
+        ]
+    },
+    "TrainProbeRewardButton": {
+        "desc": "[end] 有领取奖励按钮",
+        "recognition": "TemplateMatch",
+        "template": "Train/RewardButton.png",
+        "roi": [
+            886,
+            128,
+            119,
+            533
+        ]
+    },
+    "TrainClickRewardButton": {
+        "desc": "[jp] 点击奖励按钮",
+        "recognition": "And",
+        "all_of": [
+            "TrainProbeRewardButton"
+        ],
+        "action": "Click",
+        "post_wait_freezes": 1000
+    },
+    // INFO 领取成功
+    "TrainGetRewardSuccess": {
+        "desc": "[end] 领取列车奖励成功",
+        "recognition": "And",
+        "all_of": [
+            "TrainProbeRewardDone"
+        ],
+        "action": "Custom",
+        "custom_action": "TrainGetRewardSuccessAct"
+    },
+    "TrainProbeRewardDone": {
+        "desc": "[end] 领取完成 有发车按钮",
+        "recognition": "TemplateMatch",
+        "template": "Train/CanTrainButton.png",
+        "method": 10001,
+        "roi": [
+            886,
+            128,
+            119,
+            533
+        ]
+    },
+    /* -------------------- 分支-接取发车 -------------------- */
+    "TrainBranchAcceptable": {
+        "desc": "可以发车 分支",
+        "recognition": "Custom",
+        "custom_recognition": "TrainBranchAcceptableReco",
+        "next": [
+            "TrainClickAcceptInfo",
+            "[JumpBack]TrainInfoMover",
+            "[JumpBack]BaseBranchError"
+        ]
+    },
+    // INFO 目标路线
+    "TrainClickAcceptInfo": {
+        "desc": "[max] 点击目标路线",
+        "max_hit": 10,
+        "recognition": "And",
+        "all_of": [
+            "TrainProbeAcceptInfo"
+        ],
+        "box_index": 0,
+        "action": "Click",
+        "next": [
+            "TrainBranchAcceptPage",
+            "[JumpBack]TrainClickAcceptInfoButton",
+            "[JumpBack]TrainInfoMover",
+            "[JumpBack]BaseBranchError"
+        ]
+    },
+    "TrainProbeAcceptInfo": {
+        "desc": "[end] 有目标路线",
+        "recognition": "Custom",
+        "custom_recognition": "TrainProbeAcceptInfoReco"
+    },
+    "TrainClickAcceptInfoButton": {
+        "desc": "[jp] 点击目标路线按钮",
+        "recognition": "And",
+        "all_of": [
+            "TrainProbeAcceptInfo"
+        ],
+        "box_index": 0,
+        "action": "Click"
+    },
+    // INFO 接取页面
+    "TrainBranchAcceptPage": {
+        "desc": "目标接取页面分支",
+        "recognition": "And",
+        "all_of": [
+            "TrainProbeAcceptArrow"
+        ],
+        "next": [
+            "TrainEnterFormation",
+            "TrainProbeEnterFailed",
+            "[JumpBack]TrainMoveUp",
+            "[JumpBack]BaseBranchError"
+        ]
+    },
+    "TrainProbeAcceptArrow": {
+        "desc": "[end] 有目标路线的接取箭头",
+        "recognition": "TemplateMatch",
+        "template": "Train/ArrowLight.png",
+        "method": 10001,
+        "roi": "TrainClickAcceptInfo",
+        "roi_offset": [
+            115,
+            -46,
+            -23,
+            103
+        ]
+    },
+    "TrainProbeEnterFailed": {
+        "desc": "[end] 无法进入编队页面",
+        "recognition": "Custom",
+        "custom_recognition": "TrainProbeEnterFailedReco"
+    },
+    // INFO 进入编队
+    "TrainEnterFormation": {
+        "desc": "进入目标STATION编队页面",
+        "recognition": "And",
+        "all_of": [
+            "TrainProbeEnterFormation"
+        ],
+        "action": "Click",
+        "post_wait_freezes": 3000,
+        "next": [
+            "TrainBranchFormation",
+            "[JumpBack]TrainClickFormationButton",
+            "[JumpBack]BaseBranchError"
+        ]
+    },
+    "TrainProbeEnterFormation": {
+        "desc": "[end] 有目标STATION的发车按钮",
+        "recognition": "Custom",
+        "custom_recognition": "TrainProbeEnterFormationReco"
+    },
+    "TrainClickFormationButton": {
+        "desc": "[jp] 点击进入编队页面按钮",
+        "recognition": "And",
+        "all_of": [
+            "TrainProbeEnterFormation"
+        ],
+        "box_index": 0,
+        "action": "Click",
+        "post_wait_freezes": 3000
+    },
+    /* -------------------- 工作-编队发车 -------------------- */
+    "TrainBranchFormation": {
+        "desc": "列车编队页面分支 发车",
+        "recognition": "And",
+        "all_of": [
+            "TrainProbeFormation"
+        ],
+        "next": [
+            "TrainBranchGoButtonLight",
+            "TrainBranchGoButtonDark",
+            "[JumpBack]TrainBranchOverride",
+            "[JumpBack]TrainBranchReset",
+            "[JumpBack]BaseBranchError"
+        ],
+        "focus": {
+            "Node.PipelineNode.Failed": "错误 发车失败"
+        }
+    },
     "TrainProbeFormation": {
-        "desc": "[end] 在列车编队页面 画面上可能有确认窗",
+        "desc": "[end] 在列车编队页面",
         "recognition": "OCR",
         "expected": "列车编队",
         "roi": [
@@ -60,18 +414,22 @@
             63
         ]
     },
-    "TrainProbeGoButtonLight": {
-        "desc": "[end] 出发按钮亮",
-        "recognition": "TemplateMatch",
-        "template": "Train/GoTrainLight.png",
-        "roi": [
-            951,
-            603,
-            262,
-            99
+    /* -------------------- 工作分支-发车暗淡 -------------------- */
+    "TrainBranchGoButtonDark": {
+        "desc": "出发按钮暗 分支 排查原因",
+        "recognition": "And",
+        "all_of": [
+            "TrainProbeGoButtonDark"
+        ],
+        "next": [
+            "TrainStopNoMetal",
+            "TrainClickRecommend",
+            "[JumpBack]TrainBranchOverride",
+            "[JumpBack]TrainBranchReset",
+            "[JumpBack]BaseBranchError"
         ]
     },
-    "TrainProbeGoButtonDart": {
+    "TrainProbeGoButtonDark": {
         "desc": "[end] 出发按钮暗淡",
         "recognition": "TemplateMatch",
         "template": "Train/GoTrainDart.png",
@@ -82,19 +440,108 @@
             99
         ]
     },
-    "TrainProbeNeedCarriage": {
-        "desc": "[end] 车厢不足 需要添加",
-        "recognition": "OCR",
-        "expected": "请添加车厢",
-        "roi": [
-            356,
-            344,
-            617,
-            34
+    "TrainStopNoMetal": {
+        "desc": "[end] 合金不足 任务结束",
+        "recognition": "Custom",
+        "custom_recognition": "TrainStopNoMetalReco",
+        "action": "StopTask",
+        "focus": {
+            "Node.PipelineNode.Succeeded": "合金不足 任务结束"
+        }
+    },
+    // INFO 点击推荐
+    "TrainClickRecommend": {
+        "desc": "点击推荐",
+        "recognition": "And",
+        "all_of": [
+            "TrainProbeNeedRecommend",
+            "TrainProbeRecommend"
+        ],
+        "box_index": 1,
+        "action": "Click",
+        "post_wait_freezes": 1000,
+        "next": [
+            "TrainBranchRecommendSuccess",
+            "[JumpBack]TrainClickRecommendButton",
+            "[JumpBack]TrainBranchOverride",
+            "[JumpBack]TrainBranchReset",
+            "[JumpBack]BaseBranchError"
         ]
     },
+    "TrainProbeNeedRecommend": {
+        "desc": "车厢不足 需要添加",
+        "recognition": "OCR",
+        "expected": "^(\\d)/(?!\\1)\\d$",
+        "roi": [
+            961,
+            104,
+            62,
+            35
+        ]
+    },
+    "TrainProbeRecommend": {
+        "desc": "[end] 有推荐按钮",
+        "recognition": "TemplateMatch",
+        "template": "Train/Auto.png",
+        "roi": [
+            976,
+            499,
+            120,
+            116
+        ]
+    },
+    "TrainClickRecommendButton": {
+        "desc": "[jp] 点击推荐按钮",
+        "recognition": "And",
+        "all_of": [
+            "TrainProbeRecommend"
+        ],
+        "action": "Click",
+        "post_wait_freezes": 1000
+    },
+    // INFO 推荐成功
+    "TrainBranchRecommendSuccess": {
+        "desc": "推荐成功",
+        "recognition": "OCR",
+        "expected": "^(\\d)/\\1$",
+        "roi": [
+            961,
+            104,
+            62,
+            35
+        ],
+        "next": [
+            "TrainBranchGoButtonLight",
+            "[JumpBack]BaseBranchError"
+        ]
+    },
+    /* -------------------- 工作分支-可以发车 -------------------- */
+    "TrainBranchGoButtonLight": {
+        "desc": "出发按钮亮 分支",
+        "recognition": "And",
+        "all_of": [
+            "TrainProbeGoButtonLight"
+        ],
+        "next": [
+            "[JumpBack]ClickConfirm",
+            "TrainGoSuccess",
+            "[JumpBack]TrainClickGoButtonLight",
+            "[JumpBack]TrainBranchOverride",
+            "[JumpBack]TrainBranchReset",
+            "[JumpBack]Click"
+        ]
+    },
+    "TrainGoSuccess": {
+        "desc": "[end] 发车成功",
+        "recognition": "And",
+        "all_of": [
+            "TrainProbeBusy"
+        ],
+        "action": "Custom",
+        "custom_action": "TrainGoSuccessAct"
+    },
     "TrainProbeBusy": {
-        "desc": "[end] 当前路线繁忙",
+        "desc": "[end] 当前路线繁忙 已经在路上",
         "recognition": "TemplateMatch",
         "template": "Train/CancelTrain.png",
         "roi": [
@@ -104,270 +551,56 @@
             585
         ]
     },
-    // INFO 就位-一览
-    "TrainEnsureInfo": {
-        "desc": "[jp] 确保在一览页面",
-        "recognition": "And",
-        "all_of": [
-            "TrainProbeInfo"
-        ],
-        "inverse": true,
-        "timeout": 30000,
-        "next": [
-            "TrainProbeInfo",
-            "[JumpBack]BaseBranchError",
-            "TrainClickArrow",
-            "[JumpBack]ReturnMain"
-        ]
-    },
-    "TrainClickArrow": {
-        "desc": "[jp] 点击列车押运的蓝色箭头",
-        "recognition": "TemplateMatch",
-        "template": "Train/TrainButton.png",
-        "action": "Click",
-        "roi": [
-            0,
-            122,
-            126,
-            138
-        ],
-        "post_wait_freezes": 1000
-    },
-    // INFO 就位-主页面
-    "TrainEnsureHome": {
-        "desc": "[jp] 确保在主页面",
-        "recognition": "And",
-        "all_of": [
-            "TrainProbeHomeReady"
-        ],
-        "inverse": true,
-        "timeout": 30000,
-        "next": [
-            "TrainProbeHomeReady",
-            "[JumpBack]BaseBranchError",
-            "[JumpBack]TrainEnterHome", // INFO 此处初始化
-            "[JumpBack]TrainEnsureInfo"
-        ]
-    },
-    "TrainEnterHome": {
-        "desc": "[jp] 进入武装押运主界面",
-        "recognition": "And",
-        "all_of": [
-            "TrainProbeInfo",
-            "TrainInit"
-        ],
-        "box_index": 1,
-        "action": "Click",
-        "post_wait_freezes": 1000
-    },
-    "TrainInit": {
-        "desc": "[end] 列车初始化 获取列车状态",
-        "recognition": "Custom",
-        "custom_recognition": "TrainInitReco",
-        "attach": {
-            "level_one": "",
-            "level_one_number": 99,
-            "level_two": "",
-            "level_two_number": 99
-        }
-    },
-    // INFO 就位-出发按钮亮
-    "TrainEnsureGoButtonLight": {
-        "desc": "[jp] 确保出发按钮亮 无法确保则任务结束",
+    "TrainClickGoButtonLight": {
+        "desc": "[jp][max] 点击亮的出发按钮",
+        "max_hit": 10,
         "recognition": "And",
         "all_of": [
             "TrainProbeGoButtonLight"
         ],
-        "inverse": true,
-        "timeout": 30000,
-        "next": [
-            "TrainProbeGoButtonLight",
-            "IsNoMetal",
-            "[JumpBack]BaseBranchError",
-            "[JumpBack]TrainClickRecommend",
-            "[JumpBack]TrainOverrideConfirm",
-            "[JumpBack]TrainResetCancel",
-            "[JumpBack]TrainClickGoButtonDart",
-            "TrainProbeHomeName" // INFO 防止卡死
-        ]
-    },
-    "TrainClickRecommend": {
-        "desc": "[jp] 车厢不足 点击推荐搭乘",
-        "recognition": "And",
-        "all_of": [
-            "TrainProbeNeedCarriage",
-            {
-                "recognition": "TemplateMatch",
-                "template": "Train/Auto.png",
-                "roi": [
-                    976,
-                    499,
-                    120,
-                    116
-                ]
-            }
-        ],
-        "box_index": 1,
         "action": "Click",
         "post_wait_freezes": 1000
     },
-    "TrainClickGoButtonDart": {
-        "desc": "[jp][max] 点击暗淡的出发按钮",
-        "max_hit": 10,
-        "recognition": "And",
-        "all_of": [
-            "TrainProbeGoButtonDart"
-        ],
-        "action": "Click"
-        // INFO 需要马上判断暗淡原因，不要加等待
-    },
-    // INFO 动作-关闭一览
-    "TrainClickStatusArrow": {
-        // INFO agent 侧还有调用
-        "desc": "关闭状态箭头 然后结束任务",
-        "recognition": "TemplateMatch",
-        "template": "Train/CloseArrow.png",
-        "action": "Click",
+    /* -------------------- 动作-通用弹窗 -------------------- */
+    "TrainBranchOverride": {
+        "desc": "覆盖编队弹窗 分支",
+        "recognition": "OCR",
+        "expected": "覆盖",
         "roi": [
-            299,
-            191,
-            140,
-            173
+            414,
+            306,
+            442,
+            70
         ],
-        "post_wait_freezes": 1000,
         "next": [
-            "TrainClickStatusArrowSuccess",
-            "TrainClickStatusArrow"
-        ],
-        "focus": {
-            "Node.Recognition.Succeeded": "所有列车未抵达，任务结束"
-        }
-    },
-    "TrainClickStatusArrowSuccess": {
-        "desc": "关闭状态箭头成功",
-        "recognition": "TemplateMatch",
-        "template": "Train/CloseArrow.png",
-        "inverse": true,
-        "action": "StopTask"
-    },
-    // INFO 工作-主循环
-    "TrainLoop": {
-        "desc": "[Loop] 武装押运 循环",
-        "recognition": "And",
-        "all_of": [
-            "TrainProbeHomeReady"
-        ],
-        "timeout": 30000,
-        "next": [
-            "TrainCheckEnd",
-            "[JumpBack]TrainLoopReward",
-            "[JumpBack]TrainLoopAcceptable",
-            "[JumpBack]BaseBranchError"
+            "ClickConfirm"
         ]
     },
-    // INFO 特殊节点
-    "TrainCheckEnd": {
-        "desc": "[end] 检测武装押运任务是否结束",
-        "recognition": "Custom",
-        "custom_recognition": "TrainCheckEndReco",
-        "action": "StopTask"
+    "TrainBranchReset": {
+        "desc": "重置编队弹窗 分支",
+        "recognition": "OCR",
+        "expected": "重置",
+        "roi": [
+            356,
+            208,
+            565,
+            322
+        ],
+        "next": [
+            "ClickCancel"
+        ]
     },
+    /* -------------------- 动作-通用移动 -------------------- */
     "TrainInfoMover": {
-        "desc": "[jp] 尝试移动路线",
+        "desc": "[jp] 尝移动路线列表",
         "recognition": "Custom",
         "custom_recognition": "TrainInfoMoverReco",
         "action": "Custom",
         "custom_action": "TrainInfoMoverAct",
         "post_wait_freezes": 1000
     },
-    // INFO 工作-领取奖励
-    "TrainLoopReward": {
-        "desc": "[Loop][jp] 领取奖励 循环",
-        "recognition": "Custom",
-        "custom_recognition": "TrainLoopRewardReco",
-        "timeout": 30000,
-        "next": [
-            "TrainClickRewardInfo",
-            "[JumpBack]BaseBranchError",
-            "[JumpBack]TrainEnsureHome",
-            "[JumpBack]TrainInfoMover" // XXX 不会触发 暂时没有更好的解决方案
-        ]
-    },
-    "TrainClickRewardInfo": {
-        "desc": "[max] 点击可以领取奖励的路线",
-        "max_hit": 10,
-        "recognition": "TemplateMatch",
-        "template": "Base/BlueMarkGreen.png",
-        "green_mask": true,
-        "roi": [
-            201,
-            122,
-            89,
-            501
-        ],
-        "target_offset": [
-            -33,
-            41,
-            0,
-            0
-        ],
-        "action": "Click",
-        "next": [
-            "TrainEnterRewardPage",
-            "TrainClickRewardInfo",
-            "[JumpBack]BaseBranchError"
-        ],
-        "post_wait_freezes": 1000
-    },
-    "TrainEnterRewardPage": {
-        "desc": "进入有奖励的页面",
-        "recognition": "TemplateMatch",
-        "template": "Train/Locked.png",
-        "roi": [
-            886,
-            128,
-            119,
-            533
-        ],
-        "next": [
-            "TrainGetReward",
-            "[JumpBack]TrainMoveUp"
-        ]
-    },
-    "TrainGetReward": {
-        "desc": "领取列车奖励",
-        "recognition": "TemplateMatch",
-        "template": "Train/RewardButton.png",
-        "action": "Click",
-        "roi": [
-            886,
-            128,
-            119,
-            533
-        ],
-        "next": [
-            "TrainGetRewardSuccess",
-            "[JumpBack]ClickTap"
-        ]
-    },
-    "TrainGetRewardSuccess": {
-        "desc": "领取列车奖励结束",
-        "recognition": "TemplateMatch",
-        "template": "Train/CanTrainButton.png",
-        "method": 10001,
-        "roi": [
-            886,
-            128,
-            119,
-            533
-        ],
-        "action": "Custom",
-        "custom_action": "TrainGetRewardSuccessAct"
-    },
-    // TODO 移动到目标路线
-    // INFO 动作-上滑
     "TrainMoveUp": {
-        // NOICE 起点是物品的话无法滑动
+        // INFO 起点是物品的话无法滑动
         "desc": "列车页面上滑",
         "action": "Swipe",
         "begin": [
@@ -384,139 +617,5 @@
         ],
         "end_hold": 300,
         "post_wait_freezes": 500
-    },
-    // INFO 工作-接受？
-    "TrainLoopAcceptable": {
-        "desc": "[Loop][jp] 可以发车 循环",
-        "recognition": "Custom",
-        "custom_recognition": "TrainLoopAcceptableReco",
-        "timeout": 30000,
-        "next": [
-            "TrainClickAcceptInfo",
-            "[JumpBack]BaseBranchError",
-            "[JumpBack]TrainEnsureHome",
-            "[JumpBack]TrainInfoMover"
-        ]
-    },
-    "TrainClickAcceptInfo": {
-        "desc": "[max] 点击目标路线",
-        "max_hit": 10,
-        "recognition": "Custom",
-        "custom_recognition": "TrainClickAcceptInfoReco",
-        "action": "Click",
-        "next": [
-            "TrainEnterAcceptPage",
-            "TrainClickAcceptInfo",
-            "[JumpBack]TrainInfoMover",
-            "[JumpBack]BaseBranchError"
-        ]
-    },
-    "TrainEnterAcceptPage": {
-        "desc": "进入目标接取页面",
-        "recognition": "TemplateMatch",
-        "template": "Train/ArrowLight.png",
-        "method": 10001,
-        "roi": "TrainClickAcceptInfo",
-        "roi_offset": [
-            115,
-            -46,
-            -23,
-            103
-        ],
-        "next": [
-            "TrainLoopFormation",
-            "[JumpBack]TrainEnterFormation",
-            "[JumpBack]TrainMoveUp"
-        ],
-        "post_wait_freezes": 2500
-    },
-    "TrainEnterFormation": {
-        "desc": "[jp] 进入目标STATION编队页面",
-        "recognition": "Custom",
-        "custom_recognition": "TrainEnterFormationReco",
-        "action": "Click",
-        "post_wait_freezes": 3000 //防止点太快点到其他按钮
-    },
-    // INFO 动作-覆盖和重置
-    "TrainOverrideConfirm": {
-        "desc": "[jp] 确认覆盖",
-        "recognition": "OCR",
-        "expected": "覆盖",
-        "roi": [
-            414,
-            306,
-            442,
-            70
-        ],
-        "next": [
-            "ClickConfirm"
-        ]
-    },
-    "TrainResetCancel": {
-        "desc": "[jp] 取消重置",
-        "recognition": "OCR",
-        "expected": "重置",
-        "roi": [
-            356,
-            208,
-            565,
-            322
-        ],
-        "next": [
-            "ClickCancel"
-        ]
-    },
-    // INFO 工作-编队页面
-    "TrainLoopFormation": {
-        "desc": "[Loop] 列车出发编队页面 循环",
-        "recognition": "And",
-        "all_of": [
-            "TrainProbeFormation"
-        ],
-        "timeout": 30000,
-        "next": [
-            "[JumpBack]TrainOverrideConfirm",
-            "[JumpBack]TrainResetCancel",
-            "TrainLoopGoButtonLight",
-            "[JumpBack]BaseBranchError",
-            "[JumpBack]TrainEnsureGoButtonLight"
-        ],
-        "focus": {
-            "Node.PipelineNode.Failed": "错误 发车失败"
-        }
-    },
-    "TrainLoopGoButtonLight": {
-        "desc": "[Loop] 按钮亮 出发 循环",
-        "recognition": "And",
-        "all_of": [
-            "TrainProbeGoButtonLight"
-        ],
-        "timeout": 30000,
-        "next": [
-            "[JumpBack]TrainOverrideConfirm",
-            "[JumpBack]TrainResetCancel",
-            "[JumpBack]ClickConfirm", // INFO 发车确认 
-            "TrainGoSuccess",
-            "[JumpBack]TrainClickGoButtonLight"
-        ]
-    },
-    "TrainClickGoButtonLight": {
-        "desc": "[jp][max] 点击亮的出发按钮",
-        "max_hit": 10,
-        "recognition": "And",
-        "all_of": [
-            "TrainProbeGoButtonLight"
-        ],
-        "action": "Click",
-        "post_wait_freezes": 1000
-    },
-    "TrainGoSuccess": {
-        "desc": "[end] 发车成功",
-        "recognition": "And",
-        "all_of": [
-            "TrainProbeBusy"
-        ],
-        "action": "Custom",
-        "custom_action": "TrainGoSuccessAct"
     }
 }

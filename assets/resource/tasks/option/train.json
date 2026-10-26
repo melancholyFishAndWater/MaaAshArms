@@ -28,7 +28,7 @@
                 }
             ],
             "pipeline_override": {
-                "TrainInit": {
+                "TrainProbeStatus": {
                     "attach": {
                         "level_one": "{level_one}",
                         "level_one_number": "{level_one_number}",

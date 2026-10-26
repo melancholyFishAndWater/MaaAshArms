@@ -87,9 +87,6 @@ TEXT_BAND = (40, 70)
 # 数字候选的背景比值区间：数字 0.5~0.85、纸面 1.0、黑字 < 0.4
 DIGIT_RATIO_MIN = 0.45
 DIGIT_RATIO_MAX = 0.93
-# 数字候选的背景比值区间：数字 0.5~0.85、纸面 1.0、黑字 < 0.4
-DIGIT_RATIO_MIN = 0.45
-DIGIT_RATIO_MAX = 0.93
 
 # 数字列范围（ROI 内 x 坐标）。27 个实测样本：数字 x 37~104，左侧 0~36 是穿孔边框
 DIGIT_COL = (36, 112)
@@ -186,7 +183,12 @@ def _components(mask: np.ndarray) -> list[list[tuple[int, int]]]:
                 comp.append((y, x))
                 for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
                     ny, nx = y + dy, x + dx
-                    if 0 <= ny < h and 0 <= nx < w and mask[ny, nx] and not seen[ny, nx]:
+                    if (
+                        0 <= ny < h
+                        and 0 <= nx < w
+                        and mask[ny, nx]
+                        and not seen[ny, nx]
+                    ):
                         seen[ny, nx] = True
                         stack.append((ny, nx))
             out.append(comp)
