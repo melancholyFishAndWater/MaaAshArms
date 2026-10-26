@@ -10,9 +10,53 @@
         "desc": "防卫局任务",
         "next": [
             "EscortEnterHome",
+            "[JumpBack]TrainCloseStatusArrow",
             "[JumpBack]BaseBranchError",
             "[JumpBack]ReturnMain"
         ]
+    },
+    /* -------------------- 动作-关闭一览 -------------------- */
+    "TrainCloseStatusArrow": {
+        "desc": "[jp] 关闭武装押运一览",
+        "recognition": "And",
+        "all_of": [
+            "TrainProbeCloseArrow"
+        ],
+        "action": "Click",
+        "post_wait_freezes": 1000,
+        "next": [
+            "TrainCloseStatusArrowSuccess",
+            "[JumpBack]TrainClickCloseArrowButton",
+            "[JumpBack]BaseBranchError"
+        ]
+    },
+    "TrainProbeCloseArrow": {
+        "desc": "[end] 有关闭箭头",
+        "recognition": "TemplateMatch",
+        "template": "Train/CloseArrow.png",
+        "roi": [
+            299,
+            191,
+            140,
+            173
+        ]
+    },
+    "TrainClickCloseArrowButton": {
+        "desc": "[jp] 点击关闭箭头按钮",
+        "recognition": "And",
+        "all_of": [
+            "TrainProbeCloseArrow"
+        ],
+        "action": "Click",
+        "post_wait_freezes": 1000
+    },
+    "TrainCloseStatusArrowSuccess": {
+        "desc": "[end] 关闭武装押运一览成功",
+        "recognition": "And",
+        "all_of": [
+            "TrainProbeCloseArrow"
+        ],
+        "inverse": true
     },
     /* -------------------- 通用探测 -------------------- */
     "EscortProbeHomeName": {
