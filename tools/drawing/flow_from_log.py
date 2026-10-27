@@ -28,7 +28,7 @@
   python tools/drawing/flow_from_log.py D:/MaaAshArms/debug/maafw.log \
       --vision D:/MaaAshArms/debug/vision \
       --from "2026-10-11 21:39:56" --to "2026-10-11 21:43:29" \
-      --out flow_escort.png
+      --out escort.png
 
 只做解析、不画图：加 --list。
 
@@ -80,7 +80,8 @@ from typing import Any, ClassVar
 # 8：`VisionIndex` 的两处 `sort` 加 member 次键——同时间戳的多张 vision 图不再抛
 #    `TypeError`，且"同时间戳取哪张"从"插入顺序"改成"member 字典序"（产物可能换一张缩略图）。
 # 9：节点名后标「疑似过时」——日志所属版本之后，该节点所在模块有提交（产物内容变化）。
-RENDERER_VERSION = 9
+# 10：产物文件名去掉 `flow_` 前缀；画完后显式打印「疑似过时」提示（产物名变化）。
+RENDERER_VERSION = 10
 
 # 框里最多列几个候选，多的折成"另 N 项"（`--list` 不受这个限制）。
 # 默认只列 2 个：父节点名字 + 本次真跑的那个候选是这一行最要紧的两件事，
@@ -2498,6 +2499,21 @@ def stale_notes(check: StaleCheck | None) -> list[str]:
     return notes
 
 
+def stale_summary(check: StaleCheck | None) -> str | None:
+    """「疑似过时」命中时的一句话提示；没命中（或没做这项检查）返回 None。
+
+    与 `stale_notes` 的分工：notes 是图上第二行的注记（详细、含模块与提交），
+    这条是画完图后在终端显式打的一行——**只看 stdout 的人也能知道这张图有存疑的节点**。
+    """
+    if check is None or not check.ok or not check.nodes:
+        return None
+    names = "、".join(n.name for n in check.nodes[:5])
+    more = f" 等 {len(check.nodes)} 个" if len(check.nodes) > 5 else ""
+    return (f"疑似过时：{len(check.nodes)} 个节点在 {check.version} 之后改过"
+            f"（{names}{more}）——图里这些节点名带「疑似过时」，"
+            f"改动有没有影响它们的行为要自己核对")
+
+
 def render_flow(log,
                 *,
                 vision: Any = None,
@@ -2592,7 +2608,7 @@ def render_flow(log,
     else:
         base_dir = os.path.abspath(outdir) if outdir else DEFAULT_OUTDIR
         stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        target = os.path.join(base_dir, f"flow_{_log_basename(log)}_{stamp}.png")
+        target = os.path.join(base_dir, f"{_log_basename(log)}_{stamp}.png")
     os.makedirs(os.path.dirname(target), exist_ok=True)
 
     opts.vision, opts.on_error = vision, on_error
@@ -2723,7 +2739,7 @@ def create_argument_parser(prog: str | None = None) -> argparse.ArgumentParser:
                     help="vision 目录，或 MFA 导出包（zip / 多个 archive-partNN.zip），或它们的父目录（如 debug/）")
     ap.add_argument("--on-error", dest="on_error", default=None,
                     help="on_error 目录或导出包（可选，默认取 --vision 同级的 on_error；给超时/失败框贴现场图）")
-    ap.add_argument("--out", default=None, help=f"输出 PNG（默认 {DEFAULT_OUTDIR}/flow_<日志名>_<时间戳>.png）")
+    ap.add_argument("--out", default=None, help=f"输出 PNG（默认 {DEFAULT_OUTDIR}/<日志名>_<时间戳>.png）")
     ap.add_argument("--outdir", default=None, help=f"只改输出目录（默认 {DEFAULT_OUTDIR}）")
     ap.add_argument("--from", dest="t_from", default=None, help="起始时间，支持 'HH:MM:SS' 或完整时间戳")
     ap.add_argument("--to", dest="t_to", default=None, help="结束时间")
@@ -2795,6 +2811,10 @@ def main(argv: list[str] | None = None) -> int:
               if result.overlay_groups else "")
     print(f"步骤 {result.steps}（折叠后 {result.boxes} 个框）/ 轮次 {result.rounds}{merged}"
           f" → {result.path}  ({result.width}×{result.height})")
+    # 「疑似过时」命中：画完图后显式打一行（notes 里也有，但那是 stderr 的注记）
+    summary = stale_summary(result.stale)
+    if summary:
+        print(summary)
     if result.truncated_start:
         print("提示：日志第一行晚于 --from，这份日志只包含了窗口的后半段（遥测附件只带 tail），"
               "窗口开头的过程不在图里", file=sys.stderr)

@@ -35,7 +35,7 @@ import os
 import re
 import sys
 import zipfile
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
 
@@ -55,6 +55,7 @@ from flow_from_log import (
     _is_zip,
     parse_time,
     render_flow,
+    stale_summary,
 )
 
 MANIFEST_NAME = "manifest.json"
@@ -112,7 +113,7 @@ class Case:
         return f"归档 {len(self.packages)} 卷"
 
 
-@dataclass
+@dataclass(frozen=True)
 class _LazyMember:
     """归档条目：真正要画时才解压，避免把整包图片一次性读进内存。"""
 
@@ -330,14 +331,14 @@ def _safe_part(text: str) -> str:
 
 
 def base_filename(case: Case, options: FlowOptions) -> str:
-    """不含去重后缀的文件名主干：优先遥测问题名，其次任务名，最后证据包目录名.
+    """不含去重后缀的文件名主干：优先遥测问题名，其次任务名，最后证据包目录名。
 
     带 `--task-id` 时追加 `_task<id>`：一个 issue 里往往有多个任务失败（实测
     `PYTHON-1Z` 有 6 个），不追加会让它们互相覆盖到同一个文件名上.
 
     指定了 `--task-id` 时**不把任务名放进主干**：那个 task 的入口行不一定在导出的那一段里
     （实测 200000007 只留下 `ReturnMain`，它不是任务入口），而 `task<id>` 本身就唯一、
-    也一定对——宁可少一个名字，不放一个可能错的名字.
+    也一定对——宁可少一个名字，不放一个可能错的名字。
     """
     issue = issue_name_of(case)
     task = task_name_of(case, options)
@@ -353,13 +354,17 @@ def base_filename(case: Case, options: FlowOptions) -> str:
 
 
 def out_filename(case: Case, options: FlowOptions, outdir: str,
-                 manifest: dict | None = None, stale: "StaleCheck | None" = None) -> str:
-    """产物文件名：`<问题名或任务名>[_task<id>][_<日志时间>][_stale].png.
+                 manifest: dict | None = None) -> str:
+    """产物文件名：`<问题名或任务名>[_task<id>][_<日志时间>][_<短指纹>].png`.
 
-    相比旧版去掉了 `flow_` 前缀；在节点有疑似过时标记时，文件名末尾追加 `_stale`。
+    相比旧版去掉了 `flow_` 前缀（目录已经是 `temp/flow/`，前缀是重复的）。
+
     同名判定看两处：磁盘上已有同名文件，或 manifest 里已登记过**另一份**输入（日志指纹
     不同或参数不同）。任一冲突就追加日志时间标签；加了标签仍冲突时再追加日志短指纹，
     保证结果确定且不覆盖别人。
+
+    「疑似过时」的后缀不在这里加：那项检查要等渲染完才知道有没有命中，
+    所以后缀由 `stale_name()` 在渲染后补上。
     """
     base = base_filename(case, options)
     digest = log_digest(case)
@@ -374,31 +379,24 @@ def out_filename(case: Case, options: FlowOptions, outdir: str,
             return True                      # 磁盘上有同名文件、但不是本工具画的
         return recorded[name].get("fingerprint", {}).get("log") != digest
 
-    # 先根据是否有 stale 节点确定文件名干串
-    if stale is not None and stale.nodes:
-        # 有疑似过时节点：在不冲突的情况下于基础文件名末尾追加 "_stale"
-        base_stale = f"{base}_stale"
-        name = f"{base_stale}.png"
+    name = f"{base}.png"
+    if not taken(name):
+        return name
+    stamp = log_stamp(case, options)
+    if stamp:
+        name = f"{base}_{stamp}.png"
         if not taken(name):
             return name
-        # 冲突了再走时间/指纹补全（保留 _stale 后缀）
-        stamp = log_stamp(case, options)
-        if stamp:
-            name = f"{base_stale}_{stamp}.png"
-            if not taken(name):
-                return name
-        return f"{base_stale}_{digest}.png"
-    else:
-        # 无 stale：去掉 flow_ 前缀，直接用 base
-        name = f"{base}.png"
-        if not taken(name):
-            return name
-        stamp = log_stamp(case, options)
-        if stamp:
-            name = f"{base}_{stamp}.png"
-            if not taken(name):
-                return name
-        return f"{base}_{digest}.png"
+    return f"{base}_{digest}.png"
+
+
+def stale_name(name: str) -> str:
+    """给产物文件名加「疑似过时」后缀：`_stale` 追加在最末尾（扩展名之前）。
+
+    `X.png` -> `X_stale.png`；`X_20261024-031849.png` -> `X_20261024-031849_stale.png`。
+    """
+    stem, ext = os.path.splitext(name)
+    return f"{stem}_stale{ext}"
 
 
 def load_manifest(outdir: str) -> dict:
@@ -424,14 +422,21 @@ def save_manifest(outdir: str, manifest: dict) -> None:
         fh.write("\n")
 
 
+def _stale_record(check) -> dict | None:
+    """`StaleCheck` 的 JSON 形态，存进 manifest 用（dataclass 不能直接 dump）。"""
+    return None if check is None else asdict(check)
+
+
 def run_case(case: Case, options: FlowOptions, *, outdir: str, mermaid: bool,
              force: bool, manifest: dict) -> FlowResult | None:
-    """渲染一个 case；命中 manifest 且产物还在就跳过（幂等）。"""
-    # 从 manifest 获取本次渲染的 stale 判断结果（由前次 run_case 存入）
-    stale_manifest = manifest["cases"].get(name) if "cases" in manifest else None
-    stale = stale_manifest.get("stale") if stale_manifest else None
-    name = out_filename(case, options, outdir, manifest, stale)
-    target = os.path.join(outdir, name)
+    """渲染一个 case；命中 manifest 且产物还在就跳过（幂等）。
+
+    「疑似过时」只有在渲染完才知道（检查要拿到日志里实际跑过的节点名），所以文件名里的
+    `_stale` 是**画完之后**补的：先按普通名字渲染，命中就 `os.replace` 改名，再把
+    manifest 记到新名字上。幂等检查因此要同时认普通名与 `_stale` 名——上一轮画出来的
+    是哪一个，这一轮还不知道。
+    """
+    name = out_filename(case, options, outdir, manifest)
     vision, on_error = case.vision(), case.on_error()
     fingerprint = {
         "log": log_digest(case),
@@ -442,11 +447,15 @@ def run_case(case: Case, options: FlowOptions, *, outdir: str, mermaid: bool,
         # 渲染器版本：解析口径/版面改了必须换指纹，否则同一个证据包会一直命中旧记录"跳过"
         "renderer": RENDERER_VERSION,
     }
-    recorded = manifest["cases"].get(name)
-    if not force and recorded and recorded.get("fingerprint") == fingerprint and os.path.isfile(target):
-        print(f"跳过（已画过）: {target}")
-        return None
+    if not force:
+        for candidate in (name, stale_name(name)):
+            recorded = manifest["cases"].get(candidate)
+            path = os.path.join(outdir, candidate)
+            if recorded and recorded.get("fingerprint") == fingerprint and os.path.isfile(path):
+                print(f"跳过（已画过）: {path}")
+                return None
 
+    target = os.path.join(outdir, name)
     result = render_flow(
         case.log_source(),
         vision=vision,
@@ -456,6 +465,20 @@ def run_case(case: Case, options: FlowOptions, *, outdir: str, mermaid: bool,
         mermaid=mermaid,
     )
     assert isinstance(result, FlowResult)
+
+    # 疑似过时命中：把 _stale 追加到文件名最末尾（扩展名之前），.mmd 跟着改
+    stale_hit = result.stale is not None and bool(result.stale.nodes)
+    if stale_hit:
+        renamed = stale_name(name)
+        renamed_path = os.path.join(outdir, renamed)
+        os.replace(target, renamed_path)
+        if result.mermaid and os.path.isfile(result.mermaid):
+            new_mermaid = os.path.splitext(renamed_path)[0] + ".mmd"
+            os.replace(result.mermaid, new_mermaid)
+            result.mermaid = new_mermaid
+        result.path = renamed_path
+        name = renamed
+
     manifest["cases"][name] = {
         "fingerprint": fingerprint,
         "path": result.path,
@@ -472,12 +495,16 @@ def run_case(case: Case, options: FlowOptions, *, outdir: str, mermaid: bool,
         "out_of_order": result.out_of_order,
         "notes": list(result.notes),
         "rendered_at": datetime.now().isoformat(timespec="seconds"),
-        "stale": result.stale,
+        "stale": _stale_record(result.stale),
     }
     merged = (f"（{result.overlay_groups} 段重复已合并 → {result.columns} 列）"
               if result.overlay_groups else "")
     print(f"步骤 {result.steps}（折叠后 {result.boxes} 个框）/ 轮次 {result.rounds}{merged}"
           f" → {result.path}  ({result.width}×{result.height})")
+    # 疑似过时命中：画完图后显式打一行（notes 里也有，但那是 stderr 的注记）
+    summary = stale_summary(result.stale)
+    if summary:
+        print(summary)
     if result.mermaid:
         print(f"mermaid → {result.mermaid}")
     if result.truncated_start:

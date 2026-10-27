@@ -151,6 +151,15 @@ python tools/drawing/whiteboard_images.py --dry-run   # 报告将要做什么，
 
 **只标疑似，不判断是否真的过时**：边界先后、字段增删、注释都算"不同"，到底有没有影响这个节点的行为要人核对。
 
+命中时**画完图后会额外打一行**（`flow_from_log.py` 与 `flow_cases.py` 都打，走 stdout，与产物路径挨着）：
+
+```text
+疑似过时：2 个节点在 v1.0.0-beta.42 之后改过（ReturnMain、TaskTrain）——图里这些节点名带「疑似过时」，改动有没有影响它们的行为要自己核对
+```
+
+`flow_cases.py` 还会把这个后缀写进文件名（`_stale`）。图上第二行的注记仍然保留更细的信息
+（模块名、最近一次改动该模块的提交），终端里那条只给"有几个、是哪几个"。
+
 几个刻意的选择：
 
 - **按节点定义比，不按"文件有没有提交"**：前者把整个文件和它所有节点一起标上（实测 `beta.42` 之后
@@ -236,7 +245,7 @@ python tools/drawing/whiteboard_images.py --dry-run   # 报告将要做什么，
 - **整份日志会读进内存**：为检测时间回跳必须读完（本机 10.9 MB 的 `maafw.log` 约 2.4 s、十几 MB 内存）。
   框架自己会轮转日志（`debug/` 下有 `maafw.bak.<日期>.log`），不需要为它做流式裁剪。
 - **`RENDERER_VERSION`**：改动会影响产物内容时（版面、注记、解析口径）必须 +1，
-  否则 `flow_cases` 会命中旧的 `manifest.json` 直接"跳过（已画过）"，渲染改了却不重画。现在是 **9**。
+  否则 `flow_cases` 会命中旧的 `manifest.json` 直接"跳过（已画过）"，渲染改了却不重画。现在是 **10**。
 - **合并与贴图解析的先后**：`overlay_repeats()` 的 `has_thumb` 问的是"第 i 轮实际贴到图没有"，
   所以只能在 `thumb_of` 算完之后调用；按"传没传 `--vision`"提前判断会把其实有图的轮折掉。
   折叠后 `thumb_of` 的键（旧列索引）必须重排，否则 `--no-thumbs` 与 on_error 回贴会把图贴到别的列。
@@ -248,7 +257,7 @@ python tools/drawing/whiteboard_images.py --dry-run   # 报告将要做什么，
 
 ### 产物文件名（`flow_cases.py`）
 
-`flow_<问题名或任务名>[_task<id>][_<日志时间>].png`，优先级：
+`<问题名或任务名>[_task<id>][_<日志时间>][_<短指纹>][_stale].png`，优先级：
 
 1. **遥测问题名**：证据包目录名就是 issue 的 `short_id`（`temp/evidence/PYTHON-1Z/` → `PYTHON-1Z`）；
    `--case` 指到 `debug/` 那层时往上找一层，归档来源看文件名（`PYTHON-1Z-part01.zip` → `PYTHON-1Z`）。
@@ -264,6 +273,14 @@ python tools/drawing/whiteboard_images.py --dry-run   # 报告将要做什么，
 
 时间标签也冲突时再追加日志短指纹（`_6d990a8f6cdf66b6`），保证结果确定、不覆盖别人的产物。
 同一份日志 + 同一套参数仍落在原名上，manifest 幂等不变。
+
+**文件名不再带 `flow_` 前缀**（v10）：产物本来就在 `temp/flow/` 下，前缀只是重复。旧产物
+（`temp/flow/flow_*.png`）不会被自动改名或删除，需要的话自己清一遍。
+
+**「疑似过时」命中时，`_stale` 追加在文件名最末尾**（扩展名之前）：`X.png` → `X_stale.png`，
+带时间标签时是 `X_20261024-031849_stale.png`。这个后缀**只能等画完才知道**（检查要拿到日志里
+实际跑过的节点名），所以是渲染后 `os.replace` 改名，`.mmd` 跟着一起改；幂等检查同时认
+`X.png` 与 `X_stale.png` 两种名字。
 
 **带 `--task-id` 时文件名只写 `_task<id>`、不写任务名**：一个 issue 里常有多个任务失败（实测
 `PYTHON-1Z` 有 6 个），而那个 task 的入口行不一定在导出的那一段里（实测 200000007 只留下 `ReturnMain`，
