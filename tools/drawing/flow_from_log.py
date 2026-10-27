@@ -59,13 +59,15 @@ import io
 import json
 import os
 import re
+import subprocess
 import sys
 import zipfile
 import zlib
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
+from pathlib import Path
+from typing import Any, ClassVar
 
 # 渲染器版本：只要改动会影响产物内容（版面、注记、解析口径）就 +1。
 # flow_cases 把它写进 manifest 指纹——不 bump 的话同一个证据包会命中旧记录直接"跳过（已画过）"，
@@ -77,7 +79,8 @@ from typing import Any
 #    `--no-overlay` 关掉）。默认开启，所以是产物变化。
 # 8：`VisionIndex` 的两处 `sort` 加 member 次键——同时间戳的多张 vision 图不再抛
 #    `TypeError`，且"同时间戳取哪张"从"插入顺序"改成"member 字典序"（产物可能换一张缩略图）。
-RENDERER_VERSION = 8
+# 9：节点名后标「疑似过时」——日志所属版本之后，该节点所在模块有提交（产物内容变化）。
+RENDERER_VERSION = 9
 
 # 框里最多列几个候选，多的折成"另 N 项"（`--list` 不受这个限制）。
 # 默认只列 2 个：父节点名字 + 本次真跑的那个候选是这一行最要紧的两件事，
@@ -289,6 +292,10 @@ class Step:
     jumps: list[str] = field(default_factory=list)  # 候选里带 `[JumpBack]` 的那些
     # nextlist | walk | entry | none：归到父节点靠的是哪一层证据（读图的人要能看出可信度）
     parent_source: str = ""
+
+    # 疑似过时的节点名（整张图共用一份，由 `_apply_stale` 填）。不写成 dataclass 字段：
+    # 它不属于"这一步"，而 `Step` 会被 `overlay_repeats` 大量重造，加字段要处处带参数。
+    stale_names: ClassVar[frozenset[str]] = frozenset()
 
     @property
     def parent(self) -> str:
@@ -1216,6 +1223,267 @@ PARENT_COLORS: tuple[tuple[tuple[int, int, int], tuple[int, int, int], tuple[int
 )
 
 
+# --------------------------------------------------------------------------- #
+# 节点是否"疑似过时"：日志所属版本之后，该节点所在模块有没有提交
+# --------------------------------------------------------------------------- #
+
+# 安装目录名里带版本号：`MaaAshArms-win-x86_64-v1.0.0-beta.42`。日志头部那行
+# `Working E:/.../MaaAshArms-win-x86_64-v1.0.0-beta.42` 就是这么写的——遥测附件只带
+# 日志尾部，这份日志里常常**没有**版本号（实测 PYTHON-1P / PYTHON-24 就取不到），
+# 那时整项检查做不了（`StaleCheck.reason` 会说清原因，不静默跳过）。
+INSTALL_VERSION_RE = re.compile(
+    r"MaaAshArms-[A-Za-z0-9_]+-[A-Za-z0-9_]+-(v[0-9][0-9A-Za-z.\-]*)"
+)
+
+
+@dataclass(frozen=True)
+class StaleNode:
+    """一个"疑似过时"的节点。"""
+
+    name: str
+    module: str            # 所在模块（assets/resource/pipeline/<module>）
+    last_commit: str       # 最近一次改动该模块的提交（`hash 日期 标题`），供人核对
+    commits: int = 1       # 该模块在版本之后的提交数（只用于展示"这文件动过几次"）
+
+
+@dataclass
+class StaleCheck:
+    """"这批节点里哪些疑似过时"的结论。
+
+    `reason` 非空 = 检查做不成（取不到版本号 / 不是 git 仓库 / 那个 tag 不存在），
+    人要照它说的去补信息，不能当成"没有过时节点"。
+    """
+
+    version: str = ""              # 日志所属版本（v1.0.0-beta.42）
+    tag: str = ""                  # 对应的 git tag
+    nodes: list[StaleNode] = field(default_factory=list)
+    missing: list[str] = field(default_factory=list)  # 当前 pipeline 里已不存在的节点名
+    reason: str = ""               # 非空 = 检查没做成的原因
+
+    @property
+    def ok(self) -> bool:
+        return not self.reason
+
+
+def _git(repo: Path, *args: str) -> tuple[int, str]:
+    """跑一条 git 命令，返回 (退出码, 输出)。失败不抛——仓库状态不对时只是查不了。"""
+    try:
+        proc = subprocess.run(
+            ["git", "-c", "core.fsmonitor=false", *args],
+            cwd=str(repo), capture_output=True, text=True, check=False,
+            encoding="utf-8", errors="replace", timeout=120,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return 1, ""
+    return proc.returncode, proc.stdout
+
+
+def log_version(text: str) -> str | None:
+    """从日志正文里取版本号（`v1.0.0-beta.42` 那种），取不到返回 None。"""
+    m = INSTALL_VERSION_RE.search(text)
+    return m.group(1) if m else None
+
+
+def _strip_jsonc(text: str) -> str:
+    """去掉 JSONC 注释与行尾逗号，好让 pipeline 文件能用标准 json 解析。
+
+    照抄 `tools/validation/validate_refs.py` 的做法（那边是完整实现），这里只保留
+    解析顶层 key 所需的部分：块注释、行注释、行尾逗号。
+    """
+    out: list[str] = []
+    i, n = 0, len(text)
+    in_str = False
+    while i < n:
+        ch = text[i]
+        if in_str:
+            out.append(ch)
+            if ch == "\\" and i + 1 < n:
+                out.append(text[i + 1])
+                i += 2
+                continue
+            if ch == '"':
+                in_str = False
+            i += 1
+            continue
+        if ch == '"':
+            in_str = True
+            out.append(ch)
+            i += 1
+            continue
+        if ch == "/" and i + 1 < n and text[i + 1] == "*":
+            end = text.find("*/", i + 2)
+            i = n if end < 0 else end + 2
+            continue
+        if ch == "/" and i + 1 < n and text[i + 1] == "/":
+            end = text.find("\n", i)
+            i = n if end < 0 else end
+            continue
+        out.append(ch)
+        i += 1
+    body = "".join(out)
+    # 行尾逗号（`"a": 1,` 后面直接 `}`）会让标准 json 解析失败
+    body = re.sub(r",(\s*[}\]])", r"\1", body)
+    return body
+
+
+def pipeline_modules(repo: Path) -> dict[str, str]:
+    """当前 pipeline 的节点名 → 模块文件名。
+
+    读 `assets/resource/pipeline/*.json` 的顶层 key。**只取顶层**：pipeline 文件里
+    还有 `override` 之类的嵌套结构，那些不是节点名。
+    """
+    root = repo / "assets" / "resource" / "pipeline"
+    owner: dict[str, str] = {}
+    if not root.is_dir():
+        return owner
+    for p in sorted(root.glob("*.json")):
+        try:
+            data = json.loads(_strip_jsonc(p.read_text(encoding="utf-8", errors="replace")))
+        except (OSError, ValueError):
+            continue
+        if isinstance(data, dict):
+            for name in data:
+                owner.setdefault(name, p.name)
+    return owner
+
+
+def _node_definitions(repo: Path, tag: str) -> dict[str, dict[str, Any]]:
+    """`<tag>` 那一刻各 pipeline 文件里的节点定义：节点名 → 定义。
+
+    用 `git show <tag>:<path>` 直接取那个版本的文件内容，不解析 diff——diff 里的名字
+    出现不等于定义变了（实测 `dec9686` 重写 `feidu_gift.json`，47 个名字全在增删行里，
+    但其中 4 个节点的定义一字未改）。取不到（文件在 tag 时还不存在、解析失败）就跳过。
+    """
+    out: dict[str, dict[str, Any]] = {}
+    root = repo / "assets" / "resource" / "pipeline"
+    if not root.is_dir():
+        return out
+    for p in sorted(root.glob("*.json")):
+        rel = p.relative_to(repo).as_posix()
+        code, text = _git(repo, "show", f"{tag}:{rel}")
+        if code != 0 or not text.strip():
+            continue
+        try:
+            data = json.loads(_strip_jsonc(text))
+        except ValueError:
+            continue
+        if isinstance(data, dict):
+            out[p.name] = {k: v for k, v in data.items() if isinstance(v, dict)}
+    return out
+
+
+def _definition_changed(old: Any, new: Any) -> bool:
+    """两份节点定义是否不同（按键排序后比，避免键顺序造成的假差异）。"""
+    return json.dumps(old, sort_keys=True, ensure_ascii=False) != \
+        json.dumps(new, sort_keys=True, ensure_ascii=False)
+
+
+def last_commit_touching(repo: Path, tag: str, path: str) -> str:
+    """`tag..HEAD` 里最后改动某个文件的提交（`hash 日期 标题`）。"""
+    _code, out = _git(repo, "log", "-1", "--format=%h %cI %s", f"{tag}..HEAD", "--", path)
+    return out.strip()
+
+
+# 模块 → 最新提交的缓存：一次画图里几十个节点往往落在同几个模块上，
+# 每个模块查一次 git 就够（实测 18 个节点从 5.6 s 降到 1.6 s）。
+_LAST_COMMIT_CACHE: dict[tuple[str, str, str], str] = {}
+
+
+def main_last_commit(repo: Path, tag: str, module: str) -> str:
+    """带缓存的 `last_commit_touching`：同一模块只查一次 git，几十个节点共用一条结果。"""
+    key = (str(repo), tag, module)
+    if key not in _LAST_COMMIT_CACHE:
+        _LAST_COMMIT_CACHE[key] = last_commit_touching(
+            repo, tag, f"assets/resource/pipeline/{module}")
+    return _LAST_COMMIT_CACHE[key]
+
+
+def check_stale_nodes(repo: Path, node_names: set[str], version: str | None) -> StaleCheck:
+    """查这批节点里哪些"疑似过时"。
+
+    口径（**只标疑似，不判断是否真的过时**）：
+
+    - 版本取自日志里的安装目录名（`v1.0.0-beta.42`），取不到就查不了——
+      `reason` 写明"日志里没有版本号"，不是"没有过时节点"；
+    - 节点名在**当前** `assets/resource/pipeline/` 里找不到 → 记进 `missing`
+      （这是"已被改名或删除"的事实，不是推测）；
+    - 找得到 → 拿它**在 `vX.Y.Z` 那一刻的定义**和**现在的定义**逐字段比：
+      不同 → 标"疑似过时"，把最近一次改动它所在文件的提交写出来供人核对。
+      只比定义，不比 diff 里的名字出现（那种粒度会把"文件被重排"也算进来，实测
+      一整份文件 47 个节点会被一起标上）；定义一字未动的节点不标；
+    - 版本对应的 tag 不存在（本地没拉到那个 tag）→ `reason` 说清，不当成"没提交"。
+    """
+    if not version:
+        return StaleCheck(reason="日志里没有版本号（安装目录名形如 MaaAshArms-win-x86_64-v1.0.0-beta.42），"
+                                 "无法确定「之后」的起点")
+    code, tags = _git(repo, "tag", "--list", version)
+    if code != 0:
+        return StaleCheck(version=version, reason="不是 git 仓库或 git 不可用，查不了提交历史")
+    if version not in tags.split():
+        return StaleCheck(version=version,
+                          reason=f"本地没有 {version} 这个 tag（先 git fetch --tags），"
+                                 "查不了该版本之后的提交")
+    owner = pipeline_modules(repo)
+    then = _node_definitions(repo, version)
+    now: dict[str, dict[str, Any]] = {}
+    for module, nodes in then.items():
+        path = repo / "assets" / "resource" / "pipeline" / module
+        try:
+            data = json.loads(_strip_jsonc(path.read_text(encoding="utf-8", errors="replace")))
+        except (OSError, ValueError):
+            continue
+        if isinstance(data, dict):
+            now[module] = {k: v for k, v in data.items() if isinstance(v, dict)}
+
+    out = StaleCheck(version=version, tag=version)
+    for name in sorted(node_names):
+        module = owner.get(name)
+        if module is None:
+            out.missing.append(name)
+            continue
+        before = then.get(module, {}).get(name)
+        after = now.get(module, {}).get(name)
+        if before is None or after is None:
+            # tag 时还没有这个节点（版本之后新增）→ 不是"过时"，不标
+            continue
+        if not _definition_changed(before, after):
+            continue
+        last = main_last_commit(repo, version, module)
+        out.nodes.append(StaleNode(name=name, module=module, last_commit=last, commits=1))
+    return out
+
+
+def _log_version_of(log: Any) -> str | None:
+    """从日志正文里找版本号（安装目录名那种）。
+
+    读取整份日志：版本号出现在头部 `Working E:/.../MaaAshArms-win-x86_64-v1.0.0-beta.42`
+    那一行，而窗口过滤之后它可能不在 `parsed` 里。读失败一律返回 None，交给
+    `check_stale_nodes` 写明"日志里没有版本号"。
+    """
+    try:
+        for raw in _open_log_lines(log):
+            found = log_version(raw)
+            if found:
+                return found
+    except (OSError, TypeError):
+        return None
+    return None
+
+
+def _apply_stale(check: StaleCheck) -> None:
+    """把"疑似过时"的节点名记成类级集合，供框里的名字加后缀。
+
+    走类属性而不是给 `Step` 加字段：`Step` 是 `@dataclass` 且被大量拷贝（`overlay_repeats`
+    会重造列），加字段要一路带参数；而"哪些节点疑似过时"整张图只有一份，类属性正好。
+    """
+    Step.stale_names = frozenset(n.name for n in check.nodes)
+
+
+def stale_label(name: str) -> str:
+    """框里/`--list` 里的节点名：疑似过时的加后缀。后缀只用有字形的字符（`⚠` 画成方框）。"""
+    return f"{name}（疑似过时）" if name in Step.stale_names else name
+
+
 def classify(step: Step) -> str:
     if step.kind == "miss":
         return "miss"
@@ -1873,7 +2141,8 @@ def draw_flow(parsed: ParsedLog, options: FlowOptions, out_path: str) -> DrawRes
             d.text((x + pad, y + int(6 * options.scale)), st.ts.strftime("%H:%M:%S.%f")[:-3],
                    font=f_det, fill=(126, 132, 148))
             label = st.name if st.run_len <= 1 else f"{st.name}  ×{st.run_len}"
-            d.text((x + pad, y + int(22 * options.scale)), fit_text(label, f_name, text_w), font=f_name, fill=ink)
+            d.text((x + pad, y + int(22 * options.scale)), fit_text(stale_label(label), f_name, text_w),
+                   font=f_name, fill=ink)
             det = st.detail
             if det:
                 d.text((x + pad, y + int(22 * options.scale) + int(options.font_size * options.scale) + int(6 * options.scale)),
@@ -1975,6 +2244,11 @@ class FlowOptions:
     # 诊断注记（由 render_flow 填好并印在图上的第二行）：由识别记录还原、时间戳回跳已重排、
     # 有多少记录被导出裁断……读图的人必须先知道这些，否则会把图当作完整过程
     notes: list[str] = field(default_factory=list)
+    # 节点是否"疑似过时"：日志所属版本之后，该节点所在 pipeline 模块有没有提交。
+    # 默认开——这条信息决定"这张图能不能用来判断当前代码"。关掉要显式 --no-stale-check。
+    stale_check: bool = True
+    # 上面的检查结果（由 render_flow 填好）：图上给节点名加后缀，注记里写清楚口径
+    stale: StaleCheck | None = None
     # 版面
     thumbs: bool = True
     thumb_height: int = 132
@@ -1991,7 +2265,8 @@ class FlowOptions:
         """可序列化的选项摘要，用于 manifest 判断"同一份输入 + 同一套参数"。"""
         # notes 由 render_flow 按输入填写，同一份 options 会在多个 case 之间复用，
         # 留在摘要里会把上一个 case 的注记带进下一个 case 的指纹。
-        skip = {"vision", "on_error", "t_from", "t_to", "notes"}
+        # stale 同理：它是这次跑出来的结论，不是参数。
+        skip = {"vision", "on_error", "t_from", "t_to", "notes", "stale"}
         return {
             k: (v.isoformat() if isinstance(v, datetime) else v)
             for k, v in self.__dict__.items()
@@ -2016,6 +2291,7 @@ class FlowResult:
     notes: list[str] = field(default_factory=list)      # 与图上第二行相同的诊断注记
     derived_from: str = ""          # 非空 = 步骤由识别记录合成（仅事件模式）
     out_of_order: int = 0           # 时间戳回跳的行数（>0 表示已按时间重排）
+    stale: StaleCheck | None = None  # 疑似过时的节点（None = 没做这项检查）
 
 
 def _log_basename(log: Any) -> str:
@@ -2192,6 +2468,33 @@ def build_notes(parsed: ParsedLog, opts: FlowOptions) -> list[str]:
         notes.append(f"{st.truncated_kept} 条记录尾部被截断，数字可能不全")
     if st.events_dropped:
         notes.append(f"已排除其他 task 的 {st.events_dropped} 条失败事件（本会画进图里）")
+    notes.extend(stale_notes(opts.stale))
+    return notes
+
+
+def stale_notes(check: StaleCheck | None) -> list[str]:
+    """疑似过时那件事怎么说。
+
+    三句话：口径（版本之后模块有没有提交）、哪些节点被标（带模块与最新提交）、
+    以及**做不成时为什么**——"查不了"和"没有过时节点"必须能分开读。
+    """
+    if check is None:
+        return []
+    if not check.ok:
+        return [f"没有做「疑似过时」检查：{check.reason}"]
+    notes: list[str] = []
+    if check.nodes:
+        parts = []
+        for node in check.nodes[:4]:
+            parts.append(f"{node.name}（{node.module}，最新 {node.last_commit}）")
+        more = f"；另 {len(check.nodes) - 4} 个" if len(check.nodes) > 4 else ""
+        notes.append(f"{len(check.nodes)} 个节点疑似过时（{check.version} 时的定义与现在不同）："
+                     f"{'；'.join(parts)}{more}——只标疑似，改动有没有影响这个节点的行为要自己核对")
+    if check.missing:
+        shown = " ・ ".join(check.missing[:6])
+        more = f" 另 {len(check.missing) - 6} 个" if len(check.missing) > 6 else ""
+        notes.append(f"{len(check.missing)} 个节点在当前 pipeline 里找不到（已被改名或删除）："
+                     f"{shown}{more}")
     return notes
 
 
@@ -2227,6 +2530,13 @@ def render_flow(log,
     if not raw:
         raise ValueError(describe_empty_window(parsed, opts, log))
 
+    # 节点是否"疑似过时"：日志所属版本之后，该节点所在模块有没有提交。
+    # 要在 build_notes 之前算，标过的节点名才能进注记。
+    if opts.stale_check:
+        opts.stale = check_stale_nodes(
+            Path(REPO_ROOT), {s.name for s in raw}, _log_version_of(log))
+        _apply_stale(opts.stale)
+
     notes = build_notes(parsed, opts)
 
     truncated_start = False
@@ -2249,7 +2559,7 @@ def render_flow(log,
             lines.append(f"--- 轮 {i + 1} ---")
             for s in col:
                 tag = {"miss": "[未命中]", "event": "[事件]"}.get(s.kind, "")
-                lines.append(f"  {s.ts.strftime('%H:%M:%S.%f')[:-3]}  {s.name:<28}{tag} {s.detail}")
+                lines.append(f"  {s.ts.strftime('%H:%M:%S.%f')[:-3]}  {stale_label(s.name):<34}{tag} {s.detail}")
                 if opts.parents:
                     # 纯文本不省候选（图上会折成"另 N 项"，这里给全，排查时省一次翻日志）
                     lines.append(f"  {'':<12}└ {s.parent_detail(full=True)}")
@@ -2312,7 +2622,7 @@ def render_flow(log,
                         if span.merged else f"第 {span.first + 1} 轮")
                 fh.write(f"  subgraph R{i + 1}[{head}]\n    direction TB\n")
                 for j, s in enumerate(r):
-                    fh.write(f'    n{i}_{j}["{s.name}"]\n')
+                    fh.write(f'    n{i}_{j}["{stale_label(s.name)}"]\n')
                 for j in range(len(r) - 1):
                     fh.write(f"    n{i}_{j} --> n{i}_{j + 1}\n")
                 fh.write("  end\n")
@@ -2336,7 +2646,7 @@ def render_flow(log,
                       columns=drawn.column_count, overlay_groups=drawn.overlay_groups,
                       truncated_start=truncated_start,
                       notes=list(notes), derived_from=parsed.derived_from,
-                      out_of_order=parsed.stats.out_of_order)
+                      out_of_order=parsed.stats.out_of_order, stale=opts.stale)
 
 
 # --------------------------------------------------------------------------- #
@@ -2385,6 +2695,7 @@ def build_flow_options(args: argparse.Namespace) -> FlowOptions:
         parents=args.parents,
         overlay=args.overlay,
         overlay_min=args.overlay_min,
+        stale_check=args.stale_check,
         vision=_pick_subdir(args.vision, "vision") if args.vision else None,
         on_error=_pick_subdir(args.on_error, "on_error") if args.on_error else None,
         thumbs=args.thumbs,
@@ -2442,6 +2753,10 @@ def create_argument_parser(prog: str | None = None) -> argparse.ArgumentParser:
                          "要看逐轮时间就关掉它")
     ap.add_argument("--overlay-min", type=int, default=2,
                     help="连续几轮同形才合并（默认 2；0 或 1 等于关闭）")
+    ap.add_argument("--no-stale-check", dest="stale_check", action="store_false",
+                    help="不查「节点疑似过时」。默认会从日志里取安装版本号（MaaAshArms-win-x86_64-vX.Y.Z），"
+                         "再看该节点所在 pipeline 模块在那个版本之后有没有提交；有就把节点名标成「疑似过时」。"
+                         "只标疑似，不判断节点本身有没有变。取不到版本号时注记会写明原因")
     ap.add_argument("--thumb-height", type=int, default=132, help="截图高度 px（默认 132）")
     ap.add_argument("--box-width", type=int, default=470)
     ap.add_argument("--box-height", type=int, default=66)
@@ -2453,7 +2768,7 @@ def create_argument_parser(prog: str | None = None) -> argparse.ArgumentParser:
     ap.add_argument("--title", default=None)
     ap.add_argument("--list", action="store_true", help="只打印解析出的步骤，不画图")
     ap.add_argument("--mermaid", action="store_true", help="额外输出同名 .mmd（Mermaid 文本流程图）")
-    ap.set_defaults(thumbs=True, parents=True, overlay=True)
+    ap.set_defaults(thumbs=True, parents=True, overlay=True, stale_check=True)
     return ap
 
 

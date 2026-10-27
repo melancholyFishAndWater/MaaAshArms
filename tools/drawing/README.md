@@ -32,6 +32,7 @@
 | 加 `--include-attempts` 把失败识别并进 node-done 视图 | 两套记录口径不同：`reco` 行**没有 `task_id`**，并进步骤后既可能混进别的任务（同窗口一起跑的任务），又会和「未命中（聚合）」框画重；"卡住"这件事 `Node.NextList` 的连续 `Failed` 已经能精确说清（见「解析口径」），不需要改步骤来源 | 看图第二行的 `N 轮全未命中` 注记，或 `--list` 末尾的「父节点评估」账；要看逐次识别用 `--from/--to` 圈住那段，它会走"由识别记录还原" |
 | 加 `--keep-order` 之类的开关保留原始行序 | 时间戳回跳是数据坏了，按时间重排是修数据而不是风格选择 | 要看原始顺序直接读日志文件 |
 | 把"前缀差一步"的两轮当重复折在一起（子序列匹配） | `A,B,C,D,E` 与 `B,C,D,E` 看着是同一个循环，但短的那轮是从中间开始的；硬折会让列头写的轮号区间与实际首尾不符，读图的人会以为第 3 轮也跑了 `A` | 只从列首逐项比。真要看这两轮怎么衔接，用 `--no-overlay` 逐列看 |
+| 判断节点"是不是真的过时" | 只能比"日志所属版本时的定义"和"现在的定义"有没有差异；先后顺序、字段增删、注释都算不同，而"改动有没有影响这个节点的行为"要读代码 | 图上只标「疑似过时」并给出最近一次改动该模块的提交，按它去核对（见「节点"疑似过时"」） |
 
 判据都写在代码里：`round_steps()`、`compose_columns()`、`describe_empty_window()` 的文档字符串。
 
@@ -50,6 +51,10 @@ python tools/drawing/flow_from_log.py <安装根>/debug/maafw.log --task-id 2000
 # 要逐轮时间就 --no-overlay，要 3 轮起才合就 --overlay-min 3
 python tools/drawing/flow_from_log.py <安装根>/debug/maafw.log --no-overlay
 python tools/drawing/flow_from_log.py <安装根>/debug/maafw.log --overlay-min 3
+
+# 节点"疑似过时"默认会查（要本地有对应的 git tag，缺就 git fetch --tags）；
+# 不想查、或仓库不是 git（只拷了 debug 目录）时用 --no-stale-check
+python tools/drawing/flow_from_log.py <安装根>/debug/maafw.log --no-stale-check
 
 # 2. 证据包（debug 目录 / MFA 导出 zip / 多卷）→ 流程图，带 manifest 幂等
 python tools/drawing/flow_cases.py --case D:/MaaAshArms/debug --task-id 200000118
@@ -130,6 +135,31 @@ python tools/drawing/whiteboard_images.py --dry-run   # 报告将要做什么，
   （任务失败恰恰发生在最后一步之后）。被排掉的条数会印出来。
 - **诊断注记**：由上面这些事实构成的注记印在图第二行（琥珀色）并同时打到 stderr，别只看 stdout。
 
+### 节点"疑似过时"（默认开，`--no-stale-check` 关闭）
+
+`evidence`/`flow` 拉的是**当时**的日志。图照常产出，但那些节点在新版本里可能早已被改名、删除或改了字段——
+读图的人如果不核对，就会拿一张过时的图去解释当前代码。所以渲染时顺手比一次：
+
+1. **版本**：从日志头部的安装目录名取（`Working E:/.../MaaAshArms-win-x86_64-v1.0.0-beta.42` → `v1.0.0-beta.42`）。
+   **取不到就整项不做**，注记写明原因——遥测附件只带日志尾部，实测 `PYTHON-1P`、`PYTHON-24` 这份日志里没有版本号。
+2. **节点所在模块**：读当前 `assets/resource/pipeline/*.json` 的顶层 key。找不到 → 记进"已被改名或删除"
+   那条注记（这是事实，不是推测；例如 `TrainClickArrow` / `TrainEnsureHome` / `TrainEnsureInfo`）。
+3. **比定义**：`git show <tag>:<pipeline 文件>` 取那个版本的定义，与当前定义逐字段比（按键排序，
+   避免键顺序造成假差异）。**不同 → 节点名后标「疑似过时」**，注记里写最近一次改动该模块的提交。
+   定义一字未动的节点不标。
+
+**只标疑似，不判断是否真的过时**：边界先后、字段增删、注释都算"不同"，到底有没有影响这个节点的行为要人核对。
+
+几个刻意的选择：
+
+- **按节点定义比，不按"文件有没有提交"**：前者把整个文件和它所有节点一起标上（实测 `beta.42` 之后
+  `train.json` 有 6 次提交，42 个节点里 38 个被标，等于没标）；也**不按"名字有没有出现在 diff 里"**——
+  `dec9686` 重写 `feidu_gift.json` 时 47 个名字全在增删行里，但其中 4 个节点定义一字未改。
+- **版本之后才新增的节点不标**：那时它还不存在，谈不上"过时"。
+- **tag 必须在本地**：`git fetch --tags` 之后再跑；缺 tag 时注记会直说，不当成"没有过时节点"。
+- **开销**：一次 `git show` 每模块 + 带缓存的 `git log -1` 每模块，一份 42 节点 4 轮的日志多约 4 s
+  （1.5 s → 5.7 s，其中大部分是画图本身）。嫌慢就 `--no-stale-check`。
+
 ### 画不出来时的报错
 
 `--from/--to/--task-id` 写错、路径写错、窗口落在日志时间范围外，报的话各不相同，且都会报出
@@ -153,7 +183,8 @@ python tools/drawing/whiteboard_images.py --dry-run   # 报告将要做什么，
 多卷 zip、内存字节，都经 `MediaResolver`（zip 里的图**延迟解压**，避免整包读进内存）。
 
 `FlowResult` 里有 `truncated_start`（日志只剩尾部）、`notes`（与图上第二行同一批注记）、
-`derived_from`（非空 = 步骤由识别记录合成）、`out_of_order`（回跳行数）——库调用方不用去猜图是按什么口径画的。
+`derived_from`（非空 = 步骤由识别记录合成）、`out_of_order`（回跳行数）、`stale`（疑似过时的节点清单，
+`None` = 没做这项检查）——库调用方不用去猜图是按什么口径画的。
 
 ## 依赖与前置
 
