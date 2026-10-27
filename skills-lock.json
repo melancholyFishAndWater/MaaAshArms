@@ -1,6 +1,30 @@
 {
   "version": 1,
   "skills": {
+    "maafw-custom": {
+      "source": "Windsland52/MaaTutorial",
+      "sourceType": "github",
+      "skillPath": "skills/maafw-custom/SKILL.md",
+      "computedHash": "bbf7bf3ba7f988359439ebf5bb1a00d97c68d6b20a78f46ab3d0b8d6c4f9e6ff"
+    },
+    "maafw-debug": {
+      "source": "Windsland52/MaaTutorial",
+      "sourceType": "github",
+      "skillPath": "skills/maafw-debug/SKILL.md",
+      "computedHash": "5f8edafadfb67166dc1ee4852c5ec329bafd23fcb181eaeb17c3c1b6460d76db"
+    },
+    "maafw-interface": {
+      "source": "Windsland52/MaaTutorial",
+      "sourceType": "github",
+      "skillPath": "skills/maafw-interface/SKILL.md",
+      "computedHash": "f3a92e408c9af97dc952f36fefe46093faff416938bdf72b67a1dd1264258a1f"
+    },
+    "maafw-pipeline": {
+      "source": "Windsland52/MaaTutorial",
+      "sourceType": "github",
+      "skillPath": "skills/maafw-pipeline/SKILL.md",
+      "computedHash": "1000c7fea73e3c0ce6c0cb5cb05e62ec15e89b2b2cd73459400a292f8d333910"
+    },
     "sentry-cli": {
       "source": "cli.sentry.dev",
       "sourceUrl": "https://cli.sentry.dev",
