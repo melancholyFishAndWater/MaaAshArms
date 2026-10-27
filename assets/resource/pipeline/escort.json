@@ -164,19 +164,6 @@
         "post_wait_freezes": 1000
     },
     /* -------------------- 工作-找到并接取任务 -------------------- */
-    "EscortProbeEnterAccept": {
-        "desc": "[end] 有接取按钮",
-        "recognition": "TemplateMatch",
-        "template": "Escort/CanEscort.png",
-        "roi": [
-            48,
-            525,
-            813,
-            61
-        ],
-        "order_by": "Horizontal",
-        "index": -1
-    },
     "EscortEnterAccept": {
         "desc": "进入接取页面",
         "recognition": "And",
@@ -191,6 +178,19 @@
             "[JumpBack]BaseBranchError"
         ]
     },
+    "EscortProbeEnterAccept": {
+        "desc": "[end] 有接取按钮",
+        "recognition": "TemplateMatch",
+        "template": "Escort/CanEscort.png",
+        "roi": [
+            48,
+            525,
+            813,
+            61
+        ],
+        "order_by": "Horizontal",
+        "index": -1
+    },
     "EscortClickAcceptButton": {
         "desc": "[jp] 点击接取按钮",
         "recognition": "And",
@@ -203,20 +203,14 @@
     // INFO 动作链 推荐-接取-确认
     "EscortChooseRecommend": {
         "desc": "点击一键推荐",
-        "recognition": "TemplateMatch",
-        "template": "Escort/RecommendButton.png",
+        "recognition": "OCR",
+        "expected": "一键推荐",
         "roi": [
-            575,
-            457,
-            234,
-            167
+            632,
+            512,
+            126,
+            53
         ],
-        "target_offset": [
-            -10,
-            -10,
-            -20,
-            -20
-        ], // INFO 缩小点击框，防止点到边缘，游戏不识别
         "action": "Click",
         "pre_wait_freezes": 1000,
         "next": [
@@ -246,6 +240,24 @@
         ]
     },
     /* -------------------- 错误收尾 -------------------- */
+    "EscortClickCancel": {
+        "desc": "[end] 接取任务失败 尝试点击取消(防卡死)",
+        "recognition": "And",
+        "all_of": [
+            "EscortProbeClickCancel",
+            "EscortProbeCancelPage"
+        ],
+        "action": "Click",
+        "post_wait_freezes": 1000,
+        "next": [
+            "EscortProbeHomeName",
+            "[JumpBack]EscortClickCancelButton",
+            "[JumpBack]BaseBranchError"
+        ],
+        "focus": {
+            "Node.Action.Succeeded": "接取失败 尝试取消接取"
+        }
+    },
     "EscortProbeClickCancel": {
         "desc": "[end] 有取消按钮",
         "recognition": "OCR",
@@ -267,24 +279,6 @@
             303,
             71
         ]
-    },
-    "EscortClickCancel": {
-        "desc": "[end] 接取任务失败 尝试点击取消(防卡死)",
-        "recognition": "And",
-        "all_of": [
-            "EscortProbeClickCancel",
-            "EscortProbeCancelPage"
-        ],
-        "action": "Click",
-        "post_wait_freezes": 1000,
-        "next": [
-            "EscortProbeHomeName",
-            "[JumpBack]EscortClickCancelButton",
-            "[JumpBack]BaseBranchError"
-        ],
-        "focus": {
-            "Node.Action.Succeeded": "接取失败 尝试取消接取"
-        }
     },
     "EscortClickCancelButton": {
         "desc": "[jp] 点击取消按钮",
