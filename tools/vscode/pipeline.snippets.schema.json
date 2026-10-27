@@ -1,7 +1,7 @@
 {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "type": "object",
-    "$comment": "使用命名规范 v2.1; 使用任务链结构 v2.1",
+    "$comment": "使用命名规范 v3.0; 使用任务链结构 v3.0",
     "patternProperties": {
         "^(?!\\$).*": {
             "defaultSnippets": [
@@ -56,6 +56,37 @@
                     "body": {
                         "desc": "$1",
                         "action": "$0",
+                        "post_wait_freezes": 1000
+                    }
+                },
+                {
+                    "label": "<自环动作> 动作节点（反复做，带 BaseErrorNext）",
+                    "$comment": "next 含自己 = 自环动作。必须排 BaseErrorNext：timeout 只限制「候选一直不命中」，候选反复命中（含 [JumpBack] 弹回的 jp 节点）时永远不触发（结构文档 §0）。next 里还要有一条离开本动作的判据",
+                    "body": {
+                        "desc": "$1",
+                        "recognition": "And",
+                        "all_of": [
+                            "$2"
+                        ],
+                        "action": "$3",
+                        "post_wait_freezes": 1000,
+                        "next": [
+                            "BaseErrorNext",
+                            "$4",
+                            "$0"
+                        ]
+                    }
+                },
+                {
+                    "label": "[jp] 一次性动作节点",
+                    "$comment": "desc 带 [jp] 的节点不许自环：next 里不能出现自己（结构文档 §0，校验器 A20）",
+                    "body": {
+                        "desc": "[jp] $1",
+                        "recognition": "And",
+                        "all_of": [
+                            "$2"
+                        ],
+                        "action": "$3",
                         "post_wait_freezes": 1000
                     }
                 },
