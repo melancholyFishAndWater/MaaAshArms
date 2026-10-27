@@ -217,6 +217,29 @@ Pylance 是 VS Code 内的 LSP，没有命令行入口（`dist/server.bundle.js`
 今天 83 个带 `[jp]` 的节点里有 29 个还带 `next`，标不标都不构成判据。标记按**开头连续**的那几个算
 （`[once][jp] …`），正文里当括号用的字（"点击[确认]按钮"）不算，所以那类不会误报。三条都能 `--ignore` 单独放行。
 
+`A20` / `A21` / `A22` 管**自环动作与 `BaseErrorNext`**（`pipeline-structure.md` §0，v3.0 新增）：
+
+| 规则 | 级别 | 判据 | 2026-10-27 实测 |
+| --- | --- | --- | --- |
+| `A20-jp-self-loop` | error | `desc` 带 `[jp]`（只补一次）的节点，`next` 里含自己 | 0（已清零：`TrainingEnterHome`、`TrainCloseStatusArrow` 两处已按 v3.0 改写） |
+| `A21-self-loop-without-error-next` | warn | `next` 含自己的节点没有引用 `BaseErrorNext` | 17（存量，逐个确认后补齐） |
+| `A22-error-next-not-first` | warn | 引用了 `BaseErrorNext` 但不在 `next[0]` | 0（护栏） |
+
+为什么必须有 `BaseErrorNext`：框架的 `timeout` 只限制「`next` 里一直找不到命中」的轮询，
+自环动作每轮都命中自己、`[JumpBack]` 弹回的 jp 节点反复命中时同样不触发，于是任务既不失败也不结束。
+`BaseErrorNext`（`LoopErrorByTimes` 改名而来）数的是「这张表连续几轮没有别的节点成功」，满 10 轮就
+`TaskStopError`。`A22` 要求它排 `next[0]`：排到后面会被"总会命中"的候选挡住，计数走不到上限。
+
+`A23-section-comment-probe` 管**分节注释的可读性**（warn）：`/* ---- 探测 ---- */` 这种分节注释下面
+**必须是动作 / 分支 / 任务入口**；`/* ---- 通用探测 ---- */` 下面允许是 `Probe`；非通用 `Probe` 要放到
+用到它的节点后面。实测 15 条（`base.json` 的 `BaseProbeHome`、`escort.json` 的 `EscortProbeEnterHome` 等）。
+只查带横线的分节注释，文件头那种多行 INFO 注释（写版本注解的）不在此列。
+
+`A24-node-comment-missing` 管**主干节点注释缺失**（warn）：**主干节点**（有 `next` 的：动作、分支、就位、任务入口）
+前面要写注释，说明这个节点做什么。纯辅助节点（没有 `next`，如 `EscortClickDeliveryButton` / `HomeButton` /
+`MoveUp`）不要求写注释——它们是跟着引用它们的节点一起读的，逐个加注释只会把文件撑长。
+实测 50 条主干节点缺注释（见 `validate_refs.py` 输出，`base.json` 占一半以上）。
+
 `A16` / `A17` / `A18` 管**识别预算**（`pipeline-structure.md` §10）：
 
 | 规则 | 级别 | 判据 | 2026-10-26 实测 |

@@ -160,11 +160,12 @@ MAX_NEXT_LOOP = 5
 # 两份都收：结构类判据（A4/A5/A7/A8/A9/A14…）按 pipeline-structure.md 实现，只对命名规范算版本
 # 等于让结构文档改了规则没人提醒。
 # v2.1：两份规范升到 v2.1（新增「Probe + 主动作 + 兜底动作 + 分支」四角色）。
-# 脚本没有新增对应的自动判据——那套角色里有几条要靠语义判断（兜底动作带 next 是"补一刀"
-# 还是"重做整段"），按 README「功能取舍」那一条不写成校验规则。这里只对齐版本号。
-NAMING_SPEC_VERSION = "v2.1"
+# v3.0：四角色作废，改为「动作自环 + BaseErrorNext」。新增四条判据（A20–A23），见各自函数：
+#   A20 `[jp]` 不许自环、A21 自环必须带 BaseErrorNext、A22 BaseErrorNext 必须在 next[0]、
+#   A23 分节注释下面不许紧跟非通用 Probe。
+NAMING_SPEC_VERSION = "v3.0"
 NAMING_SPEC = Path("docs/zh_cn/develop/node-naming.md")
-STRUCT_SPEC_VERSION = "v2.1"
+STRUCT_SPEC_VERSION = "v3.0"
 STRUCT_SPEC = Path("docs/zh_cn/develop/pipeline-structure.md")
 
 
@@ -1631,6 +1632,205 @@ def check_a19_desc_markers(ctx: Ctx) -> None:
                 )
 
 
+# pipeline-structure.md §0：自环动作的兜底节点，全局唯一一份（base.json）。
+ERROR_NEXT = "BaseErrorNext"
+
+
+def check_a20_jp_self_loop(ctx: Ctx) -> None:
+    """`[jp]` 节点不许自环（pipeline-structure.md §0、node-naming.md §3）。
+
+    `desc` 带 `[jp]` 的语义是「兜底动作，只补一次」。`next` 里出现自己就把"补一次"写成了
+    "补到成功"：两种语义在日志里分不开，而且会绕过调用方（调用方以为它已经补完了）。
+
+    要重复补就去掉 `[jp]`、按自环动作写（那会被 A21 要求配 `BaseErrorNext`）；
+    要只补一次就 `next` 里不放自己。
+    """
+    for node in ctx.nodes.values():
+        desc = node.data.get("desc")
+        if not isinstance(desc, str) or "jp" not in desc_tags(desc):
+            continue
+        names = [parse_ref(item)[0] for item in to_list(node.data.get("next"))]
+        if node.name in names:
+            ctx.add(
+                "A20-jp-self-loop",
+                "error",
+                node.file,
+                find_line(node.file, node.name),
+                f"{node.name}.desc 带 [jp]（只补一次）但 next 里有自己："
+                f"要重复补就去掉 [jp] 按自环动作写（并配 {ERROR_NEXT}），要补一次就别放自己",
+            )
+
+
+def check_a21_self_loop_error_next(ctx: Ctx) -> None:
+    """自环动作必须引用 `BaseErrorNext`（pipeline-structure.md §0、§3、§5）。
+
+    框架的 `timeout` 只限制「`next` 里一直找不到命中」的轮询。自环动作每轮都命中自己，
+    `timeout` 永远不触发；`[JumpBack]` 弹回的 jp 节点反复命中也一样。所以自环必须另有一个
+    "连续几轮没进展就报错"的出口，就是 `BaseErrorNext`（`LoopErrorByTimes` 改名而来）。
+
+    实测样本：`EscortClickOk` 用同一个 box 连点 8 次、26.9 s，任务既不失败也不结束。
+    """
+    for node in ctx.nodes.values():
+        names = [parse_ref(item)[0] for item in to_list(node.data.get("next"))]
+        if node.name not in names or ERROR_NEXT in names:
+            continue
+        ctx.add(
+            "A21-self-loop-without-error-next",
+            "warn",
+            node.file,
+            find_line(node.file, node.name),
+            f"{node.name}.next 含自己（自环动作）但没有 {ERROR_NEXT}："
+            f"自环每轮都命中自己，timeout 永远不会触发（结构文档 §0）",
+        )
+
+
+def check_a22_error_next_first(ctx: Ctx) -> None:
+    """用了 `BaseErrorNext` 就必须排在 `next[0]`（pipeline-structure.md §0）。
+
+    它是"这张表连续 N 轮没有别的节点成功"的判据，只有排在第一位才会在每一轮先被问一次；
+    排到后面时，前面那些"总会命中"的候选会把它挡在门外，计数永远走不到上限——等于没写。
+
+    排在第一位不影响正常路径：它只在别的候选都 miss 的那一轮才递增计数，正常命中的轮次
+    由 `_BaseErrorNextSink` 清零。
+    """
+    for node in ctx.nodes.values():
+        names = [parse_ref(item)[0] for item in to_list(node.data.get("next"))]
+        if ERROR_NEXT not in names or names[0] == ERROR_NEXT:
+            continue
+        ctx.add(
+            "A22-error-next-not-first",
+            "warn",
+            node.file,
+            find_line(node.file, node.name),
+            f"{node.name}.next 里 {ERROR_NEXT} 排在第 {names.index(ERROR_NEXT) + 1} 位："
+            f"必须放 next[0]，否则前面的候选会把它挡在门外、计数走不到上限（结构文档 §0）",
+        )
+
+
+# 分节注释：`/* -------------------- 探测 -------------------- */` 这种带横线的。
+SECTION_COMMENT_RE = re.compile(r"/\*(.*?)\*/", re.DOTALL)
+# 允许注释下面紧跟 Probe 的分节名：通用探测（`base.json` 与各文件头部那段）。
+GENERIC_PROBE_SECTION = "通用探测"
+
+
+def is_probe_shape(data: dict) -> bool:
+    """结构上的探测节点：有 recognition、无 action、无 next（node-naming.md §3）。"""
+    return (
+        "recognition" in data
+        and "action" not in data
+        and not to_list(data.get("next"))
+    )
+
+
+def is_auxiliary(data: dict) -> bool:
+    """纯辅助节点：没有 `next`（只做一下，不往下走）。
+
+    这类节点（`EscortClickDeliveryButton`、`HomeButton`、`MoveUp` 这种）是给主干节点当"补一刀"
+    或工具用的，读的时候是跟着引用它的节点一起看的，所以**节点前面不要求写注释**；
+    主干节点（有 `next` 的：动作 / 分支 / 就位 / 任务入口）才是分节注释要覆盖的对象。
+    """
+    return not to_list(data.get("next"))
+
+
+def preceding_comment(text: str, key_start: int) -> tuple[str, str] | None:
+    """某个 key 前面紧挨着的那条注释 → (类型, 正文)；没有返回 None。
+
+    只认**紧挨着**的：从 key 往前跳过空白与上一个节点的结尾（`},` 之类），
+    遇到的第一个注释才算"这个节点自己的注释"。中间隔着别的节点就不算——那是上一段的注释。
+    """
+    before = text[:key_start]
+    # 从后往前找最后一个注释与最后一个 "}" 的位置，注释必须在 "}" 之后才算紧挨着本节点
+    blocks = list(re.finditer(r"/\*(.*?)\*/", before, re.DOTALL))
+    lines = list(re.finditer(r"//([^\n]*)$", before, re.MULTILINE))
+    last_block = blocks[-1] if blocks else None
+    last_line = lines[-1] if lines else None
+    cands = []
+    if last_block is not None:
+        cands.append((last_block.end(), "block", last_block.group(1)))
+    if last_line is not None:
+        cands.append((last_line.end(), "line", last_line.group(1)))
+    if not cands:
+        return None
+    end, kind, body = max(cands)
+    # 注释与 key 之间不能有别的节点（有 `"名字": {` 就说明隔了一个节点）
+    gap = before[end:]
+    if re.search(r'"\s*:', gap):
+        return None
+    return kind, body
+
+
+def check_a23_section_comment(ctx: Ctx) -> None:
+    """注释的覆盖与位置（人工可读性约定，pipeline-structure.md §0）。
+
+    三条判据：
+
+    - `A23-section-comment-probe`（warn）：分节注释（`/* ---- 探测 ---- */` 这种带横线的）
+      下面紧跟的是**非通用** `Probe`。分节开头应放动作 / 分支 / 任务入口；
+      `/* ---- 通用探测 ---- */` 下面允许 `Probe`；非通用 `Probe` 放到用到它的节点后面。
+    - `A24-node-comment-missing`（warn）：**主干节点**（有 `next`）前面没有注释。
+      辅助节点（没有 `next`，如 `EscortClickDeliveryButton` / `HomeButton` / `MoveUp`）不要求——
+      它们是跟着引用它的节点一起读的，逐个加注释只会把文件撑长。
+
+    注释没紧挨着节点（中间隔了别的节点）时 `preceding_comment()` 返回 None，同样报 `A24`：
+    那种情况等于这个节点的注释丢了、上一段多了半句，修法是把它挪到本节点上方。
+
+    只查带横线的分节注释与节点级注释；文件头那种多行 INFO 注释（写版本注解的）不在此列。
+    """
+    for path in ctx.pipeline_files:
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        # key 在文本里的位置（同名 key 取第一个；pipeline 里不允许重名，A0 已管）
+        key_pos: dict[str, int] = {}
+        for m in re.finditer(r'^\s*"([^"]+)"\s*:', text, re.MULTILINE):
+            key_pos.setdefault(m.group(1), m.start())
+        for match in SECTION_COMMENT_RE.finditer(text):
+            body = match.group(1)
+            if "----" not in body:
+                continue
+            rest = text[match.end():]
+            key = re.search(r'^\s*"([^"]+)"\s*:', rest, re.MULTILINE)
+            if not key:
+                continue
+            name = key.group(1)
+            node = ctx.nodes.get(name)
+            if node is None or not is_probe_shape(node.data):
+                continue
+            section = body.strip().strip("-").strip()
+            if GENERIC_PROBE_SECTION in body:
+                continue
+            ctx.add(
+                "A23-section-comment-probe",
+                "warn",
+                path,
+                find_line(path, name),
+                f"分节注释「{section}」下面紧跟的是探测节点 {name}："
+                f"分节开头应放动作 / 分支 / 任务入口；"
+                f"非通用 Probe 放到用到它的节点后面（通用探针请归到「{GENERIC_PROBE_SECTION}」段）",
+            )
+
+        for name, start in key_pos.items():
+            node = ctx.nodes.get(name)
+            # 不比较路径：`Node.file` 可能是相对路径（自检合成树就是），比 resolved 也会失配。
+            # 这份文本里出现了这个 key、且 ctx 里有同名节点，就说明它定义在本文件（重名由 A0 管）。
+            if node is None:
+                continue
+            found = preceding_comment(text, start)
+            if is_auxiliary(node.data):
+                continue          # 纯辅助节点不要求注释
+            if found is None:
+                ctx.add(
+                    "A24-node-comment-missing",
+                    "warn",
+                    path,
+                    find_line(path, name),
+                    f"主干节点 {name}（有 next）前面没有注释："
+                    f"每个主干节点前写一行说明它做什么；"
+                    f"纯辅助节点（没有 next）不要求",
+                )
+
+
 def annotations_of(text: str) -> list[tuple[Spec, str, str | None]]:
     """把一段文本里所有「使用<规范名> vX.Y [校验年月日 YY/MM/DD]」抽出来。
 
@@ -2773,6 +2973,101 @@ def self_test() -> int:
             "合规的标记（含 [end] 收在 TaskStop 上）不报 A19",
         ),
     ]
+
+    # A20 / A21 / A22：自环动作与 BaseErrorNext 的三条（结构文档 §0）
+    loop_ctx = synth_ctx(
+        {
+            "XJpLoop": {"desc": "[jp] 补一刀", "action": "Click", "next": ["XJpLoop"]},
+            "XSelfNoErr": {"desc": "自环", "action": "Click", "next": ["XSelfNoErr"]},
+            "XSelfOk": {"desc": "自环带兜底", "action": "Click",
+                        "next": ["BaseErrorNext", "XSelfOk"]},
+            "XErrNotFirst": {"desc": "兜底排后面", "action": "Click",
+                             "next": ["XOther", "BaseErrorNext"]},
+            "XOther": {"desc": "[end] 别的", "action": "Click"},
+            "XJpNoLoop": {"desc": "[jp] 只补一次", "action": "Click"},
+            "BaseErrorNext": {"desc": "[end] 连续未命中兜底", "recognition": "Custom",
+                              "next": ["TaskStopError"]},
+        }
+    )
+    check_a20_jp_self_loop(loop_ctx)
+    check_a21_self_loop_error_next(loop_ctx)
+    check_a22_error_next_first(loop_ctx)
+    loop_ids = {(f.id, f.message.split(".")[0]) for f in loop_ctx.findings}
+    checks += [
+        (("A20-jp-self-loop", "XJpLoop") in loop_ids, "[jp] 自环会被拦（A20，error）"),
+        (("A21-self-loop-without-error-next", "XSelfNoErr") in loop_ids,
+         "自环缺 BaseErrorNext 会被拦（A21）"),
+        (("A22-error-next-not-first", "XErrNotFirst") in loop_ids,
+         "BaseErrorNext 不在 next[0] 会被拦（A22）"),
+        (
+            not any(n in ("XSelfOk", "XJpNoLoop", "XOther") for _i, n in loop_ids),
+            "带 BaseErrorNext 的自环、[jp] 不自环、没用 BaseErrorNext 的都不报 A20–A22",
+        ),
+    ]
+
+    # A23：分节注释下面不许紧跟非通用 Probe（要读文件内容，所以写一个临时文件）
+    # 不用 tempfile.TemporaryDirectory：它在建目录后会 chmod 0o700，受限沙箱下报
+    # PermissionError（本机实测），而这份自检要在本机跑得通。手工建/删即可。
+    tmp_dir = Path(__file__).resolve().parents[2] / "temp" / "selftest-a23"
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        section = tmp_dir / "sec.json"
+        section.write_text(
+            '{\n'
+            '    /* -------------------- 探测 -------------------- */\n'
+            '    "XProbeTop": {"desc": "[end] 顶在分节开头", "recognition": "OCR"},\n'
+            '    /* -------------------- 通用探测 -------------------- */\n'
+            '    "XProbeGeneric": {"desc": "[end] 通用探针", "recognition": "OCR"},\n'
+            '    /* -------------------- 工作 -------------------- */\n'
+            '    "XClickWork": {"desc": "干活", "action": "Click"},\n'
+            '    // 纯辅助节点：没有 next，不要求注释\n'
+            '    "XHelper": {"desc": "[jp] 补一刀", "action": "Click"},\n'
+            '    // 主干节点没注释（下面这个）\n'
+            '    "XTrunkNoComment": {"desc": "分支", "recognition": "OCR", "next": ["XClickWork"]},\n'
+            '    "XTrunkNoComment2": {"desc": "分支2", "recognition": "OCR", "next": ["XClickWork"]}\n'
+            '}\n',
+            encoding="utf-8",
+        )
+        sec_ctx = synth_ctx(
+            {
+                "XProbeTop": {"desc": "[end] 顶在分节开头", "recognition": "OCR"},
+                "XProbeGeneric": {"desc": "[end] 通用探针", "recognition": "OCR"},
+                "XClickWork": {"desc": "干活", "action": "Click"},
+                "XHelper": {"desc": "[jp] 补一刀", "action": "Click"},
+                "XTrunkNoComment": {"desc": "分支", "recognition": "OCR",
+                                    "next": ["XClickWork"]},
+                "XTrunkNoComment2": {"desc": "分支2", "recognition": "OCR",
+                                     "next": ["XClickWork"]},
+            },
+            files=("sec.json",),
+        )
+        sec_ctx.pipeline_files = [section]
+        check_a23_section_comment(sec_ctx)
+        sec_msgs = [f.message for f in sec_ctx.findings]
+        checks += [
+            (any("XProbeTop" in m for m in sec_msgs), "分节注释下紧跟非通用 Probe 会被拦（A23）"),
+            (
+                not any("XProbeGeneric" in m for m in sec_msgs),
+                "「通用探测」段下面放 Probe 不报 A23",
+            ),
+            (not any("XClickWork" in m for m in sec_msgs), "分节注释下面是动作节点不报 A23"),
+            (
+                any("XTrunkNoComment2" in m for m in sec_msgs),
+                "主干节点（有 next）没注释会被拦（A24）",
+            ),
+            (
+                not any("XHelper" in m for m in sec_msgs),
+                "纯辅助节点（没有 next）不要求注释，不报 A24",
+            ),
+            (
+                not any("XTrunkNoComment（" in m for m in sec_msgs),
+                "注释紧挨着的主干节点不报 A24",
+            ),
+        ]
+    finally:
+        section.unlink(missing_ok=True)
+        tmp_dir.rmdir()
+
     bad = [name for ok, name in checks if not ok]
     if bad:
         for name in bad:
@@ -3070,6 +3365,10 @@ def main(argv: list[str] | None = None) -> int:
         check_a17_guard_in_next(ctx)
         check_a18_next_length(ctx)
         check_a19_desc_markers(ctx)
+        check_a20_jp_self_loop(ctx)
+        check_a21_self_loop_error_next(ctx)
+        check_a22_error_next_first(ctx)
+        check_a23_section_comment(ctx)
     # 规范版本与注解新鲜度：不属于任何域，给了 --pipeline 之类也要报
     check_spec_version(ctx)
     if domains["interface"]:
