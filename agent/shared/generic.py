@@ -3,7 +3,7 @@
 `base.json` 放"哪个任务都能引用"的通用节点，本模块放它们的识别/动作回调，注册名 = 节点名 +
 后缀（识别 `<节点名>Reco`、动作 `<节点名>Act`，见 docs/zh_cn/develop/node-naming.md 第七节）。
 对应关系：`IsFreezes`→`IsFreezesReco`、`TaskStopError`→`TaskStopErrorAct`、
-`MoveUpDown`→`MoveUpDownReco`/`MoveUpDownAct`。
+`MoveUpDown`→`MoveUpDownReco`/`MoveUpDownAct`、`LoopErrorByTimes`→`LoopErrorByTimesReco`。
 
 放在 agent/shared/ 下靠 agent/main.py 把它注入 sys.path 后按顶层名导入；
 main.py 的 import 不能漏——装饰器只在模块导入时执行，漏了就是静默不注册。
@@ -124,6 +124,56 @@ class TaskStopErrorAct(CustomAction):
         self, context: Context, argv: CustomAction.RunArg
     ) -> CustomAction.RunResult | bool:
         return False
+
+
+# ----- LoopErrorByTimes -----
+
+_current_task_id: int = -1
+# 父节点名 -> 连续未命中轮数
+_times_by_name: dict[str, int] = {}
+
+
+# 返回 box 以结束任务
+@AgentServer.custom_recognition("LoopErrorByTimesReco")
+class LoopErrorByTimesReco(CustomRecognition):
+    def analyze(
+        self, context: Context, argv: CustomRecognition.AnalyzeArg
+    ) -> list[int] | None:
+        # 提取变量
+        global _current_task_id
+        task_id = argv.task_detail.task_id
+        node_name = argv.node_name
+        name = father_name(argv.task_detail.task_id, node_name)
+        if name is None:
+            log.warn(f"{node_name} 获取父节点失败")
+            return
+        if _current_task_id != task_id:
+            _current_task_id = task_id
+            _times_by_name.clear()
+
+        # 解析param
+        times = 10
+        try:
+            p = parse_params(argv.custom_recognition_param, "times")
+            times = p["times"]
+        except Exception as e:
+            log.warn(f"{argv.node_name} 解析param失败: {e}")
+
+        # 判断和更新字典
+        key = name
+        _times_by_name[key] = _times_by_name.get(key, 0) + 1
+        if _times_by_name[key] >= times:
+            log.warn(f"{name} 连续 {_times_by_name[key]} 轮未命中，结束任务")
+            return DEFAULT_HIT_BOX
+        return
+
+
+# 注册上下文监听器 当next中有节点命中时，清空累积次数
+@AgentServer.context_sink()
+class _LoopErrorResetSink(ContextEventSink):
+    def on_node_pipeline_node(self, context, noti_type, detail) -> None:
+        if noti_type == NotificationType.Succeeded:
+            _times_by_name.pop(detail.name, None)
 
 
 # ----- MoveUpDown -----
