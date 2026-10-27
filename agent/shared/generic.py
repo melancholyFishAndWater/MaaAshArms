@@ -16,12 +16,16 @@ from maa.custom_action import CustomAction
 from maa.custom_recognition import CustomRecognition
 from maa.context import (
     Context,
+    ContextEventSink,
     JRecognitionType,
 )
 from maa.define import OCRResult
+from maa.event_sink import NotificationType
 from maa.pipeline import JOCR, JTemplateMatch
 
 from agentlog import log
+from params import parse_params
+from parent_tracker import father_name, dispatcher
 from rect import DEFAULT_HIT_BOX
 
 # ---------- Reco ----------
@@ -128,52 +132,58 @@ class TaskStopErrorAct(CustomAction):
 
 # ----- LoopErrorByTimes -----
 
+# 当前任务id
 _current_task_id: int = -1
 # 父节点名 -> 连续未命中轮数
 _times_by_name: dict[str, int] = {}
 
 
-# 返回 box 以结束任务
-@AgentServer.custom_recognition("LoopErrorByTimesReco")
-class LoopErrorByTimesReco(CustomRecognition):
+# 若同一个父节点的 next列表识别次数过多 则返回box
+@AgentServer.custom_recognition("BaseErrorNextReco")
+class BaseNextTimeOutErrorReco(CustomRecognition):
     def analyze(
         self, context: Context, argv: CustomRecognition.AnalyzeArg
     ) -> list[int] | None:
-        # 提取变量
-        global _current_task_id
+        # 1) 提取变量
         task_id = argv.task_detail.task_id
-        node_name = argv.node_name
-        name = father_name(argv.task_detail.task_id, node_name)
-        if name is None:
-            log.warn(f"{node_name} 获取父节点失败")
-            return
+
+        # 2) 当切换任务时 清空字典
+        global _current_task_id
         if _current_task_id != task_id:
             _current_task_id = task_id
             _times_by_name.clear()
 
-        # 解析param
-        times = 10
-        try:
-            p = parse_params(argv.custom_recognition_param, "times")
-            times = p["times"]
-        except Exception as e:
-            log.warn(f"{argv.node_name} 解析param失败: {e}")
+        # 3) 获取父节点名
+        name = father_name(argv.task_detail.task_id, argv.node_name)
+        if name is None:
+            log.warn(f"{argv.node_name} 获取父节点失败")
+            return
 
-        # 判断和更新字典
-        key = name
-        _times_by_name[key] = _times_by_name.get(key, 0) + 1
-        if _times_by_name[key] >= times:
-            log.warn(f"{name} 连续 {_times_by_name[key]} 轮未命中，结束任务")
+        # 4) 递增次数
+        _times_by_name[name] = _times_by_name.get(name, 0) + 1
+
+        # 5) 条件返回box
+        times = 10  # 连续次数
+        if _times_by_name[name] >= times:
+            log.warn(f"{name} 连续 {_times_by_name[name]} 轮未命中其他节点 任务结束")
             return DEFAULT_HIT_BOX
         return
 
 
-# 注册上下文监听器 当next中有节点命中时，清空累积次数
+# 当不是自环命中时 清空累积次数
 @AgentServer.context_sink()
-class _LoopErrorResetSink(ContextEventSink):
+class _BaseErrorNextSink(ContextEventSink):
     def on_node_pipeline_node(self, context, noti_type, detail) -> None:
         if noti_type == NotificationType.Succeeded:
-            _times_by_name.pop(detail.name, None)
+            # 1) 获取派发者节点名
+            name = dispatcher(detail.task_id)
+            if name is None:
+                log.warn(f"{detail.name} 获取父节点失败")
+                return
+
+            # 2) 条件清空
+            if name != detail.name:
+                _times_by_name.pop(detail.name, None)
 
 
 # ----- MoveUpDown -----

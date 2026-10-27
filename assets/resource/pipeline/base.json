@@ -411,19 +411,16 @@
         "custom_action": "TaskStopErrorAct"
     },
     // INFO 兜底节点
-    "LoopErrorByTimes": {
-        "desc": "[兜底] 当同一个next中连续识别超过指定次数后，直接报错并结束任务",
+    "BaseErrorNext": {
+        "desc": "[end] 当同一个next中连续识别超过10次后 直接报错并结束任务",
         "recognition": "Custom",
-        "custom_recognition": "LoopErrorByTimesReco",
+        "custom_recognition": "BaseErrorNextReco",
         "rate_limit": 1000,
-        "custom_recognition_param": {
-            "times": 10 // 识别需超过的次数
-        },
         "next": [
             "TaskStopError"
         ],
         "focus": {
-            "Node.Recognition.Succeeded": "loop异常 结束任务"
+            "Node.Recognition.Succeeded": "next异常 结束任务"
         }
     }
 }
