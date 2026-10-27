@@ -234,16 +234,154 @@ def log_digest(case: Case) -> str:
     return hasher.hexdigest()[:16]
 
 
-def out_filename(case: Case, options: FlowOptions) -> str:
-    """确定性文件名：同一份日志 + 同一套参数 → 同一个名字，这是幂等的依据。"""
-    bits = [case.label, log_digest(case), f"task{options.task_id}" if options.task_id else "all"]
-    if options.t_from:
-        bits.append(options.t_from.strftime("%m%d-%H%M%S"))
-    if options.t_to:
-        bits.append(options.t_to.strftime("%m%d-%H%M%S"))
-    safe = "".join(c if c.isalnum() or c in "-_" else "-" for c in "_".join(bits))
-    return f"flow_{safe}.png"
+# 遥测问题号：`PYTHON-1Z` 这种（字母段 + 短横 + 字母数字）。
+# 证据包目录就是按 issue 的 short_id 建的（`temp/evidence/<SHORT-ID>/`），所以目录名
+# 命中这个形状就当作"遥测问题名称"。
+ISSUE_RE = re.compile(r"^[A-Z][A-Z0-9]+-[A-Z0-9]+$")
+# 任务入口名：日志里 `Tasker.Task.*` 事件的 `entry` 字段（`TaskTrain` / `TaskEscort`）。
+TASK_ENTRY_RE = re.compile(r'\[msg=Tasker\.Task\.\w+\] \[details(?:_json)?=\{"entry":"([^"\\]+)"')
 
+
+def issue_name_of(case: Case) -> str | None:
+    """遥测问题名（`PYTHON-1Z`）。
+
+    只看证据包目录名：`evidence` 把每个 issue 落到 `temp/evidence/<SHORT-ID>/`，目录名
+    就是问题号；`--case` 指到 `debug/` 那一层时往上找一层。归档来源看归档文件名
+    （`PYTHON-1Z-part01.zip` → `PYTHON-1Z`）。认不出返回 None。
+    """
+    cands: list[str] = []
+    if case.root:
+        norm = os.path.normpath(case.root)
+        cands.append(os.path.basename(norm))
+        cands.append(os.path.basename(os.path.dirname(norm)))
+    for package in case.packages:
+        stem = os.path.splitext(os.path.basename(package))[0]
+        cands.append(PART_RE.sub("", stem))
+    for cand in cands:
+        if cand and ISSUE_RE.match(cand):
+            return cand
+    return None
+
+
+def task_name_of(case: Case, options: FlowOptions) -> str | None:
+    """任务名（`TaskTrain` 这种入口名）。
+
+    **给了 `--task-id`** 就只认那个 task：从 `PipelineTask node done [...] [task_id_=N]`
+    里取它的入口——`entry` 型节点（`Task` 开头）就是任务入口；没有 entry 型时取它跑的第一个
+    节点名。**没给** `--task-id` 才退回"日志里第一个 `Tasker.Task.*` 入口"。
+    日志里一条都没有 → None（调用方退回证据包目录名）。
+
+    为什么不用 `task start` 的 `cb_detail` 找：那个字段只出现在**没被导出的那部分**（实测
+    `PYTHON-1Z` 有 6 个 task，`task start` 一条都没有），而 `node done` 行总能拿到 `task_id_`。
+    """
+    text = case.log_text
+    if text is None and case.log_path:
+        try:
+            with open(case.log_path, encoding="utf-8", errors="replace") as fh:
+                text = fh.read()
+        except OSError:
+            text = None
+    if not text:
+        return None
+    if options.task_id is not None:
+        tid = str(options.task_id)
+        pat = re.compile(
+            r'PipelineTask node done \[result=\{[^}]*?"name":"([^"\\]+)"[^}]*\}\] '
+            r'\[task_id_=' + tid + r"\]"
+        )
+        names = [m.group(1) for m in pat.finditer(text)]
+        # 先找 entry 型（任务入口节点就叫 TaskXxx）
+        for name in names:
+            if name.startswith("Task"):
+                return name
+        return names[0] if names else None
+    for m in TASK_ENTRY_RE.finditer(text):
+        return m.group(1)
+    return None
+
+
+def log_stamp(case: Case, options: FlowOptions) -> str | None:
+    """日志的时间标签（`20261024-031849`），用于同名文件去重。
+
+    优先用 `--from`/`--to`（那是用户指定的窗口，最贴合这张图），都没有时取日志第一行
+    的时间戳。取不到返回 None。
+    """
+    if options.t_from:
+        return options.t_from.strftime("%Y%m%d-%H%M%S")
+    if options.t_to:
+        return options.t_to.strftime("%Y%m%d-%H%M%S")
+    text = case.log_text
+    if text is None and case.log_path:
+        try:
+            with open(case.log_path, encoding="utf-8", errors="replace") as fh:
+                head = fh.read(64 * 1024)
+        except OSError:
+            head = ""
+        text = head
+    if not text:
+        return None
+    m = re.search(r"\[(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})", text)
+    return "".join(m.groups()) if m else None
+
+
+def _safe_part(text: str) -> str:
+    """文件名里只留字母数字与 `-_`，其余换成 `-`（中文、空格、斜杠都换掉）。"""
+    return "".join(c if c.isalnum() or c in "-_" else "-" for c in text)
+
+
+def base_filename(case: Case, options: FlowOptions) -> str:
+    """不含去重后缀的文件名主干：优先遥测问题名，其次任务名，最后证据包目录名。
+
+    带 `--task-id` 时追加 `_task<id>`：一个 issue 里往往有多个任务失败（实测
+    `PYTHON-1Z` 有 6 个），不追加会让它们互相覆盖到同一个文件名上。
+
+    指定了 `--task-id` 时**不把任务名放进主干**：那个 task 的入口行不一定在导出的那一段里
+    （实测 200000007 只留下 `ReturnMain`，它不是任务入口），而 `task<id>` 本身就唯一、
+    也一定对——宁可少一个名字，不放一个可能错的名字。
+    """
+    issue = issue_name_of(case)
+    task = task_name_of(case, options)
+    explicit_task = options.task_id is not None
+    stem = issue or (None if explicit_task else task) or task or case.label or "case"
+    parts = [_safe_part(stem)]
+    if explicit_task:
+        parts.append(f"task{options.task_id}")
+    elif issue and task:
+        # 有 issue 名但没有 task_id：把任务名也带上，图才读得出画的是哪个任务
+        parts.append(_safe_part(task))
+    return "_".join(p for p in parts if p)
+
+
+def out_filename(case: Case, options: FlowOptions, outdir: str,
+                 manifest: dict | None = None) -> str:
+    """产物文件名：`flow_<问题名或任务名>[_task<id>][_<日志时间>].png`。
+
+    同名判定看两处：磁盘上已有同名文件，或 manifest 里已登记过**另一份**输入（日志指纹
+    不同或参数不同）。任一冲突就追加日志时间标签；加了标签仍冲突时再追加日志短指纹，
+    保证结果确定且不覆盖别人。
+    """
+    base = base_filename(case, options)
+    digest = log_digest(case)
+    recorded = (manifest or {}).get("cases", {})
+
+    def taken(name: str) -> bool:
+        path = os.path.join(outdir, name)
+        if not os.path.isfile(path):
+            # 文件不在，但 manifest 里记着另一份输入用过这个名字：也算被占（产物被清掉过）
+            return name in recorded and recorded[name].get("fingerprint", {}).get("log") != digest
+        if name not in recorded:
+            return True                      # 磁盘上有同名文件、但不是本工具画的
+        return recorded[name].get("fingerprint", {}).get("log") != digest
+
+    name = f"flow_{base}.png"
+    if not taken(name):
+        return name
+    stamp = log_stamp(case, options)
+    if stamp:
+        name = f"flow_{base}_{stamp}.png"
+        if not taken(name):
+            return name
+    return f"flow_{base}_{digest}.png"
 
 def load_manifest(outdir: str) -> dict:
     path = os.path.join(outdir, MANIFEST_NAME)
@@ -271,7 +409,7 @@ def save_manifest(outdir: str, manifest: dict) -> None:
 def run_case(case: Case, options: FlowOptions, *, outdir: str, mermaid: bool,
              force: bool, manifest: dict) -> FlowResult | None:
     """渲染一个 case；命中 manifest 且产物还在就跳过（幂等）。"""
-    name = out_filename(case, options)
+    name = out_filename(case, options, outdir, manifest)
     target = os.path.join(outdir, name)
     vision, on_error = case.vision(), case.on_error()
     fingerprint = {

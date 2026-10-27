@@ -57,6 +57,7 @@ python tools/drawing/flow_from_log.py <安装根>/debug/maafw.log --overlay-min 
 python tools/drawing/flow_from_log.py <安装根>/debug/maafw.log --no-stale-check
 
 # 2. 证据包（debug 目录 / MFA 导出 zip / 多卷）→ 流程图，带 manifest 幂等
+#    产物名优先用遥测问题名（temp/evidence/<SHORT-ID>/ → <SHORT-ID>），其次任务名，见「产物文件名」
 python tools/drawing/flow_cases.py --case D:/MaaAshArms/debug --task-id 200000118
 python tools/drawing/flow_cases.py --case log_20261014-part01.zip log_20261014-part02.zip --task-id 200000118
 python tools/drawing/flow_cases.py --case D:/MaaAshArms/debug --list-cases
@@ -235,7 +236,7 @@ python tools/drawing/whiteboard_images.py --dry-run   # 报告将要做什么，
 - **整份日志会读进内存**：为检测时间回跳必须读完（本机 10.9 MB 的 `maafw.log` 约 2.4 s、十几 MB 内存）。
   框架自己会轮转日志（`debug/` 下有 `maafw.bak.<日期>.log`），不需要为它做流式裁剪。
 - **`RENDERER_VERSION`**：改动会影响产物内容时（版面、注记、解析口径）必须 +1，
-  否则 `flow_cases` 会命中旧的 `manifest.json` 直接"跳过（已画过）"，渲染改了却不重画。现在是 **7**。
+  否则 `flow_cases` 会命中旧的 `manifest.json` 直接"跳过（已画过）"，渲染改了却不重画。现在是 **9**。
 - **合并与贴图解析的先后**：`overlay_repeats()` 的 `has_thumb` 问的是"第 i 轮实际贴到图没有"，
   所以只能在 `thumb_of` 算完之后调用；按"传没传 `--vision`"提前判断会把其实有图的轮折掉。
   折叠后 `thumb_of` 的键（旧列索引）必须重排，否则 `--no-thumbs` 与 on_error 回贴会把图贴到别的列。
@@ -244,3 +245,26 @@ python tools/drawing/whiteboard_images.py --dry-run   # 报告将要做什么，
   这是 `--no-overlay` 仍能逐字节还原旧图的前提。
 - **一份证据包里的日志常覆盖整次运行**（多个任务）：`evidence` 拉下来的 `maafw.log` 就是这样，
   必须配 `--task-id`；同一条 trace 上的多个 issue 会共用同一份日志。
+
+### 产物文件名（`flow_cases.py`）
+
+`flow_<问题名或任务名>[_task<id>][_<日志时间>].png`，优先级：
+
+1. **遥测问题名**：证据包目录名就是 issue 的 `short_id`（`temp/evidence/PYTHON-1Z/` → `PYTHON-1Z`）；
+   `--case` 指到 `debug/` 那层时往上找一层，归档来源看文件名（`PYTHON-1Z-part01.zip` → `PYTHON-1Z`）。
+   认不出的目录名（`20261019`、`debug`）不算问题名。
+2. **任务名**：日志里 `Tasker.Task.*` 事件的 `entry`（`TaskTrain` 这种）。给了 `--task-id` 时只认那个
+   task 的 `PipelineTask node done [...] [task_id_=N]` 行，取其中的入口型节点名（`Task*` 开头）。
+3. **证据包目录名**：前两者都没有时的兜底。
+
+同名处理（任一条命中就追加日志时间 `_20261024155229`，即 `--from`/`--to` 或日志第一行的时间戳）：
+
+- 磁盘上已有同名文件、且不是本工具画的（manifest 里没登记）；
+- manifest 里同名条目登记的是**另一份**日志（日志指纹不同）。
+
+时间标签也冲突时再追加日志短指纹（`_6d990a8f6cdf66b6`），保证结果确定、不覆盖别人的产物。
+同一份日志 + 同一套参数仍落在原名上，manifest 幂等不变。
+
+**带 `--task-id` 时文件名只写 `_task<id>`、不写任务名**：一个 issue 里常有多个任务失败（实测
+`PYTHON-1Z` 有 6 个），而那个 task 的入口行不一定在导出的那一段里（实测 200000007 只留下 `ReturnMain`，
+它不是任务入口）——`task<id>` 唯一且一定对，宁可少一个名字，不放一个可能错的名字。
