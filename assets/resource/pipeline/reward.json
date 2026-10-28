@@ -14,8 +14,8 @@
             "[JumpBack]ShopEnterHome",
             "[JumpBack]MissionBranchReward",
             "[JumpBack]BaseBranchError",
-            "[JumpBack]ReturnMain",
-            "TaskStop"
+            "[JumpBack]BaseReturnHome",
+            "BaseTaskStop"
         ]
     },
     /* -------------------- 探测 -------------------- */
@@ -100,7 +100,7 @@
         "next": [
             "MissionEnd",
             "[JumpBack]MissionClickGetReward",
-            "[JumpBack]IsGetReward",
+            "[JumpBack]BaseClickRewardTap",
             "[JumpBack]BaseBranchError"
         ]
     },

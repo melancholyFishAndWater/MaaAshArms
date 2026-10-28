@@ -78,7 +78,7 @@ python tools/drawing/whiteboard_images.py --dry-run   # 报告将要做什么，
   `[JumpBack]` 会弹回上层，所以这是**调用图不是树**；同一个父节点会在图里反复出现，别按层级读。
   - **套框规则**：同一轮里**连续**由一个父节点派发的那几步套一个浅色框，框的左上角压一个深色实心角标
     （白字）写父节点名。父节点换了就另起一个框；同一个父节点跨轮重复出现就是各自独立的框
-    （实测 task 200000054：4 轮里共 10 个框，`TrainingEnterOne` 一个框含 `MoveUp` + `TrainingEnterFormation`）。
+    （实测 task 200000054：4 轮里共 10 个框，`TrainingEnterOne` 一个框含 `BaseMoveUp` + `TrainingEnterFormation`）。
   - **配色**：同名父节点永远同一套颜色（一眼看出"又是它派发的"），不同父节点按**首次出现顺序**轮换
     `PARENT_COLORS` 里的 6 套（蓝 / 青绿 / 琥珀 / 紫 / 绿 / 玫红，都是浅底 + 同色系边框 + 深色角标）。
     超过 6 个父节点就循环取色，此时靠角标文字区分。
@@ -105,7 +105,7 @@ python tools/drawing/whiteboard_images.py --dry-run   # 报告将要做什么，
   - `--list` 末尾追加 `--- 父节点评估（Node.NextList）---`：按派发者列出 `未命中 N 轮 / 开始 N / 命中 N`
     与**真实候选表**（取全未命中那一轮的 `list`——入口轮是 `[自己]` 的自派发，不能当候选表）。
   - 实测（`PYTHON-J`，task 200000167）：只有 2 条 `PipelineTask node done`，但 `TaskReplays` 的候选表
-    **13 轮全未命中**、`LoopErrorByTimes` 随后 → `TaskStopError`——旧版图只看得到末尾两步。
+    **13 轮全未命中**、`LoopErrorByTimes` 随后 → `BaseTaskStopError`——旧版图只看得到末尾两步。
 - **重复轮次合并成一列**（`--no-overlay` 关闭，`--overlay-min` 调阈值，默认连续 2 轮）：日志里"同一个循环跑几十遍"
   很常见（实测一份 40 轮的日志里 34 轮是同形的两步：`ReturnBattleMainPage → BattleInHome`，每轮都没截图），
   逐轮各占一列会让图宽到没法读。合并条件四条**同时**成立，任一条不满足就在那里断开（不是整段作废）：
@@ -167,7 +167,7 @@ python tools/drawing/whiteboard_images.py --dry-run   # 报告将要做什么，
 命中时**画完图后会额外打一行**（`flow_from_log.py` 与 `flow_cases.py` 都打，走 stdout，与产物路径挨着）：
 
 ```text
-疑似过时：2 个节点在 v1.0.0-beta.42 之后改过（ReturnMain、TaskTrain）——图里这些节点名带「疑似过时」，改动有没有影响它们的行为要自己核对
+疑似过时：2 个节点在 v1.0.0-beta.42 之后改过（BaseReturnHome、TaskTrain）——图里这些节点名带「疑似过时」，改动有没有影响它们的行为要自己核对
 ```
 
 `flow_cases.py` 还会把这个后缀写进文件名（`_stale`）。图上第二行的注记仍然保留更细的信息
@@ -309,5 +309,5 @@ python tools/drawing/flow_cases.py --case D:/MaaAshArms/debug --all-tasks
 `task_id` 在每个进程里从同一个基数重新分配，所以文件名的进程号是**唯一性的一部分**，不是装饰。
 
 **带 `--task-id` 时文件名只写 `_task<id>`、不写任务名**：一个 issue 里常有多个任务失败（实测
-`PYTHON-1Z` 有 6 个），而那个 task 的入口行不一定在导出的那一段里（实测 200000007 只留下 `ReturnMain`，
+`PYTHON-1Z` 有 6 个），而那个 task 的入口行不一定在导出的那一段里（实测 200000007 只留下 `BaseReturnHome`，
 它不是任务入口）——`task<id>` 唯一且一定对，宁可少一个名字，不放一个可能错的名字。

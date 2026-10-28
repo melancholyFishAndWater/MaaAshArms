@@ -255,7 +255,7 @@ class EntrustBranchTouchMaxReco(CustomRecognition):
 
         if _number == 0:
             log.ferror(f"{argv.node_name} 错误 不应出现的实际委派数字0 任务结束")
-            context.run_action("TaskStopError")
+            context.run_action("BaseTaskStopError")
             return
 
         if _max <= _times:
@@ -326,7 +326,7 @@ class EntrustStartSuccessAct(CustomAction):
 # ----- EntrustMover -----
 
 # 移动方向 默认右滑
-_move: Literal["MoveRight", "MoveLeft"] = "MoveRight"
+_move: Literal["BaseMoveRight", "BaseMoveLeft"] = "BaseMoveRight"
 
 
 # 识别画面 并修改移动方向
@@ -365,7 +365,7 @@ class EntrustMoverReco(CustomRecognition):
             return
 
         # 右滑取最小 左滑取最大
-        number = min(numbers) if _move == "MoveRight" else max(numbers)
+        number = min(numbers) if _move == "BaseMoveRight" else max(numbers)
 
         # 校验数字
         if number <= 0:
@@ -375,10 +375,10 @@ class EntrustMoverReco(CustomRecognition):
         # 修改移动方向
         if number >= level:
             log.debug(f"{node_name} 设置移动方式为右滑")
-            _move = "MoveRight"
+            _move = "BaseMoveRight"
         else:
             log.debug(f"{node_name} 设置移动方式为左滑")
-            _move = "MoveLeft"
+            _move = "BaseMoveLeft"
 
         return DEFAULT_HIT_BOX
 

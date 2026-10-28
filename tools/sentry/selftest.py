@@ -165,7 +165,7 @@ ROWS_STATUS: list[dict[str, Any]] = [
         "_count": 3,
     },
     {
-        "description": "ReturnMain",
+        "description": "BaseReturnHome",
         "status": "internal_error",
         "release": RELEASE_D37_OLD_MFA,
         "_count": 2,
@@ -269,7 +269,9 @@ def _raises(action: Callable[[], Any], error: type[Exception], what: str) -> Non
     except error:
         return
     except Exception as unexpected:  # noqa: BLE001
-        raise CheckFailure(f"{what}: 期望 {error.__name__}，实际 {type(unexpected).__name__}") from None
+        raise CheckFailure(
+            f"{what}: 期望 {error.__name__}，实际 {type(unexpected).__name__}"
+        ) from None
     raise CheckFailure(f"{what}: 期望抛 {error.__name__}，但没有抛")
 
 
@@ -378,7 +380,7 @@ def check_task_rows() -> list[str]:
     )
     _eq(
         sorted(row.task for row in all_markers),
-        ["HomeFlag", "ReturnMain"],
+        ["HomeFlag", "BaseReturnHome"],
         "不限版本时的标记全集",
     )
 
@@ -1016,7 +1018,11 @@ def check_speed_report() -> list[str]:
     )
 
     # 2) 系统伪任务被排除
-    _eq(report.tasks, ("Training",), "mfa.* 与 config.system_labels 里的伪任务不进任务表")
+    _eq(
+        report.tasks,
+        ("Training",),
+        "mfa.* 与 config.system_labels 里的伪任务不进任务表",
+    )
 
     # 3) 样本量门槛：n=1 的格子不算够样本
     #    cell() 对没有样本的版本返回 None，那种格子一律算"不够样本"（enough() 入参是 SpeedCell，
@@ -1045,7 +1051,9 @@ def check_speed_report() -> list[str]:
     )
 
     # 5) 重构对比：beta.1(100ms) → beta.10(200ms) 是变慢
-    slow = build_speed_report(rows, last=0, min_count=2, compare="v1.0.0-beta.1..v1.0.0-beta.10")
+    slow = build_speed_report(
+        rows, last=0, min_count=2, compare="v1.0.0-beta.1..v1.0.0-beta.10"
+    )
     _eq(len(slow.compares), 1, "只有两版都有数据的任务才进对比")
     _eq(slow.compares[0].verdict, "regressed", "p50 翻倍判为变慢")
     _eq(round(slow.compares[0].ratio, 3), 2.0, "比值 = 新版/基线")
@@ -1057,21 +1065,29 @@ def check_speed_report() -> list[str]:
         row("Training", rel("beta.3"), 100.0, 6),
         row("Training", rel("beta.4"), 105.0, 6),
     ]
-    near = build_speed_report(noise_rows, last=0, min_count=2, compare="v1.0.0-beta.3..v1.0.0-beta.4")
+    near = build_speed_report(
+        noise_rows, last=0, min_count=2, compare="v1.0.0-beta.3..v1.0.0-beta.4"
+    )
     _eq(near.compares[0].verdict, "noise", "比值 1.05 落在噪声带内，不硬给方向")
-    over = build_speed_report(rows, last=0, min_count=2, compare="v1.0.0-beta.1..v1.0.0-beta.9")
+    over = build_speed_report(
+        rows, last=0, min_count=2, compare="v1.0.0-beta.1..v1.0.0-beta.9"
+    )
     _eq(over.compares[0].verdict, "regressed", "比值 1.20 超出阈值 1.15 判变慢")
 
     # 6b) 改善：beta.10(200ms) → beta.1(100ms) 是 0.50x，明显改善
-    better = build_speed_report(rows, last=0, min_count=2, compare="v1.0.0-beta.10..v1.0.0-beta.1")
+    better = build_speed_report(
+        rows, last=0, min_count=2, compare="v1.0.0-beta.10..v1.0.0-beta.1"
+    )
     _eq(better.compares[0].verdict, "improved", "比值 0.50 低于 1/1.15 判改善")
 
     # 7) 样本不足的两版 → 证据不足（不是"改善"）
     thin_rows = [
-        row("Gift", rel("beta.1"), 128400.0, 2),   # n=2 < compare 门槛 3
+        row("Gift", rel("beta.1"), 128400.0, 2),  # n=2 < compare 门槛 3
         row("Gift", rel("beta.2"), 801.1, 4),
     ]
-    thin = build_speed_report(thin_rows, last=0, min_count=2, compare="v1.0.0-beta.1..v1.0.0-beta.2")
+    thin = build_speed_report(
+        thin_rows, last=0, min_count=2, compare="v1.0.0-beta.1..v1.0.0-beta.2"
+    )
     _eq(thin.compares[0].verdict, "insufficient", "一侧样本不足时给证据不足而不是方向")
     _eq(
         (thin.compares[0].base_count, thin.compares[0].new_count),
@@ -1082,7 +1098,9 @@ def check_speed_report() -> list[str]:
 
     # 8) --compare 的版本必须在窗口内
     _raises(
-        lambda: build_speed_report(rows, last=1, compare="v1.0.0-beta.1..v1.0.0-beta.10"),
+        lambda: build_speed_report(
+            rows, last=1, compare="v1.0.0-beta.1..v1.0.0-beta.10"
+        ),
         ValueError,
         "--compare 的版本不在窗口内",
     )
@@ -1637,7 +1655,9 @@ def check_flow_parents() -> list[str]:
     # 2) 自循环 / 入口合成轮：list 里含自己 → 不画成父子，写成"自派发/自循环"
     text = "\n".join(
         [
-            nextlist("00:00:01.000", "BattleWin", ["IsGetReward", "BattleWin"], 100),
+            nextlist(
+                "00:00:01.000", "BattleWin", ["BaseClickRewardTap", "BattleWin"], 100
+            ),
             done("00:00:02.000", "BattleWin", 100),
         ]
     )
@@ -1662,10 +1682,12 @@ def check_flow_parents() -> list[str]:
     text = "\n".join(
         [
             nextlist(
-                "00:00:01.000", "EntrustLoop", ["EntrustTouchDown", "MoveUp"], 200
+                "00:00:01.000", "EntrustLoop", ["EntrustTouchDown", "BaseMoveUp"], 200
             ),
-            nextlist("00:00:01.500", "BattleLoop", ["BattleProbeNow", "MoveUp"], 100),
-            done("00:00:02.000", "MoveUp", 100),
+            nextlist(
+                "00:00:01.500", "BattleLoop", ["BattleProbeNow", "BaseMoveUp"], 100
+            ),
+            done("00:00:02.000", "BaseMoveUp", 100),
         ]
     )
     _eq(
@@ -1851,9 +1873,16 @@ def check_flow_overlay() -> list[str]:
         overlay_repeats,
     )
 
-    def step(name: str, kind: str = "hit", run_len: int = 1, completed: bool = True) -> Step:
-        return Step(ts=_dt(2026, 10, 21, 0, 0, 1), name=name, completed=completed,
-                    kind=kind, run_len=run_len)
+    def step(
+        name: str, kind: str = "hit", run_len: int = 1, completed: bool = True
+    ) -> Step:
+        return Step(
+            ts=_dt(2026, 10, 21, 0, 0, 1),
+            name=name,
+            completed=completed,
+            kind=kind,
+            run_len=run_len,
+        )
 
     def col(*names: str) -> list[Step]:
         return [step(n) for n in names]
@@ -1876,31 +1905,49 @@ def check_flow_overlay() -> list[str]:
     # 2) 有图就不折：整组无图才合并，中间任何一轮有图都断开
     thumbs = {1}
     merged = overlay_repeats(columns, columns, lambda i: i in thumbs, min_span=2)
-    _eq([m[1] for m in merged], [ColumnSpan(0, 0), ColumnSpan(1, 1), ColumnSpan(2, 2)],
-        "有图的那一轮把重复段切断")
+    _eq(
+        [m[1] for m in merged],
+        [ColumnSpan(0, 0), ColumnSpan(1, 1), ColumnSpan(2, 2)],
+        "有图的那一轮把重复段切断",
+    )
 
     # 3) 失败框不折：`classify()` 判 error 的框（未完成的 event）不能被 ×N 藏起来
     bad = col("A", "B") + [step("node not completed", kind="event", completed=False)]
-    merged = overlay_repeats([col("A", "B"), bad, col("A", "B")], [bad] * 3, no_thumb, min_span=2)
+    merged = overlay_repeats(
+        [col("A", "B"), bad, col("A", "B")], [bad] * 3, no_thumb, min_span=2
+    )
     _eq(len(merged), 3, "带失败框的轮不折")
 
     # 4) 未命中聚合框进签名：`A,B` 与 `A,B,未命中×6` 形状不同
     with_miss = col("A", "B") + [step("B", kind="miss", run_len=6)]
-    _eq(column_signature(col("A", "B")) == column_signature(with_miss), False,
-        "未命中聚合框要与命中步骤区分开")
-    merged = overlay_repeats([col("A", "B"), with_miss], [col("A", "B"), with_miss],
-                             no_thumb, min_span=2)
+    _eq(
+        column_signature(col("A", "B")) == column_signature(with_miss),
+        False,
+        "未命中聚合框要与命中步骤区分开",
+    )
+    merged = overlay_repeats(
+        [col("A", "B"), with_miss], [col("A", "B"), with_miss], no_thumb, min_span=2
+    )
     _eq(len(merged), 2, "多一个未命中框就不是同形")
 
     # 5) 折叠次数进签名：`×3` 的一格与三格不等价
-    _eq(column_signature([step("A", run_len=3)]) == column_signature(col("A", "A", "A")), False,
-        "折叠后的 ×N 与逐次记录不等价")
+    _eq(
+        column_signature([step("A", run_len=3)])
+        == column_signature(col("A", "A", "A")),
+        False,
+        "折叠后的 ×N 与逐次记录不等价",
+    )
 
     # 6) 从列首对齐、不做子序列匹配：`A,B,C,D,E` 与 `B,C,D,E` 不合并
     long, short = col("A", "B", "C", "D", "E"), col("B", "C", "D", "E")
-    merged = overlay_repeats([long, short, short], [long, short, short], no_thumb, min_span=2)
-    _eq([m[1] for m in merged], [ColumnSpan(0, 0), ColumnSpan(1, 2)],
-        "前缀差一步不算重复（后两轮才合并）")
+    merged = overlay_repeats(
+        [long, short, short], [long, short, short], no_thumb, min_span=2
+    )
+    _eq(
+        [m[1] for m in merged],
+        [ColumnSpan(0, 0), ColumnSpan(1, 2)],
+        "前缀差一步不算重复（后两轮才合并）",
+    )
 
     # 7) 阈值：min_span=2 时两轮就折；min_span=3 时两轮不折
     two = [col("A"), col("A")]
@@ -1911,10 +1958,15 @@ def check_flow_overlay() -> list[str]:
     # 8) 中间夹一轮不同形状 → 断成两段，各自按阈值判
     a, b = col("A"), col("B")
     mixed = [a, a, b, a, a]
-    _eq([m[1] for m in overlay_repeats(mixed, mixed, no_thumb, min_span=2)],
-        [ColumnSpan(0, 1), ColumnSpan(2, 2), ColumnSpan(3, 4)], "不连续的重复各自成段")
+    _eq(
+        [m[1] for m in overlay_repeats(mixed, mixed, no_thumb, min_span=2)],
+        [ColumnSpan(0, 1), ColumnSpan(2, 2), ColumnSpan(3, 4)],
+        "不连续的重复各自成段",
+    )
 
-    return ["同形合并 / 有图断开 / 失败断开 / 未命中进签名 / 前缀不等价 / 阈值 / 不连续 各自有断言"]
+    return [
+        "同形合并 / 有图断开 / 失败断开 / 未命中进签名 / 前缀不等价 / 阈值 / 不连续 各自有断言"
+    ]
 
 
 CHECKS: tuple[tuple[str, Callable[[], list[str]]], ...] = (

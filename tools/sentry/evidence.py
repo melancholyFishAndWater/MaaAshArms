@@ -16,7 +16,7 @@
 1. `attachment.status`：`attached` 才有现场图。实测 2026-10-13~15 的 12 个 issue 里只有 2 个是
    `attached`，其余 `no_evidence`（附件根本没有）。这个字段在 `sentry issue view <ID> --json` 的
    `event.context` 里，键名是**扁平的** `attachment.status`，不是嵌套对象。
-2. `logs.status`：`captured` 就有这次运行的日志。**没有附件不等于没得画**——实测两次 `TaskStopError`
+2. `logs.status`：`captured` 就有这次运行的日志。**没有附件不等于没得画**——实测两次 `BaseTaskStopError`
    的 issue 都是 `no_evidence`，但日志拿得到（同一条 trace 11787 行、34 条 `PipelineTask node done`），
    照样能画"节点循环"，只是没有画面格。
 
@@ -93,7 +93,9 @@ HTTP_TIMEOUT_SECONDS = 60
 SENTRY_HOST = "https://sentry.io"
 
 # 附件名形如 mfa-task-failure-<run.id>-<task.id>-screenshots.zip，task.id 就是日志里的 task_id
-ATTACHMENT_NAME_RE = re.compile(r"^mfa-task-failure-[0-9a-f]+-(\d+)-screenshots\.zip$", re.IGNORECASE)
+ATTACHMENT_NAME_RE = re.compile(
+    r"^mfa-task-failure-[0-9a-f]+-(\d+)-screenshots\.zip$", re.IGNORECASE
+)
 
 # 失败标记：把 context 里的 node_id 换成人能读的名字时用（与 flow_from_log 的判据同一批）
 MARKER_RES = (
@@ -167,8 +169,12 @@ class Issue:
 
 def survey_issue(sentry: str, short_id: str, *, verbose: bool, timeout: float) -> Issue:
     """看一个 issue 的最近一次事件：有没有附件、有没有日志、失败字段是什么。"""
-    raw = report_common.run_sentry_json_value(sentry, ["issue", "view", short_id, "--json"],
-                                              verbose=verbose, timeout_seconds=timeout)
+    raw = report_common.run_sentry_json_value(
+        sentry,
+        ["issue", "view", short_id, "--json"],
+        verbose=verbose,
+        timeout_seconds=timeout,
+    )
     if not isinstance(raw, dict):
         raise RuntimeError(f"sentry issue view {short_id} 返回了非对象 JSON。")
     event = raw.get("event") or {}
@@ -184,9 +190,18 @@ def survey_issue(sentry: str, short_id: str, *, verbose: bool, timeout: float) -
     )
 
 
-def survey(sentry: str, target: str, *, period: str, limit: int, issues: Sequence[str] | None,
-           events: Sequence[str] | None, verbose: bool, timeout: float,
-           progress: bool = True) -> list[Issue]:
+def survey(
+    sentry: str,
+    target: str,
+    *,
+    period: str,
+    limit: int,
+    issues: Sequence[str] | None,
+    events: Sequence[str] | None,
+    verbose: bool,
+    timeout: float,
+    progress: bool = True,
+) -> list[Issue]:
     """列出窗口里的 issue 并逐个看证据状态。
 
     没有批量接口（`sentry issue events --json` 是精简视图、没有 context），所以只能一个 issue 一次
@@ -195,16 +210,36 @@ def survey(sentry: str, target: str, *, period: str, limit: int, issues: Sequenc
     if issues:
         wanted = [i.strip().upper() for i in issues if i.strip()]
         if progress:
-            report_common.show_progress(f"检查 {len(wanted)} 个指定 issue…", quiet=False)
-        return [survey_issue(sentry, short, verbose=verbose, timeout=timeout) for short in wanted]
+            report_common.show_progress(
+                f"检查 {len(wanted)} 个指定 issue…", quiet=False
+            )
+        return [
+            survey_issue(sentry, short, verbose=verbose, timeout=timeout)
+            for short in wanted
+        ]
 
     listing = report_common.run_sentry_json_value(
-        sentry, ["issue", "list", target, "--period", period, "--limit", str(limit),
-                 "--json", "--fields", "shortId,title,count,lastSeen"],
-        verbose=verbose, timeout_seconds=timeout)
+        sentry,
+        [
+            "issue",
+            "list",
+            target,
+            "--period",
+            period,
+            "--limit",
+            str(limit),
+            "--json",
+            "--fields",
+            "shortId,title,count,lastSeen",
+        ],
+        verbose=verbose,
+        timeout_seconds=timeout,
+    )
     rows = listing.get("data") if isinstance(listing, dict) else listing
     if not isinstance(rows, list):
-        raise RuntimeError(f"sentry issue list 返回的 JSON 里没有 data 列表：{type(listing).__name__}")
+        raise RuntimeError(
+            f"sentry issue list 返回的 JSON 里没有 data 列表：{type(listing).__name__}"
+        )
 
     found: list[Issue] = []
     for index, row in enumerate(rows, 1):
@@ -224,8 +259,9 @@ def survey(sentry: str, target: str, *, period: str, limit: int, issues: Sequenc
 
 def sentry_token(sentry: str, *, verbose: bool, timeout: float) -> str:
     """`sentry auth token --json` 输出的是**裸 JSON 字符串**（不是对象），所以不能用 run_sentry_json。"""
-    value = report_common.run_sentry_json_value(sentry, ["auth", "token", "--json"],
-                                                verbose=verbose, timeout_seconds=timeout)
+    value = report_common.run_sentry_json_value(
+        sentry, ["auth", "token", "--json"], verbose=verbose, timeout_seconds=timeout
+    )
     token = value if isinstance(value, str) else (value or {}).get("token")
     if not isinstance(token, str) or not token.strip():
         raise RuntimeError(
@@ -235,16 +271,23 @@ def sentry_token(sentry: str, *, verbose: bool, timeout: float) -> str:
     return token.strip()
 
 
-def list_attachments(sentry: str, target: str, event_id: str, *, verbose: bool, timeout: float) -> list[dict]:
+def list_attachments(
+    sentry: str, target: str, event_id: str, *, verbose: bool, timeout: float
+) -> list[dict]:
     """列事件附件。返回体是 {"status":200,"body":[…]}，附件在 body 里。"""
     payload = report_common.run_sentry_json_value(
-        sentry, ["api", f"projects/{target}/events/{event_id}/attachments/", "--json"],
-        verbose=verbose, timeout_seconds=timeout)
+        sentry,
+        ["api", f"projects/{target}/events/{event_id}/attachments/", "--json"],
+        verbose=verbose,
+        timeout_seconds=timeout,
+    )
     body = payload.get("body") if isinstance(payload, dict) else None
     return [item for item in body or [] if isinstance(item, dict)]
 
 
-def download_attachment(target: str, event_id: str, attachment_id: str, token: str) -> bytes:
+def download_attachment(
+    target: str, event_id: str, attachment_id: str, token: str
+) -> bytes:
     """带 Bearer 下载附件。`sentry api` 打不出二进制，只能自己发请求。"""
     url = f"{SENTRY_HOST}/api/0/projects/{target}/events/{event_id}/attachments/{attachment_id}/?download=1"
     request = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
@@ -266,19 +309,40 @@ def download_attachment(target: str, event_id: str, attachment_id: str, token: s
         raise RuntimeError(f"下载附件失败（网络）：{error.reason}") from error
 
 
-def fetch_log_lines(sentry: str, target: str, trace_id: str, *, limit: int, sort: str,
-                    verbose: bool, timeout: float) -> tuple[list[str], bool]:
+def fetch_log_lines(
+    sentry: str,
+    target: str,
+    trace_id: str,
+    *,
+    limit: int,
+    sort: str,
+    verbose: bool,
+    timeout: float,
+) -> tuple[list[str], bool]:
     """取这次运行的日志行；返回 (行, 是否还有更多)。
 
     `--limit` 上限 1000 且没有游标：超过就只能拿一段。默认 `--sort newest`——失败发生在运行末尾，
     取最新那段才有失败现场；取 `oldest` 会拿到运行开头，失败窗口直接落在截断之外。
     """
     if not 1 <= limit <= MAX_LOG_LIMIT:
-        raise ValueError(f"--log-limit 必须在 1~{MAX_LOG_LIMIT} 之间（Sentry CLI 自己限死的）。")
+        raise ValueError(
+            f"--log-limit 必须在 1~{MAX_LOG_LIMIT} 之间（Sentry CLI 自己限死的）。"
+        )
     payload = report_common.run_sentry_json_value(
-        sentry, ["trace", "logs", f"{target}/{trace_id}", "--json", "--limit", str(limit),
-                 "--sort", sort],
-        verbose=verbose, timeout_seconds=timeout)
+        sentry,
+        [
+            "trace",
+            "logs",
+            f"{target}/{trace_id}",
+            "--json",
+            "--limit",
+            str(limit),
+            "--sort",
+            sort,
+        ],
+        verbose=verbose,
+        timeout_seconds=timeout,
+    )
     rows = payload.get("data") if isinstance(payload, dict) else None
     if not isinstance(rows, list):
         raise RuntimeError("sentry trace logs 返回的 JSON 里没有 data 列表。")
@@ -345,7 +409,9 @@ def marker_lines(lines: Sequence[str], limit: int = 8) -> list[str]:
     return found
 
 
-def build_hints(outdir: Path, issue: Issue, *, log_rel: str | None, has_images: bool) -> list[str]:
+def build_hints(
+    outdir: Path, issue: Issue, *, log_rel: str | None, has_images: bool
+) -> list[str]:
     """可复制的下一步命令（相对仓库根，命令都在仓库根跑）。
 
     `log_rel` / `has_images` 说的是**磁盘上有没有**（`existing_artifacts()` 的结论），不是本次下没下：
@@ -365,10 +431,14 @@ def build_hints(outdir: Path, issue: Issue, *, log_rel: str | None, has_images: 
     task_arg = f" --task-id {task}" if task else ""
     hints.append(f"python -m tools.sentry.cli flow --case {case_dir}{task_arg}")
     if has_images:
-        hints.append(f"python tools/drawing/flow_from_log.py {shown}/{log_rel} "
-                     f"--on-error {case_dir}/on_error{task_arg}")
+        hints.append(
+            f"python tools/drawing/flow_from_log.py {shown}/{log_rel} "
+            f"--on-error {case_dir}/on_error{task_arg}"
+        )
     else:
-        hints.append(f"python tools/drawing/flow_from_log.py {shown}/{log_rel}{task_arg} --no-thumbs")
+        hints.append(
+            f"python tools/drawing/flow_from_log.py {shown}/{log_rel}{task_arg} --no-thumbs"
+        )
     return hints
 
 
@@ -378,15 +448,26 @@ def existing_artifacts(directory: Path) -> tuple[str | None, list[str]]:
     清单记的是**目录里有什么**，不是"本次下了什么"：`--force` 配合 `--no-log` / `--no-images` 只下一半时，
     上一趟留下的文件仍在原地（工具不删旧文件），清单必须照实写，否则照清单走的人会以为画不了图。
     """
-    log_name = next((name for name in LOG_NAMES if (directory / "debug" / name).is_file()), None)
+    log_name = next(
+        (name for name in LOG_NAMES if (directory / "debug" / name).is_file()), None
+    )
     log_rel = f"debug/{log_name}" if log_name else None
     on_error = directory / "debug" / "on_error"
-    images = sorted(f"debug/on_error/{item.name}" for item in on_error.glob("*.png")) if on_error.is_dir() else []
+    images = (
+        sorted(f"debug/on_error/{item.name}" for item in on_error.glob("*.png"))
+        if on_error.is_dir()
+        else []
+    )
     return log_rel, images
 
 
-def reconcile_written(directory: Path, written: dict[str, Any], log_rel: str | None,
-                      images: Sequence[str], notes: list[str]) -> None:
+def reconcile_written(
+    directory: Path,
+    written: dict[str, Any],
+    log_rel: str | None,
+    images: Sequence[str],
+    notes: list[str],
+) -> None:
     """把磁盘上已有的证据补进 `written`，并记一条"哪来的"。
 
     补齐后再让 `written` 走一遍：清单与磁盘不一致的地方在这里收敛。
@@ -410,7 +491,9 @@ def reconcile_written(directory: Path, written: dict[str, Any], log_rel: str | N
         parts.append("日志")
     if image_added:
         parts.append(f"{len(image_added)} 张现场图")
-    notes.append(f"{'、'.join(parts)}是目录里原有的（本次没下，工具不删旧文件），已一并记进清单")
+    notes.append(
+        f"{'、'.join(parts)}是目录里原有的（本次没下，工具不删旧文件），已一并记进清单"
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -443,9 +526,21 @@ class Evidence:
     notes: list[str] = field(default_factory=list)
 
 
-def collect(sentry: str, issue: Issue, *, outdir: Path, token: str | None, do_images: bool,
-            do_log: bool, log_limit: int, log_sort: str, force: bool, keep_duplicates: bool,
-            verbose: bool, timeout: float) -> Evidence:
+def collect(
+    sentry: str,
+    issue: Issue,
+    *,
+    outdir: Path,
+    token: str | None,
+    do_images: bool,
+    do_log: bool,
+    log_limit: int,
+    log_sort: str,
+    force: bool,
+    keep_duplicates: bool,
+    verbose: bool,
+    timeout: float,
+) -> Evidence:
     """把一个 issue 的证据落盘；已经下过就直接返回（`--force` 重新下）。
 
     清单里 `written` 说的是**这个证据目录里有什么**，不是"本次下了什么"：本次没下但磁盘上还在的
@@ -464,25 +559,42 @@ def collect(sentry: str, issue: Issue, *, outdir: Path, token: str | None, do_im
             stale: list[str] = []
             disk_written = recorded.get("written")
             if not isinstance(disk_written, dict):
-                disk_written = {"log": None, "log_bytes": 0, "images": [], "zip_bytes": 0}
+                disk_written = {
+                    "log": None,
+                    "log_bytes": 0,
+                    "images": [],
+                    "zip_bytes": 0,
+                }
                 recorded["written"] = disk_written
             reconcile_written(directory, disk_written, log_rel, images, stale)
-            return Evidence(directory=directory, inventory=recorded,
-                            hints=build_hints(directory, issue, log_rel=log_rel,
-                                              has_images=bool(images)),
-                            notes=["已存在（--force 重新下载）", *stale])
+            return Evidence(
+                directory=directory,
+                inventory=recorded,
+                hints=build_hints(
+                    directory, issue, log_rel=log_rel, has_images=bool(images)
+                ),
+                notes=["已存在（--force 重新下载）", *stale],
+            )
 
-    written: dict[str, Any] = {"log": None, "log_bytes": 0, "images": [], "zip_bytes": 0}
+    written: dict[str, Any] = {
+        "log": None,
+        "log_bytes": 0,
+        "images": [],
+        "zip_bytes": 0,
+    }
     trace_meta: dict[str, Any] = {}
     notes: list[str] = []
     # 上一趟留下的文件（`--force` 只重下一半时它们仍在原地）：先记下来，免得清单与磁盘脱节
     existing_log, existing_images = existing_artifacts(directory)
 
     if do_images and issue.images:
-        attachments = list_attachments(sentry, CONFIG.target, issue.event_id,
-                                      verbose=verbose, timeout=timeout)
+        attachments = list_attachments(
+            sentry, CONFIG.target, issue.event_id, verbose=verbose, timeout=timeout
+        )
         if not attachments:
-            notes.append("Sentry 说附件状态是 attached，但附件列表是空的（可能刚被保留策略清掉）")
+            notes.append(
+                "Sentry 说附件状态是 attached，但附件列表是空的（可能刚被保留策略清掉）"
+            )
         for item in attachments:
             attachment_id = str(item.get("id") or "")
             name = str(item.get("name") or f"attachment-{attachment_id}.zip")
@@ -490,17 +602,30 @@ def collect(sentry: str, issue: Issue, *, outdir: Path, token: str | None, do_im
                 continue
             if token is None:
                 token = sentry_token(sentry, verbose=verbose, timeout=timeout)
-            blob = download_attachment(CONFIG.target, issue.event_id, attachment_id, token)
+            blob = download_attachment(
+                CONFIG.target, issue.event_id, attachment_id, token
+            )
             if blob[:4] != b"PK\x03\x04":
-                raise RuntimeError(f"附件 {name} 不是 zip（前 4 字节 {blob[:4]!r}），不写盘。")
+                raise RuntimeError(
+                    f"附件 {name} 不是 zip（前 4 字节 {blob[:4]!r}），不写盘。"
+                )
             written["zip_bytes"] += len(blob)
             written["images"].extend(write_members(blob, directory))
     elif do_images:
-        notes.append(f"没有现场图（attachment.status={issue.evidence.get('attachment_status') or '未知'}）")
+        notes.append(
+            f"没有现场图（attachment.status={issue.evidence.get('attachment_status') or '未知'}）"
+        )
 
     if do_log and issue.logs and issue.trace_id:
-        lines, has_more = fetch_log_lines(sentry, CONFIG.target, issue.trace_id, limit=log_limit,
-                                         sort=log_sort, verbose=verbose, timeout=timeout)
+        lines, has_more = fetch_log_lines(
+            sentry,
+            CONFIG.target,
+            issue.trace_id,
+            limit=log_limit,
+            sort=log_sort,
+            verbose=verbose,
+            timeout=timeout,
+        )
         total = len(lines)
         kept, dropped = dedupe_lines(lines) if not keep_duplicates else (list(lines), 0)
         ordered, out_of_order = sort_lines(kept)
@@ -521,11 +646,17 @@ def collect(sentry: str, issue: Issue, *, outdir: Path, token: str | None, do_im
             "markers": marker_lines(ordered),
         }
         if has_more:
-            notes.append(f"日志超过 {log_limit} 条上限（Sentry CLI 没有游标）：只含 {log_sort} 的那一段")
+            notes.append(
+                f"日志超过 {log_limit} 条上限（Sentry CLI 没有游标）：只含 {log_sort} 的那一段"
+            )
         if dropped:
-            notes.append(f"去掉 {dropped} 行完全重复的行（MFA 续写日志的 64 KB 前缀重叠）")
+            notes.append(
+                f"去掉 {dropped} 行完全重复的行（MFA 续写日志的 64 KB 前缀重叠）"
+            )
         if not marker_lines(ordered):
-            notes.append("日志里没有看到 Task timeout / invalid node id / node not completed")
+            notes.append(
+                "日志里没有看到 Task timeout / invalid node id / node not completed"
+            )
         # 日志是"整个运行"的：一次运行常排多个任务，标记可能来自同一运行里的别的任务。
         # 同一条 trace 会同时挂多个 issue（实测 PYTHON-14 与 PYTHON-16 就是这样），
         # 所以上面那几条标记不能默认都算在这个 issue 头上——用 --task-id 定到 failure.task_id 才准。
@@ -535,18 +666,25 @@ def collect(sentry: str, issue: Issue, *, outdir: Path, token: str | None, do_im
         except (TypeError, ValueError):
             task_count = 0
         if task_count > 1:
-            notes.append(f"这次运行共 {task_count} 个任务，日志是整段的：标记可能来自别的任务，"
-                         f"按 --task-id {issue.evidence.get('failure_task_id')} 才只看本次失败的那个")
+            notes.append(
+                f"这次运行共 {task_count} 个任务，日志是整段的：标记可能来自别的任务，"
+                f"按 --task-id {issue.evidence.get('failure_task_id')} 才只看本次失败的那个"
+            )
     elif do_log:
-        notes.append(f"没有日志（logs.status={issue.evidence.get('logs_status') or '未知'}）")
+        notes.append(
+            f"没有日志（logs.status={issue.evidence.get('logs_status') or '未知'}）"
+        )
 
     # 清单记的是"目录里有什么"：本次没下但磁盘上还在的（`--force` 配 `--no-log`/`--no-images`）也补进来
     reconcile_written(directory, written, existing_log, existing_images, notes)
 
     has_log = written["log"] is not None
-    hints = build_hints(directory, issue,
-                        log_rel=str(written["log"]) if has_log else None,
-                        has_images=bool(written["images"]))
+    hints = build_hints(
+        directory,
+        issue,
+        log_rel=str(written["log"]) if has_log else None,
+        has_images=bool(written["images"]),
+    )
     if not hints:
         notes.append("既没有日志也没有现场图：画不出流程图（画图必须有日志）")
 
@@ -554,8 +692,12 @@ def collect(sentry: str, issue: Issue, *, outdir: Path, token: str | None, do_im
         "schema": EVIDENCE_SCHEMA,
         "kind": EVIDENCE_KIND,
         "generated_at": report_common.utc_now_iso(),
-        "issue": {"short_id": issue.short_id, "title": issue.title, "count": issue.count,
-                  "last_seen": issue.last_seen},
+        "issue": {
+            "short_id": issue.short_id,
+            "title": issue.title,
+            "count": issue.count,
+            "last_seen": issue.last_seen,
+        },
         "event": {"id": issue.event_id, **issue.evidence},
         "trace": trace_meta,
         "written": written,
@@ -584,16 +726,22 @@ def format_survey(issues: Sequence[Issue], output: TextIO) -> None:
             mark = "图 + 日志" if issue.logs else "只有图"
         else:
             mark = "只有日志"
-        rows.append((
-            issue.short_id,
-            str(issue.count),
-            str(issue.evidence.get("attachment_status") or "-"),
-            str(issue.evidence.get("logs_status") or "-"),
-            mark,
-            issue.title[:38],
-        ))
-    report_common.write_console_table(("issue", "次数", "附件", "日志", "可拉到的", "标题"),
-                                      rows, output, right_aligned={1})
+        rows.append(
+            (
+                issue.short_id,
+                str(issue.count),
+                str(issue.evidence.get("attachment_status") or "-"),
+                str(issue.evidence.get("logs_status") or "-"),
+                mark,
+                issue.title[:38],
+            )
+        )
+    report_common.write_console_table(
+        ("issue", "次数", "附件", "日志", "可拉到的", "标题"),
+        rows,
+        output,
+        right_aligned={1},
+    )
 
 
 def format_result(evidence: Evidence, output: TextIO, stderr: TextIO) -> None:
@@ -601,12 +749,18 @@ def format_result(evidence: Evidence, output: TextIO, stderr: TextIO) -> None:
     written = inventory.get("written", {})
     trace = inventory.get("trace", {})
     print(f"\n{evidence.directory.as_posix()}", file=output)
-    print(f"  现场图: {len(written.get('images') or [])} 个"
-          f"（附件 {written.get('zip_bytes', 0)} 字节）", file=output)
+    print(
+        f"  现场图: {len(written.get('images') or [])} 个"
+        f"（附件 {written.get('zip_bytes', 0)} 字节）",
+        file=output,
+    )
     if written.get("log"):
-        print(f"  日志:   {written['log']}（{written['log_bytes']} 字节"
-              f"；拿到 {trace.get('lines')} 行，去掉重复 {trace.get('duplicates_dropped')} 行"
-              f"{'，还有更多' if trace.get('has_more') else ''}）", file=output)
+        print(
+            f"  日志:   {written['log']}（{written['log_bytes']} 字节"
+            f"；拿到 {trace.get('lines')} 行，去掉重复 {trace.get('duplicates_dropped')} 行"
+            f"{'，还有更多' if trace.get('has_more') else ''}）",
+            file=output,
+        )
     else:
         print("  日志:   无", file=output)
     for marker in trace.get("markers") or []:
@@ -628,23 +782,57 @@ def create_argument_parser(prog: str | None = None) -> argparse.ArgumentParser:
         description=report_common.module_summary(__doc__),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("--period", default=DEFAULT_PERIOD, help=f"扫哪段时间的 issue（默认 {DEFAULT_PERIOD}）")
-    parser.add_argument("--limit", type=int, default=DEFAULT_LIMIT,
-                        help=f"最多看几个 issue（默认 {DEFAULT_LIMIT}）")
-    parser.add_argument("--issue", action="append", help="只处理这个 issue（如 PYTHON-14，可重复）")
-    parser.add_argument("--event", action="append", help="只处理这个事件 id（可重复；issue 的历史事件用这条）")
-    parser.add_argument("--outdir", default=DEFAULT_OUTDIR, help=f"产出目录（默认 {DEFAULT_OUTDIR}）")
+    parser.add_argument(
+        "--period",
+        default=DEFAULT_PERIOD,
+        help=f"扫哪段时间的 issue（默认 {DEFAULT_PERIOD}）",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=DEFAULT_LIMIT,
+        help=f"最多看几个 issue（默认 {DEFAULT_LIMIT}）",
+    )
+    parser.add_argument(
+        "--issue", action="append", help="只处理这个 issue（如 PYTHON-14，可重复）"
+    )
+    parser.add_argument(
+        "--event",
+        action="append",
+        help="只处理这个事件 id（可重复；issue 的历史事件用这条）",
+    )
+    parser.add_argument(
+        "--outdir", default=DEFAULT_OUTDIR, help=f"产出目录（默认 {DEFAULT_OUTDIR}）"
+    )
     parser.add_argument("--list", action="store_true", help="只报告证据状态，不下载")
-    parser.add_argument("--force", action="store_true",
-                        help="已经下过也重新下（只补本次允许下的那些；旧文件不删，仍会记进清单）")
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="已经下过也重新下（只补本次允许下的那些；旧文件不删，仍会记进清单）",
+    )
     parser.add_argument("--no-images", action="store_true", help="不下载现场图")
     parser.add_argument("--no-log", action="store_true", help="不取日志")
-    parser.add_argument("--log-limit", type=int, default=DEFAULT_LOG_LIMIT,
-                        help=f"取多少条日志（上限 {MAX_LOG_LIMIT}，失败在末尾所以默认取最新那段）")
-    parser.add_argument("--sort", choices=LOG_SORTS, default=LOG_SORTS[0],
-                        help=f"日志取哪一段：{LOG_SORTS[0]}（默认，失败在末尾）/ {LOG_SORTS[1]}")
-    parser.add_argument("--keep-duplicates", action="store_true", help="保留完全重复的行（默认去重）")
-    parser.add_argument("--timeout", type=float, default=180.0, help="单次 Sentry 调用超时秒数（默认 180）")
+    parser.add_argument(
+        "--log-limit",
+        type=int,
+        default=DEFAULT_LOG_LIMIT,
+        help=f"取多少条日志（上限 {MAX_LOG_LIMIT}，失败在末尾所以默认取最新那段）",
+    )
+    parser.add_argument(
+        "--sort",
+        choices=LOG_SORTS,
+        default=LOG_SORTS[0],
+        help=f"日志取哪一段：{LOG_SORTS[0]}（默认，失败在末尾）/ {LOG_SORTS[1]}",
+    )
+    parser.add_argument(
+        "--keep-duplicates", action="store_true", help="保留完全重复的行（默认去重）"
+    )
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=180.0,
+        help="单次 Sentry 调用超时秒数（默认 180）",
+    )
     parser.add_argument("--verbose", action="store_true", help="输出 sentry 查询命令")
     return parser
 
@@ -660,9 +848,16 @@ def main(argv: Sequence[str] | None = None, prog: str | None = None) -> int:
         raise ValueError("--no-images 与 --no-log 一起给就没有任何东西可拉。")
 
     sentry = report_common.resolve_sentry_command()
-    issues = survey(sentry, CONFIG.target, period=arguments.period, limit=arguments.limit,
-                    issues=arguments.issue, events=arguments.event, verbose=arguments.verbose,
-                    timeout=arguments.timeout)
+    issues = survey(
+        sentry,
+        CONFIG.target,
+        period=arguments.period,
+        limit=arguments.limit,
+        issues=arguments.issue,
+        events=arguments.event,
+        verbose=arguments.verbose,
+        timeout=arguments.timeout,
+    )
     if not issues:
         print("没有匹配的 issue。", file=sys.stderr)
         return 0
@@ -679,23 +874,39 @@ def main(argv: Sequence[str] | None = None, prog: str | None = None) -> int:
     collected: list[Evidence] = []
     for issue in issues:
         if not issue.has_anything:
-            print(f"\n跳过 {issue.short_id}：attachment.status="
-                  f"{issue.evidence.get('attachment_status') or '未知'}、logs.status="
-                  f"{issue.evidence.get('logs_status') or '未知'}", file=sys.stderr)
+            print(
+                f"\n跳过 {issue.short_id}：attachment.status="
+                f"{issue.evidence.get('attachment_status') or '未知'}、logs.status="
+                f"{issue.evidence.get('logs_status') or '未知'}",
+                file=sys.stderr,
+            )
             continue
         if issue.images and token is None and not arguments.no_images:
             # token 只取一次；不打印、不落盘、不进清单
-            token = sentry_token(sentry, verbose=arguments.verbose, timeout=arguments.timeout)
-        evidence = collect(sentry, issue, outdir=outdir, token=token,
-                           do_images=not arguments.no_images, do_log=not arguments.no_log,
-                           log_limit=arguments.log_limit, log_sort=arguments.sort,
-                           force=arguments.force, keep_duplicates=arguments.keep_duplicates,
-                           verbose=arguments.verbose, timeout=arguments.timeout)
+            token = sentry_token(
+                sentry, verbose=arguments.verbose, timeout=arguments.timeout
+            )
+        evidence = collect(
+            sentry,
+            issue,
+            outdir=outdir,
+            token=token,
+            do_images=not arguments.no_images,
+            do_log=not arguments.no_log,
+            log_limit=arguments.log_limit,
+            log_sort=arguments.sort,
+            force=arguments.force,
+            keep_duplicates=arguments.keep_duplicates,
+            verbose=arguments.verbose,
+            timeout=arguments.timeout,
+        )
         collected.append(evidence)
         format_result(evidence, sys.stdout, sys.stderr)
 
     if collected:
-        print(f"\n共 {len(collected)} 个证据目录落到 {outdir.as_posix()}", file=sys.stdout)
+        print(
+            f"\n共 {len(collected)} 个证据目录落到 {outdir.as_posix()}", file=sys.stdout
+        )
     return 0
 
 

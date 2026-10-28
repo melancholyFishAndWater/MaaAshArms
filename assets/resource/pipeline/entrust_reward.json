@@ -22,7 +22,7 @@
             "EntrustProbeRewardText",
             "[JumpBack]BaseBranchError",
             "[JumpBack]EntrustEnterRewardStage",
-            "[JumpBack]ReturnMain"
+            "[JumpBack]BaseReturnHome"
         ]
     },
     "EntrustEnterRewardStage": {
@@ -86,7 +86,7 @@
             "EntrustProbeRewardSuccess",
             "[JumpBack]EntrustClickRewardButton",
             "[JumpBack]EntrustClickFinish",
-            "[JumpBack]IsGetReward",
+            "[JumpBack]BaseClickRewardTap",
             "[JumpBack]EntrustBranchBattleWin",
             "[JumpBack]BaseBranchError"
         ]
@@ -124,7 +124,7 @@
             75
         ],
         "next": [
-            "ClickTap"
+            "BaseClickTapBox"
         ]
     },
     // INFO 领取成功

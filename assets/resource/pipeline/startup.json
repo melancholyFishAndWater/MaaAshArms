@@ -26,7 +26,7 @@
             "StartUpClickIcon",
             "[JumpBack]StartUpDisclaimer",
             "[JumpBack]StartUpInLoding",
-            "IsServerMaintenance",
+            "BaseStopServerMaintenance",
             "[JumpBack]StartUpGameUpdate",
             "[JumpBack]StartUpGameUpdateError",
             "[JumpBack]StartUpGameUpdateNow",
@@ -47,7 +47,7 @@
             "BaseProbeHome",
             "[JumpBack]StartUpDisclaimer",
             "[JumpBack]StartUpInLoding",
-            "IsServerMaintenance",
+            "BaseStopServerMaintenance",
             "[JumpBack]StartUpGameUpdate",
             "[JumpBack]StartUpGameUpdateError",
             "[JumpBack]StartUpGameUpdateNow",
@@ -64,8 +64,8 @@
         "desc": "在游戏中",
         "recognition": "Or",
         "any_of": [
-            "BackButton",
-            "HomeButton"
+            "BaseClickBackButton",
+            "BaseClickHomeButton"
         ]
     },
     "StartUpFailed": {
@@ -125,7 +125,7 @@
         "action": "Click",
         "next": [
             "BaseProbeHome",
-            "[JumpBack]IsGetReward",
+            "[JumpBack]BaseClickRewardTap",
             "[JumpBack]NoticeClickDisable",
             "StartUpClickLogin"
         ],
@@ -149,9 +149,9 @@
         ],
         "next": [
             "BaseProbeHome",
-            "[JumpBack]IsGetReward",
+            "[JumpBack]BaseClickRewardTap",
             "[JumpBack]NoticeClickDisable",
-            "[JumpBack]BackButton",
+            "[JumpBack]BaseClickBackButton",
             "StartUpClickSignIn"
         ],
         "post_wait_freezes": 3000,
@@ -198,7 +198,7 @@
             45
         ],
         "next": [
-            "ClickConfirm"
+            "BaseClickConfirm"
         ],
         "focus": {
             "Node.Recognition.Succeeded": "检测到游戏更新"
@@ -216,7 +216,7 @@
             72
         ],
         "next": [
-            "ClickConfirm"
+            "BaseClickConfirm"
         ],
         "focus": {
             "Node.Recognition.Succeeded": "更新失败，尝试重新更新"

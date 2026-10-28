@@ -68,7 +68,7 @@ def test_touch_max_reco_stops_on_zero(monkeypatch):
         )
         is None
     )
-    assert calls == ["TaskStopError"]
+    assert calls == ["BaseTaskStopError"]
 
 
 def test_touch_max_reco_hits_when_full(monkeypatch):

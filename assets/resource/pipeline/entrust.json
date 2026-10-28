@@ -434,7 +434,7 @@
         "action": "Click",
         "post_wait_freezes": 500,
         "next": [
-            "IsNoMetal",
+            "BaseStopNoMetal",
             "EntrustStartSuccess",
             "EntrustStart"
         ],
@@ -503,7 +503,7 @@
         "action": "Custom",
         "custom_action": "EntrustDailyUpdateAct",
         "next": [
-            "TaskStop"
+            "BaseTaskStop"
         ]
     }
 }

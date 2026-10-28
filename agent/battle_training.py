@@ -121,7 +121,7 @@ class TrainingGetStatusReco(CustomRecognition):
                 argv.node_name: {"next": ["TrainingDailyUpdate"]},
                 "TrainingDailyUpdate": {
                     "custom_action_param": {"name": _done_targets},
-                    "next": ["TaskStop"] if times == 0 else [],
+                    "next": ["BaseTaskStop"] if times == 0 else [],
                 },
             }
             ov_r2 = context.override_pipeline(dic)

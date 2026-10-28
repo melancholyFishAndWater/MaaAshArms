@@ -4,7 +4,7 @@
         "next": [
             "EnterFriend",
             "[JumpBack]BaseBranchError",
-            "[JumpBack]ReturnMain"
+            "[JumpBack]BaseReturnHome"
         ]
     },
     "EnterFriend": {

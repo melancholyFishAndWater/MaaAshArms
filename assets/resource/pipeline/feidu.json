@@ -43,7 +43,7 @@
             "FeiduProbeHome",
             "[JumpBack]BaseBranchError",
             "[JumpBack]FeiduEnterHome",
-            "[JumpBack]ReturnMain"
+            "[JumpBack]BaseReturnHome"
         ]
     },
     "FeiduEnterHome": {

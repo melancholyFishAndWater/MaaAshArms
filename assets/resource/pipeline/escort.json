@@ -13,7 +13,7 @@
             "EscortEnterHome",
             "[JumpBack]TrainCloseStatusArrow",
             "[JumpBack]BaseBranchError",
-            "[JumpBack]ReturnMain"
+            "[JumpBack]BaseReturnHome"
         ]
     },
     /* -------------------- 动作-关闭一览 -------------------- */
@@ -83,7 +83,7 @@
         "post_wait_freezes": 1000,
         "next": [
             "BaseErrorNext",
-            "[JumpBack]ProbeBlackPage",
+            "[JumpBack]BaseProbeBlackPage",
             "EscortBranchDelivery",
             "EscortEnterHome",
             "[JumpBack]BaseBranchError"
@@ -134,10 +134,10 @@
         ],
         "next": [
             "BaseErrorNext",
-            "IsFreezes",
+            "BaseProbeFreezes",
             "[JumpBack]EscortEnterAccept",
             "[JumpBack]BaseBranchError",
-            "[JumpBack]MoveRight"
+            "[JumpBack]BaseMoveRight"
         ],
         "on_error": [
             "EscortClickCancel"

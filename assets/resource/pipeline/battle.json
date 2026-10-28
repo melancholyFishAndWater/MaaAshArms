@@ -17,7 +17,7 @@
         "recognition": "Or",
         "any_of": [
             "BattleProbeTips",
-            "ProbeBlackPage"
+            "BaseProbeBlackPage"
         ],
         "post_delay": 3000
     },
@@ -155,7 +155,7 @@
             "BattleProbeHome",
             "[JumpBack]BaseBranchError",
             "[JumpBack]BattleEnterHome",
-            "[JumpBack]ReturnMain"
+            "[JumpBack]BaseReturnHome"
         ]
     },
     "BattleEnterHome": {
@@ -335,7 +335,7 @@
         ],
         "timeout": 30000,
         "next": [
-            "IsNoMetal",
+            "BaseStopNoMetal",
             "BattleStopNoProps",
             "BattleLoopBattle",
             "[JumpBack]BattleClickAttack",
@@ -367,7 +367,7 @@
             "BattleProbeLoading",
             "BattleProbeNow",
             "BattleProbeWin",
-            "IsGetReward"
+            "BaseClickRewardTap"
         ],
         "timeout": 45000,
         "next": [
@@ -438,7 +438,7 @@
             "BaseProbeReward"
         ],
         "next": [
-            "ClickTap"
+            "BaseClickTapBox"
         ]
     }
     // TODO 战败

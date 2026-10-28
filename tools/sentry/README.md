@@ -15,7 +15,7 @@
 ## 功能取舍
 
 | 不做 | 为什么 | 要它怎么办 |
-|---|---|---|
+| --- | --- | --- |
 | 失败报告里自动画流程图 | 报告要能在 `--input` 工件上离线复现，而画图必须读本地证据（`maafw.log` + 图片），两者不能捆在一起 | 报告末尾会给出线索；`evidence` 拉完证据会打印可复制的 `flow` 命令 |
 | 取失败附件的 vision 识别帧 | MFA 的 `TaskDiagnostics.EnumerateEvidenceFiles` 显式跳过 `vision/`，图片包有 `MaxImageBundleBytes = 5 MiB` 硬顶（本机 `debug/vision` 是 1078 张 / 248.6 MB），硬塞会让整包被丢弃 | 让复现的人手动导出（勾「包含 vision 图片」，可按「最近 24 小时」限流），把导出包喂给 `flow --case` |
 | 用 spans 上的 `failure.node` / `failure.stage` | 这两个字段只作为 Sentry Issue 事件的 tag 存在，在 spans 上恒为空 | `sentry issue list <target> --sort freq` + `sentry issue view <SHORT-ID>` |
@@ -67,7 +67,7 @@ Python 侧零第三方依赖——只用标准库和 `sentry` 命令行。
 统一入口 `python -m tools.sentry.cli <子命令>`，或直接 `python tools/sentry/<文件>.py`。
 
 | 子命令 | 作用 | 默认窗口 |
-|---|---|---|
+| --- | --- | --- |
 | `fetch` | 下载遥测聚合数据到 JSON 工件，可离线复用 | `7d` |
 | `task-failure` | 单版本任务失败率深度体检 | `7d` |
 | `task-trend` | 跨版本失败率趋势与 Δpp 对比 | `30d` |
@@ -119,7 +119,7 @@ python -m tools.sentry.cli flow --case temp/evidence/PYTHON-14/debug --task-id 2
 **两道 Sentry 侧的闸门，先看再下**（`--list` 只报告不下载）：
 
 | 闸门 | 取值 | 含义 |
-|---|---|---|
+| --- | --- | --- |
 | `attachment.status` | `attached` / `no_evidence` | 有没有失败现场图。实测 2026-10-13~15 的 12 个 issue 里**只有 2 个**是 `attached` |
 | `logs.status` | `captured` / … | 有没有**那次运行**的日志。实测 **12 个全是 `captured`**——所以没有附件的 issue 也能画，只是没有画面格 |
 
@@ -185,7 +185,7 @@ python -m tools.sentry.cli explore-csv <csv> [--log-out PATH] [--json-out PATH] 
 产出两个文件，终端还会直接打印可复制的下一步绘图命令：
 
 | 产物 | 默认路径 | 给谁用 |
-|---|---|---|
+| --- | --- | --- |
 | 日志正文 | `temp/flow/<csv 名>.log` | `flow_from_log.py` / `flow_cases.py --case`（按行内时间排好序，不用再排） |
 | 清单 | `temp/telemetry/<csv 名>.json` | 分析：`tasks`（含 `drawable`、`misses`、`stalled_at`）、`markers`、`panel_lines`、`processes`、丢失量 |
 
@@ -214,7 +214,7 @@ python -m tools.sentry.cli task-failure --format markdown > temp/telemetry/repor
 `task-failure` 与 `task-trend` 都有两个覆盖 `config.json` 的门槛开关，用来现场调松紧：
 
 | 开关 | 覆盖 | 什么时候用 |
-|---|---|---|
+| --- | --- | --- |
 | `--min-users N` | `min_release_unique_users` | 自动选版本时把口径调严（只看有足够装机量的版本） |
 | `--min-samples N` | `min_samples` | 想让更多行显示 Wilson 区间，或反过来把噪声全标成「样本不足」 |
 
@@ -325,7 +325,7 @@ python -m tools.sentry.cli speed --input temp/speed/task_speed_op.json \
 1. **所有计数按唯一 trace 去重**（Sentry 侧 `count_unique(trace)`）：一次运行内同一事件触发多次不重复计数。
 2. **任务失败率** = `internal_error` 的 trace 数 / 总 trace 数。这是最接近「这个任务失败概率」的口径。
    附 Wilson 95% 置信区间；样本数少于 `min_samples`（默认 20）时标 `样本不足 n=N`，不给区间。
-3. **失败节点标记**：只在失败时上报的内部 span（如 `HomeFlag`、`ReturnMain`）与系统级失败
+3. **失败节点标记**：只在失败时上报的内部 span（如 `HomeFlag`、`BaseReturnHome`）与系统级失败
    （控制器初始化失败、连接失败等）。它们没有成功样本，**只计触发次数，不参与失败率计算**；
    混进失败率排名会得出错误结论。
 4. **运行失败率**：umbrella span（`mfa.task_run`）的失败占比，即「一次完整运行失败的概率」。
@@ -341,7 +341,7 @@ python -m tools.sentry.cli speed --input temp/speed/task_speed_op.json \
 MFA（MFAAvalonia）的实现在 `MFAAvalonia/Helper/TelemetryService.cs`，本工具依赖的 span 形状：
 
 | span | 含义 | 关键列 |
-|---|---|---|
+| --- | --- | --- |
 | `mfa.task_run` | 一次完整运行的根 span（op `mfa.run`） | `release` |
 | `mfa.task` | 单个顶层任务，description = `interface.json` 里的任务 **label**（如 `训练所`） | `span.description`、`span.status`（`ok` / `internal_error` / `cancelled`） |
 | `mfa.node` | 失败节点标记，只在失败时上报 | `span.description` |
@@ -397,7 +397,7 @@ sentry issue view <SHORT-ID>
 `--preset` 决定拉哪些 measurement：
 
 | preset | measurement | 供哪个命令离线使用 |
-|---|---|---|
+| --- | --- | --- |
 | `task-failure` | `task_total`、`task_status`、`release_users`、`run_total`、`run_failed`、`runtime_os`、`runtime_env` | `task-failure`、`context` |
 | `task-trend` | `task_total`、`task_status`、`release_users` | `task-trend` |
 | `context` | `runtime_os`、`runtime_env` | `context` |
@@ -408,7 +408,7 @@ sentry issue view <SHORT-ID>
 `tools/sentry/config.json`，换项目只改这个文件：
 
 | 字段 | 说明 |
-|---|---|
+| --- | --- |
 | `target` | Sentry 的 `<org>/<project>`。当前 `5e4d413b64a7/python` |
 | `project_prefix` | 项目名，用于自动构造 release 正则（本仓库配了 `release_pattern`，此项仅作提示） |
 | `release_pattern` | 自定义 release 正则，**必须恰好 5 个捕获组**（major, minor, patch, prerelease, prerelease_number）。刻意不带 `^`/`$` 锚点 |
@@ -460,7 +460,7 @@ gitignore，技能文件无法入库；等价内容就是本文档。
 ### 真实数据的当前读数（beta.37，30 天）
 
 | 任务 | 运行 | 失败 | 取消 | 失败率 |
-|---|---:|---:|---:|---|
+| --- | ---: | ---: | ---: | --- |
 | Training | 14 | 9 | 5 | **64.3%**（95%CI 38.8%–83.7%） |
 | Entrust | 11 | 4 | 4 | 36.4%（95%CI 15.2%–64.6%） |
 | Gift | 9 | 2 | 0 | 22.2%（样本不足） |

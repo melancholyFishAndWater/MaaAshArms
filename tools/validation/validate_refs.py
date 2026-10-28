@@ -140,7 +140,7 @@ CLICK_SYNONYMS = ("ClickYes", "ClickNo", "ClickSure")
 # 它只在"中央弹窗区出现确认"时命中，所以位置只影响谁先抢画面，不影响正常流程语义。
 GENERIC_ERROR_BRANCH = "BaseBranchError"
 # 会把「确认」点掉的候选：通用的确认节点名，或 expected 里含这个词的带动作节点。
-CONFIRM_NODE_NAMES = frozenset({"BaseProbeConfirm", "ClickConfirm"})
+CONFIRM_NODE_NAMES = frozenset({"BaseProbeConfirm", "BaseClickConfirm"})
 CONFIRM_WORDS = ("确认",)
 
 # pipeline-structure.md §10：识别预算上限。
@@ -1160,7 +1160,7 @@ def check_a13_naming(ctx: Ctx) -> None:
                     "warn",
                     info.file,
                     line,
-                    f"{name} 用了同义写法 {synonym}（node-naming.md §6：统一 ClickOk / ClickCancel / ClickFinish）",
+                    f"{name} 用了同义写法 {synonym}（node-naming.md §6：统一 ClickOk / BaseClickCancel / ClickFinish）",
                 )
                 break
         if name.endswith("Loop") and not to_list(data.get("next")):
@@ -1409,7 +1409,7 @@ def ensure_parent(node: Node) -> str | None:
     从末项往前找第一个 `Ensure` 引用：合规写法末项就是上一级；末项是别的兜底候选、
     中间夹着上一级 `Ensure` 的写法（`EntrustEnsureStage`）由 A9 单独报顺序问题，
     但嵌套深度照样要算——它一样会逐级往下退。
-    一个 `Ensure` 都没有时返回 None（单层 `Ensure`，末项是 `ReturnMain` 之类）。
+    一个 `Ensure` 都没有时返回 None（单层 `Ensure`，末项是 `BaseReturnHome` 之类）。
     """
     for item in reversed(to_list(node.data.get("next"))):
         name = parse_ref(item)[0]
@@ -1443,7 +1443,9 @@ def guard_probes(node: dict) -> set[str]:
     """
     if node.get("recognition") not in ("And", "Or"):
         return set()
-    subs = node.get("all_of") if node.get("recognition") == "And" else node.get("any_of")
+    subs = (
+        node.get("all_of") if node.get("recognition") == "And" else node.get("any_of")
+    )
     if not isinstance(subs, list):
         return set()
     return {
@@ -1540,7 +1542,7 @@ def check_a18_next_length(ctx: Ctx) -> None:
 # node-naming.md §6：`desc` 的方括号标记一共五个，含义固定。
 DESC_MARKERS = ("end", "jp", "once", "max", "Loop")
 # 「命中即终点」的终点节点：`[end]` 的 next 只收在这些节点上才算"不往下走"。
-DESC_END_TARGETS = frozenset({"TaskStop", "TaskStopError"})
+DESC_END_TARGETS = frozenset({"BaseTaskStop", "BaseTaskStopError"})
 
 
 def desc_tags(desc: str) -> list[str]:
@@ -1567,8 +1569,8 @@ def check_a19_desc_markers(ctx: Ctx) -> None:
     - `[max]` 没有 `max_hit`、`[once]` 的 `max_hit` 不是 1、`[Loop]` 标在名字不含 `Loop`
       的节点上 → `A19-desc-marker-mismatch`（warn）；
     - `[end]` 却有 `next`，且 next 里不是只收终点节点 → `A19-desc-marker-end`（info：
-      "这一段的终点"未必是 `TaskStop`，人工复核；标了 `[end]` 又整条 next 收在
-      `TaskStop` / `TaskStopError` 上的不报）。
+      "这一段的终点"未必是 `BaseTaskStop`，人工复核；标了 `[end]` 又整条 next 收在
+      `BaseTaskStop` / `BaseTaskStopError` 上的不报）。
 
     **不查"该标没标"**：`desc` 由模板生成，而 `[jp]` 按 §3 只是提示标记——那里记的实测是 100 个
     兜底动作里只有 51 个带 `[jp]`、9 个就位 `Ensure` 全带上却不是兜底动作，所以缺标记不构成判据。
@@ -1628,7 +1630,7 @@ def check_a19_desc_markers(ctx: Ctx) -> None:
                     node.file,
                     line,
                     f"{node.name}.desc 标了 [end]（命中即终点，不往下走）但 next 里还有 "
-                    f"{', '.join(loose)}：要么收在 TaskStop / TaskStopError 上，要么不标 [end]",
+                    f"{', '.join(loose)}：要么收在 BaseTaskStop / BaseTaskStopError 上，要么不标 [end]",
                 )
 
 
@@ -1716,16 +1718,14 @@ GENERIC_PROBE_SECTION = "通用探测"
 def is_probe_shape(data: dict) -> bool:
     """结构上的探测节点：有 recognition、无 action、无 next（node-naming.md §3）。"""
     return (
-        "recognition" in data
-        and "action" not in data
-        and not to_list(data.get("next"))
+        "recognition" in data and "action" not in data and not to_list(data.get("next"))
     )
 
 
 def is_auxiliary(data: dict) -> bool:
     """纯辅助节点：没有 `next`（只做一下，不往下走）。
 
-    这类节点（`EscortClickDeliveryButton`、`HomeButton`、`MoveUp` 这种）是给主干节点当"补一刀"
+    这类节点（`EscortClickDeliveryButton`、`BaseClickHomeButton`、`BaseMoveUp` 这种）是给主干节点当"补一刀"
     或工具用的，读的时候是跟着引用它的节点一起看的，所以**节点前面不要求写注释**；
     主干节点（有 `next` 的：动作 / 分支 / 就位 / 任务入口）才是分节注释要覆盖的对象。
     """
@@ -1768,7 +1768,7 @@ def check_a23_section_comment(ctx: Ctx) -> None:
       下面紧跟的是**非通用** `Probe`。分节开头应放动作 / 分支 / 任务入口；
       `/* ---- 通用探测 ---- */` 下面允许 `Probe`；非通用 `Probe` 放到用到它的节点后面。
     - `A24-node-comment-missing`（warn）：**主干节点**（有 `next`）前面没有注释。
-      辅助节点（没有 `next`，如 `EscortClickDeliveryButton` / `HomeButton` / `MoveUp`）不要求——
+      辅助节点（没有 `next`，如 `EscortClickDeliveryButton` / `BaseClickHomeButton` / `BaseMoveUp`）不要求——
       它们是跟着引用它的节点一起读的，逐个加注释只会把文件撑长。
 
     注释没紧挨着节点（中间隔了别的节点）时 `preceding_comment()` 返回 None，同样报 `A24`：
@@ -1789,7 +1789,7 @@ def check_a23_section_comment(ctx: Ctx) -> None:
             body = match.group(1)
             if "----" not in body:
                 continue
-            rest = text[match.end():]
+            rest = text[match.end() :]
             key = re.search(r'^\s*"([^"]+)"\s*:', rest, re.MULTILINE)
             if not key:
                 continue
@@ -1818,7 +1818,7 @@ def check_a23_section_comment(ctx: Ctx) -> None:
                 continue
             found = preceding_comment(text, start)
             if is_auxiliary(node.data):
-                continue          # 纯辅助节点不要求注释
+                continue  # 纯辅助节点不要求注释
             if found is None:
                 ctx.add(
                     "A24-node-comment-missing",
@@ -2785,7 +2785,6 @@ def self_test() -> int:
         ),
     ]
 
-
     # A16：Ensure 嵌套深度上限（pipeline-structure.md §10）
     depth_ctx = synth_ctx(
         {
@@ -2927,7 +2926,7 @@ def self_test() -> int:
             "XTagMaxOk": {"desc": "[max] 限次点击", "max_hit": 3, "action": "Click"},
             "XTagOnceOk": {"desc": "[once] 每日一次", "max_hit": 1},
             "XTagWorkLoop": {"desc": "[Loop] 工作循环", "next": ["XTagMaxOk"]},
-            "XTagEndOk": {"desc": "[end] 收尾", "next": ["TaskStop"]},
+            "XTagEndOk": {"desc": "[end] 收尾", "next": ["BaseTaskStop"]},
             "XTagPlain": {"desc": "没有标记", "action": "Click"},
             "XTagProse": {"desc": "点击[确认]按钮", "action": "Click"},
         }
@@ -2968,9 +2967,16 @@ def self_test() -> int:
             not any(
                 f.id.startswith("A19") and tag in f.message
                 for f in marker_ctx.findings
-                for tag in ("XTagMaxOk", "XTagOnceOk", "XTagWorkLoop", "XTagEndOk", "XTagPlain", "XTagProse")
+                for tag in (
+                    "XTagMaxOk",
+                    "XTagOnceOk",
+                    "XTagWorkLoop",
+                    "XTagEndOk",
+                    "XTagPlain",
+                    "XTagProse",
+                )
             ),
-            "合规的标记（含 [end] 收在 TaskStop 上）不报 A19",
+            "合规的标记（含 [end] 收在 BaseTaskStop 上）不报 A19",
         ),
     ]
 
@@ -2979,14 +2985,23 @@ def self_test() -> int:
         {
             "XJpLoop": {"desc": "[jp] 补一刀", "action": "Click", "next": ["XJpLoop"]},
             "XSelfNoErr": {"desc": "自环", "action": "Click", "next": ["XSelfNoErr"]},
-            "XSelfOk": {"desc": "自环带兜底", "action": "Click",
-                        "next": ["BaseErrorNext", "XSelfOk"]},
-            "XErrNotFirst": {"desc": "兜底排后面", "action": "Click",
-                             "next": ["XOther", "BaseErrorNext"]},
+            "XSelfOk": {
+                "desc": "自环带兜底",
+                "action": "Click",
+                "next": ["BaseErrorNext", "XSelfOk"],
+            },
+            "XErrNotFirst": {
+                "desc": "兜底排后面",
+                "action": "Click",
+                "next": ["XOther", "BaseErrorNext"],
+            },
             "XOther": {"desc": "[end] 别的", "action": "Click"},
             "XJpNoLoop": {"desc": "[jp] 只补一次", "action": "Click"},
-            "BaseErrorNext": {"desc": "[end] 连续未命中兜底", "recognition": "Custom",
-                              "next": ["TaskStopError"]},
+            "BaseErrorNext": {
+                "desc": "[end] 连续未命中兜底",
+                "recognition": "Custom",
+                "next": ["BaseTaskStopError"],
+            },
         }
     )
     check_a20_jp_self_loop(loop_ctx)
@@ -2995,10 +3010,14 @@ def self_test() -> int:
     loop_ids = {(f.id, f.message.split(".")[0]) for f in loop_ctx.findings}
     checks += [
         (("A20-jp-self-loop", "XJpLoop") in loop_ids, "[jp] 自环会被拦（A20，error）"),
-        (("A21-self-loop-without-error-next", "XSelfNoErr") in loop_ids,
-         "自环缺 BaseErrorNext 会被拦（A21）"),
-        (("A22-error-next-not-first", "XErrNotFirst") in loop_ids,
-         "BaseErrorNext 不在 next[0] 会被拦（A22）"),
+        (
+            ("A21-self-loop-without-error-next", "XSelfNoErr") in loop_ids,
+            "自环缺 BaseErrorNext 会被拦（A21）",
+        ),
+        (
+            ("A22-error-next-not-first", "XErrNotFirst") in loop_ids,
+            "BaseErrorNext 不在 next[0] 会被拦（A22）",
+        ),
         (
             not any(n in ("XSelfOk", "XJpNoLoop", "XOther") for _i, n in loop_ids),
             "带 BaseErrorNext 的自环、[jp] 不自环、没用 BaseErrorNext 的都不报 A20–A22",
@@ -3013,19 +3032,19 @@ def self_test() -> int:
     try:
         section = tmp_dir / "sec.json"
         section.write_text(
-            '{\n'
-            '    /* -------------------- 探测 -------------------- */\n'
+            "{\n"
+            "    /* -------------------- 探测 -------------------- */\n"
             '    "XProbeTop": {"desc": "[end] 顶在分节开头", "recognition": "OCR"},\n'
-            '    /* -------------------- 通用探测 -------------------- */\n'
+            "    /* -------------------- 通用探测 -------------------- */\n"
             '    "XProbeGeneric": {"desc": "[end] 通用探针", "recognition": "OCR"},\n'
-            '    /* -------------------- 工作 -------------------- */\n'
+            "    /* -------------------- 工作 -------------------- */\n"
             '    "XClickWork": {"desc": "干活", "action": "Click"},\n'
-            '    // 纯辅助节点：没有 next，不要求注释\n'
+            "    // 纯辅助节点：没有 next，不要求注释\n"
             '    "XHelper": {"desc": "[jp] 补一刀", "action": "Click"},\n'
-            '    // 主干节点没注释（下面这个）\n'
+            "    // 主干节点没注释（下面这个）\n"
             '    "XTrunkNoComment": {"desc": "分支", "recognition": "OCR", "next": ["XClickWork"]},\n'
             '    "XTrunkNoComment2": {"desc": "分支2", "recognition": "OCR", "next": ["XClickWork"]}\n'
-            '}\n',
+            "}\n",
             encoding="utf-8",
         )
         sec_ctx = synth_ctx(
@@ -3034,10 +3053,16 @@ def self_test() -> int:
                 "XProbeGeneric": {"desc": "[end] 通用探针", "recognition": "OCR"},
                 "XClickWork": {"desc": "干活", "action": "Click"},
                 "XHelper": {"desc": "[jp] 补一刀", "action": "Click"},
-                "XTrunkNoComment": {"desc": "分支", "recognition": "OCR",
-                                    "next": ["XClickWork"]},
-                "XTrunkNoComment2": {"desc": "分支2", "recognition": "OCR",
-                                     "next": ["XClickWork"]},
+                "XTrunkNoComment": {
+                    "desc": "分支",
+                    "recognition": "OCR",
+                    "next": ["XClickWork"],
+                },
+                "XTrunkNoComment2": {
+                    "desc": "分支2",
+                    "recognition": "OCR",
+                    "next": ["XClickWork"],
+                },
             },
             files=("sec.json",),
         )
@@ -3045,12 +3070,18 @@ def self_test() -> int:
         check_a23_section_comment(sec_ctx)
         sec_msgs = [f.message for f in sec_ctx.findings]
         checks += [
-            (any("XProbeTop" in m for m in sec_msgs), "分节注释下紧跟非通用 Probe 会被拦（A23）"),
+            (
+                any("XProbeTop" in m for m in sec_msgs),
+                "分节注释下紧跟非通用 Probe 会被拦（A23）",
+            ),
             (
                 not any("XProbeGeneric" in m for m in sec_msgs),
                 "「通用探测」段下面放 Probe 不报 A23",
             ),
-            (not any("XClickWork" in m for m in sec_msgs), "分节注释下面是动作节点不报 A23"),
+            (
+                not any("XClickWork" in m for m in sec_msgs),
+                "分节注释下面是动作节点不报 A23",
+            ),
             (
                 any("XTrunkNoComment2" in m for m in sec_msgs),
                 "主干节点（有 next）没注释会被拦（A24）",

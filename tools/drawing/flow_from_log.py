@@ -106,7 +106,9 @@ LINE_RE = re.compile(
 JSON_TAIL_RE = re.compile(r"(\{.*\})\s*$")
 RECO_RE = re.compile(r"reco \[result=(\{.*\})\]\s*$")
 ACTION_RE = re.compile(r"action \[i=\d+\] \[data\.repeat=\d+\] \[result=(\{.*\})\]\s*$")
-NODE_DONE_RE = re.compile(r"PipelineTask node done \[result=(\{.*\})\] \[task_id_=(\d+)\]\s*$")
+NODE_DONE_RE = re.compile(
+    r"PipelineTask node done \[result=(\{.*\})\] \[task_id_=(\d+)\]\s*$"
+)
 TASK_START_RE = re.compile(r"task start: \[cb_detail=(\{.*\})\]\s*$")
 TASK_END_RE = re.compile(r"task end: \[cb_detail=(\{.*\})\] \[ret=(\w+)\]\s*$")
 JUMPBACK_RE = re.compile(r"(push|pop) jumpback_stack: (\S+)\s*$")
@@ -129,7 +131,9 @@ TIMEOUT_RE = re.compile(
     r"(?: \[pretask\.reco_timeout=(?P<tout>\d+)(?P<tout_ms>ms)?\])?"
 )
 INVALID_RE = re.compile(r"invalid node id, handle error \[node\.name=([^\]]+)\]")
-NOT_COMPLETED_RE = re.compile(r"node not completed, handle error \[node\.name=([^\]]+)\]")
+NOT_COMPLETED_RE = re.compile(
+    r"node not completed, handle error \[node\.name=([^\]]+)\]"
+)
 
 # 这些行整条匹配才算完整；只对上"头部"说明导出按字节裁过（Explore CSV 的常见下场）
 TRUNCATION_HEADS: tuple[tuple[str, re.Pattern[str]], ...] = (
@@ -140,7 +144,9 @@ TRUNCATION_HEADS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("task end:", TASK_END_RE),
 )
 
-INTERNAL_NAME_RE = re.compile(r"^recognition/(OCR|TemplateMatch|ColorMatch|FeatureMatch)/[0-9a-f\-]+$")
+INTERNAL_NAME_RE = re.compile(
+    r"^recognition/(OCR|TemplateMatch|ColorMatch|FeatureMatch)/[0-9a-f\-]+$"
+)
 
 
 def parse_ts(s: str) -> datetime:
@@ -235,24 +241,39 @@ def parse_nextlist(msg: str, ts: datetime, px: str) -> Dispatcher | None:
     if not isinstance(name, str) or not name:
         return None
     raw_list = detail.get("list")
-    entries = [e for e in raw_list if isinstance(e, dict)] if isinstance(raw_list, list) else []
+    entries = (
+        [e for e in raw_list if isinstance(e, dict)]
+        if isinstance(raw_list, list)
+        else []
+    )
     candidates = tuple(e["name"] for e in entries if isinstance(e.get("name"), str))
-    jumps = tuple(e["name"] for e in entries
-                  if e.get("jump_back") and isinstance(e.get("name"), str))
+    jumps = tuple(
+        e["name"]
+        for e in entries
+        if e.get("jump_back") and isinstance(e.get("name"), str)
+    )
     raw_task = detail.get("task_id")
     task_id = raw_task if isinstance(raw_task, int) else None
-    return Dispatcher(ts=ts, task_id=task_id, px=px, name=name, candidates=candidates,
-                      jumps=jumps, kind=match.group("kind").lower())
+    return Dispatcher(
+        ts=ts,
+        task_id=task_id,
+        px=px,
+        name=name,
+        candidates=candidates,
+        jumps=jumps,
+        kind=match.group("kind").lower(),
+    )
 
 
-def resolve_parent(pending: list[Dispatcher], task_id: int | None, name: str,
-                   ts: datetime) -> tuple[Dispatcher | None, float]:
+def resolve_parent(
+    pending: list[Dispatcher], task_id: int | None, name: str, ts: datetime
+) -> tuple[Dispatcher | None, float]:
     """找出这一步是被谁派发的：同 task 的记录里，哪一条的候选表里有这个节点名。
 
     返回 (记录, 间隔秒数)；取不到时给 (None, inf)。规则有三条，都是为了别把父节点认错：
 
     - 只认**这个 task_id** 的记录。同一条 trace 里常并排跑多个任务，别的任务的候选表里有同名节点
-      （`ProbeBlackPage`、`MoveUp` 这类各任务共用的节点）时，按名字跨任务匹配会认错爹。
+      （`BaseProbeBlackPage`、`BaseMoveUp` 这类各任务共用的节点）时，按名字跨任务匹配会认错爹。
     - 优先取**不晚于这一步**的最近一条：晚于它的记录说明那时候选表已经换过，不再是它的父节点。
     - 间隔超过 `NEXTLIST_MAX_GAP_SECONDS` 就不认，免得拿几十分钟前那一轮的记录当父节点。
     """
@@ -326,8 +347,10 @@ class Step:
             return f"父 {self.parent}"
         # 按**位置**标本次跑的那一项（同一个名字可能在候选表里出现多次），不能按名字 index()
         mark = next((i for i, n in enumerate(self.candidates) if n == self.name), -1)
-        parts = [f"{'√' if i == mark else ''}{n}{'弹回' if n in self.jumps else ''}"
-                 for i, n in enumerate(self.candidates)]
+        parts = [
+            f"{'√' if i == mark else ''}{n}{'弹回' if n in self.jumps else ''}"
+            for i, n in enumerate(self.candidates)
+        ]
         if not full and len(parts) > PARENT_CHOICE_LIMIT:
             rest = len(parts) - PARENT_CHOICE_LIMIT
             parts = parts[:PARENT_CHOICE_LIMIT] + [f"另 {rest} 项"]
@@ -347,7 +370,11 @@ class Step:
             if self.algorithm:
                 bits.append(self.algorithm)
             if self.action and self.action not in ("DoNothing",):
-                bits.append(self.action if self.action_ok is None else f"{self.action}{'' if self.action_ok else '(失败)'}")
+                bits.append(
+                    self.action
+                    if self.action_ok is None
+                    else f"{self.action}{'' if self.action_ok else '(失败)'}"
+                )
         if self.texts:
             bits.append(short(self.texts))
         return "  ".join(b for b in bits if b)
@@ -362,16 +389,16 @@ class ParseStats:
     排查的人只能自己切日志试。这些计数让报错能说清"到底看到了什么"。
     """
 
-    source_kind: str = ""            # file | path-missing | text | stream | other
-    source_name: str = ""            # 入参的短写，只进报错文案
-    lines_total: int = 0             # 匹配 LINE_RE 的行（与窗口无关）
+    source_kind: str = ""  # file | path-missing | text | stream | other
+    source_name: str = ""  # 入参的短写，只进报错文案
+    lines_total: int = 0  # 匹配 LINE_RE 的行（与窗口无关）
     lines_in_window: int = 0
-    lines_other_task: int = 0        # node done 但 task_id 不是要看的那个
+    lines_other_task: int = 0  # node done 但 task_id 不是要看的那个
     lines_internal_skipped: int = 0  # recognition/OCR/... 这类内部识别，默认过滤
-    out_of_order: int = 0            # 时间戳回跳的行数（>0 说明日志不是按时间追加的）
-    truncated_skipped: int = 0       # 头对得上、整条读不出，已丢弃
-    truncated_kept: int = 0          # 读出来了但尾部缺字段，已标注
-    events_dropped: int = 0          # 被 --task-id 排掉的其他任务事件
+    out_of_order: int = 0  # 时间戳回跳的行数（>0 说明日志不是按时间追加的）
+    truncated_skipped: int = 0  # 头对得上、整条读不出，已丢弃
+    truncated_kept: int = 0  # 读出来了但尾部缺字段，已标注
+    events_dropped: int = 0  # 被 --task-id 排掉的其他任务事件
     # 父节点（派发者）的归属账：`Node.NextList` 事件条数，以及三层退回各命中多少步
     nextlist_seen: int = 0
     parent_resolved: int = 0
@@ -395,13 +422,15 @@ class ParsedLog:
     stats: ParseStats = field(default_factory=ParseStats)
     # 非空表示 steps 是由识别记录（attempts）合成的：这份日志没有 PipelineTask node done
     derived_from: str = ""
-    derived_clamped: bool = False   # 合成时按目标 task 的起始时间夹住了范围
+    derived_clamped: bool = False  # 合成时按目标 task 的起始时间夹住了范围
     # 选中任务的起止（`--task-id` 且日志里有它的步骤时才有）：
     # 未命中聚合与事件挂载都靠它把窗口夹在任务自己的活动区间内，见 task_span()
     span: tuple[datetime, datetime] | None = None
     # (task_id, 派发者) -> 候选表评估账。`failed` 连续出现 = 卡在派发层（候选一个都没命中），
     # 是"node done 很少却过了很久"那类任务唯一能拿到的证据（`reco` 行没有 task_id）。
-    nextlist_stats: dict[tuple[int | None, str], NextListStat] = field(default_factory=dict)
+    nextlist_stats: dict[tuple[int | None, str], NextListStat] = field(
+        default_factory=dict
+    )
 
 
 def _open_log_lines(source) -> Iterator[str]:
@@ -423,7 +452,9 @@ def _open_log_lines(source) -> Iterator[str]:
     if isinstance(source, os.PathLike):
         source = os.fspath(source)
     if not isinstance(source, str):
-        raise TypeError(f"日志入参只接受路径、文本或文本流，收到 {type(source).__name__}")
+        raise TypeError(
+            f"日志入参只接受路径、文本或文本流，收到 {type(source).__name__}"
+        )
 
     if os.path.isfile(source):
         with open(source, encoding="utf-8", errors="replace") as fh:
@@ -487,7 +518,10 @@ def _read_lines(source: Any, stats: ParseStats) -> list[str]:
             if last is None or ts > last:
                 last = ts
     if stats.out_of_order:
-        order = sorted(range(len(lines)), key=lambda i: (keys[i] is None, keys[i] or datetime.min, i))
+        order = sorted(
+            range(len(lines)),
+            key=lambda i: (keys[i] is None, keys[i] or datetime.min, i),
+        )
         lines = [lines[i] for i in order]
     return lines
 
@@ -500,8 +534,14 @@ def _count_truncated(msg: str, stats: ParseStats) -> None:
             return
 
 
-def parse_log(path, t_from: datetime | None, t_to: datetime | None,
-              task_id: int | None, keep_internal: bool, px: str | None = None) -> ParsedLog:
+def parse_log(
+    path,
+    t_from: datetime | None,
+    t_to: datetime | None,
+    task_id: int | None,
+    keep_internal: bool,
+    px: str | None = None,
+) -> ParsedLog:
     """解析日志。`path` 可以是文件路径、日志正文，或任何可逐行的文本流。
 
     全量读入（不再在第一条晚于 `--to` 的行上提前结束），时间戳回跳时先按时间重排行；
@@ -537,7 +577,12 @@ def parse_log(path, t_from: datetime | None, t_to: datetime | None,
         这里只贴，不记账：`--task-id` 会把别的任务的步骤滤掉，父节点覆盖率的账要等滤完再算
         （见 `parse_log()` 末尾），否则图上会报"79 步的父节点没找到"而图里其实只有 18 步。
         """
-        record, _gap = resolve_parent(nextlists, step.task_id if step.task_id is not None else active_task.get(px), step.name, step.ts)
+        record, _gap = resolve_parent(
+            nextlists,
+            step.task_id if step.task_id is not None else active_task.get(px),
+            step.name,
+            step.ts,
+        )
         if record is not None:
             step.dispatcher = record.name
             step.candidates = list(record.candidates)
@@ -551,7 +596,9 @@ def parse_log(path, t_from: datetime | None, t_to: datetime | None,
             step.dispatcher = walk
             step.parent_source = "walk"
             return step
-        entry = task_names.get((px, step.task_id if step.task_id is not None else -1), "")
+        entry = task_names.get(
+            (px, step.task_id if step.task_id is not None else -1), ""
+        )
         if entry:
             step.dispatcher = entry
             step.parent_source = "entry"
@@ -559,9 +606,17 @@ def parse_log(path, t_from: datetime | None, t_to: datetime | None,
         step.parent_source = "none"
         return step
 
-    def event_step(ts: datetime, name: str, action: str, node: str | None,
-                   task_ref: int | None = None, *, kind: str = "event", completed: bool = False,
-                   px: str = "") -> Step:
+    def event_step(
+        ts: datetime,
+        name: str,
+        action: str,
+        node: str | None,
+        task_ref: int | None = None,
+        *,
+        kind: str = "event",
+        completed: bool = False,
+        px: str = "",
+    ) -> Step:
         """框架级事件也认一次父节点。
 
         `invalid node id` / `node not completed` 这几条事件自己不带 task_id，但 `action` 里就是出问题的
@@ -574,12 +629,21 @@ def parse_log(path, t_from: datetime | None, t_to: datetime | None,
         末尾的区间过滤靠它把别的运行的失败事件排掉，填上就过滤不掉了。
         `Task timeout` 的 pretask 是**正在跑的那个**节点，还没被选中进候选表，查不到属正常。
         """
-        step = Step(ts=ts, name=name, completed=completed, kind=kind, action=action,
-                    task_id=task_ref if kind == "task" else None)
+        step = Step(
+            ts=ts,
+            name=name,
+            completed=completed,
+            kind=kind,
+            action=action,
+            task_id=task_ref if kind == "task" else None,
+        )
         if node:
-            record, _gap = resolve_parent(nextlists,
-                                          task_ref if task_ref is not None else active_task.get(px),
-                                          node, ts)
+            record, _gap = resolve_parent(
+                nextlists,
+                task_ref if task_ref is not None else active_task.get(px),
+                node,
+                ts,
+            )
             if record is not None:
                 step.dispatcher = record.name
                 step.candidates = list(record.candidates)
@@ -613,7 +677,9 @@ def parse_log(path, t_from: datetime | None, t_to: datetime | None,
             key = (record.task_id, record.name)
             stat = out.nextlist_stats.get(key)
             if stat is None:
-                stat = NextListStat(name=record.name, candidates=record.candidates, first_ts=ts)
+                stat = NextListStat(
+                    name=record.name, candidates=record.candidates, first_ts=ts
+                )
                 out.nextlist_stats[key] = stat
             stat.last_ts = ts
             if record.kind == "succeeded":
@@ -646,8 +712,18 @@ def parse_log(path, t_from: datetime | None, t_to: datetime | None,
             tid = int(d.get("task_id", 0))
             out.tasks.append((ts, entry, tid, d.get("hash", "")))
             # 任务起始也算一步：入口那一轮框架合成的自派发（`TaskX -> [TaskX]`）在这里就能标出来
-            out.events.append(event_step(ts, f"任务开始 {entry}", f"task_id={tid}", entry, tid,
-                                         kind="task", completed=True, px=line_px))
+            out.events.append(
+                event_step(
+                    ts,
+                    f"任务开始 {entry}",
+                    f"task_id={tid}",
+                    entry,
+                    tid,
+                    kind="task",
+                    completed=True,
+                    px=line_px,
+                )
+            )
             continue
         me = TASK_END_RE.search(msg)
         if me:
@@ -661,9 +737,18 @@ def parse_log(path, t_from: datetime | None, t_to: datetime | None,
             entry = d.get("entry", "")
             # 任务收尾也带上父节点：入口节点（`TaskTraining -> [TaskTraining]`）会显示成自派发，
             # 失败收尾就能看出"是谁结束了这个任务"。要赶在清 `active_task` 之前算。
-            out.events.append(event_step(ts, f"任务结束 {entry} {'成功' if ret else '失败'}",
-                                         f"ret={me.group(2)}", entry, tid,
-                                         kind="task", completed=ret, px=line_px))
+            out.events.append(
+                event_step(
+                    ts,
+                    f"任务结束 {entry} {'成功' if ret else '失败'}",
+                    f"ret={me.group(2)}",
+                    entry,
+                    tid,
+                    kind="task",
+                    completed=ret,
+                    px=line_px,
+                )
+            )
             if tid == active_task.get(line_px):
                 active_task[line_px] = None
             out.task_ends.append((ts, entry, tid, ret))
@@ -686,12 +771,21 @@ def parse_log(path, t_from: datetime | None, t_to: datetime | None,
                 continue
             texts: list[str] = []
             collect_texts(j.get("detail"), texts)
-            out.attempts.append(attach_parent(Step(
-                ts=ts, name=name, completed=bool(j.get("box")),
-                reco_id=rid if isinstance(rid, int) else None,
-                algorithm=j.get("algorithm", ""), box=j.get("box"), texts=texts,
-                kind="hit" if j.get("box") else "miss",
-            ), line_px))
+            out.attempts.append(
+                attach_parent(
+                    Step(
+                        ts=ts,
+                        name=name,
+                        completed=bool(j.get("box")),
+                        reco_id=rid if isinstance(rid, int) else None,
+                        algorithm=j.get("algorithm", ""),
+                        box=j.get("box"),
+                        texts=texts,
+                        kind="hit" if j.get("box") else "miss",
+                    ),
+                    line_px,
+                )
+            )
             continue
 
         # 动作结果
@@ -729,20 +823,34 @@ def parse_log(path, t_from: datetime | None, t_to: datetime | None,
                 stats.lines_other_task += 1
                 stats.other_task_ts.append(ts)
                 continue
-            active_task[line_px] = tid  # 正在跑哪个 task：给框架级事件判父节点用（line_px 取自本行）
+            active_task[line_px] = (
+                tid  # 正在跑哪个 task：给框架级事件判父节点用（line_px 取自本行）
+            )
             # 这份日志里可能一条 `task start` 都没有（实测 Sentry 拉回来的就没有），
             # 所以"正在跑哪个 task"以 node done 为准，给框架级事件判父节点用
             reco = recl_by_id.get((line_px, j.get("reco_id")), {})
             act = act_by_id.get((line_px, j.get("action_id")), {})
             texts: list[str] = []
             collect_texts(reco.get("detail"), texts)
-            out.steps.append(attach_parent(Step(
-                ts=ts, name=name, completed=bool(j.get("completed")),
-                reco_id=j.get("reco_id"), action_id=j.get("action_id"),
-                node_id=j.get("node_id"), task_id=tid,
-                algorithm=reco.get("algorithm", ""), box=reco.get("box"), texts=texts,
-                action=act.get("action", ""), action_ok=act.get("success"),
-            ), line_px))
+            out.steps.append(
+                attach_parent(
+                    Step(
+                        ts=ts,
+                        name=name,
+                        completed=bool(j.get("completed")),
+                        reco_id=j.get("reco_id"),
+                        action_id=j.get("action_id"),
+                        node_id=j.get("node_id"),
+                        task_id=tid,
+                        algorithm=reco.get("algorithm", ""),
+                        box=reco.get("box"),
+                        texts=texts,
+                        action=act.get("action", ""),
+                        action_ok=act.get("success"),
+                    ),
+                    line_px,
+                )
+            )
             continue
 
         # 异常
@@ -759,20 +867,37 @@ def parse_log(path, t_from: datetime | None, t_to: datetime | None,
                 stats.truncated_kept += 1
                 seen = []
                 if dur:
-                    seen.append(f"duration_since(start_clock)={dur}{'ms' if dur_ok else '(截断)'}")
+                    seen.append(
+                        f"duration_since(start_clock)={dur}{'ms' if dur_ok else '(截断)'}"
+                    )
                 if tout:
                     seen.append(f"reco_timeout={tout}{'ms' if tout_ok else '(截断)'}")
-                detail = "行尾被截断" + ("，" + "  ".join(seen) if seen else "，两个数字都缺失")
-            out.events.append(event_step(ts, f"Task timeout {mt.group('name')}", detail, mt.group("name"),
-                                         px=line_px))
+                detail = "行尾被截断" + (
+                    "，" + "  ".join(seen) if seen else "，两个数字都缺失"
+                )
+            out.events.append(
+                event_step(
+                    ts,
+                    f"Task timeout {mt.group('name')}",
+                    detail,
+                    mt.group("name"),
+                    px=line_px,
+                )
+            )
             continue
         mi = INVALID_RE.search(msg)
         if mi:
-            out.events.append(event_step(ts, "invalid node id", mi.group(1), mi.group(1), px=line_px))
+            out.events.append(
+                event_step(ts, "invalid node id", mi.group(1), mi.group(1), px=line_px)
+            )
             continue
         mn = NOT_COMPLETED_RE.search(msg)
         if mn:
-            out.events.append(event_step(ts, "node not completed", mn.group(1), mn.group(1), px=line_px))
+            out.events.append(
+                event_step(
+                    ts, "node not completed", mn.group(1), mn.group(1), px=line_px
+                )
+            )
             continue
 
         # 上面全不匹配：可能是被导出裁断的记录
@@ -789,8 +914,11 @@ def parse_log(path, t_from: datetime | None, t_to: datetime | None,
         dropped = 0
         for event in out.events:
             owned = event.task_id in (None, task_id)
-            inside = not out.span or event.task_id is not None or (
-                out.span[0] <= event.ts <= out.span[1])
+            inside = (
+                not out.span
+                or event.task_id is not None
+                or (out.span[0] <= event.ts <= out.span[1])
+            )
             if owned and inside:
                 kept.append(event)
             elif not event.completed:
@@ -836,8 +964,9 @@ class TaskRef:
         return f"{lo} ~ {hi}"
 
 
-def scan_tasks(log, t_from: datetime | None = None,
-               t_to: datetime | None = None) -> list[TaskRef]:
+def scan_tasks(
+    log, t_from: datetime | None = None, t_to: datetime | None = None
+) -> list[TaskRef]:
     """列出日志里所有 `(进程, task_id)`，按开始时间排序。
 
     只扫 `PipelineTask node done`（任务靠它带 `task_id_`）与 `task start`（拿入口名），
@@ -881,8 +1010,10 @@ def scan_tasks(log, t_from: datetime | None = None,
             ref.first_ts = ts if ref.first_ts is None else min(ref.first_ts, ts)
     # 只留真有节点执行的：`MaaTaskerPostStop` 那种停止指令只有 task start、0 步，
     # 画不出图，列在表里只是噪音（本机实测 6 条）。
-    return sorted((r for r in refs.values() if r.steps),
-                  key=lambda r: (r.first_ts or datetime.min, r.px, r.task_id))
+    return sorted(
+        (r for r in refs.values() if r.steps),
+        key=lambda r: (r.first_ts or datetime.min, r.px, r.task_id),
+    )
 
 
 def _synthesize_steps(out: ParsedLog, task_id: int | None) -> None:
@@ -901,9 +1032,15 @@ def _synthesize_steps(out: ParsedLog, task_id: int | None) -> None:
         starts = [t for t, _entry, tid, _hash in out.tasks if tid == task_id]
         if starts:
             lo = max(starts)
-            ends = [t for t, _entry, tid, _ret in out.task_ends if tid == task_id and t >= lo]
+            ends = [
+                t
+                for t, _entry, tid, _ret in out.task_ends
+                if tid == task_id and t >= lo
+            ]
             hi = min(ends) if ends else None
-            attempts = [a for a in attempts if a.ts >= lo and (hi is None or a.ts <= hi)]
+            attempts = [
+                a for a in attempts if a.ts >= lo and (hi is None or a.ts <= hi)
+            ]
             out.derived_clamped = True
     if not attempts:
         return
@@ -921,7 +1058,12 @@ def collapse_runs(steps: list[Step], collapse: int) -> list[Step]:
         return steps
     out: list[Step] = []
     for s in steps:
-        if out and out[-1].name == s.name and out[-1].kind == s.kind and out[-1].completed == s.completed:
+        if (
+            out
+            and out[-1].name == s.name
+            and out[-1].kind == s.kind
+            and out[-1].completed == s.completed
+        ):
             out[-1].run_len += 1
             out[-1].texts = list(dict.fromkeys(out[-1].texts + s.texts))
             continue
@@ -929,8 +1071,12 @@ def collapse_runs(steps: list[Step], collapse: int) -> list[Step]:
     return out
 
 
-def build_rounds(steps: list[Step], min_len: int, cut_on: set[str] | None = None,
-                 hard_cut: set[str] | None = None) -> list[list[Step]]:
+def build_rounds(
+    steps: list[Step],
+    min_len: int,
+    cut_on: set[str] | None = None,
+    hard_cut: set[str] | None = None,
+) -> list[list[Step]]:
     """回到本轮已出现过的节点 = 新一轮。
 
     cut_on 只放父节点（有 next 表的派发者），避免 TrainMoveUp 这类高频叶子把一轮劈开；
@@ -943,7 +1089,13 @@ def build_rounds(steps: list[Step], min_len: int, cut_on: set[str] | None = None
     hard = hard_cut or set()
     for s in steps:
         cut = False
-        if s.name in hard and cur or s.name in seen and len(cur) >= min_len and (cut_on is None or s.name in cut_on):
+        if (
+            s.name in hard
+            and cur
+            or s.name in seen
+            and len(cur) >= min_len
+            and (cut_on is None or s.name in cut_on)
+        ):
             cut = True
         if cut:
             rounds.append(cur)
@@ -999,7 +1151,10 @@ def anchor_of(steps: list[Step], rounds: list[list[Step]]) -> str:
             heads[r[0].name] = heads.get(r[0].name, 0) + 1
     if not heads:
         return ""
-    return max(heads.items(), key=lambda kv: (kv[1], -min(i for i, s in enumerate(steps) if s.name == kv[0])))[0]
+    return max(
+        heads.items(),
+        key=lambda kv: (kv[1], -min(i for i, s in enumerate(steps) if s.name == kv[0])),
+    )[0]
 
 
 # --------------------------------------------------------------------------- #
@@ -1020,7 +1175,7 @@ def _is_zip(path: str) -> bool:
 class MediaEntry:
     """一条图片证据。`path` 为 None 时用 `data`（bytes 或 `_ZipMember`）。"""
 
-    member: str          # 归档内相对路径或文件绝对路径，仅用于日志与去重
+    member: str  # 归档内相对路径或文件绝对路径，仅用于日志与去重
     path: str | None = None
     data: Any = None
 
@@ -1047,21 +1202,23 @@ class MediaResolver:
     两类索引都只依赖 `iter_entries()`，因此加一种来源不用改渲染代码。
     """
 
-    def __init__(self, source: Any = None, *, members: Iterable[tuple[str, Any]] | None = None):
+    def __init__(
+        self, source: Any = None, *, members: Iterable[tuple[str, Any]] | None = None
+    ):
         """`members` 的值可以给 bytes，也可以给**可调用对象**（延迟读，返回 bytes）。
 
         延迟读很重要：MFA 导出包里的图片动辄几百 KB、一包几百张；一次性
         `zf.read()` 全部条目会把内存顶起来，而实际只有命中节点的几张会被画。
         """
-        self.roots: list[tuple[str, str]] = []      # (kind, locator)；kind = dir | zip
+        self.roots: list[tuple[str, str]] = []  # (kind, locator)；kind = dir | zip
         self.members: list[tuple[str, Any]] = list(members or [])
         if source is None:
             return
-        if isinstance(source, MediaResolver):        # 已经是 resolver，直接接管
+        if isinstance(source, MediaResolver):  # 已经是 resolver，直接接管
             self.roots = list(source.roots)
             self.members.extend(source.members)
             return
-        if hasattr(source, "read"):                  # 字节流
+        if hasattr(source, "read"):  # 字节流
             self.members.append(("stream.bin", source.read()))
             return
         for item in (source if isinstance(source, (list, tuple)) else [source]):
@@ -1100,8 +1257,10 @@ class MediaResolver:
                             if info.is_dir() or info.filename in seen:
                                 continue
                             seen.add(info.filename)
-                            yield MediaEntry(member=info.filename,
-                                             data=_ZipMember(locator, info.filename))
+                            yield MediaEntry(
+                                member=info.filename,
+                                data=_ZipMember(locator, info.filename),
+                            )
                 except (OSError, zipfile.BadZipFile) as exc:
                     print(f"提示：跳过读不了的 zip {locator}：{exc}", file=sys.stderr)
 
@@ -1116,7 +1275,9 @@ class MediaResolver:
         if data is not None:
             return Image.open(io.BytesIO(data)).convert("RGB")
         if entry.path is None:
-            raise ValueError(f"证据 {entry.member} 既没有文件路径也没有字节内容，打不开。")
+            raise ValueError(
+                f"证据 {entry.member} 既没有文件路径也没有字节内容，打不开。"
+            )
         return Image.open(entry.path).convert("RGB")
 
 
@@ -1135,10 +1296,14 @@ class VisionIndex:
     要看识别帧得让对方手动导出（导出对话框里勾"包含 vision 图片"）。
     """
 
-    NAME_RE = re.compile(r"^(?P<ts>\d{4}\.\d{2}\.\d{2}-\d{2}\.\d{2}\.\d{2}\.\d+)_(?P<name>.*?)_(?P<tail>wait_freezes|\d+)\.jpg$")
+    NAME_RE = re.compile(
+        r"^(?P<ts>\d{4}\.\d{2}\.\d{2}-\d{2}\.\d{2}\.\d{2}\.\d+)_(?P<name>.*?)_(?P<tail>wait_freezes|\d+)\.jpg$"
+    )
 
     def __init__(self, source: Any = None):
-        self.source = source if isinstance(source, MediaResolver) else MediaResolver(source)
+        self.source = (
+            source if isinstance(source, MediaResolver) else MediaResolver(source)
+        )
         self.by_reco: dict[tuple[str, int], MediaEntry] = {}
         self.freezes: list[tuple[datetime, str, MediaEntry]] = []
         self.frames: list[tuple[datetime, MediaEntry]] = []
@@ -1193,10 +1358,14 @@ class OnErrorIndex:
     是"能贴的全部"。
     """
 
-    NAME_RE = re.compile(r"^(?P<ts>\d{4}\.\d{2}\.\d{2}-\d{2}\.\d{2}\.\d{2}\.\d+)_(?P<name>.+)\.png$")
+    NAME_RE = re.compile(
+        r"^(?P<ts>\d{4}\.\d{2}\.\d{2}-\d{2}\.\d{2}\.\d{2}\.\d+)_(?P<name>.+)\.png$"
+    )
 
     def __init__(self, source: Any = None):
-        self.source = source if isinstance(source, MediaResolver) else MediaResolver(source)
+        self.source = (
+            source if isinstance(source, MediaResolver) else MediaResolver(source)
+        )
         self.items: list[tuple[datetime, str, MediaEntry]] = []
         for entry in self.source.iter_entries():
             m = self.NAME_RE.match(os.path.basename(entry.member))
@@ -1299,13 +1468,15 @@ PALETTE = {
 
 # 父节点分组的三色一套：(分组框底色, 分组框边框, 角标底色)。角标上是白字，所以角标色要够深。
 # 同名的父节点永远拿同一套（一眼看出"又是它派发的"），不同父节点按首次出现顺序轮换这 6 套。
-PARENT_COLORS: tuple[tuple[tuple[int, int, int], tuple[int, int, int], tuple[int, int, int]], ...] = (
-    ((234, 239, 250), (124, 140, 186), (74, 88, 140)),     # 蓝
-    ((234, 246, 241), (86, 156, 132), (34, 110, 86)),      # 青绿
-    ((248, 239, 228), (190, 148, 84), (146, 102, 32)),     # 琥珀
-    ((244, 234, 245), (158, 114, 170), (114, 70, 128)),    # 紫
-    ((233, 246, 233), (104, 158, 94), (58, 116, 52)),      # 绿
-    ((250, 235, 238), (186, 112, 124), (146, 66, 82)),     # 玫红
+PARENT_COLORS: tuple[
+    tuple[tuple[int, int, int], tuple[int, int, int], tuple[int, int, int]], ...
+] = (
+    ((234, 239, 250), (124, 140, 186), (74, 88, 140)),  # 蓝
+    ((234, 246, 241), (86, 156, 132), (34, 110, 86)),  # 青绿
+    ((248, 239, 228), (190, 148, 84), (146, 102, 32)),  # 琥珀
+    ((244, 234, 245), (158, 114, 170), (114, 70, 128)),  # 紫
+    ((233, 246, 233), (104, 158, 94), (58, 116, 52)),  # 绿
+    ((250, 235, 238), (186, 112, 124), (146, 66, 82)),  # 玫红
 )
 
 
@@ -1327,24 +1498,24 @@ class StaleNode:
     """一个"疑似过时"的节点。"""
 
     name: str
-    module: str            # 所在模块（assets/resource/pipeline/<module>）
-    last_commit: str       # 最近一次改动该模块的提交（`hash 日期 标题`），供人核对
-    commits: int = 1       # 该模块在版本之后的提交数（只用于展示"这文件动过几次"）
+    module: str  # 所在模块（assets/resource/pipeline/<module>）
+    last_commit: str  # 最近一次改动该模块的提交（`hash 日期 标题`），供人核对
+    commits: int = 1  # 该模块在版本之后的提交数（只用于展示"这文件动过几次"）
 
 
 @dataclass
 class StaleCheck:
-    """"这批节点里哪些疑似过时"的结论。
+    """ "这批节点里哪些疑似过时"的结论。
 
     `reason` 非空 = 检查做不成（取不到版本号 / 不是 git 仓库 / 那个 tag 不存在），
     人要照它说的去补信息，不能当成"没有过时节点"。
     """
 
-    version: str = ""              # 日志所属版本（v1.0.0-beta.42）
-    tag: str = ""                  # 对应的 git tag
+    version: str = ""  # 日志所属版本（v1.0.0-beta.42）
+    tag: str = ""  # 对应的 git tag
     nodes: list[StaleNode] = field(default_factory=list)
     missing: list[str] = field(default_factory=list)  # 当前 pipeline 里已不存在的节点名
-    reason: str = ""               # 非空 = 检查没做成的原因
+    reason: str = ""  # 非空 = 检查没做成的原因
 
     @property
     def ok(self) -> bool:
@@ -1356,8 +1527,13 @@ def _git(repo: Path, *args: str) -> tuple[int, str]:
     try:
         proc = subprocess.run(
             ["git", "-c", "core.fsmonitor=false", *args],
-            cwd=str(repo), capture_output=True, text=True, check=False,
-            encoding="utf-8", errors="replace", timeout=120,
+            cwd=str(repo),
+            capture_output=True,
+            text=True,
+            check=False,
+            encoding="utf-8",
+            errors="replace",
+            timeout=120,
         )
     except (OSError, subprocess.SubprocessError):
         return 1, ""
@@ -1424,7 +1600,9 @@ def pipeline_modules(repo: Path) -> dict[str, str]:
         return owner
     for p in sorted(root.glob("*.json")):
         try:
-            data = json.loads(_strip_jsonc(p.read_text(encoding="utf-8", errors="replace")))
+            data = json.loads(
+                _strip_jsonc(p.read_text(encoding="utf-8", errors="replace"))
+            )
         except (OSError, ValueError):
             continue
         if isinstance(data, dict):
@@ -1460,13 +1638,16 @@ def _node_definitions(repo: Path, tag: str) -> dict[str, dict[str, Any]]:
 
 def _definition_changed(old: Any, new: Any) -> bool:
     """两份节点定义是否不同（按键排序后比，避免键顺序造成的假差异）。"""
-    return json.dumps(old, sort_keys=True, ensure_ascii=False) != \
-        json.dumps(new, sort_keys=True, ensure_ascii=False)
+    return json.dumps(old, sort_keys=True, ensure_ascii=False) != json.dumps(
+        new, sort_keys=True, ensure_ascii=False
+    )
 
 
 def last_commit_touching(repo: Path, tag: str, path: str) -> str:
     """`tag..HEAD` 里最后改动某个文件的提交（`hash 日期 标题`）。"""
-    _code, out = _git(repo, "log", "-1", "--format=%h %cI %s", f"{tag}..HEAD", "--", path)
+    _code, out = _git(
+        repo, "log", "-1", "--format=%h %cI %s", f"{tag}..HEAD", "--", path
+    )
     return out.strip()
 
 
@@ -1480,11 +1661,14 @@ def main_last_commit(repo: Path, tag: str, module: str) -> str:
     key = (str(repo), tag, module)
     if key not in _LAST_COMMIT_CACHE:
         _LAST_COMMIT_CACHE[key] = last_commit_touching(
-            repo, tag, f"assets/resource/pipeline/{module}")
+            repo, tag, f"assets/resource/pipeline/{module}"
+        )
     return _LAST_COMMIT_CACHE[key]
 
 
-def check_stale_nodes(repo: Path, node_names: set[str], version: str | None) -> StaleCheck:
+def check_stale_nodes(
+    repo: Path, node_names: set[str], version: str | None
+) -> StaleCheck:
     """查这批节点里哪些"疑似过时"。
 
     口径（**只标疑似，不判断是否真的过时**）：
@@ -1500,22 +1684,30 @@ def check_stale_nodes(repo: Path, node_names: set[str], version: str | None) -> 
     - 版本对应的 tag 不存在（本地没拉到那个 tag）→ `reason` 说清，不当成"没提交"。
     """
     if not version:
-        return StaleCheck(reason="日志里没有版本号（安装目录名形如 MaaAshArms-win-x86_64-v1.0.0-beta.42），"
-                                 "无法确定「之后」的起点")
+        return StaleCheck(
+            reason="日志里没有版本号（安装目录名形如 MaaAshArms-win-x86_64-v1.0.0-beta.42），"
+            "无法确定「之后」的起点"
+        )
     code, tags = _git(repo, "tag", "--list", version)
     if code != 0:
-        return StaleCheck(version=version, reason="不是 git 仓库或 git 不可用，查不了提交历史")
+        return StaleCheck(
+            version=version, reason="不是 git 仓库或 git 不可用，查不了提交历史"
+        )
     if version not in tags.split():
-        return StaleCheck(version=version,
-                          reason=f"本地没有 {version} 这个 tag（先 git fetch --tags），"
-                                 "查不了该版本之后的提交")
+        return StaleCheck(
+            version=version,
+            reason=f"本地没有 {version} 这个 tag（先 git fetch --tags），"
+            "查不了该版本之后的提交",
+        )
     owner = pipeline_modules(repo)
     then = _node_definitions(repo, version)
     now: dict[str, dict[str, Any]] = {}
     for module, nodes in then.items():
         path = repo / "assets" / "resource" / "pipeline" / module
         try:
-            data = json.loads(_strip_jsonc(path.read_text(encoding="utf-8", errors="replace")))
+            data = json.loads(
+                _strip_jsonc(path.read_text(encoding="utf-8", errors="replace"))
+            )
         except (OSError, ValueError):
             continue
         if isinstance(data, dict):
@@ -1535,7 +1727,9 @@ def check_stale_nodes(repo: Path, node_names: set[str], version: str | None) -> 
         if not _definition_changed(before, after):
             continue
         last = main_last_commit(repo, version, module)
-        out.nodes.append(StaleNode(name=name, module=module, last_commit=last, commits=1))
+        out.nodes.append(
+            StaleNode(name=name, module=module, last_commit=last, commits=1)
+        )
     return out
 
 
@@ -1574,7 +1768,11 @@ def classify(step: Step) -> str:
     if step.kind == "miss":
         return "miss"
     if step.kind == "event":
-        if not step.completed or "timeout" in step.name or step.name in ("invalid node id", "node not completed"):
+        if (
+            not step.completed
+            or "timeout" in step.name
+            or step.name in ("invalid node id", "node not completed")
+        ):
             return "error"
         if step.name.startswith("任务"):
             return "task"
@@ -1586,7 +1784,9 @@ def classify(step: Step) -> str:
     return "hit"
 
 
-def task_span(parsed: ParsedLog, task_id: int | None) -> tuple[datetime, datetime] | None:
+def task_span(
+    parsed: ParsedLog, task_id: int | None
+) -> tuple[datetime, datetime] | None:
     """选中任务的**判定窗口** `[起, 止]`；没给 `--task-id`、或日志里没有它的步骤时返回 None。
 
     存在的理由：识别记录（`reco [result=]`）里没有 `task_id`，框架级事件（`Task timeout` /
@@ -1615,10 +1815,19 @@ def task_span(parsed: ParsedLog, task_id: int | None) -> tuple[datetime, datetim
     return lo, min(later) if later else datetime.max
 
 
-def compose_columns(parsed: ParsedLog, rounds: list[list[Step]], miss_min: int,
-                    collapse: int = 1, miss_max: int = 8) -> list[list[Step]]:
+def compose_columns(
+    parsed: ParsedLog,
+    rounds: list[list[Step]],
+    miss_min: int,
+    collapse: int = 1,
+    miss_max: int = 8,
+) -> list[list[Step]]:
     """每轮 = 该轮命中步骤（按需折叠 ×N）+ 该轮内的"连续未命中"聚合框；异常事件挂到所属轮末尾。"""
-    tail = max([a.ts for a in parsed.attempts] + [e.ts for e in parsed.events] + [rounds[-1][-1].ts])
+    tail = max(
+        [a.ts for a in parsed.attempts]
+        + [e.ts for e in parsed.events]
+        + [rounds[-1][-1].ts]
+    )
     span = None if parsed.derived_from else parsed.span
 
     def miss_rows(i: int) -> list[Step]:
@@ -1638,17 +1847,29 @@ def compose_columns(parsed: ParsedLog, rounds: list[list[Step]], miss_min: int,
         for (disp, name), items in agg.items():
             if len(items) < miss_min:
                 continue
-            rows.append(Step(ts=items[-1].ts, name=name, completed=False, kind="miss",
-                             run_len=len(items), dispatcher=disp,
-                             candidates=list(items[-1].candidates), jumps=list(items[-1].jumps),
-                             parent_source=items[-1].parent_source,
-                             reco_id=items[-1].reco_id, box=items[-1].box))
+            rows.append(
+                Step(
+                    ts=items[-1].ts,
+                    name=name,
+                    completed=False,
+                    kind="miss",
+                    run_len=len(items),
+                    dispatcher=disp,
+                    candidates=list(items[-1].candidates),
+                    jumps=list(items[-1].jumps),
+                    parent_source=items[-1].parent_source,
+                    reco_id=items[-1].reco_id,
+                    box=items[-1].box,
+                )
+            )
         rows.sort(key=lambda s: (-s.run_len, s.ts))
         rows = rows[:miss_max] if miss_max else rows
         rows.sort(key=lambda s: s.ts)
         return rows
 
-    columns = [collapse_runs(list(r), collapse) + miss_rows(i) for i, r in enumerate(rounds)]
+    columns = [
+        collapse_runs(list(r), collapse) + miss_rows(i) for i, r in enumerate(rounds)
+    ]
     for ev in parsed.events:
         if ev.kind != "event" or classify(ev) != "error":
             continue
@@ -1671,7 +1892,7 @@ def parent_groups(column: list[Step]) -> list[tuple[str, int, int]]:
     """
     groups: list[tuple[str, int, int]] = []
     start = -1
-    current = ""      # 当前这一组的父节点；只有它变了才收组
+    current = ""  # 当前这一组的父节点；只有它变了才收组
     for i, st in enumerate(column):
         if st.parent and not st.dispatched and st.kind != "task":
             if start < 0:
@@ -1729,9 +1950,12 @@ def _has_failure(column: list[Step]) -> bool:
     return any(classify(st) == "error" for st in column)
 
 
-def overlay_repeats(columns: list[list[Step]], rounds: list[list[Step]],
-                    has_thumb: Callable[[int], bool], min_span: int = 2
-                    ) -> list[tuple[list[Step], ColumnSpan]]:
+def overlay_repeats(
+    columns: list[list[Step]],
+    rounds: list[list[Step]],
+    has_thumb: Callable[[int], bool],
+    min_span: int = 2,
+) -> list[tuple[list[Step], ColumnSpan]]:
     """把连续、同签名、整轮无贴图、无失败框的轮次合并成一列，返回 [(记这一列的步骤, 轮次范围)]。
 
     四个条件缺一不可，且**任一侧不满足就在那里断开**（不是整段作废）：
@@ -1785,13 +2009,13 @@ class DrawResult:
 
     width: int
     height: int
-    steps: int                           # 步数（仅事件模式下按识别记录条数算）
+    steps: int  # 步数（仅事件模式下按识别记录条数算）
     boxes: int
     shown: int
-    rounds: int                          # 原始轮数（折叠前）
-    columns: list[list[Step]]            # 折叠后的列（含未命中/异常框）
+    rounds: int  # 原始轮数（折叠前）
+    columns: list[list[Step]]  # 折叠后的列（含未命中/异常框）
     spans: list[ColumnSpan]
-    rounds_shown: list[list[Step]]       # 折叠后的"命中步骤"轮（mermaid 用）
+    rounds_shown: list[list[Step]]  # 折叠后的"命中步骤"轮（mermaid 用）
 
     @property
     def overlay_groups(self) -> int:
@@ -1831,7 +2055,9 @@ def draw_flow(parsed: ParsedLog, options: FlowOptions, out_path: str) -> DrawRes
     anchor = options.anchor or anchor_of(raw, rounds)
 
     # 每轮末尾追加该轮内"连续未命中"的聚合框；窗口右端延伸到下一轮开始（末轮延伸到最后一个动作/事件）
-    columns = compose_columns(parsed, rounds, options.miss_min, options.collapse, options.miss_max)
+    columns = compose_columns(
+        parsed, rounds, options.miss_min, options.collapse, options.miss_max
+    )
     steps = [s for r in rounds for s in r]
     # 仅事件模式下 raw 已经折过：图上报的步数要按识别记录条数算，与"折叠后 N 个框"对齐
     total_steps = len(parsed.steps) if parsed.derived_from else len(steps)
@@ -1839,11 +2065,15 @@ def draw_flow(parsed: ParsedLog, options: FlowOptions, out_path: str) -> DrawRes
     # ---- 先把每个框要贴的图解析出来（决定框高：有无图）----
     box_w = int(options.box_width * options.scale)
     pad = int(10 * options.scale)
-    slot_w = int(box_w * 0.46)                       # 右侧图槽
+    slot_w = int(box_w * 0.46)  # 右侧图槽
     slot_h = int(options.thumb_height * options.scale) if options.thumbs else 0
     # 候选那一行要占高度：本图一条候选都没有（日志没有 NextList 事件）时整行不加——那种情况下每个框
     # 都写"父 未记录"只是刷屏，同一件事由图上第二行的注记说一次（`build_notes()`）。
-    any_candidates = any(st.candidates for col in columns for st in col) if options.parents else False
+    any_candidates = (
+        any(st.candidates for col in columns for st in col)
+        if options.parents
+        else False
+    )
 
     def parent_details(st: Step) -> str:
         if not options.parents or not any_candidates:
@@ -1852,15 +2082,28 @@ def draw_flow(parsed: ParsedLog, options: FlowOptions, out_path: str) -> DrawRes
             return st.parent_detail()
         return "" if st.parent else "父 未记录"
 
-    parent_h = int(options.font_size * options.scale) + int(6 * options.scale) if any_candidates else 0
-    box_h = max(int(options.box_height * options.scale) + parent_h, slot_h + int(18 * options.scale)) if slot_h else int(options.box_height * options.scale) + parent_h
+    parent_h = (
+        int(options.font_size * options.scale) + int(6 * options.scale)
+        if any_candidates
+        else 0
+    )
+    box_h = (
+        max(
+            int(options.box_height * options.scale) + parent_h,
+            slot_h + int(18 * options.scale),
+        )
+        if slot_h
+        else int(options.box_height * options.scale) + parent_h
+    )
     event_h = int(options.box_height * options.scale) + parent_h
     gap_y = int(options.gap_y * options.scale)
     gap_err = int(options.gap_error * options.scale)
     gap_x = int(options.gap_x * options.scale)
     margin = int(34 * options.scale)
     header_h = int(34 * options.scale)
-    cols_per_band = max(1, options.cols_per_band) if options.cols_per_band else len(columns)
+    cols_per_band = (
+        max(1, options.cols_per_band) if options.cols_per_band else len(columns)
+    )
 
     vision = VisionIndex(options.vision) if options.vision else None
     on_err = OnErrorIndex(options.on_error) if options.on_error else None
@@ -1900,33 +2143,43 @@ def draw_flow(parsed: ParsedLog, options: FlowOptions, out_path: str) -> DrawRes
 
     # ---- 重复且无图的轮次合并成一列（必须在 thumb_of 算完之后：判定要用真实贴图结果）----
     round_count = len(rounds)
-    round_steps_all = rounds          # 折叠前的原始轮次：列头要用末轮的时间
+    round_steps_all = rounds  # 折叠前的原始轮次：列头要用末轮的时间
     spans: list[ColumnSpan] = [ColumnSpan(i, i) for i in range(len(columns))]
     if options.overlay and options.overlay_min >= 2:
         merged = overlay_repeats(
-            columns, rounds,
-            has_thumb=lambda ci: any((ci, ri) in thumb_of for ri in range(len(columns[ci]))),
-            min_span=options.overlay_min)
+            columns,
+            rounds,
+            has_thumb=lambda ci: any(
+                (ci, ri) in thumb_of for ri in range(len(columns[ci]))
+            ),
+            min_span=options.overlay_min,
+        )
         if len(merged) != len(columns):
             # thumb_of 的键是旧列索引，折叠后必须重排：合并列按定义整轮无图，所以只留
             # 单列（未合并）那些轮自己的贴图，其余键全部丢弃——否则 --no-thumbs / on_error
             # 回贴那条路径会带着旧索引把图贴到别的列上。
             old_of_new = [span.first for _c, span in merged]
-            thumb_of = {(new_ci, ri): value
-                        for new_ci, old_ci in enumerate(old_of_new)
-                        for (ci, ri), value in thumb_of.items() if ci == old_ci}
+            thumb_of = {
+                (new_ci, ri): value
+                for new_ci, old_ci in enumerate(old_of_new)
+                for (ci, ri), value in thumb_of.items()
+                if ci == old_ci
+            }
             spans = [span for _c, span in merged]
             columns = [col for col, _s in merged]
             rounds = [rounds[span.first] for span in spans]
     overlay_groups = sum(1 for span in spans if span.merged)
 
-    bands: list[list[int]] = [list(range(i, min(i + cols_per_band, len(columns))))
-                             for i in range(0, len(columns), cols_per_band)]
+    bands: list[list[int]] = [
+        list(range(i, min(i + cols_per_band, len(columns))))
+        for i in range(0, len(columns), cols_per_band)
+    ]
     # 父节点分组：每列的 [(父, 首, 末)]，套框与角标都用它
     groups_of: dict[int, list[tuple[str, int, int]]] = {
-        ci: parent_groups(col) for ci, col in enumerate(columns)}
-    group_badge_h = int(20 * options.scale)   # 角标高度（实心矩形 + 白字）
-    group_pad = int(6 * options.scale)        # 分组框四边的内边距
+        ci: parent_groups(col) for ci, col in enumerate(columns)
+    }
+    group_badge_h = int(20 * options.scale)  # 角标高度（实心矩形 + 白字）
+    group_pad = int(6 * options.scale)  # 分组框四边的内边距
     # 组内相邻两步贴紧一点：默认 36px 的间隔叠上分组框的上下内边距会显得很空
     group_gap = int(12 * options.scale)
     # 相邻两个分组框之间留的空：上一组的框底还带 group_pad 的内边距，只留 group_gap 会让两个框贴到一起
@@ -1947,7 +2200,9 @@ def draw_flow(parsed: ParsedLog, options: FlowOptions, out_path: str) -> DrawRes
     # 每列的高度：框高 + 间隔（未命中/异常相邻处用更大的间隔，别挤在一起）+ 分组框的净增高。
     # 不预先撑开这些空隙的话，后画的浅色分组框会糊住上一个框的文字；相邻两组的框之间也要留够
     # （上一组的框底带 group_pad 内边距，只留 group_gap 会让两个框贴到一起）。
-    def column_geo(ci: int, x: int, y0: int) -> tuple[list[tuple[int, int, int, int]], int]:
+    def column_geo(
+        ci: int, x: int, y0: int
+    ) -> tuple[list[tuple[int, int, int, int]], int]:
         span: dict[int, tuple[int, int]] = {}
         for _name, first, last in (groups_of[ci] if options.parents else []):
             for ri in range(first, last + 1):
@@ -1962,14 +2217,19 @@ def draw_flow(parsed: ParsedLog, options: FlowOptions, out_path: str) -> DrawRes
         for ri, st in enumerate(columns[ci]):
             if ri:
                 prev_st = columns[ci][ri - 1]
-                noisy = prev_st.kind in ("miss", "event") or st.kind in ("miss", "event")
+                noisy = prev_st.kind in ("miss", "event") or st.kind in (
+                    "miss",
+                    "event",
+                )
                 if ri in span and span[ri][0] == ri:
                     # 新的一组的首格：让出上一组的框底内边距 + 角标走廊
-                    y += group_extra_one + (group_gap_between - group_gap if span.get(ri - 1) else 0)
+                    y += group_extra_one + (
+                        group_gap_between - group_gap if span.get(ri - 1) else 0
+                    )
                 elif noisy:
                     y += gap_err
                 elif span.get(ri) and span.get(ri) == span.get(ri - 1):
-                    y += group_gap          # 同一组内的相邻两步
+                    y += group_gap  # 同一组内的相邻两步
                 else:
                     y += gap_y
             boxes.append((x, y, box_w, box_height_for(ci, ri)))
@@ -2013,8 +2273,12 @@ def draw_flow(parsed: ParsedLog, options: FlowOptions, out_path: str) -> DrawRes
     # 诊断注记单独一行：由识别记录还原、时间戳已重排、多少条被裁断——这些是读图前提，
     # 挤在副标题里会被一起读过去（也可能超出画布右边被裁掉）
     for i, note in enumerate(note_lines):
-        d.text((margin, int(58 * options.scale) + i * int(20 * options.scale)), note,
-               font=f_leg, fill=(168, 112, 30))
+        d.text(
+            (margin, int(58 * options.scale) + i * int(20 * options.scale)),
+            note,
+            font=f_leg,
+            fill=(168, 112, 30),
+        )
 
     # 三种字体共用的截断（画父节点角标时就要用，所以定义在这里，不放在"框"那一段）
     def fit_text(s: str, font, maxw: int) -> str:
@@ -2034,45 +2298,74 @@ def draw_flow(parsed: ParsedLog, options: FlowOptions, out_path: str) -> DrawRes
             pos[ci] = boxes
             x = col_x[ci]
             if ci % 2 == 1:
-                d.rounded_rectangle([x - int(14 * options.scale), y_band,
-                                     x + box_w + int(14 * options.scale), bottom + int(12 * options.scale)],
-                                    radius=int(12 * options.scale), fill=(244, 246, 250))
+                d.rounded_rectangle(
+                    [
+                        x - int(14 * options.scale),
+                        y_band,
+                        x + box_w + int(14 * options.scale),
+                        bottom + int(12 * options.scale),
+                    ],
+                    radius=int(12 * options.scale),
+                    fill=(244, 246, 250),
+                )
             r = rounds[ci]
             span = spans[ci]
             if span.merged:
                 # 合并列：轮号写成区间 + 次数，并把**末轮**的起止时间补回来（首轮的步骤表是这一列
                 # 唯一的一批时间戳，不给末轮时间就没法知道这段重复持续了多久）。
                 last_round = round_steps_all[span.last]
-                label = (f"第 {span.first + 1}–{span.last + 1} 轮 · ×{span.count} 重复 · "
-                         f"{r[0].ts.strftime('%H:%M:%S')}–{last_round[-1].ts.strftime('%H:%M:%S')}")
+                label = (
+                    f"第 {span.first + 1}–{span.last + 1} 轮 · ×{span.count} 重复 · "
+                    f"{r[0].ts.strftime('%H:%M:%S')}–{last_round[-1].ts.strftime('%H:%M:%S')}"
+                )
             else:
                 # 非合并列的轮号取 span.first：折叠会把后面的列往后挪，用 ci + 1 会写成"第 3 轮"
-                label = (f"第 {span.first + 1} 轮 · {r[0].ts.strftime('%H:%M:%S')}–"
-                         f"{r[-1].ts.strftime('%H:%M:%S')} · {len(r)} 步")
-            d.rounded_rectangle([x, y_band, x + box_w, y_band + int(24 * options.scale)],
-                                radius=int(6 * options.scale),
-                                fill=(252, 226, 200) if span.merged else (226, 230, 238),
-                                outline=(206, 140, 70) if span.merged else None,
-                                width=2 if span.merged else 1)
-            d.text((x + int(8 * options.scale), y_band + int(4 * options.scale)),
-                   fit_text(label, f_leg, box_w - int(16 * options.scale)), font=f_leg,
-                   fill=(140, 88, 24) if span.merged else (58, 66, 84))
+                label = (
+                    f"第 {span.first + 1} 轮 · {r[0].ts.strftime('%H:%M:%S')}–"
+                    f"{r[-1].ts.strftime('%H:%M:%S')} · {len(r)} 步"
+                )
+            d.rounded_rectangle(
+                [x, y_band, x + box_w, y_band + int(24 * options.scale)],
+                radius=int(6 * options.scale),
+                fill=(252, 226, 200) if span.merged else (226, 230, 238),
+                outline=(206, 140, 70) if span.merged else None,
+                width=2 if span.merged else 1,
+            )
+            d.text(
+                (x + int(8 * options.scale), y_band + int(4 * options.scale)),
+                fit_text(label, f_leg, box_w - int(16 * options.scale)),
+                font=f_leg,
+                fill=(140, 88, 24) if span.merged else (58, 66, 84),
+            )
             if span.merged:
                 # 右侧一根橙条贯穿整列：远看就能认出"这一列是压出来的"，不用去读列头小字
-                d.rectangle([x + box_w - int(4 * options.scale), y_band,
-                             x + box_w, bottom + int(12 * options.scale)], fill=(214, 140, 60))
-        y_band = max(pos[ci][-1][1] + pos[ci][-1][3] for ci in band) + int(96 * options.scale)
+                d.rectangle(
+                    [
+                        x + box_w - int(4 * options.scale),
+                        y_band,
+                        x + box_w,
+                        bottom + int(12 * options.scale),
+                    ],
+                    fill=(214, 140, 60),
+                )
+        y_band = max(pos[ci][-1][1] + pos[ci][-1][3] for ci in band) + int(
+            96 * options.scale
+        )
 
     # ---- 父节点分组框（在框与连线之前画，只当背景）----
     # 浅蓝底 + 同色系边框套住"同一个派发者连着派发的那几步"，左上角压一个深色实心角标写父节点名。
     # 角标压在第一格左上、与它重叠：重叠必须能读出来，所以不透明 + 白字，不给连线留穿透的余地
     # （连线在下一步才画，会绕不过角标——那一格的上边框端口因此改从角标右边出）。
     group_boxes: dict[tuple[int, int], tuple[int, int, int, int]] = {}
-    badge_boxes: dict[tuple[int, int], tuple[int, int, int, int]] = {}   # (ci, 末行) -> 角标矩形
+    badge_boxes: dict[tuple[int, int], tuple[int, int, int, int]] = (
+        {}
+    )  # (ci, 末行) -> 角标矩形
     if options.parents:
         inset = int(7 * options.scale)
         # 同名父节点用同一套颜色（一眼看出"又是它派发的"），不同父节点按**首次出现顺序**轮换配色
-        color_of: dict[str, tuple[tuple[int, int, int], tuple[int, int, int], tuple[int, int, int]]] = {}
+        color_of: dict[
+            str, tuple[tuple[int, int, int], tuple[int, int, int], tuple[int, int, int]]
+        ] = {}
         for cols in groups_of.values():
             for name, _first, _last in cols:
                 if name not in color_of:
@@ -2085,16 +2378,27 @@ def draw_flow(parsed: ParsedLog, options: FlowOptions, out_path: str) -> DrawRes
                 left, top = fx - inset, fy - group_badge_h - inset
                 right = fx + box_w + inset
                 bottom = ly + lh + inset + group_badge_h
-                d.rounded_rectangle([left, top, right, bottom], radius=int(9 * options.scale),
-                                    fill=fill, outline=edge, width=2)
+                d.rounded_rectangle(
+                    [left, top, right, bottom],
+                    radius=int(9 * options.scale),
+                    fill=fill,
+                    outline=edge,
+                    width=2,
+                )
                 # 角标按文字宽度收紧（不铺满整格宽，否则读起来像标题栏而不是标签）
                 text_w_badge = int(d.textlength(name, font=f_par))
                 bw = min(box_w - inset, text_w_badge + int(16 * options.scale))
-                d.rounded_rectangle([left, top, left + bw, top + group_badge_h],
-                                    radius=int(6 * options.scale), fill=badge_color)
-                d.text((left + int(7 * options.scale), top + int(3 * options.scale)),
-                       fit_text(name, f_par, bw - int(12 * options.scale)), font=f_par,
-                       fill=(255, 255, 255))
+                d.rounded_rectangle(
+                    [left, top, left + bw, top + group_badge_h],
+                    radius=int(6 * options.scale),
+                    fill=badge_color,
+                )
+                d.text(
+                    (left + int(7 * options.scale), top + int(3 * options.scale)),
+                    fit_text(name, f_par, bw - int(12 * options.scale)),
+                    font=f_par,
+                    fill=(255, 255, 255),
+                )
                 group_boxes[(ci, first)] = (left, top, right, bottom)
                 badge_boxes[(ci, last)] = (left, top, left + bw, top + group_badge_h)
 
@@ -2123,7 +2427,9 @@ def draw_flow(parsed: ParsedLog, options: FlowOptions, out_path: str) -> DrawRes
             return (x + w // 2, y + h)
         return (x + pad_port, y + h)
 
-    def in_port(ci: int, ri: int, cross_round: bool = False) -> tuple[tuple[int, int], str]:
+    def in_port(
+        ci: int, ri: int, cross_round: bool = False
+    ) -> tuple[tuple[int, int], str]:
         """返回 (接点坐标, 'top'|'left'|'right')，'left'/'right' 表示从左右边缘水平进入。
 
         这一格如果顶着父节点分组框的角标（角标压在第一格左上），入口就挪到角标**右边**：
@@ -2152,12 +2458,20 @@ def draw_flow(parsed: ParsedLog, options: FlowOptions, out_path: str) -> DrawRes
         ah = int(9 * options.scale)
         if abs(x1 - x0) >= abs(y1 - y0):  # 水平进入
             s = 1 if x1 > x0 else -1
-            d.polygon([(x1, y1), (x1 - s * ah, y1 - ah // 2), (x1 - s * ah, y1 + ah // 2)], fill=color)
+            d.polygon(
+                [(x1, y1), (x1 - s * ah, y1 - ah // 2), (x1 - s * ah, y1 + ah // 2)],
+                fill=color,
+            )
         else:  # 垂直进入
             s = 1 if y1 > y0 else -1
-            d.polygon([(x1, y1), (x1 - ah // 2, y1 - s * ah), (x1 + ah // 2, y1 - s * ah)], fill=color)
+            d.polygon(
+                [(x1, y1), (x1 - ah // 2, y1 - s * ah), (x1 + ah // 2, y1 - s * ah)],
+                fill=color,
+            )
 
-    def route(a: tuple[int, int], b: tuple[int, int], kind: str, bx: int, bw: int) -> None:
+    def route(
+        a: tuple[int, int], b: tuple[int, int], kind: str, bx: int, bw: int
+    ) -> None:
         if kind == "top":  # 竖直方向：上入下出
             y_mid = a[1] + max(int(14 * options.scale), (b[1] - a[1]) // 2)
             arrow([a, (a[0], y_mid), (b[0], y_mid), b], (150, 158, 174))
@@ -2166,8 +2480,16 @@ def draw_flow(parsed: ParsedLog, options: FlowOptions, out_path: str) -> DrawRes
             arrow([a, (x_lane, a[1]), (x_lane, b[1]), b], (120, 130, 150), width=3)
         else:  # 旧的"右下进"：从右边缘进
             x_lane = bx + bw + lane_gap
-            arrow([a, (a[0], a[1] + int(14 * options.scale)), (x_lane, a[1] + int(14 * options.scale)),
-                   (x_lane, b[1]), b], (150, 158, 174))
+            arrow(
+                [
+                    a,
+                    (a[0], a[1] + int(14 * options.scale)),
+                    (x_lane, a[1] + int(14 * options.scale)),
+                    (x_lane, b[1]),
+                    b,
+                ],
+                (150, 158, 174),
+            )
 
     band_of = {ci: bi for bi, band in enumerate(bands) for ci in band}
     over = int(26 * options.scale)
@@ -2189,59 +2511,122 @@ def draw_flow(parsed: ParsedLog, options: FlowOptions, out_path: str) -> DrawRes
             b2 = (bx + bw // 2, pos[nxt][0][1])
             corridor = pos[ci][-1][1] + pos[ci][-1][3] + over
             x_lane = (a[0] + b2[0]) // 2
-            arrow([a, (x_lane, a[1]), (x_lane, corridor), (b2[0], corridor), b2], (120, 130, 150), width=3)
+            arrow(
+                [a, (x_lane, a[1]), (x_lane, corridor), (b2[0], corridor), b2],
+                (120, 130, 150),
+                width=3,
+            )
 
     # ---- 框 ----
     from PIL import ImageOps
 
-    def draw_thumb(st: Step, entry: MediaEntry, exact: bool, note: str, x: int, y: int, w: int, h: int) -> None:
+    def draw_thumb(
+        st: Step,
+        entry: MediaEntry,
+        exact: bool,
+        note: str,
+        x: int,
+        y: int,
+        w: int,
+        h: int,
+    ) -> None:
         im = MediaResolver.open_image(entry)
         frame = im.crop((0, 0, min(1280, im.width), min(720, im.height)))
         if exact and st.box and st.box[2] > 0 and st.box[3] > 0:
             bx, by, bw, bh = st.box
             p = int(26 * options.scale)
-            crop = frame.crop((max(0, bx - p), max(0, by - p),
-                               min(frame.width, bx + bw + p), min(frame.height, by + bh + p)))
+            crop = frame.crop(
+                (
+                    max(0, bx - p),
+                    max(0, by - p),
+                    min(frame.width, bx + bw + p),
+                    min(frame.height, by + bh + p),
+                )
+            )
         else:
             crop = frame
         sx = x + w - pad - slot_w
         sy = y + (h - slot_h) // 2
-        d.rectangle([sx - 1, sy - 1, sx + slot_w + 1, sy + slot_h + 1], fill=(255, 255, 255), outline=(198, 204, 216))
+        d.rectangle(
+            [sx - 1, sy - 1, sx + slot_w + 1, sy + slot_h + 1],
+            fill=(255, 255, 255),
+            outline=(198, 204, 216),
+        )
         thumb = ImageOps.contain(crop, (slot_w - 2, slot_h - 2))
-        img.paste(thumb, (sx + (slot_w - thumb.width) // 2, sy + (slot_h - thumb.height) // 2))
+        img.paste(
+            thumb, (sx + (slot_w - thumb.width) // 2, sy + (slot_h - thumb.height) // 2)
+        )
         if note:
-            d.text((sx + 2, sy + slot_h - int(13 * options.scale)), note, font=f_det, fill=(168, 120, 40))
+            d.text(
+                (sx + 2, sy + slot_h - int(13 * options.scale)),
+                note,
+                font=f_det,
+                fill=(168, 120, 40),
+            )
 
     for ci, col in enumerate(columns):
         for ri, (x, y, w, h) in enumerate(pos[ci]):
             st = col[ri]
             cls = classify(st)
             fill, edge, ink = PALETTE[cls]
-            d.rounded_rectangle([x, y, x + w, y + h], radius=int(10 * options.scale),
-                                fill=fill, outline=edge, width=2)
+            d.rounded_rectangle(
+                [x, y, x + w, y + h],
+                radius=int(10 * options.scale),
+                fill=fill,
+                outline=edge,
+                width=2,
+            )
             got = thumb_of.get((ci, ri))
             text_w = (w - pad * 2) if not got else (w - slot_w - pad * 3)
             # 父节点那一行的右边界单独算：有图时**从图槽左边**过字（`draw_thumb` 只占右槽，
             # 字压在缩略图上是原来就有的行为），只按 `text_w` 量会把够宽的一行也截掉。
             row_w = (w - pad * 2) if not got else (w - slot_w - pad * 2)
-            d.text((x + pad, y + int(6 * options.scale)), st.ts.strftime("%H:%M:%S.%f")[:-3],
-                   font=f_det, fill=(126, 132, 148))
+            d.text(
+                (x + pad, y + int(6 * options.scale)),
+                st.ts.strftime("%H:%M:%S.%f")[:-3],
+                font=f_det,
+                fill=(126, 132, 148),
+            )
             label = st.name if st.run_len <= 1 else f"{st.name}  ×{st.run_len}"
-            d.text((x + pad, y + int(22 * options.scale)), fit_text(stale_label(label), f_name, text_w),
-                   font=f_name, fill=ink)
+            d.text(
+                (x + pad, y + int(22 * options.scale)),
+                fit_text(stale_label(label), f_name, text_w),
+                font=f_name,
+                fill=ink,
+            )
             det = st.detail
             if det:
-                d.text((x + pad, y + int(22 * options.scale) + int(options.font_size * options.scale) + int(6 * options.scale)),
-                       fit_text(det, f_det, text_w), font=f_det, fill=(88, 94, 110))
+                d.text(
+                    (
+                        x + pad,
+                        y
+                        + int(22 * options.scale)
+                        + int(options.font_size * options.scale)
+                        + int(6 * options.scale),
+                    ),
+                    fit_text(det, f_det, text_w),
+                    font=f_det,
+                    fill=(88, 94, 110),
+                )
             detail_line = parent_details(st)
             if detail_line:
                 # 父节点那部分已经进了分组框角标，这一行写的是"候选"（或"未记录"）
-                d.text((x + pad, y + h - parent_h + int(1 * options.scale)),
-                       fit_text(detail_line, f_par, row_w), font=f_par, fill=(120, 104, 148))
+                d.text(
+                    (x + pad, y + h - parent_h + int(1 * options.scale)),
+                    fit_text(detail_line, f_par, row_w),
+                    font=f_par,
+                    fill=(120, 104, 148),
+                )
             if got:
                 try:
                     draw_thumb(st, got[0], got[1], got[2], x, y, w, h)
-                except (OSError, ValueError, zipfile.BadZipFile, EOFError, zlib.error) as exc:
+                except (
+                    OSError,
+                    ValueError,
+                    zipfile.BadZipFile,
+                    EOFError,
+                    zlib.error,
+                ) as exc:
                     # 不吞异常：图贴不上必须能看出来（遥测的证据包可能是被截断的分卷、
                     # 也可能图片已被 log_dir 的 7 天清理删掉，两种都表现为读图失败）。
                     # 但一张坏图不该掀掉整张图，这一类"字节是坏的"异常都要接住：
@@ -2257,22 +2642,52 @@ def draw_flow(parsed: ParsedLog, options: FlowOptions, out_path: str) -> DrawRes
 
     # ---- 图例 ----
     if len(thumb_errors) > WARN_THUMB_LIMIT:
-        print(f"[警告] 另有 {len(thumb_errors) - WARN_THUMB_LIMIT} 张贴图失败（已省略）", file=sys.stderr)
+        print(
+            f"[警告] 另有 {len(thumb_errors) - WARN_THUMB_LIMIT} 张贴图失败（已省略）",
+            file=sys.stderr,
+        )
     lx = margin
     ly = height - int(46 * options.scale)
     d.text((lx, ly), "图例：", font=f_leg, fill=(60, 66, 80))
     lx += int(52 * options.scale)
-    for key, text in (("hit", "命中并执行"), ("custom", "自定义识别/动作"), ("direct", "DirectHit"),
-                      ("miss", "未命中（聚合）"), ("error", "超时/失败"), ("task", "任务起止")):
+    for key, text in (
+        ("hit", "命中并执行"),
+        ("custom", "自定义识别/动作"),
+        ("direct", "DirectHit"),
+        ("miss", "未命中（聚合）"),
+        ("error", "超时/失败"),
+        ("task", "任务起止"),
+    ):
         fill, edge, _ = PALETTE[key]
-        d.rounded_rectangle([lx, ly - int(2 * options.scale), lx + int(16 * options.scale), ly + int(14 * options.scale)],
-                            radius=3, fill=fill, outline=edge)
+        d.rounded_rectangle(
+            [
+                lx,
+                ly - int(2 * options.scale),
+                lx + int(16 * options.scale),
+                ly + int(14 * options.scale),
+            ],
+            radius=3,
+            fill=fill,
+            outline=edge,
+        )
         d.text((lx + int(22 * options.scale), ly), text, font=f_leg, fill=(70, 76, 92))
-        lx += int(22 * options.scale) + int(d.textlength(text, font=f_leg)) + int(22 * options.scale)
+        lx += (
+            int(22 * options.scale)
+            + int(d.textlength(text, font=f_leg))
+            + int(22 * options.scale)
+        )
     if overlay_groups:
-        d.rounded_rectangle([lx, ly - int(2 * options.scale),
-                             lx + int(16 * options.scale), ly + int(14 * options.scale)],
-                            radius=3, fill=(252, 226, 200), outline=(206, 140, 70))
+        d.rounded_rectangle(
+            [
+                lx,
+                ly - int(2 * options.scale),
+                lx + int(16 * options.scale),
+                ly + int(14 * options.scale),
+            ],
+            radius=3,
+            fill=(252, 226, 200),
+            outline=(206, 140, 70),
+        )
         text = f"合并列（连续重复且无截图，共 {overlay_groups} 段）"
         d.text((lx + int(22 * options.scale), ly), text, font=f_leg, fill=(140, 88, 24))
 
@@ -2280,9 +2695,17 @@ def draw_flow(parsed: ParsedLog, options: FlowOptions, out_path: str) -> DrawRes
     # 框数按折叠后的列算；轮数与列数分开报（调用方要能说出"合了几列"）
     shown = sum(1 for c in columns for s in c if s.kind == "hit")
     boxes = sum(len(c) for c in columns)
-    return DrawResult(width=img.width, height=img.height, steps=total_steps, boxes=boxes,
-                      shown=shown, rounds=round_count, columns=columns, spans=spans,
-                      rounds_shown=rounds)
+    return DrawResult(
+        width=img.width,
+        height=img.height,
+        steps=total_steps,
+        boxes=boxes,
+        shown=shown,
+        rounds=round_count,
+        columns=columns,
+        spans=spans,
+        rounds_shown=rounds,
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -2372,13 +2795,13 @@ class FlowResult:
     height: int
     steps: int
     boxes: int
-    rounds: int          # 原始轮数（折叠前）
-    columns: int = 0     # 图上实际列数（= rounds - 被合并掉的轮数）
-    overlay_groups: int = 0   # 合并了多少段（0 = 没有重复可合）
-    truncated_start: bool = False   # 日志只剩尾巴：第一行晚于请求的 --from
-    notes: list[str] = field(default_factory=list)      # 与图上第二行相同的诊断注记
-    derived_from: str = ""          # 非空 = 步骤由识别记录合成（仅事件模式）
-    out_of_order: int = 0           # 时间戳回跳的行数（>0 表示已按时间重排）
+    rounds: int  # 原始轮数（折叠前）
+    columns: int = 0  # 图上实际列数（= rounds - 被合并掉的轮数）
+    overlay_groups: int = 0  # 合并了多少段（0 = 没有重复可合）
+    truncated_start: bool = False  # 日志只剩尾巴：第一行晚于请求的 --from
+    notes: list[str] = field(default_factory=list)  # 与图上第二行相同的诊断注记
+    derived_from: str = ""  # 非空 = 步骤由识别记录合成（仅事件模式）
+    out_of_order: int = 0  # 时间戳回跳的行数（>0 表示已按时间重排）
     stale: StaleCheck | None = None  # 疑似过时的节点（None = 没做这项检查）
 
 
@@ -2442,7 +2865,7 @@ def _first_log_ts(log: Any) -> datetime | None:
             if m:
                 return parse_ts(m.group("ts"))
             if raw.strip():
-                return None      # 第一行有内容但不是日志行，说明这不是 maafw.log
+                return None  # 第一行有内容但不是日志行，说明这不是 maafw.log
     except (OSError, TypeError):
         return None
     return None
@@ -2464,24 +2887,38 @@ def describe_empty_window(parsed: ParsedLog, opts: FlowOptions, source: Any) -> 
     window = f"请求的窗口 {_fmt_ts(opts.t_from)} ~ {_fmt_ts(opts.t_to)}"
     if st.lines_total == 0:
         if st.source_kind == "path-missing":
-            return (f"入参像路径但磁盘上没有这个文件：{st.source_name}；"
-                    f"它也不含任何一行日志正文")
+            return (
+                f"入参像路径但磁盘上没有这个文件：{st.source_name}；"
+                f"它也不含任何一行日志正文"
+            )
         if st.source_kind == "file":
-            return (f"文件读到了，但没有一行匹配日志格式（不是 maafw.log？）：{st.source_name}")
+            return f"文件读到了，但没有一行匹配日志格式（不是 maafw.log？）：{st.source_name}"
         return f"入参里没有一行匹配日志格式，不是日志正文：{st.source_name}"
     if st.lines_in_window == 0:
-        return (f"窗口内没有日志行：日志时间范围 {_fmt_ts(st.first_ts)} ~ {_fmt_ts(st.last_ts)}；"
-                f"{window}")
+        return (
+            f"窗口内没有日志行：日志时间范围 {_fmt_ts(st.first_ts)} ~ {_fmt_ts(st.last_ts)}；"
+            f"{window}"
+        )
     if st.lines_other_task:
-        return (f"窗口内 {st.lines_in_window} 行里属于本 task（--task-id={opts.task_id}）的节点级记录"
-                f"一条都没有，有 {st.lines_other_task} 行是其他 task_id 的："
-                f"这个 task 在窗口内没跑过，或 task_id 写错了。{window}")
+        return (
+            f"窗口内 {st.lines_in_window} 行里属于本 task（--task-id={opts.task_id}）的节点级记录"
+            f"一条都没有，有 {st.lines_other_task} 行是其他 task_id 的："
+            f"这个 task 在窗口内没跑过，或 task_id 写错了。{window}"
+        )
     if st.lines_internal_skipped:
-        return (f"窗口内 {st.lines_in_window} 行只有内部识别记录（{st.lines_internal_skipped} 条，"
-                f"形如 recognition/OCR/<uuid>），默认过滤掉了；加 --keep-internal 可以看")
-    extra = f"，其中 {st.truncated_skipped} 条因导出截断读不出" if st.truncated_skipped else ""
-    return (f"窗口内 {st.lines_in_window} 行里没有节点级记录（PipelineTask node done），"
-            f"也没有可用的识别结果（reco [result=...]）{extra}。{window}")
+        return (
+            f"窗口内 {st.lines_in_window} 行只有内部识别记录（{st.lines_internal_skipped} 条，"
+            f"形如 recognition/OCR/<uuid>），默认过滤掉了；加 --keep-internal 可以看"
+        )
+    extra = (
+        f"，其中 {st.truncated_skipped} 条因导出截断读不出"
+        if st.truncated_skipped
+        else ""
+    )
+    return (
+        f"窗口内 {st.lines_in_window} 行里没有节点级记录（PipelineTask node done），"
+        f"也没有可用的识别结果（reco [result=...]）{extra}。{window}"
+    )
 
 
 def nextlist_stats_of(parsed: ParsedLog, task_id: int | None) -> list[NextListStat]:
@@ -2489,13 +2926,17 @@ def nextlist_stats_of(parsed: ParsedLog, task_id: int | None) -> list[NextListSt
 
     `task_id is None` 时返回全部（整份日志里所有任务），调用方自己决定要不要限定。
     """
-    stats = [s for (tid, _name), s in parsed.nextlist_stats.items()
-             if task_id is None or tid == task_id]
+    stats = [
+        s
+        for (tid, _name), s in parsed.nextlist_stats.items()
+        if task_id is None or tid == task_id
+    ]
     return sorted(stats, key=lambda s: (-s.failed, -(s.starting + s.succeeded)))
 
 
-def stall_notes(parsed: ParsedLog, task_id: int | None, step_names: set[str],
-                limit: int = 2) -> list[str]:
+def stall_notes(
+    parsed: ParsedLog, task_id: int | None, step_names: set[str], limit: int = 2
+) -> list[str]:
     """把"卡在派发层"的任务说清楚：某派发者的候选表连续 N 轮一个都没命中。
 
     这是"node done 只有两三步、时间却过了十几秒"那类任务的**唯一可复现证据**——`reco [result=]`
@@ -2513,7 +2954,11 @@ def stall_notes(parsed: ParsedLog, task_id: int | None, step_names: set[str],
         head = f"{stat.name} 的候选表 {stat.failed} 轮全未命中"
         if stat.real_candidates:
             shown = " ・ ".join(stat.real_candidates[:4])
-            more = f" 另 {len(stat.real_candidates) - 4} 项" if len(stat.real_candidates) > 4 else ""
+            more = (
+                f" 另 {len(stat.real_candidates) - 4} 项"
+                if len(stat.real_candidates) > 4
+                else ""
+            )
             head += f"（候选 {shown}{more}）"
         if not ran:
             head += "，一个候选都没跑起来：任务一直停在派发层"
@@ -2541,11 +2986,15 @@ def build_notes(parsed: ParsedLog, opts: FlowOptions) -> list[str]:
     if opts.task_id is not None:
         notes.extend(stall_notes(parsed, opts.task_id, {s.name for s in parsed.steps}))
     elif len(task_ids) == 1:
-        notes.extend(stall_notes(parsed, next(iter(task_ids)), {s.name for s in parsed.steps}))
+        notes.extend(
+            stall_notes(parsed, next(iter(task_ids)), {s.name for s in parsed.steps})
+        )
     # 父节点只在"日志里确实有派发记录、却有步骤没归上"时才提示；全归上了就不刷屏
     if st.nextlist_seen and (st.parent_fallback_entry or st.parent_unknown):
         missed = st.parent_fallback_entry + st.parent_unknown
-        notes.append(f"{missed} 步的父节点没落在本窗口的派发记录里，已退回任务入口或留空")
+        notes.append(
+            f"{missed} 步的父节点没落在本窗口的派发记录里，已退回任务入口或留空"
+        )
     if opts.parents and st.nextlist_seen == 0 and (parsed.steps or parsed.attempts):
         notes.append("日志里没有 Node.NextList 事件，父节点只能留空")
     if st.out_of_order:
@@ -2555,7 +3004,9 @@ def build_notes(parsed: ParsedLog, opts: FlowOptions) -> list[str]:
     if st.truncated_kept:
         notes.append(f"{st.truncated_kept} 条记录尾部被截断，数字可能不全")
     if st.events_dropped:
-        notes.append(f"已排除其他 task 的 {st.events_dropped} 条失败事件（本会画进图里）")
+        notes.append(
+            f"已排除其他 task 的 {st.events_dropped} 条失败事件（本会画进图里）"
+        )
     notes.extend(stale_notes(opts.stale))
     return notes
 
@@ -2576,13 +3027,17 @@ def stale_notes(check: StaleCheck | None) -> list[str]:
         for node in check.nodes[:4]:
             parts.append(f"{node.name}（{node.module}，最新 {node.last_commit}）")
         more = f"；另 {len(check.nodes) - 4} 个" if len(check.nodes) > 4 else ""
-        notes.append(f"{len(check.nodes)} 个节点疑似过时（{check.version} 时的定义与现在不同）："
-                     f"{'；'.join(parts)}{more}——只标疑似，改动有没有影响这个节点的行为要自己核对")
+        notes.append(
+            f"{len(check.nodes)} 个节点疑似过时（{check.version} 时的定义与现在不同）："
+            f"{'；'.join(parts)}{more}——只标疑似，改动有没有影响这个节点的行为要自己核对"
+        )
     if check.missing:
         shown = " ・ ".join(check.missing[:6])
         more = f" 另 {len(check.missing) - 6} 个" if len(check.missing) > 6 else ""
-        notes.append(f"{len(check.missing)} 个节点在当前 pipeline 里找不到（已被改名或删除）："
-                     f"{shown}{more}")
+        notes.append(
+            f"{len(check.missing)} 个节点在当前 pipeline 里找不到（已被改名或删除）："
+            f"{shown}{more}"
+        )
     return notes
 
 
@@ -2596,20 +3051,24 @@ def stale_summary(check: StaleCheck | None) -> str | None:
         return None
     names = "、".join(n.name for n in check.nodes[:5])
     more = f" 等 {len(check.nodes)} 个" if len(check.nodes) > 5 else ""
-    return (f"疑似过时：{len(check.nodes)} 个节点在 {check.version} 之后改过"
-            f"（{names}{more}）——图里这些节点名带「疑似过时」，"
-            f"改动有没有影响它们的行为要自己核对")
+    return (
+        f"疑似过时：{len(check.nodes)} 个节点在 {check.version} 之后改过"
+        f"（{names}{more}）——图里这些节点名带「疑似过时」，"
+        f"改动有没有影响它们的行为要自己核对"
+    )
 
 
-def render_flow(log,
-                *,
-                vision: Any = None,
-                on_error: Any = None,
-                out: str | None = None,
-                outdir: str | None = None,
-                options: FlowOptions | None = None,
-                mermaid: bool = False,
-                list_only: bool = False) -> FlowResult | str:
+def render_flow(
+    log,
+    *,
+    vision: Any = None,
+    on_error: Any = None,
+    out: str | None = None,
+    outdir: str | None = None,
+    options: FlowOptions | None = None,
+    mermaid: bool = False,
+    list_only: bool = False,
+) -> FlowResult | str:
     """解析日志并画流程图；库调用入口，与命令行共用同一实现。
 
     ``log`` 可以是文件路径、日志正文，或任何可逐行的文本流——遥测从 Sentry 取回的
@@ -2628,8 +3087,9 @@ def render_flow(log,
                     on_error = MediaResolver(cand)
                     break
 
-    parsed = parse_log(log, opts.t_from, opts.t_to, opts.task_id, opts.keep_internal,
-                       px=opts.px)
+    parsed = parse_log(
+        log, opts.t_from, opts.t_to, opts.task_id, opts.keep_internal, px=opts.px
+    )
     raw = round_steps(parsed, opts)
     if not raw:
         raise ValueError(describe_empty_window(parsed, opts, log))
@@ -2638,7 +3098,8 @@ def render_flow(log,
     # 要在 build_notes 之前算，标过的节点名才能进注记。
     if opts.stale_check:
         opts.stale = check_stale_nodes(
-            Path(REPO_ROOT), {s.name for s in raw}, _log_version_of(log))
+            Path(REPO_ROOT), {s.name for s in raw}, _log_version_of(log)
+        )
         _apply_stale(opts.stale)
 
     notes = build_notes(parsed, opts)
@@ -2653,27 +3114,39 @@ def render_flow(log,
 
     if list_only:
         parents, _ = roles(raw, opts.repeat_threshold)
-        cut = ({n.strip() for n in opts.cut_on.split(",") if n.strip()} if opts.cut_on
-               else choose_cut_set(raw, parents, opts.min_round_len))
+        cut = (
+            {n.strip() for n in opts.cut_on.split(",") if n.strip()}
+            if opts.cut_on
+            else choose_cut_set(raw, parents, opts.min_round_len)
+        )
         hard_cut = {n for n in cut if n not in parents}
         rounds = build_rounds(raw, opts.min_round_len, cut, hard_cut)
-        cols = compose_columns(parsed, rounds, opts.miss_min, opts.collapse, opts.miss_max)
+        cols = compose_columns(
+            parsed, rounds, opts.miss_min, opts.collapse, opts.miss_max
+        )
         lines: list[str] = []
         for i, col in enumerate(cols):
             lines.append(f"--- 轮 {i + 1} ---")
             for s in col:
                 tag = {"miss": "[未命中]", "event": "[事件]"}.get(s.kind, "")
-                lines.append(f"  {s.ts.strftime('%H:%M:%S.%f')[:-3]}  {stale_label(s.name):<34}{tag} {s.detail}")
+                lines.append(
+                    f"  {s.ts.strftime('%H:%M:%S.%f')[:-3]}  {stale_label(s.name):<34}{tag} {s.detail}"
+                )
                 if opts.parents:
                     # 纯文本不省候选（图上会折成"另 N 项"，这里给全，排查时省一次翻日志）
                     lines.append(f"  {'':<12}└ {s.parent_detail(full=True)}")
-        lines.append(f"\n共 {len(parsed.steps)} 步 / {len(rounds)} 轮；"
-                     f"锚点={opts.anchor or anchor_of(raw, rounds)}；"
-                     f"分轮节点={','.join(sorted(cut))}")
+        lines.append(
+            f"\n共 {len(parsed.steps)} 步 / {len(rounds)} 轮；"
+            f"锚点={opts.anchor or anchor_of(raw, rounds)}；"
+            f"分轮节点={','.join(sorted(cut))}"
+        )
         # 父节点评估账：node done 很少时，这里是"这段时间到底在干什么"的唯一证据
         # （`reco` 行没有 task_id，只能靠带 task_id 的 Node.NextList 事件说清）
-        pairs = [(tid, stat) for (tid, _n), stat in parsed.nextlist_stats.items()
-                 if opts.task_id is None or tid == opts.task_id]
+        pairs = [
+            (tid, stat)
+            for (tid, _n), stat in parsed.nextlist_stats.items()
+            if opts.task_id is None or tid == opts.task_id
+        ]
         pairs.sort(key=lambda kv: (-kv[1].failed, -(kv[1].starting + kv[1].succeeded)))
         if pairs:
             multi_task = len({t for t, _s in pairs if t is not None}) > 1
@@ -2681,12 +3154,18 @@ def render_flow(log,
             width = max(len(stat.name) for _t, stat in pairs) + 2
             for tid, stat in pairs[:12]:
                 where = f" task={tid}" if multi_task and tid is not None else ""
-                lines.append(f"  {stat.name:<{width}}未命中 {stat.failed:>3} 轮 / 开始 {stat.starting:>3} / "
-                             f"命中 {stat.succeeded:>3}{where}")
+                lines.append(
+                    f"  {stat.name:<{width}}未命中 {stat.failed:>3} 轮 / 开始 {stat.starting:>3} / "
+                    f"命中 {stat.succeeded:>3}{where}"
+                )
                 if stat.real_candidates:
-                    lines.append(f"  {'':<{width}}候选：{' ・ '.join(stat.real_candidates)}")
+                    lines.append(
+                        f"  {'':<{width}}候选：{' ・ '.join(stat.real_candidates)}"
+                    )
             if len(pairs) > 12:
-                lines.append(f"  ……另有 {len(pairs) - 12} 个派发者（按未命中轮数排前 12）")
+                lines.append(
+                    f"  ……另有 {len(pairs) - 12} 个派发者（按未命中轮数排前 12）"
+                )
         for note in notes:
             lines.append(f"提示：{note}")
         return "\n".join(lines)
@@ -2702,7 +3181,11 @@ def render_flow(log,
     opts.vision, opts.on_error = vision, on_error
     opts.truncated_start = truncated_start
     opts.notes = notes
-    opts.log = str(log) if isinstance(log, str) and "\n" not in log else _log_basename(log) + ".log"
+    opts.log = (
+        str(log)
+        if isinstance(log, str) and "\n" not in log
+        else _log_basename(log) + ".log"
+    )
     try:
         drawn = draw_flow(parsed, opts, target)
     except ModuleNotFoundError as exc:
@@ -2722,8 +3205,11 @@ def render_flow(log,
             fh.write("flowchart TD\n")
             for i, r in enumerate(rnds):
                 span = drawn.spans[i]
-                head = (f"第 {span.first + 1}–{span.last + 1} 轮 ×{span.count}"
-                        if span.merged else f"第 {span.first + 1} 轮")
+                head = (
+                    f"第 {span.first + 1}–{span.last + 1} 轮 ×{span.count}"
+                    if span.merged
+                    else f"第 {span.first + 1} 轮"
+                )
                 fh.write(f"  subgraph R{i + 1}[{head}]\n    direction TB\n")
                 for j, s in enumerate(r):
                     fh.write(f'    n{i}_{j}["{stale_label(s.name)}"]\n')
@@ -2745,12 +3231,22 @@ def render_flow(log,
                         if src and src != f"n{i}_{j}":
                             fh.write(f"  {src} -.->|派发| n{i}_{j}\n")
 
-    return FlowResult(path=target, mermaid=mermaid_path, width=drawn.width, height=drawn.height,
-                      steps=drawn.steps, boxes=drawn.boxes, rounds=drawn.rounds,
-                      columns=drawn.column_count, overlay_groups=drawn.overlay_groups,
-                      truncated_start=truncated_start,
-                      notes=list(notes), derived_from=parsed.derived_from,
-                      out_of_order=parsed.stats.out_of_order, stale=opts.stale)
+    return FlowResult(
+        path=target,
+        mermaid=mermaid_path,
+        width=drawn.width,
+        height=drawn.height,
+        steps=drawn.steps,
+        boxes=drawn.boxes,
+        rounds=drawn.rounds,
+        columns=drawn.column_count,
+        overlay_groups=drawn.overlay_groups,
+        truncated_start=truncated_start,
+        notes=list(notes),
+        derived_from=parsed.derived_from,
+        out_of_order=parsed.stats.out_of_order,
+        stale=opts.stale,
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -2762,7 +3258,13 @@ def parse_time(s: str | None) -> datetime | None:
     if not s:
         return None
     s = s.strip()
-    for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%H:%M:%S", "%H:%M"):
+    for fmt in (
+        "%Y-%m-%d %H:%M:%S.%f",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d %H:%M",
+        "%H:%M:%S",
+        "%H:%M",
+    ):
         try:
             dt = datetime.strptime(s, fmt)
         except ValueError:
@@ -2820,64 +3322,158 @@ def create_argument_parser(prog: str | None = None) -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(
         prog=prog,
         description="maafw.log → 实际执行流程图（横向=轮次、纵向=轮内顺序；"
-                    "默认输出到仓库根的 temp/flow/）",
+        "默认输出到仓库根的 temp/flow/）",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    ap.add_argument("log", help="maafw.log 路径（也可以是 MFA 导出的 zip 里的那份，见 --vision 的说明）")
-    ap.add_argument("--vision", default=None,
-                    help="vision 目录，或 MFA 导出包（zip / 多个 archive-partNN.zip），或它们的父目录（如 debug/）")
-    ap.add_argument("--on-error", dest="on_error", default=None,
-                    help="on_error 目录或导出包（可选，默认取 --vision 同级的 on_error；给超时/失败框贴现场图）")
-    ap.add_argument("--out", default=None, help=f"输出 PNG（默认 {DEFAULT_OUTDIR}/<日志名>_<时间戳>.png）")
-    ap.add_argument("--outdir", default=None, help=f"只改输出目录（默认 {DEFAULT_OUTDIR}）")
-    ap.add_argument("--from", dest="t_from", default=None, help="起始时间，支持 'HH:MM:SS' 或完整时间戳")
+    ap.add_argument(
+        "log",
+        help="maafw.log 路径（也可以是 MFA 导出的 zip 里的那份，见 --vision 的说明）",
+    )
+    ap.add_argument(
+        "--vision",
+        default=None,
+        help="vision 目录，或 MFA 导出包（zip / 多个 archive-partNN.zip），或它们的父目录（如 debug/）",
+    )
+    ap.add_argument(
+        "--on-error",
+        dest="on_error",
+        default=None,
+        help="on_error 目录或导出包（可选，默认取 --vision 同级的 on_error；给超时/失败框贴现场图）",
+    )
+    ap.add_argument(
+        "--out",
+        default=None,
+        help=f"输出 PNG（默认 {DEFAULT_OUTDIR}/<日志名>_<时间戳>.png）",
+    )
+    ap.add_argument(
+        "--outdir", default=None, help=f"只改输出目录（默认 {DEFAULT_OUTDIR}）"
+    )
+    ap.add_argument(
+        "--from",
+        dest="t_from",
+        default=None,
+        help="起始时间，支持 'HH:MM:SS' 或完整时间戳",
+    )
     ap.add_argument("--to", dest="t_to", default=None, help="结束时间")
     ap.add_argument("--task-id", type=int, default=None, help="只看某个 task_id")
-    ap.add_argument("--pid", type=str, default=None,
-                    help="只看某个进程（`Px<pid>` 形态），与 --task-id 一起用于区分跨进程复用的任务编号")
-    ap.add_argument("--anchor", default=None, help="手动指定循环锚点（只影响标题显示，默认自动）")
-    ap.add_argument("--cut-on", default=None,
-                    help="手动指定分轮节点，逗号分隔（默认自动：父节点里重复出现的；只有一轮时再取最高频节点）")
-    ap.add_argument("--collapse", type=int, default=3, help="连续同名节点折叠为 ×N 的阈值（默认 3，1=不折叠）")
-    ap.add_argument("--repeat-threshold", type=int, default=2, help="出现次数 >= N 视为重要节点（左下出/右上进，默认 2）")
-    ap.add_argument("--min-round-len", type=int, default=2, help="一轮至少多少步（默认 2）")
-    ap.add_argument("--miss-min", type=int, default=5, help="连续未命中几次才画成聚合框（默认 5，0=全部显示）")
-    ap.add_argument("--miss-max", type=int, default=8, help="每轮最多画几个未命中聚合框（默认 8，0=不限）")
+    ap.add_argument(
+        "--pid",
+        type=str,
+        default=None,
+        help="只看某个进程（`Px<pid>` 形态），与 --task-id 一起用于区分跨进程复用的任务编号",
+    )
+    ap.add_argument(
+        "--anchor", default=None, help="手动指定循环锚点（只影响标题显示，默认自动）"
+    )
+    ap.add_argument(
+        "--cut-on",
+        default=None,
+        help="手动指定分轮节点，逗号分隔（默认自动：父节点里重复出现的；只有一轮时再取最高频节点）",
+    )
+    ap.add_argument(
+        "--collapse",
+        type=int,
+        default=3,
+        help="连续同名节点折叠为 ×N 的阈值（默认 3，1=不折叠）",
+    )
+    ap.add_argument(
+        "--repeat-threshold",
+        type=int,
+        default=2,
+        help="出现次数 >= N 视为重要节点（左下出/右上进，默认 2）",
+    )
+    ap.add_argument(
+        "--min-round-len", type=int, default=2, help="一轮至少多少步（默认 2）"
+    )
+    ap.add_argument(
+        "--miss-min",
+        type=int,
+        default=5,
+        help="连续未命中几次才画成聚合框（默认 5，0=全部显示）",
+    )
+    ap.add_argument(
+        "--miss-max",
+        type=int,
+        default=8,
+        help="每轮最多画几个未命中聚合框（默认 8，0=不限）",
+    )
     ap.add_argument("--max-rounds", type=int, default=40, help="最多画多少轮")
-    ap.add_argument("--ports", choices=["pos", "role"], default="pos",
-                    help="端口规则：pos=按方向（竖直相邻上入下出、水平相邻左入右出，默认）；"
-                         "role=按节点角色（重要节点左下出/右上进，父节点左下出/右下进）")
-    ap.add_argument("--cols-per-band", type=int, default=0,
-                    help="一行放几轮；默认 0 = 不换行，空间不够就一直往右延伸")
-    ap.add_argument("--keep-internal", action="store_true", help="保留 agent 内联识别（recognition/OCR/<uuid>）")
+    ap.add_argument(
+        "--ports",
+        choices=["pos", "role"],
+        default="pos",
+        help="端口规则：pos=按方向（竖直相邻上入下出、水平相邻左入右出，默认）；"
+        "role=按节点角色（重要节点左下出/右上进，父节点左下出/右下进）",
+    )
+    ap.add_argument(
+        "--cols-per-band",
+        type=int,
+        default=0,
+        help="一行放几轮；默认 0 = 不换行，空间不够就一直往右延伸",
+    )
+    ap.add_argument(
+        "--keep-internal",
+        action="store_true",
+        help="保留 agent 内联识别（recognition/OCR/<uuid>）",
+    )
     ap.add_argument("--no-thumbs", dest="thumbs", action="store_false", help="不贴截图")
-    ap.add_argument("--no-parents", dest="parents", action="store_false",
-                    help="框里不写父节点那一行。父节点 = **本轮的派发者**（来自 Node.NextList 事件），"
-                         "不是配置里的层级：next 是有序候选集，同一节点可被多处派发，所以是调用图不是树")
-    ap.add_argument("--no-overlay", dest="overlay", action="store_false",
-                    help="不合并重复轮次。默认把**连续、同形、整轮无截图且无失败框**的轮次并成一列"
-                         "（列头写「第 a–b 轮 · ×N」，右侧橙条标出），图因此窄很多；"
-                         "要看逐轮时间就关掉它")
-    ap.add_argument("--overlay-min", type=int, default=2,
-                    help="连续几轮同形才合并（默认 2；0 或 1 等于关闭）")
-    ap.add_argument("--no-stale-check", dest="stale_check", action="store_false",
-                    help="不查「节点疑似过时」。默认会从日志里取安装版本号（MaaAshArms-win-x86_64-vX.Y.Z），"
-                         "再看该节点所在 pipeline 模块在那个版本之后有没有提交；有就把节点名标成「疑似过时」。"
-                         "只标疑似，不判断节点本身有没有变。取不到版本号时注记会写明原因")
-    ap.add_argument("--thumb-height", type=int, default=132, help="截图高度 px（默认 132）")
+    ap.add_argument(
+        "--no-parents",
+        dest="parents",
+        action="store_false",
+        help="框里不写父节点那一行。父节点 = **本轮的派发者**（来自 Node.NextList 事件），"
+        "不是配置里的层级：next 是有序候选集，同一节点可被多处派发，所以是调用图不是树",
+    )
+    ap.add_argument(
+        "--no-overlay",
+        dest="overlay",
+        action="store_false",
+        help="不合并重复轮次。默认把**连续、同形、整轮无截图且无失败框**的轮次并成一列"
+        "（列头写「第 a–b 轮 · ×N」，右侧橙条标出），图因此窄很多；"
+        "要看逐轮时间就关掉它",
+    )
+    ap.add_argument(
+        "--overlay-min",
+        type=int,
+        default=2,
+        help="连续几轮同形才合并（默认 2；0 或 1 等于关闭）",
+    )
+    ap.add_argument(
+        "--no-stale-check",
+        dest="stale_check",
+        action="store_false",
+        help="不查「节点疑似过时」。默认会从日志里取安装版本号（MaaAshArms-win-x86_64-vX.Y.Z），"
+        "再看该节点所在 pipeline 模块在那个版本之后有没有提交；有就把节点名标成「疑似过时」。"
+        "只标疑似，不判断节点本身有没有变。取不到版本号时注记会写明原因",
+    )
+    ap.add_argument(
+        "--thumb-height", type=int, default=132, help="截图高度 px（默认 132）"
+    )
     ap.add_argument("--box-width", type=int, default=470)
     ap.add_argument("--box-height", type=int, default=66)
-    ap.add_argument("--gap-y", type=int, default=36, help="同一列里相邻框的间距（默认 36）")
-    ap.add_argument("--gap-error", type=int, default=64, help="未命中/异常框相邻时的间距（默认 64，别挤在一起）")
+    ap.add_argument(
+        "--gap-y", type=int, default=36, help="同一列里相邻框的间距（默认 36）"
+    )
+    ap.add_argument(
+        "--gap-error",
+        type=int,
+        default=64,
+        help="未命中/异常框相邻时的间距（默认 64，别挤在一起）",
+    )
     ap.add_argument("--gap-x", type=int, default=120, help="列间距（默认 120）")
     ap.add_argument("--font-size", type=int, default=16)
     ap.add_argument("--scale", type=float, default=1.0)
     ap.add_argument("--title", default=None)
     ap.add_argument("--list", action="store_true", help="只打印解析出的步骤，不画图")
-    ap.add_argument("--list-tasks", action="store_true",
-                    help="只列出日志里的所有任务（进程 / task_id / 入口 / 起止 / 步数），不画图。"
-                         "多进程日志里同一编号会出现在不同进程下，配 --pid + --task-id 才能唯一定位")
-    ap.add_argument("--mermaid", action="store_true", help="额外输出同名 .mmd（Mermaid 文本流程图）")
+    ap.add_argument(
+        "--list-tasks",
+        action="store_true",
+        help="只列出日志里的所有任务（进程 / task_id / 入口 / 起止 / 步数），不画图。"
+        "多进程日志里同一编号会出现在不同进程下，配 --pid + --task-id 才能唯一定位",
+    )
+    ap.add_argument(
+        "--mermaid", action="store_true", help="额外输出同名 .mmd（Mermaid 文本流程图）"
+    )
     ap.set_defaults(thumbs=True, parents=True, overlay=True, stale_check=True)
     return ap
 
@@ -2889,22 +3485,36 @@ def main(argv: list[str] | None = None) -> int:
     if args.list_tasks:
         tasks = scan_tasks(args.log, options.t_from, options.t_to)
         if not tasks:
-            print("错误：日志里没有任何任务（没有 PipelineTask node done，也没有 task start）。",
-                  file=sys.stderr)
+            print(
+                "错误：日志里没有任何任务（没有 PipelineTask node done，也没有 task start）。",
+                file=sys.stderr,
+            )
             return 1
-        head = f"{'进程':<9} {'task_id':>9}  {'步数':>4}  {'开始':<23} {'结束':<23} 入口"
+        head = (
+            f"{'进程':<9} {'task_id':>9}  {'步数':>4}  {'开始':<23} {'结束':<23} 入口"
+        )
         print(head)
         print("-" * len(head))
         for t in tasks:
-            print(f"{t.px:<9} {t.task_id:>9}  {t.steps:>4}  "
-                  f"{_fmt_ts(t.first_ts):<23} {_fmt_ts(t.last_ts):<23} {t.entry}")
-        print(f"\n共 {len(tasks)} 个任务。多进程日志里同一 task_id 会出现在不同进程下，"
-              f"用 `--pid <进程> --task-id <编号>` 唯一定位一个。")
+            print(
+                f"{t.px:<9} {t.task_id:>9}  {t.steps:>4}  "
+                f"{_fmt_ts(t.first_ts):<23} {_fmt_ts(t.last_ts):<23} {t.entry}"
+            )
+        print(
+            f"\n共 {len(tasks)} 个任务。多进程日志里同一 task_id 会出现在不同进程下，"
+            f"用 `--pid <进程> --task-id <编号>` 唯一定位一个。"
+        )
         return 0
 
     try:
-        result = render_flow(args.log, out=args.out, outdir=args.outdir,
-                             options=options, mermaid=args.mermaid, list_only=args.list)
+        result = render_flow(
+            args.log,
+            out=args.out,
+            outdir=args.outdir,
+            options=options,
+            mermaid=args.mermaid,
+            list_only=args.list,
+        )
     except ValueError as exc:
         print(f"错误：{exc}", file=sys.stderr)
         return 1
@@ -2917,17 +3527,25 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     assert isinstance(result, FlowResult)
-    merged = (f"（{result.overlay_groups} 段重复已合并 → {result.columns} 列）"
-              if result.overlay_groups else "")
-    print(f"步骤 {result.steps}（折叠后 {result.boxes} 个框）/ 轮次 {result.rounds}{merged}"
-          f" → {result.path}  ({result.width}×{result.height})")
+    merged = (
+        f"（{result.overlay_groups} 段重复已合并 → {result.columns} 列）"
+        if result.overlay_groups
+        else ""
+    )
+    print(
+        f"步骤 {result.steps}（折叠后 {result.boxes} 个框）/ 轮次 {result.rounds}{merged}"
+        f" → {result.path}  ({result.width}×{result.height})"
+    )
     # 「疑似过时」命中：画完图后显式打一行（notes 里也有，但那是 stderr 的注记）
     summary = stale_summary(result.stale)
     if summary:
         print(summary)
     if result.truncated_start:
-        print("提示：日志第一行晚于 --from，这份日志只包含了窗口的后半段（遥测附件只带 tail），"
-              "窗口开头的过程不在图里", file=sys.stderr)
+        print(
+            "提示：日志第一行晚于 --from，这份日志只包含了窗口的后半段（遥测附件只带 tail），"
+            "窗口开头的过程不在图里",
+            file=sys.stderr,
+        )
     for note in result.notes:
         # 与图上第二行同一批注记：终端里再打一遍，免得只看 stdout 的人漏掉读图前提
         print(f"提示：{note}", file=sys.stderr)

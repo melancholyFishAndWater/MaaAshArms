@@ -208,14 +208,26 @@ def discover_versions(
 
     # 选"数据量最大的"版本，而不是"版本号最新的"。
     # min_users 门槛已保证选出来的是"有人真实跑过"的版本。
-    qualified = [key for key in sorted(filtered_users, key=lambda k: (-filtered_users[k], -k[0], -k[2], -k[4])) if filtered_users[key] >= min_users]
+    qualified = [
+        key
+        for key in sorted(
+            filtered_users, key=lambda k: (-filtered_users[k], -k[0], -k[2], -k[4])
+        )
+        if filtered_users[key] >= min_users
+    ]
     if qualified:
         return keys_to_labels(qualified[: count + 1], filtered_labels)
 
     # 放宽到「口径内出现过的全部版本」。口径外的版本只在口径内一个都没有时才兜底，
     # 否则 --stable-only 会被悄悄忽略。
     unit = "独立用户" if saw_user_count else "运行"
-    relaxed = [key for key in sorted(filtered_users, key=lambda k: (-filtered_users[k], -k[0], -k[2], -k[4])) if filtered_users[key] > 0]
+    relaxed = [
+        key
+        for key in sorted(
+            filtered_users, key=lambda k: (-filtered_users[k], -k[0], -k[2], -k[4])
+        )
+        if filtered_users[key] > 0
+    ]
     if relaxed:
         note = f"没有达到 {min_users} 位{unit}的版本，已放宽到口径内出现过的全部版本"
         if not include_prerelease:
@@ -223,7 +235,13 @@ def discover_versions(
         show_progress(f"[提示] {note}。", quiet=quiet)
         return keys_to_labels(relaxed[: count + 1], filtered_labels)
 
-    fallback = [key for key in sorted(version_users, key=lambda k: (-version_users[k], -k[0], -k[2], -k[4])) if version_users[key] > 0]
+    fallback = [
+        key
+        for key in sorted(
+            version_users, key=lambda k: (-version_users[k], -k[0], -k[2], -k[4])
+        )
+        if version_users[key] > 0
+    ]
     if not fallback:
         return []
     if not include_prerelease:
@@ -252,7 +270,9 @@ def resolve_task_name(task_filter: str, candidates: Iterable[str]) -> str:
         return fuzzy[0]
     if len(fuzzy) > 1:
         listed = "、".join(f"'{match}'" for match in fuzzy)
-        raise ValueError(f"任务筛选 '{task_filter}' 匹配到多个候选：{listed}。请指定更精确的名称。")
+        raise ValueError(
+            f"任务筛选 '{task_filter}' 匹配到多个候选：{listed}。请指定更精确的名称。"
+        )
     return task_filter
 
 
@@ -319,7 +339,15 @@ def build_trend_rows(
                     total=total,
                     failed=failed,
                     failure_rate=rate,
-                    delta_pp=_delta_pp(index, versions, total, rate, task_totals, task_failures, target_task),
+                    delta_pp=_delta_pp(
+                        index,
+                        versions,
+                        total,
+                        rate,
+                        task_totals,
+                        task_failures,
+                        target_task,
+                    ),
                 )
             )
 
@@ -327,7 +355,7 @@ def build_trend_rows(
     for task in sorted(all_tasks):
         if _is_ignored(task):
             continue
-        # 未显式筛选任务时，排除没有成功样本的纯失败标记（如 ReturnMain、HomeFlag）。
+        # 未显式筛选任务时，排除没有成功样本的纯失败标记（如 BaseReturnHome、HomeFlag）。
         if not task_filter and task_oks.get(task, 0) == 0:
             continue
 
@@ -346,7 +374,9 @@ def build_trend_rows(
             rate = (failed / total) if total > 0 else None
             rates[version] = rate
             totals_by_version[version] = total
-            deltas[version] = _delta_pp(index, versions, total, rate, task_totals, task_failures, task)
+            deltas[version] = _delta_pp(
+                index, versions, total, rate, task_totals, task_failures, task
+            )
 
         rows.append(
             TaskTrendRow(
@@ -451,7 +481,11 @@ def build_report(
     shown = resolved_task_filter or task_filter
     if task_filter and resolved_task_filter is None:
         # 候选池来自过滤前的全量任务名，不能从 rows 取——rows 是过滤后的结果。
-        pool = {str(row["description"]) for row in (*totals, *statuses) if isinstance(row.get("description"), str)}
+        pool = {
+            str(row["description"])
+            for row in (*totals, *statuses)
+            if isinstance(row.get("description"), str)
+        }
         shown = resolve_task_name(task_filter, pool)
     return TrendReport(
         versions=list(versions),
@@ -467,7 +501,10 @@ def build_report(
 def write_console(report: TrendReport, output: TextIO) -> None:
     if report.detailed_task_stats:
         print(f"任务趋势明细: {report.task_filter or '指定任务'}", file=output)
-        print(f"窗口: {report.period}　所有次数按唯一 trace 去重，变化量为相对更早一个版本的 Δpp。\n", file=output)
+        print(
+            f"窗口: {report.period}　所有次数按唯一 trace 去重，变化量为相对更早一个版本的 Δpp。\n",
+            file=output,
+        )
         write_console_table(
             ("版本", "运行数", "失败数", "失败率（95%CI）", "相对上一版本"),
             [
@@ -475,7 +512,9 @@ def write_console(report: TrendReport, output: TextIO) -> None:
                     stat.version,
                     str(stat.total),
                     str(stat.failed),
-                    format_rate_with_ci(stat.failure_rate, stat.total, report.min_samples),
+                    format_rate_with_ci(
+                        stat.failure_rate, stat.total, report.min_samples
+                    ),
                     format_delta(stat.delta_pp) if stat.delta_pp is not None else "-",
                 )
                 for stat in report.detailed_task_stats
@@ -494,18 +533,32 @@ def write_console(report: TrendReport, output: TextIO) -> None:
     for row in report.rows:
         cells = [row.task, str(row.latest_total)]
         for version in report.versions:
-            cells.append(format_rate_with_ci(row.version_rates.get(version), row.version_totals.get(version, 0), report.min_samples))
+            cells.append(
+                format_rate_with_ci(
+                    row.version_rates.get(version),
+                    row.version_totals.get(version, 0),
+                    report.min_samples,
+                )
+            )
         table_rows.append(cells)
-    write_console_table(headers, table_rows, output, right_aligned=set(range(1, len(headers))))
+    write_console_table(
+        headers, table_rows, output, right_aligned=set(range(1, len(headers)))
+    )
 
     print("\n环比 Δpp", file=output)
-    print("每个版本相对更早一个版本的变化；未展示的更早版本若有样本也会参与计算。\n", file=output)
+    print(
+        "每个版本相对更早一个版本的变化；未展示的更早版本若有样本也会参与计算。\n",
+        file=output,
+    )
     write_console_table(
         ["任务", *report.versions],
         [
             [
                 row.task,
-                *(format_delta(row.version_deltas.get(version)) or "-" for version in report.versions),
+                *(
+                    format_delta(row.version_deltas.get(version)) or "-"
+                    for version in report.versions
+                ),
             ]
             for row in report.rows
         ],
@@ -518,8 +571,13 @@ def write_console(report: TrendReport, output: TextIO) -> None:
 def write_markdown(report: TrendReport, output: TextIO) -> None:
     if report.detailed_task_stats:
         print(f"## 任务趋势明细: {report.task_filter or '指定任务'}\n", file=output)
-        print(f"> 窗口: `{report.period}`；所有次数按唯一 trace 去重，变化量为 Δpp。\n", file=output)
-        print("| 版本 | 运行数 | 失败数 | 失败率（95%CI） | 相对上一版本 |", file=output)
+        print(
+            f"> 窗口: `{report.period}`；所有次数按唯一 trace 去重，变化量为 Δpp。\n",
+            file=output,
+        )
+        print(
+            "| 版本 | 运行数 | 失败数 | 失败率（95%CI） | 相对上一版本 |", file=output
+        )
         print("|---|---:|---:|---|---:|", file=output)
         for stat in report.detailed_task_stats:
             delta = format_delta(stat.delta_pp) if stat.delta_pp is not None else "-"
@@ -541,7 +599,11 @@ def write_markdown(report: TrendReport, output: TextIO) -> None:
         cells = [row.task, str(row.latest_total)]
         for version in report.versions:
             cells.append(
-                format_rate_with_ci(row.version_rates.get(version), row.version_totals.get(version, 0), report.min_samples)
+                format_rate_with_ci(
+                    row.version_rates.get(version),
+                    row.version_totals.get(version, 0),
+                    report.min_samples,
+                )
             )
         print("| " + " | ".join(cells) + " |", file=output)
 
@@ -549,7 +611,10 @@ def write_markdown(report: TrendReport, output: TextIO) -> None:
     print("| 任务 | " + " | ".join(report.versions) + " |", file=output)
     print("|---|" + "|".join("---:" for _ in report.versions) + "|", file=output)
     for row in report.rows:
-        deltas = [format_delta(row.version_deltas.get(version)) or "-" for version in report.versions]
+        deltas = [
+            format_delta(row.version_deltas.get(version)) or "-"
+            for version in report.versions
+        ]
         print("| " + " | ".join([row.task, *deltas]) + " |", file=output)
     print(f"\n> {report.provenance}", file=output)
 
@@ -593,20 +658,27 @@ def collect_report(
                 count = _row_count(row)
                 if isinstance(release, str) and count:
                     per_release[release] += count
-            discovery_rows = [{"release": release, "_count": count} for release, count in per_release.items()]
+            discovery_rows = [
+                {"release": release, "_count": count}
+                for release, count in per_release.items()
+            ]
         versions = discover_versions(
             discovery_rows,
             count=versions_count,
             include_prerelease=include_prerelease,
-            min_users=CONFIG.min_release_unique_users if min_users is None else min_users,
+            min_users=(
+                CONFIG.min_release_unique_users if min_users is None else min_users
+            ),
             quiet=quiet,
         )
         if not versions:
             raise ValueError(
                 f"工件 {artifact.path} 里选不出可比对的版本："
-                + ("本次用了 --stable-only，而该口径下一个正式版都没有；去掉它再试。"
-                   if not include_prerelease
-                   else "窗口内没有能解析出版本号的 release，检查 config.json 的 release_pattern。")
+                + (
+                    "本次用了 --stable-only，而该口径下一个正式版都没有；去掉它再试。"
+                    if not include_prerelease
+                    else "窗口内没有能解析出版本号的 release，检查 config.json 的 release_pattern。"
+                )
             )
         return build_report(
             {"task_total": totals, "task_status": statuses},
@@ -646,12 +718,17 @@ def collect_report(
     if not versions:
         raise RuntimeError(
             f"在 {period} 内选不出可比对的版本："
-            + ("本次用了 --stable-only，而该口径下一个正式版都没有；去掉它再试。"
-               if not include_prerelease
-               else f"检查 target（{target}）与 config.json 的 release_pattern。")
+            + (
+                "本次用了 --stable-only，而该口径下一个正式版都没有；去掉它再试。"
+                if not include_prerelease
+                else f"检查 target（{target}）与 config.json 的 release_pattern。"
+            )
         )
     display_versions = versions[:versions_count]
-    show_progress(f"分析版本: {', '.join(display_versions)}（数据覆盖各版本的所有渠道）", quiet=quiet)
+    show_progress(
+        f"分析版本: {', '.join(display_versions)}（数据覆盖各版本的所有渠道）",
+        quiet=quiet,
+    )
 
     query_filter = f'span.description:"{task_filter}"' if task_filter else ""
     show_progress("[2/2] 查询各版本任务执行总量与结果分布", quiet=quiet)
@@ -669,7 +746,12 @@ def collect_report(
                 sort="-count_unique(trace)",
             ),
             SpanQuery(
-                fields=("span.description", "span.status", "release", "count_unique(trace)"),
+                fields=(
+                    "span.description",
+                    "span.status",
+                    "release",
+                    "count_unique(trace)",
+                ),
                 query=query_filter,
                 sort="-count_unique(trace)",
             ),
@@ -694,7 +776,11 @@ def collect_report(
         rows=report.rows,
         task_filter=report.task_filter,
         detailed_task_stats=(
-            [stat for stat in report.detailed_task_stats if stat.version in set(display_versions)]
+            [
+                stat
+                for stat in report.detailed_task_stats
+                if stat.version in set(display_versions)
+            ]
             if report.detailed_task_stats
             else None
         ),
@@ -705,23 +791,40 @@ def collect_report(
 
 def create_argument_parser(prog: str | None = None) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog=prog, description=module_summary(__doc__))
-    parser.add_argument("--versions", type=int, default=DEFAULT_VERSIONS_COUNT, help=f"对比最近 N 个版本（默认 {DEFAULT_VERSIONS_COUNT}）")
-    parser.add_argument("--task", help="只看某一个任务的详细版本走势（支持模糊匹配，如 --task 训练所）")
-    parser.add_argument("--input", help="读下载好的遥测工件而不是实时查询（见 fetch --preset task-trend）")
+    parser.add_argument(
+        "--versions",
+        type=int,
+        default=DEFAULT_VERSIONS_COUNT,
+        help=f"对比最近 N 个版本（默认 {DEFAULT_VERSIONS_COUNT}）",
+    )
+    parser.add_argument(
+        "--task", help="只看某一个任务的详细版本走势（支持模糊匹配，如 --task 训练所）"
+    )
+    parser.add_argument(
+        "--input",
+        help="读下载好的遥测工件而不是实时查询（见 fetch --preset task-trend）",
+    )
     parser.add_argument("--target", default=DEFAULT_TARGET, help="<org>/<project>")
     parser.add_argument(
         "--period",
         default=DEFAULT_SPAN_PERIOD,
         help=f"查询范围（默认 {DEFAULT_SPAN_PERIOD}）；超过 {MAX_RELIABLE_SPAN_PERIOD_DAYS} 天 Sentry 只返回截断样本",
     )
-    parser.add_argument("--no-fresh", action="store_true", help="复用 Sentry CLI 本地缓存：同一查询约快 3 倍")
+    parser.add_argument(
+        "--no-fresh",
+        action="store_true",
+        help="复用 Sentry CLI 本地缓存：同一查询约快 3 倍",
+    )
     parser.add_argument(
         "--stable-only",
         action="store_true",
         help="只对比正式稳定版（本项目至今只发 beta，默认会包含预发布版）",
     )
     parser.add_argument(
-        "--min-latest-runs", type=int, default=DEFAULT_MIN_LATEST_RUNS, help=f"进大表所需的最低样本数（默认 {DEFAULT_MIN_LATEST_RUNS}）"
+        "--min-latest-runs",
+        type=int,
+        default=DEFAULT_MIN_LATEST_RUNS,
+        help=f"进大表所需的最低样本数（默认 {DEFAULT_MIN_LATEST_RUNS}）",
     )
     parser.add_argument(
         "--min-users",
@@ -742,9 +845,21 @@ def create_argument_parser(prog: str | None = None) -> argparse.ArgumentParser:
         help="排序规则：runs（运行数，默认）、rate（失败率）、delta（恶化幅度）、name（任务名）",
     )
     parser.add_argument("--reverse", action="store_true", help="反转排序顺序")
-    parser.add_argument("--limit", type=int, default=None, help="限制展示的任务数量（0 表示不限）")
-    parser.add_argument("--format", choices=("console", "markdown", "json"), default="console", help="输出格式")
-    parser.add_argument("--timeout", type=float, default=DEFAULT_SENTRY_TIMEOUT_SECONDS, help="单次 Sentry 查询超时秒数（默认 120）")
+    parser.add_argument(
+        "--limit", type=int, default=None, help="限制展示的任务数量（0 表示不限）"
+    )
+    parser.add_argument(
+        "--format",
+        choices=("console", "markdown", "json"),
+        default="console",
+        help="输出格式",
+    )
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=DEFAULT_SENTRY_TIMEOUT_SECONDS,
+        help="单次 Sentry 查询超时秒数（默认 120）",
+    )
     parser.add_argument("--verbose", action="store_true", help="输出 sentry 查询命令")
     parser.add_argument("--quiet", action="store_true", help="不输出查询进度")
     return parser
@@ -766,7 +881,10 @@ def main(argv: Sequence[str] | None = None, prog: str | None = None) -> int:
         raise ValueError("--min-latest-runs 不能是负数。")
     if arguments.limit is not None and arguments.limit < 0:
         raise ValueError("--limit 不能是负数（0 表示不限）。")
-    for name, value in (("--min-users", arguments.min_users), ("--min-samples", arguments.min_samples)):
+    for name, value in (
+        ("--min-users", arguments.min_users),
+        ("--min-samples", arguments.min_samples),
+    ):
         if value is not None and value <= 0:
             raise ValueError(f"{name} 必须是大于 0 的整数。")
 
@@ -799,6 +917,10 @@ if __name__ == "__main__":
     try:
         raise SystemExit(main())
     except (FileNotFoundError, RuntimeError, ValueError) as error:
-        message = authority_error_hint(error) if isinstance(error, RuntimeError) else str(error)
+        message = (
+            authority_error_hint(error)
+            if isinstance(error, RuntimeError)
+            else str(error)
+        )
         print(f"错误：{message}", file=sys.stderr)
         raise SystemExit(1) from error

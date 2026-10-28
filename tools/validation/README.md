@@ -211,7 +211,7 @@ Pylance 是 VS Code 内的 LSP，没有命令行入口（`dist/server.bundle.js`
 | --- | --- | --- | --- |
 | `A19-desc-marker-unknown` | warn | 用了 `[end]` / `[jp]` / `[once]` / `[max]` / `[Loop]` 之外的写法（含大小写不符） | 0 |
 | `A19-desc-marker-mismatch` | warn | `[max]` 没有 `max_hit`；`[once]` 的 `max_hit` 不是 1；`[Loop]` 标在名字不含 `Loop` 的节点上 | 1（`EntrustClickNextChapter` 标了 `[max]` 却没有 `max_hit`） |
-| `A19-desc-marker-end` | info | `[end]` 却有 `next`，且不是只收 `TaskStop` / `TaskStopError` | 2（`EscortClickCancel`、`GiftClickFirstcharacter`） |
+| `A19-desc-marker-end` | info | `[end]` 却有 `next`，且不是只收 `BaseTaskStop` / `BaseTaskStopError` | 2（`EscortClickCancel`、`GiftClickFirstcharacter`） |
 
 **只查"标了标记、字段对不上"，不查"该标没标"**：`desc` 由模板生成，而 `[jp]` 按 §3 只是提示标记——
 今天 83 个带 `[jp]` 的节点里有 29 个还带 `next`，标不标都不构成判据。标记按**开头连续**的那几个算
@@ -228,7 +228,7 @@ Pylance 是 VS Code 内的 LSP，没有命令行入口（`dist/server.bundle.js`
 为什么必须有 `BaseErrorNext`：框架的 `timeout` 只限制「`next` 里一直找不到命中」的轮询，
 自环动作每轮都命中自己、`[JumpBack]` 弹回的 jp 节点反复命中时同样不触发，于是任务既不失败也不结束。
 `BaseErrorNext`（`LoopErrorByTimes` 改名而来）数的是「这张表连续几轮没有别的节点成功」，满 10 轮就
-`TaskStopError`。`A22` 要求它排 `next[0]`：排到后面会被"总会命中"的候选挡住，计数走不到上限。
+`BaseTaskStopError`。`A22` 要求它排 `next[0]`：排到后面会被"总会命中"的候选挡住，计数走不到上限。
 
 `A23-section-comment-probe` 管**分节注释的可读性**（warn）：`/* ---- 探测 ---- */` 这种分节注释下面
 **必须是动作 / 分支 / 任务入口**；`/* ---- 通用探测 ---- */` 下面允许是 `Probe`；非通用 `Probe` 要放到
@@ -236,8 +236,8 @@ Pylance 是 VS Code 内的 LSP，没有命令行入口（`dist/server.bundle.js`
 只查带横线的分节注释，文件头那种多行 INFO 注释（写版本注解的）不在此列。
 
 `A24-node-comment-missing` 管**主干节点注释缺失**（warn）：**主干节点**（有 `next` 的：动作、分支、就位、任务入口）
-前面要写注释，说明这个节点做什么。纯辅助节点（没有 `next`，如 `EscortClickDeliveryButton` / `HomeButton` /
-`MoveUp`）不要求写注释——它们是跟着引用它们的节点一起读的，逐个加注释只会把文件撑长。
+前面要写注释，说明这个节点做什么。纯辅助节点（没有 `next`，如 `EscortClickDeliveryButton` / `BaseClickHomeButton` /
+`BaseMoveUp`）不要求写注释——它们是跟着引用它们的节点一起读的，逐个加注释只会把文件撑长。
 实测 50 条主干节点缺注释（见 `validate_refs.py` 输出，`base.json` 占一半以上）。
 
 `A16` / `A17` / `A18` 管**识别预算**（`pipeline-structure.md` §10）：

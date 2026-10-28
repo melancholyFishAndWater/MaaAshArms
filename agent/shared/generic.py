@@ -2,8 +2,8 @@
 
 `base.json` 放"哪个任务都能引用"的通用节点，本模块放它们的识别/动作回调，注册名 = 节点名 +
 后缀（识别 `<节点名>Reco`、动作 `<节点名>Act`，见 docs/zh_cn/develop/node-naming.md 第七节）。
-对应关系：`IsFreezes`→`IsFreezesReco`、`TaskStopError`→`TaskStopErrorAct`、
-`MoveUpDown`→`MoveUpDownReco`/`MoveUpDownAct`、`LoopErrorByTimes`→`LoopErrorByTimesReco`。
+对应关系：`BaseProbeFreezes`→`BaseProbeFreezesReco`、`BaseTaskStopError`→`BaseTaskStopErrorAct`、
+`BaseMoveUpDown`→`BaseMoveUpDownReco`/`BaseMoveUpDownAct`、`BaseErrorNext`→`BaseErrorNextReco`。
 
 放在 agent/shared/ 下靠 agent/main.py 把它注入 sys.path 后按顶层名导入；
 main.py 的 import 不能漏——装饰器只在模块导入时执行，漏了就是静默不注册。
@@ -24,7 +24,6 @@ from maa.event_sink import NotificationType
 from maa.pipeline import JOCR, JTemplateMatch
 
 from agentlog import log
-from params import parse_params
 from parent_tracker import father_name, dispatcher
 from rect import DEFAULT_HIT_BOX
 
@@ -32,8 +31,8 @@ from rect import DEFAULT_HIT_BOX
 
 
 # 如果连续k次画面不变 则返回roi box 一般和move系列搭配判断移动前后是否有明显变化
-@AgentServer.custom_recognition("IsFreezesReco")
-class IsFreezesReco(CustomRecognition):
+@AgentServer.custom_recognition("BaseProbeFreezesReco")
+class BaseProbeFreezesReco(CustomRecognition):
     __freezes_dict: dict[tuple[int, str], int] = {}
 
     def analyze(self, context: Context, argv: CustomRecognition.AnalyzeArg):
@@ -88,8 +87,8 @@ class IsFreezesReco(CustomRecognition):
             return (x, y, w, h)
 
 
-@AgentServer.custom_recognition("BaseBranchErrorConfirmReco")
-class BaseBranchErrorConfirmReco(CustomRecognition):
+@AgentServer.custom_recognition("BaseClickErrorConfirmReco")
+class BaseClickErrorConfirmReco(CustomRecognition):
     def analyze(
         self, context: Context, argv: CustomRecognition.AnalyzeArg
     ) -> list[int] | None:
@@ -122,15 +121,15 @@ class BaseBranchErrorConfirmReco(CustomRecognition):
 
 
 # 始终执行失败
-@AgentServer.custom_action("TaskStopErrorAct")
-class TaskStopErrorAct(CustomAction):
+@AgentServer.custom_action("BaseTaskStopErrorAct")
+class BaseTaskStopErrorAct(CustomAction):
     def run(
         self, context: Context, argv: CustomAction.RunArg
     ) -> CustomAction.RunResult | bool:
         return False
 
 
-# ----- LoopErrorByTimes -----
+# ----- BaseErrorNext -----
 
 # 当前任务id
 _current_task_id: int = -1
@@ -186,15 +185,15 @@ class _BaseErrorNextSink(ContextEventSink):
                 _times_by_name.pop(detail.name, None)
 
 
-# ----- MoveUpDown -----
+# ----- BaseMoveUpDown -----
 
 _move_up_down_dict: dict[tuple[int, str], int] = {}
-_move_entry: str = "MoveUp"
+_move_entry: str = "BaseMoveUp"
 
 
 # 若还有滑动次数 返回非 None
-@AgentServer.custom_recognition("MoveUpDownReco")
-class MoveUpDownReco(CustomRecognition):
+@AgentServer.custom_recognition("BaseMoveUpDownReco")
+class BaseMoveUpDownReco(CustomRecognition):
     def analyze(
         self, context: Context, argv: CustomRecognition.AnalyzeArg
     ) -> list[int] | None:
@@ -222,17 +221,17 @@ class MoveUpDownReco(CustomRecognition):
         # 移动方向
         global _move_entry
         if times <= x:
-            _move_entry = "MoveUp"
+            _move_entry = "BaseMoveUp"
         else:
-            _move_entry = "MoveDown"
+            _move_entry = "BaseMoveDown"
         log.debug(f"{n_name} 当前移动方向: {_move_entry}")
 
         return DEFAULT_HIT_BOX
 
 
 # 上滑动x次 下滑动x次
-@AgentServer.custom_action("MoveUpDownAct")
-class MoveUpDownAct(CustomAction):
+@AgentServer.custom_action("BaseMoveUpDownAct")
+class BaseMoveUpDownAct(CustomAction):
 
     def run(
         self, context: Context, argv: CustomAction.RunArg

@@ -11,7 +11,7 @@
             "TrainEnterOverview",
             "TrainEnterHome",
             "[JumpBack]BaseBranchError",
-            "[JumpBack]ReturnMain"
+            "[JumpBack]BaseReturnHome"
         ]
     },
     /* -------------------- 通用探测 -------------------- */
@@ -234,7 +234,7 @@
         "post_wait_freezes": 1000,
         "next": [
             "TrainGetRewardSuccess",
-            "[JumpBack]BaseClickRewardTapBox",
+            "[JumpBack]BaseClickTapBox",
             "[JumpBack]TrainClickRewardButton",
             "[JumpBack]BaseBranchError"
         ]
@@ -523,12 +523,12 @@
             "TrainProbeGoButtonLight"
         ],
         "next": [
-            "[JumpBack]ClickConfirm",
+            "[JumpBack]BaseClickConfirm",
             "TrainGoSuccess",
             "[JumpBack]TrainClickGoButtonLight",
             "[JumpBack]TrainBranchOverride",
             "[JumpBack]TrainBranchReset",
-            "[JumpBack]Click"
+            "[JumpBack]BaseClick"
         ]
     },
     "TrainGoSuccess": {
@@ -573,7 +573,7 @@
             70
         ],
         "next": [
-            "ClickConfirm"
+            "BaseClickConfirm"
         ]
     },
     "TrainBranchReset": {
@@ -587,7 +587,7 @@
             322
         ],
         "next": [
-            "ClickCancel"
+            "BaseClickCancel"
         ]
     },
     /* -------------------- 动作-通用移动 -------------------- */

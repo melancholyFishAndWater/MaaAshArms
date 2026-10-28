@@ -57,7 +57,7 @@
         ],
         "timeout": 30000,
         "next": [
-            "IsNoMetal",
+            "BaseStopNoMetal",
             "BattleStopNoProps",
             "ReplaysLoopBattle",
             "[JumpBack]BattleClickAttack",
@@ -94,8 +94,8 @@
         ],
         "next": [
             "ReplaysStopMetalFinish",
-            "[JumpBack]ClickConfirm",
-            "[JumpBack]IsGetReward",
+            "[JumpBack]BaseClickConfirm",
+            "[JumpBack]BaseClickRewardTap",
             "[JumpBack]ReplaysClickReattack",
             "[JumpBack]BaseBranchError"
         ]
@@ -127,8 +127,8 @@
         "timeout": 30000,
         "next": [
             "ReplaysBranchNextFormation",
-            "[JumpBack]ClickConfirm",
-            "[JumpBack]IsGetReward",
+            "[JumpBack]BaseClickConfirm",
+            "[JumpBack]BaseClickRewardTap",
             "[JumpBack]ReplaysClickReattack",
             "[JumpBack]BaseBranchError"
         ]

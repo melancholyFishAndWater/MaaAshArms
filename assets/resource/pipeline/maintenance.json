@@ -110,7 +110,7 @@
             "MaintenanceProbeHome",
             "[JumpBack]BaseBranchError",
             "[JumpBack]MaintenanceEnterHome",
-            "[JumpBack]ReturnMain"
+            "[JumpBack]BaseReturnHome"
         ]
     },
     "MaintenanceEnterHome": {

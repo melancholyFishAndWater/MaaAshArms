@@ -37,7 +37,7 @@
 | 动作自己不再命中（按钮消失、弹窗关掉、按钮变暗） | 自环节点自己的 `recognition` | 正常情况 |
 | 同一张 `next` 表连续 N 轮没有别的节点命中 | `BaseErrorNext` | 识别一直命中但页面没变化、或 jp 节点反复被弹回时 |
 
-`BaseErrorNext` 计数的是「**某个节点的 `next` 表连续被评估了多少轮、期间没有别的节点成功**」，满 10 轮就命中 → `next` 指向 `TaskStopError` → 任务报错结束。
+`BaseErrorNext` 计数的是「**某个节点的 `next` 表连续被评估了多少轮、期间没有别的节点成功**」，满 10 轮就命中 → `next` 指向 `BaseTaskStopError` → 任务报错结束。
 它**不替代 `timeout`**：`timeout` 管「全都不命中」，它管「一直在命中但没进展」。
 
 ### 自环动作的写法
@@ -86,7 +86,7 @@
 节点前的注释写什么，跟"这个节点是不是主干"有关：
 
 - **主干节点**（有 `next` 的：动作、分支、就位、任务入口）前面要写注释，说明这个节点做什么。注释必须紧挨着节点，中间不能隔别的节点。
-- **纯辅助节点**（没有 `next`，如 `EscortClickDeliveryButton`、`HomeButton`、`MoveUp`）不要求写注释——它们是跟着引用它们的节点一起读的，逐个加注释只会把文件撑长。
+- **纯辅助节点**（没有 `next`，如 `EscortClickDeliveryButton`、`BaseClickHomeButton`、`BaseMoveUp`）不要求写注释——它们是跟着引用它们的节点一起读的，逐个加注释只会把文件撑长。
 - 分节注释（`/* ---- 探测 ---- */` 这种带横线的）下面紧跟的必须是动作 / 分支 / 任务入口；`/* ---- 通用探测 ---- */` 下面允许是 `Probe`；非通用 `Probe` 放到用到它的节点后面，先看到"谁在用它"再看到它本身，读起来才顺。
 
 文件头部那种多行 INFO 注释（写版本注解的）不算分节注释，不在此列。
@@ -161,7 +161,7 @@ TaskX            入口：门控、初始化、选择"去哪"
 自环的出口有两个，**两个都要有**（v3.0）：
 
 - **自己不再命中**：`recognition` 不再成立（按钮消失、弹窗关掉、按钮变暗）。正常情况靠它。
-- **`BaseErrorNext`**：这张 `next` 表连续 N 轮没有别的节点成功时命中 → `TaskStopError`。**`timeout` 顶不上**——候选一直在命中（含 `[JumpBack]` 弹回的 jp 节点反复命中）时 `timeout` 永远不触发，见「〇」节。
+- **`BaseErrorNext`**：这张 `next` 表连续 N 轮没有别的节点成功时命中 → `BaseTaskStopError`。**`timeout` 顶不上**——候选一直在命中（含 `[JumpBack]` 弹回的 jp 节点反复命中）时 `timeout` 永远不触发，见「〇」节。
 
 所以自环动作的 `next` 必须含 `BaseErrorNext`；同时禁止 `timeout: -1`，有限 `timeout` 留着管"全都不命中"那条路，`on_error` 只放必须的收尾。
 
@@ -206,7 +206,7 @@ TaskX            入口：门控、初始化、选择"去哪"
   - **明确的限次**：这次任务本来就只该做 N 次，且 N 次用尽后链上有别的候选接管，不会留成"静默跳过"。
 - 循环内需要重复做的事，出口有三条：
   - **守卫失效**：`recognition` 不再命中 → 该节点判失败、弹回调用方，等于替调用方做了一次探测。这是首选出口，页面上"已经做完/已经离开"的判据都该做成守卫或候选。
-  - **`BaseErrorNext`**（v3.0）：这张 `next` 表连续 N 轮没有别的节点成功 → `TaskStopError`。它管的是「一直在命中但没进展」，`timeout` 管不到这类情况（见下一条）。
+  - **`BaseErrorNext`**（v3.0）：这张 `next` 表连续 N 轮没有别的节点成功 → `BaseTaskStopError`。它管的是「一直在命中但没进展」，`timeout` 管不到这类情况（见下一条）。
   - **有限 `timeout`**：到点判失败，框架报 `Task timeout [pretask.name=<节点名>]`。`on_error` 只放**必须做的收尾**（松手、关弹窗、复位状态），这一层不需要收尾就不要写——失败本身就是合法出口，补一条 `focus` 把原因说清楚即可。
 - **`timeout` 有个管不到的盲区**：它只限制「`next` 里一直找不到命中」的轮询。候选还在命中——尤其是 `[JumpBack]` 弹回的 jp 节点反复命中——`timeout` 永远不触发，任务既不失败也不结束。这就是 `BaseErrorNext` 存在的理由，也是它在**非大循环**的链上仍然必需的原因（v3.0）。实测样本：`EscortClickOk` 用同一个 `box=[1005,522,64,37]` 连点 8 次、26.9 s 而任务既不失败也不结束。
 - `BaseErrorNext` 与 `timeout` 的分工不能互相替代：前者数「连续几轮没进展」，后者数「墙钟」。
@@ -274,9 +274,9 @@ TaskX            入口：门控、初始化、选择"去哪"
 
 ### 不要和专责的停止判断混排
 
-`IsNoMetal` / `IsServerMaintenance` / `IsNetworkError` 是"判到就停"，`BaseBranchError` 是"点掉继续"。两类放在同一列表会互相抢顺序：同一个「确认」既可能被当成错误弹窗点掉，也可能被专责节点判成终止条件。维护弹窗尤其重复——`BaseBranchSeverClose` 与 `IsServerMaintenance` 都是 OCR「维护中」→ `StopTask`，接线时只留一处。
+`BaseStopNoMetal` / `IsServerMaintenance` / `IsNetworkError` 是"判到就停"，`BaseBranchError` 是"点掉继续"。两类放在同一列表会互相抢顺序：同一个「确认」既可能被当成错误弹窗点掉，也可能被专责节点判成终止条件。维护弹窗尤其重复——`BaseBranchSeverClose` 与 `IsServerMaintenance` 都是 OCR「维护中」→ `StopTask`，接线时只留一处。
 
-列表里已经有专门点确认的候选（`ClickConfirm`、`TrainOverrideConfirm` 这类）时通常不再加：它已经能点掉弹窗，再加只是多一次 OCR。要补的是这类列表之外的入口、就位与出口分支。
+列表里已经有专门点确认的候选（`BaseClickConfirm`、`TrainOverrideConfirm` 这类）时通常不再加：它已经能点掉弹窗，再加只是多一次 OCR。要补的是这类列表之外的入口、就位与出口分支。
 
 ### 成本
 
@@ -309,7 +309,7 @@ TaskX            入口：门控、初始化、选择"去哪"
 
 ```text
 深度 1 → 5 次   深度 3 → 14 次   深度 5 → 24 次
-公式：5 × 深度 − 1（末层末项是 ReturnMain 而不是 Ensure）
+公式：5 × 深度 − 1（末层末项是 BaseReturnHome 而不是 Ensure）
 ```
 
 实测最坏的是 `GiftEnsureRules`（深度 5，24 次）：它在 101 分钟的赠礼日志里被评估 593 次，是那次运行 12.2 分钟派发耗时的主要来源。
@@ -340,7 +340,7 @@ TaskX            入口：门控、初始化、选择"去哪"
         "GiftBranchCharacters",    // 在选择页 → 点好感度
         "GiftBranchHome",          // 在赠礼主页 → 点赠礼
         "[JumpBack]BaseBranchError",
-        "[JumpBack]ReturnMain"
+        "[JumpBack]BaseReturnHome"
     ]
 },
 "GiftBranchSortPage": {
@@ -350,7 +350,7 @@ TaskX            入口：门控、初始化、选择"去哪"
 }
 ```
 
-每个 `Branch` 只判一个页面、只放该页面的工作候选。不在任何已知页面时依次 miss，落到 `ReturnMain`。
+每个 `Branch` 只判一个页面、只放该页面的工作候选。不在任何已知页面时依次 miss，落到 `BaseReturnHome`。
 
 **判断顺序**：命中概率高的页面排前面（少付前面的 miss）。这与第九节「错误分支的位次」不冲突——`BaseBranchError` 仍排在正向探针之后。
 

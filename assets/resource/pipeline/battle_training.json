@@ -75,7 +75,7 @@
         "next": [
             "TrainingProbeHome",
             "[JumpBack]BaseBranchError",
-            "[JumpBack]ProbeBlackPage",
+            "[JumpBack]BaseProbeBlackPage",
             "[JumpBack]TrainingEnterHome",
             "[JumpBack]BattleEnsureHome"
         ]
@@ -123,7 +123,7 @@
         ],
         "inverse": true,
         "next": [
-            "BackButton"
+            "BaseClickBackButton"
         ]
     },
     "TrainingGetStatus": {
@@ -152,7 +152,7 @@
         "action": "Click",
         "next": [
             "TrainingEnterFormation",
-            "[JumpBack]MoveUp"
+            "[JumpBack]BaseMoveUp"
         ],
         "post_wait_freezes": 2000
     },
@@ -168,7 +168,7 @@
         "next": [
             "BattleLoopReplayFormation",
             "[JumpBack]BaseBranchError",
-            "[JumpBack]ProbeBlackPage",
+            "[JumpBack]BaseProbeBlackPage",
             "TrainingEnterFormation"
         ],
         "post_wait_freezes": 2000

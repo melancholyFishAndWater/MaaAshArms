@@ -120,7 +120,7 @@
             "entry": "TaskEscort",
             "default_check": true,
             "pipeline_override": {
-                "IsFreezes": {
+                "BaseProbeFreezes": {
                     "roi": [
                         150,
                         50,
@@ -128,7 +128,7 @@
                         431
                     ],
                     "next": [
-                        "TaskStop"
+                        "BaseTaskStop"
                     ]
                 }
             }

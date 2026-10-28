@@ -90,7 +90,7 @@
         ],
         "next": [
             "[JumpBack]BaseBranchError",
-            "BackButton"
+            "BaseClickBackButton"
         ]
     },
     /* -------------------- 工作-作战企划室 -------------------- */
@@ -135,7 +135,7 @@
         "next": [
             "ShopProbeBattleEnd",
             "[JumpBack]ShopEnterBattleFree",
-            "[JumpBack]MoveLeft",
+            "[JumpBack]BaseMoveLeft",
             "[JumpBack]BaseBranchError"
         ]
     },

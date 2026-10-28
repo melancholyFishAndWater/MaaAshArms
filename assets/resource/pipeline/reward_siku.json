@@ -106,9 +106,9 @@
         ],
         "timeout": 30000,
         "next": [
-            "[JumpBack]ProbeBlackPage",
+            "[JumpBack]BaseProbeBlackPage",
             "SikuProbeNoBlueMark",
-            "[JumpBack]IsGetReward",
+            "[JumpBack]BaseClickRewardTap",
             "[JumpBack]SikuClickBlueMark",
             "[JumpBack]BaseBranchError"
         ]

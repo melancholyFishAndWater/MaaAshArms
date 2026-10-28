@@ -25,7 +25,7 @@
         "timeout": 600000,
         "next": [
             "FactoryEnterHome",
-            "[JumpBack]ReturnMain"
+            "[JumpBack]BaseReturnHome"
         ]
     },
     "FactoryEnterHome": {
@@ -42,7 +42,7 @@
         "next": [
             "FactoryInHome",
             "FactoryEnterHome",
-            "[JumpBack]ReturnMain"
+            "[JumpBack]BaseReturnHome"
         ],
         "post_wait_freezes": 3000
     },
@@ -77,8 +77,8 @@
             "[JumpBack]FactoryCreateOrder",
             // TODO 子节点卡住
             "[JumpBack]BaseBranchError",
-            "[JumpBack]MoveUpDown",
-            "TaskStop"
+            "[JumpBack]BaseMoveUpDown",
+            "BaseTaskStop"
         ]
     },
     // 特殊节点
@@ -96,7 +96,7 @@
         "action": "Custom",
         "custom_action": "FactoryDailyUpdateAct",
         "next": [
-            "TaskStop"
+            "BaseTaskStop"
         ]
     },
     // 跳过系列
@@ -175,7 +175,7 @@
         "recognition": "OCR",
         "expected": "库存数量已达上限",
         "next": [
-            "[JumpBack]ClickConfirm",
+            "[JumpBack]BaseClickConfirm",
             "FactoryClickCancel"
         ],
         "focus": {
@@ -187,7 +187,7 @@
         "target": "FactoryGetReward",
         "action": "Click",
         "next": [
-            "[JumpBack]ClickConfirm",
+            "[JumpBack]BaseClickConfirm",
             "FactoryClickCancelEnd"
         ]
     },
@@ -288,8 +288,8 @@
             43
         ],
         "next": [
-            "[JumpBack]ClickConfirm",
-            "TaskStop"
+            "[JumpBack]BaseClickConfirm",
+            "BaseTaskStop"
         ],
         "focus": {
             "Node.Recognition.Succeeded": "合金不足，任务结束"

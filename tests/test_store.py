@@ -58,9 +58,9 @@ def test_cross_day_resets(daily):
 
 
 def test_reco_always_hits_but_stops_when_done(daily):
-    """reco 恒命中（返回 DEFAULT_HIT_BOX）；今日已做时额外跑 TaskStop 结束任务。
+    """reco 恒命中（返回 DEFAULT_HIT_BOX）；今日已做时额外跑 BaseTaskStop 结束任务。
 
-    跳过不再用"返回 None"表达：识别恒命中，结束只由 TaskStop 负责——
+    跳过不再用"返回 None"表达：识别恒命中，结束只由 BaseTaskStop 负责——
     未命中会让 `[once]` 探测节点静默失败，任务收不到明确的停止指令。
     """
     calls = []
@@ -70,18 +70,18 @@ def test_reco_always_hits_but_stops_when_done(daily):
         )
     )
 
-    # 今日未做 → 命中，不跑 TaskStop
+    # 今日未做 → 命中，不跑 BaseTaskStop
     assert daily.reco(ctx, _argv()) is DEFAULT_HIT_BOX
     assert calls == []
 
-    # 今日已做 → 仍命中（恒返回 box），但已跑 TaskStop
+    # 今日已做 → 仍命中（恒返回 box），但已跑 BaseTaskStop
     daily.set("TaskGift", True)
     assert daily.reco(ctx, _argv()) is DEFAULT_HIT_BOX
-    assert calls == ["TaskStop"]
+    assert calls == ["BaseTaskStop"]
 
 
 def test_reco_still_stops_when_taskstop_fails(daily):
-    """TaskStop 跑失败也要返回命中：识别结果与收尾动作互不牵连。"""
+    """BaseTaskStop 跑失败也要返回命中：识别结果与收尾动作互不牵连。"""
     ctx = SimpleNamespace(run_action=lambda name, pipeline_override=None: None)
 
     daily.set("TaskGift", True)

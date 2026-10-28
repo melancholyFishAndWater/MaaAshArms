@@ -70,10 +70,10 @@ class Case:
     """一个证据包：日志正文 + 图片证据（可为归档或目录）。"""
 
     label: str
-    log_text: str | None = None       # 归档来源：日志正文
-    log_path: str | None = None       # 目录来源：日志文件路径
-    packages: list[str] = field(default_factory=list)   # 归档来源：全部卷路径
-    root: str | None = None           # 目录来源的根
+    log_text: str | None = None  # 归档来源：日志正文
+    log_path: str | None = None  # 目录来源：日志文件路径
+    packages: list[str] = field(default_factory=list)  # 归档来源：全部卷路径
+    root: str | None = None  # 目录来源的根
     bad_packages: list[str] = field(default_factory=list)
 
     def log_source(self):
@@ -91,7 +91,9 @@ class Case:
                         if info.is_dir():
                             continue
                         if f"/{name}/" in info.filename.replace("\\", "/"):
-                            entries.append((info.filename, _LazyMember(package, info.filename)))
+                            entries.append(
+                                (info.filename, _LazyMember(package, info.filename))
+                            )
             except (OSError, zipfile.BadZipFile):
                 continue
         return MediaResolver(members=entries) if entries else None
@@ -129,7 +131,9 @@ class _LazyMember:
 def _read_log_from_zips(packages: list[str]) -> tuple[str | None, list[str]]:
     """从归档（可多卷）里取日志正文。先看条目名，再按需只解压那一条。"""
     bad: list[str] = []
-    candidates: list[tuple[int, str, str]] = []   # (日志名优先级, package, member)；排序后用最低优先级那条
+    candidates: list[tuple[int, str, str]] = (
+        []
+    )  # (日志名优先级, package, member)；排序后用最低优先级那条
     for package in sorted(packages):
         try:
             with zipfile.ZipFile(package) as zf:
@@ -171,8 +175,11 @@ def load_case(case_arg: list[str]) -> Case:
         for name in LOG_NAMES:
             cand = os.path.join(root, name)
             if os.path.isfile(cand):
-                return Case(label=os.path.basename(os.path.normpath(root)) or "case",
-                            log_path=cand, root=root)
+                return Case(
+                    label=os.path.basename(os.path.normpath(root)) or "case",
+                    log_path=cand,
+                    root=root,
+                )
         raise FileNotFoundError(
             f"{root} 下找不到 {' / '.join(LOG_NAMES)}。给它 debug/ 那一层，"
             "或直接把日志文件路径当 --case 传。"
@@ -185,15 +192,21 @@ def load_case(case_arg: list[str]) -> Case:
                 f"{len(zips)} 个归档里都没有 {' / '.join(LOG_NAMES)}（读不了的卷：{bad or '无'}）。"
             )
         label = PART_RE.sub("", os.path.splitext(os.path.basename(sorted(zips)[0]))[0])
-        return Case(label=label or "archive", log_text=log_text,
-                    packages=sorted(zips), bad_packages=bad)
+        return Case(
+            label=label or "archive",
+            log_text=log_text,
+            packages=sorted(zips),
+            bad_packages=bad,
+        )
 
     if len(rest) == 1 and os.path.isfile(rest[0]):
         only = rest[0]
         return Case(label=os.path.splitext(os.path.basename(only))[0], log_path=only)
 
     missing = [p for p in items if not os.path.exists(p)]
-    raise FileNotFoundError(f"--case 指向的路径既不是目录也不是归档：{missing or items}")
+    raise FileNotFoundError(
+        f"--case 指向的路径既不是目录也不是归档：{missing or items}"
+    )
 
 
 def discover_cases(root: str) -> list[Case]:
@@ -228,7 +241,9 @@ def log_digest(case: Case) -> str:
         return hashlib.sha256(data).hexdigest()[:16]
     if case.log_path is None:
         # load_case 保证二者必有一个；这里显式报错，避免 `open(None)` 那种看不出原因的崩溃。
-        raise ValueError(f"证据包 {case.label} 既没有日志正文也没有日志路径，无法计算指纹。")
+        raise ValueError(
+            f"证据包 {case.label} 既没有日志正文也没有日志路径，无法计算指纹。"
+        )
     hasher = hashlib.sha256()
     with open(case.log_path, "rb") as fh:
         for chunk in iter(lambda: fh.read(1 << 20), b""):
@@ -241,7 +256,9 @@ def log_digest(case: Case) -> str:
 # 命中这个形状就当作"遥测问题名称"。
 ISSUE_RE = re.compile(r"^[A-Z][A-Z0-9]+-[A-Z0-9]+$")
 # 任务入口名：日志里 `Tasker.Task.*` 事件的 `entry` 字段（`TaskTrain` / `TaskEscort`）。
-TASK_ENTRY_RE = re.compile(r'\[msg=Tasker\.Task\.\w+\] \[details(?:_json)?=\{"entry":"([^"\\]+)"')
+TASK_ENTRY_RE = re.compile(
+    r'\[msg=Tasker\.Task\.\w+\] \[details(?:_json)?=\{"entry":"([^"\\]+)"'
+)
 
 
 def issue_name_of(case: Case) -> str | None:
@@ -289,7 +306,7 @@ def task_name_of(case: Case, options: FlowOptions) -> str | None:
         tid = str(options.task_id)
         pat = re.compile(
             r'PipelineTask node done \[result=\{[^}]*?"name":"([^"\\]+)"[^}]*\}\] '
-            r'\[task_id_=' + tid + r"\]"
+            r"\[task_id_=" + tid + r"\]"
         )
         names = [m.group(1) for m in pat.finditer(text)]
         # 先找 entry 型（任务入口节点就叫 TaskXxx）
@@ -338,7 +355,7 @@ def base_filename(case: Case, options: FlowOptions) -> str:
     `PYTHON-1Z` 有 6 个），不追加会让它们互相覆盖到同一个文件名上.
 
     指定了 `--task-id` 时**不把任务名放进主干**：那个 task 的入口行不一定在导出的那一段里
-    （实测 200000007 只留下 `ReturnMain`，它不是任务入口），而 `task<id>` 本身就唯一、
+    （实测 200000007 只留下 `BaseReturnHome`，它不是任务入口），而 `task<id>` 本身就唯一、
     也一定对——宁可少一个名字，不放一个可能错的名字。
     """
     issue = issue_name_of(case)
@@ -357,8 +374,9 @@ def base_filename(case: Case, options: FlowOptions) -> str:
     return "_".join(p for p in parts if p)
 
 
-def out_filename(case: Case, options: FlowOptions, outdir: str,
-                 manifest: dict | None = None) -> str:
+def out_filename(
+    case: Case, options: FlowOptions, outdir: str, manifest: dict | None = None
+) -> str:
     """产物文件名：`<问题名或任务名>[_task<id>][_<日志时间>][_<短指纹>].png`.
 
     相比旧版去掉了 `flow_` 前缀（目录已经是 `temp/flow/`，前缀是重复的）。
@@ -378,9 +396,12 @@ def out_filename(case: Case, options: FlowOptions, outdir: str,
         path = os.path.join(outdir, name)
         if not os.path.isfile(path):
             # 文件不在，但 manifest 里记着另一份输入用过这个名字：也算被占（产物被清掉过）
-            return name in recorded and recorded[name].get("fingerprint", {}).get("log") != digest
+            return (
+                name in recorded
+                and recorded[name].get("fingerprint", {}).get("log") != digest
+            )
         if name not in recorded:
-            return True                      # 磁盘上有同名文件、但不是本工具画的
+            return True  # 磁盘上有同名文件、但不是本工具画的
         return recorded[name].get("fingerprint", {}).get("log") != digest
 
     name = f"{base}.png"
@@ -431,8 +452,15 @@ def _stale_record(check) -> dict | None:
     return None if check is None else asdict(check)
 
 
-def run_case(case: Case, options: FlowOptions, *, outdir: str, mermaid: bool,
-             force: bool, manifest: dict) -> FlowResult | None:
+def run_case(
+    case: Case,
+    options: FlowOptions,
+    *,
+    outdir: str,
+    mermaid: bool,
+    force: bool,
+    manifest: dict,
+) -> FlowResult | None:
     """渲染一个 case；命中 manifest 且产物还在就跳过（幂等）。
 
     「疑似过时」只有在渲染完才知道（检查要拿到日志里实际跑过的节点名），所以文件名里的
@@ -455,7 +483,11 @@ def run_case(case: Case, options: FlowOptions, *, outdir: str, mermaid: bool,
         for candidate in (name, stale_name(name)):
             recorded = manifest["cases"].get(candidate)
             path = os.path.join(outdir, candidate)
-            if recorded and recorded.get("fingerprint") == fingerprint and os.path.isfile(path):
+            if (
+                recorded
+                and recorded.get("fingerprint") == fingerprint
+                and os.path.isfile(path)
+            ):
                 print(f"跳过（已画过）: {path}")
                 return None
 
@@ -501,10 +533,15 @@ def run_case(case: Case, options: FlowOptions, *, outdir: str, mermaid: bool,
         "rendered_at": datetime.now().isoformat(timespec="seconds"),
         "stale": _stale_record(result.stale),
     }
-    merged = (f"（{result.overlay_groups} 段重复已合并 → {result.columns} 列）"
-              if result.overlay_groups else "")
-    print(f"步骤 {result.steps}（折叠后 {result.boxes} 个框）/ 轮次 {result.rounds}{merged}"
-          f" → {result.path}  ({result.width}×{result.height})")
+    merged = (
+        f"（{result.overlay_groups} 段重复已合并 → {result.columns} 列）"
+        if result.overlay_groups
+        else ""
+    )
+    print(
+        f"步骤 {result.steps}（折叠后 {result.boxes} 个框）/ 轮次 {result.rounds}{merged}"
+        f" → {result.path}  ({result.width}×{result.height})"
+    )
     # 疑似过时命中：画完图后显式打一行（notes 里也有，但那是 stderr 的注记）
     summary = stale_summary(result.stale)
     if summary:
@@ -512,12 +549,16 @@ def run_case(case: Case, options: FlowOptions, *, outdir: str, mermaid: bool,
     if result.mermaid:
         print(f"mermaid → {result.mermaid}")
     if result.truncated_start:
-        print("提示：日志第一行晚于 --from，这份日志只含窗口后半段（遥测附件只带 tail）",
-              file=sys.stderr)
+        print(
+            "提示：日志第一行晚于 --from，这份日志只含窗口后半段（遥测附件只带 tail）",
+            file=sys.stderr,
+        )
     for note in result.notes:
         print(f"提示：{note}", file=sys.stderr)
     if case.bad_packages:
-        print(f"警告：以下卷读不了，结果可能不完整：{case.bad_packages}", file=sys.stderr)
+        print(
+            f"警告：以下卷读不了，结果可能不完整：{case.bad_packages}", file=sys.stderr
+        )
     return result
 
 
@@ -527,28 +568,55 @@ def create_argument_parser(prog: str | None = None) -> argparse.ArgumentParser:
         description="把一个证据包（debug 目录 / MFA 导出 zip / 多卷）渲染成流程图，产出落到 temp/flow/",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    ap.add_argument("--case", nargs="+", required=True,
-                    help="证据包：一个 debug 目录、一个/多个归档（多卷一起给）、或一份日志文件")
-    ap.add_argument("--outdir", default=DEFAULT_OUTDIR, help=f"输出目录（默认 {DEFAULT_OUTDIR}）")
+    ap.add_argument(
+        "--case",
+        nargs="+",
+        required=True,
+        help="证据包：一个 debug 目录、一个/多个归档（多卷一起给）、或一份日志文件",
+    )
+    ap.add_argument(
+        "--outdir", default=DEFAULT_OUTDIR, help=f"输出目录（默认 {DEFAULT_OUTDIR}）"
+    )
     ap.add_argument("--from", dest="t_from", default=None, help="起始时间")
     ap.add_argument("--to", dest="t_to", default=None, help="结束时间")
     ap.add_argument("--task-id", type=int, default=None, help="只看某个 task_id")
     ap.add_argument("--cut-on", default=None, help="手动指定分轮节点（逗号分隔）")
-    ap.add_argument("--max-rounds", type=int, default=40, help="最多画多少轮（默认 40）")
-    ap.add_argument("--collapse", type=int, default=3, help="连续同名节点折叠阈值（默认 3）")
+    ap.add_argument(
+        "--max-rounds", type=int, default=40, help="最多画多少轮（默认 40）"
+    )
+    ap.add_argument(
+        "--collapse", type=int, default=3, help="连续同名节点折叠阈值（默认 3）"
+    )
     ap.add_argument("--no-thumbs", dest="thumbs", action="store_false", help="不贴截图")
-    ap.add_argument("--no-parents", dest="parents", action="store_false",
-                    help="框里不写父节点那一行（父节点 = 本轮的派发者，来自 Node.NextList 事件）")
-    ap.add_argument("--no-overlay", dest="overlay", action="store_false",
-                    help="不合并重复轮次（默认把连续、同形、整轮无截图且无失败框的轮次并成一列）")
-    ap.add_argument("--overlay-min", type=int, default=2,
-                    help="连续几轮同形才合并（默认 2；0 或 1 等于关闭）")
+    ap.add_argument(
+        "--no-parents",
+        dest="parents",
+        action="store_false",
+        help="框里不写父节点那一行（父节点 = 本轮的派发者，来自 Node.NextList 事件）",
+    )
+    ap.add_argument(
+        "--no-overlay",
+        dest="overlay",
+        action="store_false",
+        help="不合并重复轮次（默认把连续、同形、整轮无截图且无失败框的轮次并成一列）",
+    )
+    ap.add_argument(
+        "--overlay-min",
+        type=int,
+        default=2,
+        help="连续几轮同形才合并（默认 2；0 或 1 等于关闭）",
+    )
     ap.add_argument("--mermaid", action="store_true", help="额外输出 .mmd")
     ap.add_argument("--force", action="store_true", help="忽略 manifest，强制重画")
-    ap.add_argument("--list-cases", action="store_true", help="只列出发现的证据包，不画")
-    ap.add_argument("--all-tasks", action="store_true",
-                    help="按任务逐个输出（一个 (进程, task_id) 一张图）。任务号在各进程内复用，"
-                         "不加这个参数时整份日志混画一张；加了之后文件名带 _task<id>_px<进程>")
+    ap.add_argument(
+        "--list-cases", action="store_true", help="只列出发现的证据包，不画"
+    )
+    ap.add_argument(
+        "--all-tasks",
+        action="store_true",
+        help="按任务逐个输出（一个 (进程, task_id) 一张图）。任务号在各进程内复用，"
+        "不加这个参数时整份日志混画一张；加了之后文件名带 _task<id>_px<进程>",
+    )
     ap.set_defaults(thumbs=True)
     return ap
 
@@ -567,14 +635,24 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
         return 1
 
     options = FlowOptions(
-        t_from=t_from, t_to=t_to, task_id=args.task_id, cut_on=args.cut_on,
-        max_rounds=args.max_rounds, collapse=args.collapse, thumbs=args.thumbs,
-        parents=args.parents, overlay=args.overlay, overlay_min=args.overlay_min,
+        t_from=t_from,
+        t_to=t_to,
+        task_id=args.task_id,
+        cut_on=args.cut_on,
+        max_rounds=args.max_rounds,
+        collapse=args.collapse,
+        thumbs=args.thumbs,
+        parents=args.parents,
+        overlay=args.overlay,
+        overlay_min=args.overlay_min,
     )
 
     single = args.case[0]
-    whole_dir = len(args.case) == 1 and os.path.isdir(single) and not any(
-        os.path.isfile(os.path.join(single, n)) for n in LOG_NAMES)
+    whole_dir = (
+        len(args.case) == 1
+        and os.path.isdir(single)
+        and not any(os.path.isfile(os.path.join(single, n)) for n in LOG_NAMES)
+    )
     try:
         cases = discover_cases(single) if whole_dir else [load_case(args.case)]
     except (FileNotFoundError, ValueError) as exc:
@@ -616,8 +694,14 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
 
     for case, case_options in jobs:
         try:
-            result = run_case(case, case_options, outdir=args.outdir, mermaid=args.mermaid,
-                              force=args.force, manifest=manifest)
+            result = run_case(
+                case,
+                case_options,
+                outdir=args.outdir,
+                mermaid=args.mermaid,
+                force=args.force,
+                manifest=manifest,
+            )
         except (FileNotFoundError, ValueError, OSError) as exc:
             failed += 1
             print(f"错误：{case.label}: {exc}", file=sys.stderr)
@@ -626,8 +710,10 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
         skipped += result is None
     save_manifest(args.outdir, manifest)
     tail = f"，失败 {failed}" if failed else ""
-    print(f"\n完成：绘制 {drawn} 个，跳过 {skipped} 个{tail}；"
-          f"manifest → {os.path.join(args.outdir, MANIFEST_NAME)}")
+    print(
+        f"\n完成：绘制 {drawn} 个，跳过 {skipped} 个{tail}；"
+        f"manifest → {os.path.join(args.outdir, MANIFEST_NAME)}"
+    )
     return 1 if failed and not drawn else 0
 
 
