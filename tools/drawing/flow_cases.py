@@ -35,7 +35,7 @@ import os
 import re
 import sys
 import zipfile
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
 
@@ -55,6 +55,7 @@ from flow_from_log import (
     _is_zip,
     parse_time,
     render_flow,
+    scan_tasks,
     stale_summary,
 )
 
@@ -350,6 +351,9 @@ def base_filename(case: Case, options: FlowOptions) -> str:
     elif issue and task:
         # 有 issue 名但没有 task_id：把任务名也带上，图才读得出画的是哪个任务
         parts.append(_safe_part(task))
+    if options.px:
+        # 多进程日志里同号任务会出现多次，进程号必须进名字，否则两次运行互相覆盖
+        parts.append(_safe_part(options.px).lower())
     return "_".join(p for p in parts if p)
 
 
@@ -542,6 +546,9 @@ def create_argument_parser(prog: str | None = None) -> argparse.ArgumentParser:
     ap.add_argument("--mermaid", action="store_true", help="额外输出 .mmd")
     ap.add_argument("--force", action="store_true", help="忽略 manifest，强制重画")
     ap.add_argument("--list-cases", action="store_true", help="只列出发现的证据包，不画")
+    ap.add_argument("--all-tasks", action="store_true",
+                    help="按任务逐个输出（一个 (进程, task_id) 一张图）。任务号在各进程内复用，"
+                         "不加这个参数时整份日志混画一张；加了之后文件名带 _task<id>_px<进程>")
     ap.set_defaults(thumbs=True)
     return ap
 
@@ -586,9 +593,30 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
     os.makedirs(args.outdir, exist_ok=True)
     manifest = load_manifest(args.outdir)
     drawn = skipped = failed = 0
+
+    # 每个证据包要画的任务。默认一个（`--task-id` 指定，或全部混画一张）；
+    # `--all-tasks` 时按 `(进程, task_id)` 逐个输出——task_id 在各进程内复用，
+    # 只按编号切会把两次不同运行的任务混进同一张图。
+    jobs: list[tuple[Case, FlowOptions]] = []
     for case in cases:
+        if not args.all_tasks:
+            jobs.append((case, options))
+            continue
         try:
-            result = run_case(case, options, outdir=args.outdir, mermaid=args.mermaid,
+            tasks = scan_tasks(case.log_source(), options.t_from, options.t_to)
+        except (OSError, TypeError) as exc:
+            failed += 1
+            print(f"错误：{case.label}: 列任务失败：{exc}", file=sys.stderr)
+            continue
+        if not tasks:
+            print(f"提示：{case.label} 里没有可画的任务，跳过", file=sys.stderr)
+            continue
+        for task in tasks:
+            jobs.append((case, replace(options, task_id=task.task_id, px=task.px)))
+
+    for case, case_options in jobs:
+        try:
+            result = run_case(case, case_options, outdir=args.outdir, mermaid=args.mermaid,
                               force=args.force, manifest=manifest)
         except (FileNotFoundError, ValueError, OSError) as exc:
             failed += 1

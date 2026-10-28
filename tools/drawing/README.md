@@ -134,6 +134,19 @@ python tools/drawing/whiteboard_images.py --dry-run   # 报告将要做什么，
   `task_id`）用同一个窗口。这样一份装了多次运行的日志不会把 23:59 那趟训练的未命中画进 13:11 那趟维修的末轮，
   也不会把同一运行里后一个任务的超时画进前一个任务的图上；而"最后一步之后"的失败标记仍留在图上
   （任务失败恰恰发生在最后一步之后）。被排掉的条数会印出来。
+- **任务号在各进程内复用，`--task-id` 要配 `--pid`**：MFA 每次启动都从同一个基数重新分配任务号
+  （本机 `maafw.log` 里 `200000001` 同时出现在 `Px15316`（18:01）与 `Px6448`（20:40）两次运行下）。
+  只给 `--task-id` 会把这几次混成一张图——**步骤数对不上就是它**。先 `--list-tasks` 看清单：
+
+  ```powershell
+  python tools/drawing/flow_from_log.py <安装根>/debug/maafw.log --list-tasks
+  # 进程      task_id  步数  开始                    结束                    入口
+  # Px15316  200000001     1  2026-10-27 18:01:14.527 2026-10-27 18:01:15.337 @mse/action
+  # Px6448   200000001     5  2026-10-27 20:40:35.535 2026-10-27 20:40:56.080 TaskEscort
+  ```
+
+  再 `--pid Px6448 --task-id 200000001`。不给 `--pid` 时保持旧行为（只按编号切，全文混合）。
+  `--list-tasks` 只列有节点执行的任务；`MaaTaskerPostStop` 那种 0 步的停止指令不列。
 - **诊断注记**：由上面这些事实构成的注记印在图第二行（琥珀色）并同时打到 stderr，别只看 stdout。
 
 ### 节点"疑似过时"（默认开，`--no-stale-check` 关闭）
@@ -245,7 +258,7 @@ python tools/drawing/whiteboard_images.py --dry-run   # 报告将要做什么，
 - **整份日志会读进内存**：为检测时间回跳必须读完（本机 10.9 MB 的 `maafw.log` 约 2.4 s、十几 MB 内存）。
   框架自己会轮转日志（`debug/` 下有 `maafw.bak.<日期>.log`），不需要为它做流式裁剪。
 - **`RENDERER_VERSION`**：改动会影响产物内容时（版面、注记、解析口径）必须 +1，
-  否则 `flow_cases` 会命中旧的 `manifest.json` 直接"跳过（已画过）"，渲染改了却不重画。现在是 **10**。
+  否则 `flow_cases` 会命中旧的 `manifest.json` 直接"跳过（已画过）"，渲染改了却不重画。现在是 **11**。
 - **合并与贴图解析的先后**：`overlay_repeats()` 的 `has_thumb` 问的是"第 i 轮实际贴到图没有"，
   所以只能在 `thumb_of` 算完之后调用；按"传没传 `--vision`"提前判断会把其实有图的轮折掉。
   折叠后 `thumb_of` 的键（旧列索引）必须重排，否则 `--no-thumbs` 与 on_error 回贴会把图贴到别的列。
@@ -281,6 +294,19 @@ python tools/drawing/whiteboard_images.py --dry-run   # 报告将要做什么，
 带时间标签时是 `X_20261024-031849_stale.png`。这个后缀**只能等画完才知道**（检查要拿到日志里
 实际跑过的节点名），所以是渲染后 `os.replace` 改名，`.mmd` 跟着一起改；幂等检查同时认
 `X.png` 与 `X_stale.png` 两种名字。
+
+**`--all-tasks`：按任务逐个输出，一个 `(进程, task_id)` 一张图。** 不加这个参数时整份日志混画一张
+（跨多次运行的任务会叠在一起）；加了之后先 `scan_tasks()` 扫出所有任务，再逐任务渲染，
+文件名带 `_task<id>_px<进程>`：
+
+```powershell
+python tools/drawing/flow_cases.py --case D:/MaaAshArms/debug --all-tasks
+# temp/flow/TaskTrain_task200000030_px30992.png
+# temp/flow/TaskEscort_task200000001_px15316.png
+# temp/flow/TaskEscort_task200000001_px6448.png     ← 同号不同进程，各画各的
+```
+
+`task_id` 在每个进程里从同一个基数重新分配，所以文件名的进程号是**唯一性的一部分**，不是装饰。
 
 **带 `--task-id` 时文件名只写 `_task<id>`、不写任务名**：一个 issue 里常有多个任务失败（实测
 `PYTHON-1Z` 有 6 个），而那个 task 的入口行不一定在导出的那一段里（实测 200000007 只留下 `ReturnMain`，

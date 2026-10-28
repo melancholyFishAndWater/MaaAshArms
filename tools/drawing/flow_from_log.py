@@ -81,7 +81,9 @@ from typing import Any, ClassVar
 #    `TypeError`，且"同时间戳取哪张"从"插入顺序"改成"member 字典序"（产物可能换一张缩略图）。
 # 9：节点名后标「疑似过时」——日志所属版本之后，该节点所在模块有提交（产物内容变化）。
 # 10：产物文件名去掉 `flow_` 前缀；画完后显式打印「疑似过时」提示（产物名变化）。
-RENDERER_VERSION = 10
+# 11：解析按 `(进程, task_id)` 归属——`active_task` 从全局改成按 `Px<pid>` 存，
+#     多进程混画的临时父节点不再跨进程串（默认渲染的父节点可能变准）；新增 `--pid` / `--list-tasks`。
+RENDERER_VERSION = 11
 
 # 框里最多列几个候选，多的折成"另 N 项"（`--list` 不受这个限制）。
 # 默认只列 2 个：父节点名字 + 本次真跑的那个候选是这一行最要紧的两件事，
@@ -499,7 +501,7 @@ def _count_truncated(msg: str, stats: ParseStats) -> None:
 
 
 def parse_log(path, t_from: datetime | None, t_to: datetime | None,
-              task_id: int | None, keep_internal: bool) -> ParsedLog:
+              task_id: int | None, keep_internal: bool, px: str | None = None) -> ParsedLog:
     """解析日志。`path` 可以是文件路径、日志正文，或任何可逐行的文本流。
 
     全量读入（不再在第一条晚于 `--to` 的行上提前结束），时间戳回跳时先按时间重排行；
@@ -509,6 +511,7 @@ def parse_log(path, t_from: datetime | None, t_to: datetime | None,
     stats = out.stats
     stats.source_kind = source_kind_of(path)
     stats.source_name = _source_label(path)
+    target_px = px  # 过滤条件：只取这个进程；None = 全文
     # 键带进程号：reco_id / action_id 是**每个进程各自**的计数器，一个装了多次运行的
     # maafw.log 里会重复（本机实测 930 个 reco_id 有 142 个重复，全部跨进程）。
     # 只按 id 作键会把别的运行的识别结果贴到这一步上。
@@ -518,12 +521,12 @@ def parse_log(path, t_from: datetime | None, t_to: datetime | None,
     # （本机 maafw.log 是 106 / 248 条），共用一个变量会让别的进程的派发者粘到本进程的步骤上，
     # 进而把 roles() → 分轮算错。
     dispatcher_by_px: dict[str, str] = {}
-    task_names: dict[int, str] = {}
+    task_names: dict[tuple[str, int], str] = {}
     # 解析到当前这一行时正在跑哪个 task：`task start` 记下、`task end` 清掉。
     # 只给框架级失败事件（自己不带 task_id）判断父节点用——它们的 task_id 必须留空，
     # 否则 parse_log() 末尾那段区间过滤会把别的运行的失败事件一起收进来。
     # 用单元列表而不是裸变量：`event_step()` 闭包要读它，裸变量在循环里赋值会被当成循环变量捕获。
-    active_task: list[int | None] = [None]
+    active_task: dict[str, int | None] = {}
     # 父节点：`Node.NextList.*` 记录的 (派发者, 候选表)。与 `[cur_node_=X]` 不同，这类记录**带 task_id**，
     # 所以按 task 归属而不是按进程——MFA 侧发事件、agent 进程写 node done，天然跨进程。
     nextlists: list[Dispatcher] = []
@@ -534,7 +537,7 @@ def parse_log(path, t_from: datetime | None, t_to: datetime | None,
         这里只贴，不记账：`--task-id` 会把别的任务的步骤滤掉，父节点覆盖率的账要等滤完再算
         （见 `parse_log()` 末尾），否则图上会报"79 步的父节点没找到"而图里其实只有 18 步。
         """
-        record, _gap = resolve_parent(nextlists, step.task_id, step.name, step.ts)
+        record, _gap = resolve_parent(nextlists, step.task_id if step.task_id is not None else active_task.get(px), step.name, step.ts)
         if record is not None:
             step.dispatcher = record.name
             step.candidates = list(record.candidates)
@@ -548,7 +551,7 @@ def parse_log(path, t_from: datetime | None, t_to: datetime | None,
             step.dispatcher = walk
             step.parent_source = "walk"
             return step
-        entry = task_names.get(step.task_id if step.task_id is not None else -1, "")
+        entry = task_names.get((px, step.task_id if step.task_id is not None else -1), "")
         if entry:
             step.dispatcher = entry
             step.parent_source = "entry"
@@ -557,7 +560,8 @@ def parse_log(path, t_from: datetime | None, t_to: datetime | None,
         return step
 
     def event_step(ts: datetime, name: str, action: str, node: str | None,
-                   task_ref: int | None = None, *, kind: str = "event", completed: bool = False) -> Step:
+                   task_ref: int | None = None, *, kind: str = "event", completed: bool = False,
+                   px: str = "") -> Step:
         """框架级事件也认一次父节点。
 
         `invalid node id` / `node not completed` 这几条事件自己不带 task_id，但 `action` 里就是出问题的
@@ -574,7 +578,7 @@ def parse_log(path, t_from: datetime | None, t_to: datetime | None,
                     task_id=task_ref if kind == "task" else None)
         if node:
             record, _gap = resolve_parent(nextlists,
-                                          task_ref if task_ref is not None else active_task[0],
+                                          task_ref if task_ref is not None else active_task.get(px),
                                           node, ts)
             if record is not None:
                 step.dispatcher = record.name
@@ -597,13 +601,13 @@ def parse_log(path, t_from: datetime | None, t_to: datetime | None,
         if t_to and ts > t_to:
             continue
         stats.lines_in_window += 1
-        px = m.group("px")
+        line_px = m.group("px")
         msg = m.group("msg")
 
         # 谁在评估 next 表（父节点 + 候选表）；同时记一份"评估账"——
         # 连续的 failed 就是卡在派发层的证据，见 NextListStat 的注释。
-        record = parse_nextlist(msg, ts, px)
-        if record is not None:
+        record = parse_nextlist(msg, ts, line_px)
+        if record is not None and (target_px is None or record.px == target_px):
             nextlists.append(record)
             stats.nextlist_seen += 1
             key = (record.task_id, record.name)
@@ -624,7 +628,7 @@ def parse_log(path, t_from: datetime | None, t_to: datetime | None,
         # 当前在走谁的 next 表（只知道派发者、不知道候选表，作为退回）
         w = WALK_RE.search(msg)
         if w:
-            dispatcher_by_px[px] = w.group(1).strip()
+            dispatcher_by_px[line_px] = w.group(1).strip()
             continue
 
         # 任务起止
@@ -635,14 +639,15 @@ def parse_log(path, t_from: datetime | None, t_to: datetime | None,
             except json.JSONDecodeError:
                 stats.truncated_skipped += 1
                 continue
-            task_names[int(d.get("task_id", 0))] = d.get("entry", "")
-            active_task[0] = int(d.get("task_id", 0))
+            key = (line_px, int(d.get("task_id", 0)))
+            task_names.setdefault(key, d.get("entry", ""))
+            active_task[line_px] = int(d.get("task_id", 0))
             entry = d.get("entry", "")
             tid = int(d.get("task_id", 0))
             out.tasks.append((ts, entry, tid, d.get("hash", "")))
             # 任务起始也算一步：入口那一轮框架合成的自派发（`TaskX -> [TaskX]`）在这里就能标出来
             out.events.append(event_step(ts, f"任务开始 {entry}", f"task_id={tid}", entry, tid,
-                                         kind="task", completed=True))
+                                         kind="task", completed=True, px=line_px))
             continue
         me = TASK_END_RE.search(msg)
         if me:
@@ -658,9 +663,9 @@ def parse_log(path, t_from: datetime | None, t_to: datetime | None,
             # 失败收尾就能看出"是谁结束了这个任务"。要赶在清 `active_task` 之前算。
             out.events.append(event_step(ts, f"任务结束 {entry} {'成功' if ret else '失败'}",
                                          f"ret={me.group(2)}", entry, tid,
-                                         kind="task", completed=ret))
-            if tid == active_task[0]:
-                active_task[0] = None
+                                         kind="task", completed=ret, px=line_px))
+            if tid == active_task.get(line_px):
+                active_task[line_px] = None
             out.task_ends.append((ts, entry, tid, ret))
             continue
 
@@ -674,7 +679,7 @@ def parse_log(path, t_from: datetime | None, t_to: datetime | None,
                 continue
             rid = j.get("reco_id")
             if isinstance(rid, int):
-                recl_by_id[(px, rid)] = j
+                recl_by_id[(line_px, rid)] = j
             name = j.get("name", "")
             if INTERNAL_NAME_RE.match(name) and not keep_internal:
                 stats.lines_internal_skipped += 1
@@ -686,7 +691,7 @@ def parse_log(path, t_from: datetime | None, t_to: datetime | None,
                 reco_id=rid if isinstance(rid, int) else None,
                 algorithm=j.get("algorithm", ""), box=j.get("box"), texts=texts,
                 kind="hit" if j.get("box") else "miss",
-            ), px))
+            ), line_px))
             continue
 
         # 动作结果
@@ -699,7 +704,7 @@ def parse_log(path, t_from: datetime | None, t_to: datetime | None,
                 continue
             aid = j.get("action_id")
             if isinstance(aid, int):
-                act_by_id[(px, aid)] = j
+                act_by_id[(line_px, aid)] = j
             continue
 
         # 节点执行完毕（主流程的一步）
@@ -715,14 +720,20 @@ def parse_log(path, t_from: datetime | None, t_to: datetime | None,
             if INTERNAL_NAME_RE.match(name) and not keep_internal:
                 stats.lines_internal_skipped += 1
                 continue
+            if target_px is not None and line_px != target_px:
+                # 别的进程的同号任务：task_id 在各进程内复用，只按编号切会把它混进来
+                stats.lines_other_task += 1
+                stats.other_task_ts.append(ts)
+                continue
             if task_id is not None and tid != task_id:
                 stats.lines_other_task += 1
                 stats.other_task_ts.append(ts)
                 continue
-            active_task[0] = tid  # 这份日志里可能一条 `task start` 都没有（实测 Sentry 拉回来的就没有），
-            #                       所以"正在跑哪个 task"以 node done 为准，给框架级事件判父节点用
-            reco = recl_by_id.get((px, j.get("reco_id")), {})
-            act = act_by_id.get((px, j.get("action_id")), {})
+            active_task[line_px] = tid  # 正在跑哪个 task：给框架级事件判父节点用（line_px 取自本行）
+            # 这份日志里可能一条 `task start` 都没有（实测 Sentry 拉回来的就没有），
+            # 所以"正在跑哪个 task"以 node done 为准，给框架级事件判父节点用
+            reco = recl_by_id.get((line_px, j.get("reco_id")), {})
+            act = act_by_id.get((line_px, j.get("action_id")), {})
             texts: list[str] = []
             collect_texts(reco.get("detail"), texts)
             out.steps.append(attach_parent(Step(
@@ -731,7 +742,7 @@ def parse_log(path, t_from: datetime | None, t_to: datetime | None,
                 node_id=j.get("node_id"), task_id=tid,
                 algorithm=reco.get("algorithm", ""), box=reco.get("box"), texts=texts,
                 action=act.get("action", ""), action_ok=act.get("success"),
-            ), px))
+            ), line_px))
             continue
 
         # 异常
@@ -752,15 +763,16 @@ def parse_log(path, t_from: datetime | None, t_to: datetime | None,
                 if tout:
                     seen.append(f"reco_timeout={tout}{'ms' if tout_ok else '(截断)'}")
                 detail = "行尾被截断" + ("，" + "  ".join(seen) if seen else "，两个数字都缺失")
-            out.events.append(event_step(ts, f"Task timeout {mt.group('name')}", detail, mt.group("name")))
+            out.events.append(event_step(ts, f"Task timeout {mt.group('name')}", detail, mt.group("name"),
+                                         px=line_px))
             continue
         mi = INVALID_RE.search(msg)
         if mi:
-            out.events.append(event_step(ts, "invalid node id", mi.group(1), mi.group(1)))
+            out.events.append(event_step(ts, "invalid node id", mi.group(1), mi.group(1), px=line_px))
             continue
         mn = NOT_COMPLETED_RE.search(msg)
         if mn:
-            out.events.append(event_step(ts, "node not completed", mn.group(1), mn.group(1)))
+            out.events.append(event_step(ts, "node not completed", mn.group(1), mn.group(1), px=line_px))
             continue
 
         # 上面全不匹配：可能是被导出裁断的记录
@@ -798,6 +810,79 @@ def parse_log(path, t_from: datetime | None, t_to: datetime | None,
         else:
             stats.parent_unknown += 1
     return out
+
+
+@dataclass
+class TaskRef:
+    """日志里的一个任务：`(进程, task_id)` 唯一定位。
+
+    `task_id` 在每个进程里从同一个基数重新分配（本机实测 200000001 在 Px15316 与 Px6448
+    各出现一次），所以单靠编号指不明确切是哪一个——`--pid` + `--task-id` 成对才是键。
+    """
+
+    px: str
+    task_id: int
+    entry: str = ""
+    first_ts: datetime | None = None
+    last_ts: datetime | None = None
+    steps: int = 0
+
+    def label(self) -> str:
+        return f"{self.px}/{self.task_id}"
+
+    def window(self) -> str:
+        lo = _fmt_ts(self.first_ts)
+        hi = _fmt_ts(self.last_ts)
+        return f"{lo} ~ {hi}"
+
+
+def scan_tasks(log, t_from: datetime | None = None,
+               t_to: datetime | None = None) -> list[TaskRef]:
+    """列出日志里所有 `(进程, task_id)`，按开始时间排序。
+
+    只扫 `PipelineTask node done`（任务靠它带 `task_id_`）与 `task start`（拿入口名），
+    不复用 `parse_log()`：那个要建步骤、认父节点，为了列一张表不值得。
+    多进程日志里同一编号会出现在不同进程下，`--pid` + `--task-id` 才能唯一定位一个。
+    """
+    refs: dict[tuple[str, int], TaskRef] = {}
+    stats = ParseStats()
+    for raw in _read_lines(log, stats):
+        m = LINE_RE.match(raw.rstrip("\n"))
+        if not m:
+            continue
+        ts = parse_ts(m.group("ts"))
+        if t_from and ts < t_from:
+            continue
+        if t_to and ts > t_to:
+            continue
+        px = m.group("px")
+        msg = m.group("msg")
+        md = NODE_DONE_RE.search(msg)
+        if md:
+            tid = int(md.group(2))
+            ref = refs.get((px, tid))
+            if ref is None:
+                ref = refs[(px, tid)] = TaskRef(px=px, task_id=tid)
+            ref.steps += 1
+            ref.first_ts = ts if ref.first_ts is None else min(ref.first_ts, ts)
+            ref.last_ts = ts if ref.last_ts is None else max(ref.last_ts, ts)
+            continue
+        ms = TASK_START_RE.search(msg)
+        if ms:
+            try:
+                d = json.loads(ms.group(1))
+            except json.JSONDecodeError:
+                continue
+            tid = int(d.get("task_id", 0))
+            ref = refs.get((px, tid))
+            if ref is None:
+                ref = refs[(px, tid)] = TaskRef(px=px, task_id=tid)
+            ref.entry = d.get("entry", "") or ref.entry
+            ref.first_ts = ts if ref.first_ts is None else min(ref.first_ts, ts)
+    # 只留真有节点执行的：`MaaTaskerPostStop` 那种停止指令只有 task start、0 步，
+    # 画不出图，列在表里只是噪音（本机实测 6 条）。
+    return sorted((r for r in refs.values() if r.steps),
+                  key=lambda r: (r.first_ts or datetime.min, r.px, r.task_id))
 
 
 def _synthesize_steps(out: ParsedLog, task_id: int | None) -> None:
@@ -2218,6 +2303,8 @@ class FlowOptions:
     t_from: datetime | None = None
     t_to: datetime | None = None
     task_id: int | None = None
+    # 进程号（`Px30992` 形态）：task_id 在各进程内复用，多进程日志要配它才能唯一定位一个任务
+    px: str | None = None
     keep_internal: bool = False
     anchor: str | None = None
     cut_on: str | None = None
@@ -2541,7 +2628,8 @@ def render_flow(log,
                     on_error = MediaResolver(cand)
                     break
 
-    parsed = parse_log(log, opts.t_from, opts.t_to, opts.task_id, opts.keep_internal)
+    parsed = parse_log(log, opts.t_from, opts.t_to, opts.task_id, opts.keep_internal,
+                       px=opts.px)
     raw = round_steps(parsed, opts)
     if not raw:
         raise ValueError(describe_empty_window(parsed, opts, log))
@@ -2697,6 +2785,7 @@ def build_flow_options(args: argparse.Namespace) -> FlowOptions:
         t_from=parse_time(args.t_from),
         t_to=parse_time(args.t_to),
         task_id=args.task_id,
+        px=args.pid,
         keep_internal=args.keep_internal,
         anchor=args.anchor,
         cut_on=args.cut_on,
@@ -2744,6 +2833,8 @@ def create_argument_parser(prog: str | None = None) -> argparse.ArgumentParser:
     ap.add_argument("--from", dest="t_from", default=None, help="起始时间，支持 'HH:MM:SS' 或完整时间戳")
     ap.add_argument("--to", dest="t_to", default=None, help="结束时间")
     ap.add_argument("--task-id", type=int, default=None, help="只看某个 task_id")
+    ap.add_argument("--pid", type=str, default=None,
+                    help="只看某个进程（`Px<pid>` 形态），与 --task-id 一起用于区分跨进程复用的任务编号")
     ap.add_argument("--anchor", default=None, help="手动指定循环锚点（只影响标题显示，默认自动）")
     ap.add_argument("--cut-on", default=None,
                     help="手动指定分轮节点，逗号分隔（默认自动：父节点里重复出现的；只有一轮时再取最高频节点）")
@@ -2783,6 +2874,9 @@ def create_argument_parser(prog: str | None = None) -> argparse.ArgumentParser:
     ap.add_argument("--scale", type=float, default=1.0)
     ap.add_argument("--title", default=None)
     ap.add_argument("--list", action="store_true", help="只打印解析出的步骤，不画图")
+    ap.add_argument("--list-tasks", action="store_true",
+                    help="只列出日志里的所有任务（进程 / task_id / 入口 / 起止 / 步数），不画图。"
+                         "多进程日志里同一编号会出现在不同进程下，配 --pid + --task-id 才能唯一定位")
     ap.add_argument("--mermaid", action="store_true", help="额外输出同名 .mmd（Mermaid 文本流程图）")
     ap.set_defaults(thumbs=True, parents=True, overlay=True, stale_check=True)
     return ap
@@ -2791,6 +2885,22 @@ def create_argument_parser(prog: str | None = None) -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = create_argument_parser().parse_args(argv)
     options = build_flow_options(args)
+
+    if args.list_tasks:
+        tasks = scan_tasks(args.log, options.t_from, options.t_to)
+        if not tasks:
+            print("错误：日志里没有任何任务（没有 PipelineTask node done，也没有 task start）。",
+                  file=sys.stderr)
+            return 1
+        head = f"{'进程':<9} {'task_id':>9}  {'步数':>4}  {'开始':<23} {'结束':<23} 入口"
+        print(head)
+        print("-" * len(head))
+        for t in tasks:
+            print(f"{t.px:<9} {t.task_id:>9}  {t.steps:>4}  "
+                  f"{_fmt_ts(t.first_ts):<23} {_fmt_ts(t.last_ts):<23} {t.entry}")
+        print(f"\n共 {len(tasks)} 个任务。多进程日志里同一 task_id 会出现在不同进程下，"
+              f"用 `--pid <进程> --task-id <编号>` 唯一定位一个。")
+        return 0
 
     try:
         result = render_flow(args.log, out=args.out, outdir=args.outdir,
