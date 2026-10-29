@@ -38,6 +38,10 @@
         "action": "Click",
         "post_wait_freezes": 1000
     },
+    // TODO ISSUE 27
+    // "EntrustRewardTimeout": {
+    //     "desc": "[end] 领取超时"
+    // },
     // INFO 领取小关详情页面
     "EntrustEnsureRewardInfo": {
         "desc": "[jp] 确保在领取奖励小关页面",
