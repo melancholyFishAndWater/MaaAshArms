@@ -81,7 +81,7 @@
         ]
     },
     "TrainingEnterHome": {
-        "desc": "[jp] 进入训练所",
+        "desc": "进入训练所",
         "recognition": "OCR",
         "expected": "训练所",
         "roi": [
@@ -94,6 +94,7 @@
         "pre_wait_freezes": 1000,
         "rate_limit": 1500,
         "next": [
+            "BaseErrorNext",
             "TrainingLoop",
             "[JumpBack]BaseBranchError",
             "TrainingEnterHome"
