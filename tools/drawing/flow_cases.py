@@ -416,12 +416,13 @@ def out_filename(
 
 
 def stale_name(name: str) -> str:
-    """给产物文件名加「疑似过时」后缀：`_stale` 追加在最末尾（扩展名之前）。
+    """给产物文件名加「疑似过时」后缀：`_疑似过时` 追加在最末尾（扩展名之前）。
 
-    `X.png` -> `X_stale.png`；`X_20261024-031849.png` -> `X_20261024-031849_stale.png`。
+    `X.png` -> `X_疑似过时.png`；`X_20261024-031849.png` -> `X_20261024-031849_疑似过时.png`。
+    后缀用中文：文件名直接写清这是哪一类产物，不必再记 `_stale` 这个缩写。
     """
     stem, ext = os.path.splitext(name)
-    return f"{stem}_stale{ext}"
+    return f"{stem}_疑似过时{ext}"
 
 
 def load_manifest(outdir: str) -> dict:
@@ -464,8 +465,8 @@ def run_case(
     """渲染一个 case；命中 manifest 且产物还在就跳过（幂等）。
 
     「疑似过时」只有在渲染完才知道（检查要拿到日志里实际跑过的节点名），所以文件名里的
-    `_stale` 是**画完之后**补的：先按普通名字渲染，命中就 `os.replace` 改名，再把
-    manifest 记到新名字上。幂等检查因此要同时认普通名与 `_stale` 名——上一轮画出来的
+    `_疑似过时` 是**画完之后**补的：先按普通名字渲染，命中就 `os.replace` 改名，再把
+    manifest 记到新名字上。幂等检查因此要同时认普通名与带后缀的名——上一轮画出来的
     是哪一个，这一轮还不知道。
     """
     name = out_filename(case, options, outdir, manifest)
@@ -502,7 +503,7 @@ def run_case(
     )
     assert isinstance(result, FlowResult)
 
-    # 疑似过时命中：把 _stale 追加到文件名最末尾（扩展名之前），.mmd 跟着改
+    # 疑似过时命中：把 _疑似过时 追加到文件名最末尾（扩展名之前），.mmd 跟着改
     stale_hit = result.stale is not None and bool(result.stale.nodes)
     if stale_hit:
         renamed = stale_name(name)

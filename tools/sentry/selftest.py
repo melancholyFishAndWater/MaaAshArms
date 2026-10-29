@@ -380,7 +380,9 @@ def check_task_rows() -> list[str]:
     )
     _eq(
         sorted(row.task for row in all_markers),
-        ["HomeFlag", "BaseReturnHome"],
+        # 期望值也要排序：左边是 sorted(...)，写成未排序的字面量时，
+        # 只要名字的字典序变了（`ReturnMain` → `BaseReturnHome`）断言就会挂。
+        sorted(["HomeFlag", "BaseReturnHome"]),
         "不限版本时的标记全集",
     )
 
