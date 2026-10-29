@@ -83,7 +83,9 @@ from typing import Any, ClassVar
 # 10：产物文件名去掉 `flow_` 前缀；画完后显式打印「疑似过时」提示（产物名变化）。
 # 11：解析按 `(进程, task_id)` 归属——`active_task` 从全局改成按 `Px<pid>` 存，
 #     多进程混画的临时父节点不再跨进程串（默认渲染的父节点可能变准）；新增 `--pid` / `--list-tasks`。
-RENDERER_VERSION = 11
+# 12：把「Custom 回调没注册」（agent 缺位）标到对应步骤上，并在注记里说明——识别缺位原本与
+#     "纯识别超时"、动作缺位原本与"pipeline 自己的问题"在图上分不出来（见 ISSUES/README）。
+RENDERER_VERSION = 12
 
 # 框里最多列几个候选，多的折成"另 N 项"（`--list` 不受这个限制）。
 # 默认只列 2 个：父节点名字 + 本次真跑的那个候选是这一行最要紧的两件事，
@@ -134,6 +136,23 @@ INVALID_RE = re.compile(r"invalid node id, handle error \[node\.name=([^\]]+)\]"
 NOT_COMPLETED_RE = re.compile(
     r"node not completed, handle error \[node\.name=([^\]]+)\]"
 )
+# agent 缺位：Custom 回调没注册时框架打的两条 ERR。只在"引用了回调名但没人注册"时出现，
+# 所以有它就是硬证据；反过来没有它不代表 agent 在场（回调注册了但抛异常/返回 false 不打这两条）。
+# 判据与三个反例见 tools/drawing/ISSUES.md。
+CUSTOM_NULL_RECO_RE = re.compile(
+    r"recognition is null \[name_=(?P<node>[^\]]+)\] \[param_\.name=(?P<reg>[^\]]+)\]"
+)
+CUSTOM_NULL_ACT_RE = re.compile(
+    r"Action is null \[node_name=(?P<node>[^\]]+)\] \[param\.name=(?P<reg>[^\]]+)\]"
+)
+# agent 客户端的生死：Destroy 之后到下一次 Connect 返回之间，注册过的回调都不在。
+# 判定用 `LINE_RE` 的 `func` 组（函数名在方括号里，**不在 `msg` 里**），见 `parse_log`。
+# 注意 `clear_custom_registration` **不是**断开信号——它是每次 Connect 的准备工作
+# （本机实测 23 次入口对应 22 次 Connect），拿它当"断开"会误报。
+AGENT_DESTROY_FUNC = "MaaAgentClientDestroy"
+AGENT_CONNECT_FUNC = "MaaAgentClientConnect"
+# 未注册的 ERR 与它影响的记录之间隔多久还算同一次：实测识别侧约 30 ms、动作侧约 200 ms
+CUSTOM_MISS_WINDOW_SECONDS = 2.0
 
 # 这些行整条匹配才算完整；只对上"头部"说明导出按字节裁过（Explore CSV 的常见下场）
 TRUNCATION_HEADS: tuple[tuple[str, re.Pattern[str]], ...] = (
@@ -291,6 +310,22 @@ def resolve_parent(
     return (pick, gap) if gap <= NEXTLIST_MAX_GAP_SECONDS else (None, float("inf"))
 
 
+@dataclass(frozen=True)
+class CustomMissing:
+    """一次「Custom 回调没注册」：框架打的那两条 ERR。
+
+    `kind` = reco（识别未注册，该候选判 miss）/ act（动作未注册，该节点动作返回 false）。
+    `node` 是**节点名**不是注册名（已与 pipeline 的 `custom_recognition`/`custom_action` 对照），
+    所以归属不需要绕注册名。
+    """
+
+    ts: datetime
+    px: str
+    node: str
+    reg: str
+    kind: str
+
+
 @dataclass
 class Step:
     """一次"节点跑完"的记录。"""
@@ -316,6 +351,10 @@ class Step:
     jumps: list[str] = field(default_factory=list)  # 候选里带 `[JumpBack]` 的那些
     # nextlist | walk | entry | none：归到父节点靠的是哪一层证据（读图的人要能看出可信度）
     parent_source: str = ""
+    # 非空 = 这一步踩在「Custom 回调没注册」上（值是该回调的注册名）。由 `_mark_agent_missing` 填。
+    # 存在理由见 tools/drawing/ISSUES.md：识别缺位与"纯超时"、动作缺位与"pipeline 自己的问题"
+    # 在图上一模一样，读图的人会往 ROI/UI 方向查。
+    agent_missing: str = ""
 
     # 疑似过时的节点名（整张图共用一份，由 `_apply_stale` 填）。不写成 dataclass 字段：
     # 它不属于"这一步"，而 `Step` 会被 `overlay_repeats` 大量重造，加字段要处处带参数。
@@ -377,6 +416,9 @@ class Step:
                 )
         if self.texts:
             bits.append(short(self.texts))
+        if self.agent_missing:
+            # 只写这四个字：框宽有限，注册名进注记（`agent_missing_note`）里说
+            bits.append("agent 缺位")
         return "  ".join(b for b in bits if b)
 
 
@@ -431,6 +473,10 @@ class ParsedLog:
     nextlist_stats: dict[tuple[int | None, str], NextListStat] = field(
         default_factory=dict
     )
+    # agent 缺位：日志里的「Custom 回调没注册」记录，以及 agent 客户端的生死变更
+    # （`(时刻, 进程, 是否在场)`）。两者都只进注记，不需要进图。
+    custom_missing: list[CustomMissing] = field(default_factory=list)
+    agent_state: list[tuple[datetime, str, bool]] = field(default_factory=list)
 
 
 def _open_log_lines(source) -> Iterator[str]:
@@ -666,6 +712,7 @@ def parse_log(
             continue
         stats.lines_in_window += 1
         line_px = m.group("px")
+        func = m.group("func")
         msg = m.group("msg")
 
         # 谁在评估 next 表（父节点 + 候选表）；同时记一份"评估账"——
@@ -689,6 +736,26 @@ def parse_log(
                 stat.failed_candidates = record.candidates
             else:
                 stat.starting += 1
+            continue
+
+        # agent 缺位：Custom 回调没注册（框架打 ERR），以及 agent 客户端的生死
+        cm = CUSTOM_NULL_RECO_RE.search(msg)
+        if cm:
+            out.custom_missing.append(
+                CustomMissing(ts, line_px, cm.group("node"), cm.group("reg"), "reco")
+            )
+            continue
+        cm = CUSTOM_NULL_ACT_RE.search(msg)
+        if cm:
+            out.custom_missing.append(
+                CustomMissing(ts, line_px, cm.group("node"), cm.group("reg"), "act")
+            )
+            continue
+        if func == AGENT_DESTROY_FUNC and "| enter" in msg:
+            out.agent_state.append((ts, line_px, False))
+            continue
+        if func == AGENT_CONNECT_FUNC and "| leave" in msg:
+            out.agent_state.append((ts, line_px, True))
             continue
 
         # 当前在走谁的 next 表（只知道派发者、不知道候选表，作为退回）
@@ -937,6 +1004,7 @@ def parse_log(
             stats.parent_fallback_entry += 1
         else:
             stats.parent_unknown += 1
+    _mark_agent_missing(out)
     return out
 
 
@@ -1860,6 +1928,10 @@ def compose_columns(
                     parent_source=items[-1].parent_source,
                     reco_id=items[-1].reco_id,
                     box=items[-1].box,
+                    # 这一组里只要有一次踩在「Custom 回调没注册」上就标出来（取第一条非空的）
+                    agent_missing=next(
+                        (a.agent_missing for a in items if a.agent_missing), ""
+                    ),
                 )
             )
         rows.sort(key=lambda s: (-s.run_len, s.ts))
@@ -2968,6 +3040,98 @@ def stall_notes(
     return notes
 
 
+def _match_custom_missing(records: list[CustomMissing], ts: datetime, name: str,
+                          kind: str) -> CustomMissing | None:
+    """找「这条记录之前 `CUSTOM_MISS_WINDOW_SECONDS` 内、同名、同类」的那次未注册。
+
+    只比节点名与时间，**不比进程号**：同一份日志里进程在时间上是串行的（实测 6 次启动
+    的首末任务区间两两不重叠），不会出现"两个进程同时跑同名节点"。
+    """
+    best: CustomMissing | None = None
+    for record in records:
+        if record.kind != kind or record.node != name:
+            continue
+        delta = (ts - record.ts).total_seconds()
+        if 0 <= delta <= CUSTOM_MISS_WINDOW_SECONDS and (best is None or record.ts > best.ts):
+            best = record
+    return best
+
+
+def _mark_agent_missing(out: ParsedLog) -> None:
+    """把「Custom 回调没注册」标到它影响的记录上。
+
+    两条挂法，方向都是"ERR 在前"（框架先判回调为空、再落记录）：
+
+    * 识别缺位 → 挂在它后面那条 `algorithm=Custom`、`box=null` 的未命中记录上
+      （实测 `TrainInit` 的 ERR 之后 29 ms 就是 `reco … "box":null`）；
+    * 动作缺位 → 挂在它后面那一步 `completed=false` 上（实测 `EntrustInit` 之后 201 ms 是
+      `PipelineTask node done … "completed":false`）。
+    """
+    if not out.custom_missing:
+        return
+    for attempt in out.attempts:
+        if attempt.box or attempt.algorithm != "Custom":
+            continue
+        hit = _match_custom_missing(out.custom_missing, attempt.ts, attempt.name, "reco")
+        if hit is not None:
+            attempt.agent_missing = hit.reg
+    for step in out.steps:
+        if step.completed:
+            continue
+        hit = _match_custom_missing(out.custom_missing, step.ts, step.name, "act")
+        if hit is not None:
+            step.agent_missing = hit.reg
+
+
+def _agent_gap_of(parsed: ParsedLog, ts: datetime) -> datetime | None:
+    """`ts` 之前最后一次 agent 生死变更；那次是"销毁"就返回销毁时刻，否则 None。
+
+    只认 `MaaAgentClientDestroy` 与 `MaaAgentClientConnect` 的返回：前者之后回调全部失效，
+    后者返回说明重连（并重新注册）成功。
+    """
+    before = [state for state in parsed.agent_state if state[0] <= ts]
+    if not before:
+        return None
+    gap_ts, _px, present = max(before, key=lambda s: s[0])
+    return None if present else gap_ts
+
+
+def agent_missing_note(parsed: ParsedLog, opts: FlowOptions) -> list[str]:
+    """agent 缺位那件事怎么说：命中数、涉及节点、缺位区间（判得出来才写）、以及反向提醒。
+
+    **只数窗口内的**：ERR 行不带 `task_id`，选中某个任务时按它的判定窗口夹（与框架级事件同一个
+    口径）。打标那一侧不能夹——ERR 与它影响的记录可能分属"步骤区间"内外。
+    """
+    records = parsed.custom_missing
+    if opts.task_id is not None and parsed.span is not None:
+        lo, hi = parsed.span
+        records = [m for m in records if lo <= m.ts <= hi]
+    if not records:
+        return []
+    nodes = sorted({m.node for m in records})
+    shown = "、".join(nodes[:5])
+    more = f" 等 {len(nodes)} 个" if len(nodes) > 5 else ""
+    notes = [
+        f"{len(records)} 处 Custom 回调未注册（agent 缺位）：{shown}{more}"
+        f"——图里这些步骤的注记写了「agent 缺位」，属环境故障，不要往 ROI / UI 方向查"
+    ]
+    gaps = [_agent_gap_of(parsed, m.ts) for m in records]
+    real = [g for g in gaps if g is not None]
+    if real and len(real) == len(gaps):
+        # 全部命中都落在"销毁之后、重连之前"，才能说成一段区间；参差不齐就只说现象
+        start = min(real).strftime("%H:%M:%S")
+        notes.append(
+            f"agent 客户端在 {start} 被销毁，之后没有重新连上"
+            f"（`MaaAgentClientConnect` 未返回），这批缺位都落在这个区间内"
+        )
+    # 这条必须写：这两条 ERR 是**单向证据**，没有它不代表 agent 在场（回调抛异常/返回 false 不打）
+    notes.append(
+        "注意：**没有**「agent 缺位」标记不代表 agent 在场——回调注册了但抛异常或返回 false 时"
+        "框架不打这两条 ERR，那种情况要看 debug/agent/agent.log"
+    )
+    return notes
+
+
 def build_notes(parsed: ParsedLog, opts: FlowOptions) -> list[str]:
     """图上第二行与终端提示共用的诊断注记。
 
@@ -3008,6 +3172,7 @@ def build_notes(parsed: ParsedLog, opts: FlowOptions) -> list[str]:
             f"已排除其他 task 的 {st.events_dropped} 条失败事件（本会画进图里）"
         )
     notes.extend(stale_notes(opts.stale))
+    notes.extend(agent_missing_note(parsed, opts))
     return notes
 
 

@@ -33,6 +33,7 @@
 | 加 `--keep-order` 之类的开关保留原始行序 | 时间戳回跳是数据坏了，按时间重排是修数据而不是风格选择 | 要看原始顺序直接读日志文件 |
 | 把"前缀差一步"的两轮当重复折在一起（子序列匹配） | `A,B,C,D,E` 与 `B,C,D,E` 看着是同一个循环，但短的那轮是从中间开始的；硬折会让列头写的轮号区间与实际首尾不符，读图的人会以为第 3 轮也跑了 `A` | 只从列首逐项比。真要看这两轮怎么衔接，用 `--no-overlay` 逐列看 |
 | 判断节点"是不是真的过时" | 只能比"日志所属版本时的定义"和"现在的定义"有没有差异；先后顺序、字段增删、注释都算不同，而"改动有没有影响这个节点的行为"要读代码 | 图上只标「疑似过时」并给出最近一次改动该模块的提交，按它去核对（见「节点"疑似过时"」） |
+| 判断"agent 在场但回调抛异常/返回 false" | 框架只在回调**没注册**时打那两条 ERR，注册了却失败不打——日志里没有这个信号 | 看 `debug/agent/agent.log`；图上「agent 缺位」是**单向**证据（见「agent 缺位」） |
 
 判据都写在代码里：`round_steps()`、`compose_columns()`、`describe_empty_window()` 的文档字符串。
 
@@ -182,6 +183,40 @@ python tools/drawing/whiteboard_images.py --dry-run   # 报告将要做什么，
 - **tag 必须在本地**：`git fetch --tags` 之后再跑；缺 tag 时注记会直说，不当成"没有过时节点"。
 - **开销**：一次 `git show` 每模块 + 带缓存的 `git log -1` 每模块，一份 42 节点 4 轮的日志多约 4 s
   （1.5 s → 5.7 s，其中大部分是画图本身）。嫌慢就 `--no-stale-check`。
+
+### agent 缺位（自动标，没有开关）
+
+日志里出现下面任意一条 ERR，就说明框架引用了 Custom 回调名、但**没有任何进程注册它**：
+
+| 来源 | 行 |
+| --- | --- |
+| `CustomRecognition.cpp` `L33` | `recognition is null [name_=<节点>] [param_.name=<Reco 名>]` |
+| `CustomAction.cpp` `L19` | `Action is null [node_name=<节点>] [param.name=<Act 名>]` |
+
+只在 agent 缺位时出现，所以是硬证据。命中的两条按"ERR 在前"挂到受影响的记录上：
+
+| 缺位类型 | 图上表现 |
+| --- | --- |
+| 识别未注册 | 那条 `algorithm=Custom`、`box=null` 的记录标 `agent 缺位`（实测 ERR 之后约 30 ms），通常并进「未命中（聚合）」框 |
+| 动作未注册 | 那一步（`completed=false`）的 detail 后标 `agent 缺位`（实测 `EntrustInit` 之后约 200 ms） |
+
+标题注记给"多少处、哪些节点"；全部命中都落在同一段缺位区间时，再补一句区间
+（`MaaAgentClientDestroy` 之后没有 `MaaAgentClientConnect` 返回，就是"销毁了却没重连"）。
+
+**反向不成立（也印在图的注记里）**：没有 `agent 缺位` 标记**不代表** agent 在场——回调注册了但抛异常
+或返回 false 时框架**不打**这两条 ERR（源码 `CustomAction.cpp:18-21`、`CustomRecognition.cpp:32-35`
+只在回调指针为空时打），那种情况只有 `debug/agent/agent.log` 能说清。
+
+三个**不要**当成 agent 缺位的反例：
+
+1. 只有 `[pretask.reco_timeout=…]`、一个 Custom 参数都没有 → 纯识别超时；
+2. agent 在场但回调自己返回 `false` → 就是上面那条反向情形，不打 ERR；
+3. `failed to get_reco_result [reco_id=…]`（`MaaTasker.cpp:359`）单独出现 → 多份日志里成百条地出现，
+   噪声太大，只能当辅证。
+
+实现上的两个坑（都写在代码注释里）：`name_` 是**节点名**而不是注册名（已与 pipeline 的
+`custom_recognition` 对照），所以归属不用绕注册名；`clear_custom_registration` **不是**断开信号，
+它是每次 `MaaAgentClientConnect` 的准备工作（本机实测 23 次入口对应 22 次 Connect），拿它当"断开"会误报。
 
 ### 画不出来时的报错
 
