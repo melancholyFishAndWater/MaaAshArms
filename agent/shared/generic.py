@@ -24,7 +24,7 @@ from maa.event_sink import NotificationType
 from maa.pipeline import JOCR, JTemplateMatch
 
 from agentlog import log
-from parent_tracker import father_name, dispatcher
+from parent_tracker import candidates, father_name, dispatcher
 from rect import DEFAULT_HIT_BOX
 
 # ---------- Reco ----------
@@ -155,10 +155,10 @@ class BaseNextTimeOutErrorReco(CustomRecognition):
         # 3) 获取父节点名
         name = father_name(argv.task_detail.task_id, argv.node_name)
         if name is None:
-            log.warn(f"{argv.node_name} 获取父节点失败")
+            log.debug(f"{argv.node_name} 获取父节点失败")
             return
 
-        # 4) 递增次数
+        # 4) 修改变量
         _times_by_name[name] = _times_by_name.get(name, 0) + 1
 
         # 5) 条件返回box
@@ -169,20 +169,26 @@ class BaseNextTimeOutErrorReco(CustomRecognition):
         return
 
 
-# 当不是自环命中时 清空累积次数
+# 命中时 若非自环且节点候选列表不为空 清空累积次数
 @AgentServer.context_sink()
 class _BaseErrorNextSink(ContextEventSink):
-    def on_node_pipeline_node(self, context, noti_type, detail) -> None:
-        if noti_type == NotificationType.Succeeded:
-            # 1) 获取派发者节点名
-            name = dispatcher(detail.task_id)
-            if name is None:
-                log.warn(f"{detail.name} 获取父节点失败")
-                return
+    def on_node_recognition(self, context, noti_type, detail) -> None:
+        # 1) 节点条件
+        if noti_type != NotificationType.Succeeded:
+            return
 
-            # 2) 条件清空
-            if name != detail.name:
-                _times_by_name.pop(detail.name, None)
+        # 2) 获取派发者节点名
+        father = father_name(detail.task_id, detail.name)
+        if father is None:
+            log.debug(f"{detail.name} 获取父节点失败")
+            return
+        elif father == detail.name:  # 自环
+            return
+
+        # 3) 条件清空
+        data = context.get_node_data(detail.name)
+        if data and data.get("next"):
+            _times_by_name.pop(father, None)
 
 
 # ----- BaseMoveUpDown -----
