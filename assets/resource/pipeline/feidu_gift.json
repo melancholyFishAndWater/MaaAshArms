@@ -343,13 +343,13 @@
     /* -------------------- 工作-赠礼 -------------------- */
     // INFO 礼物页面
     "GiftProbeShowGift": {
-        "desc": "[end] 有显示礼物按钮",
-        "recognition": "TemplateMatch",
-        "template": "Feidu/ShowGiftButton.png",
+        "desc": "[end] 有赠礼文字",
+        "recognition": "OCR",
+        "expected": "赠礼",
         "roi": [
-            1163,
+            1039,
             581,
-            95,
+            219,
             115
         ]
     },
@@ -362,6 +362,12 @@
             "GiftProbeHome"
         ],
         "box_index": 1,
+        "target_offset": [
+            18,
+            -51,
+            -39,
+            0
+        ],
         "action": "Click",
         "post_wait_freezes": 1000,
         "next": [
