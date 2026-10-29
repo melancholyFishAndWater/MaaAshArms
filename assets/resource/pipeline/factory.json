@@ -31,12 +31,17 @@
     "FactoryEnterHome": {
         "desc": "从主页进入订单工厂",
         "recognition": "OCR",
-        "expected": "订单工厂",
+        "expected": [
+            "订",
+            "单",
+            "工",
+            "厂"
+        ],
         "roi": [
-            598,
-            631,
-            177,
-            89
+            637,
+            650,
+            103,
+            70
         ],
         "action": "Click",
         "next": [
