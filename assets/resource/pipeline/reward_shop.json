@@ -17,6 +17,19 @@
             68
         ]
     },
+    // INFO 售罄文字
+    "ShopProbeBought": {
+        "desc": "[end] 有售罄文字",
+        "recognition": "OCR",
+        "expected": "售罄",
+        "roi": "ShopProbeBattleFreeText",
+        "roi_offset": [
+            -56,
+            -196,
+            95,
+            200
+        ]
+    },
     /* -------------------- 就位 -------------------- */
     // INFO 采购中心
     "ShopProbeEnterText": {
@@ -133,24 +146,10 @@
             "ShopProbeBattle"
         ],
         "next": [
-            "ShopProbeBattleEnd",
-            "[JumpBack]ShopEnterBattleFree",
+            "ShopBranchBattleFree",
             "[JumpBack]BaseMoveLeft",
             "[JumpBack]BaseBranchError"
         ]
-    },
-    "ShopProbeBattleEnd": {
-        "desc": "[end] 检测作战企划室任务是否结束",
-        "recognition": "TemplateMatch",
-        "template": "Base/BlueMarkGreen.png",
-        "green_mask": true,
-        "roi": [
-            50,
-            96,
-            56,
-            60
-        ],
-        "inverse": true
     },
     // INFO 点击免费礼包
     "ShopProbeBattleFreeText": {
@@ -162,6 +161,18 @@
             106,
             728,
             487
+        ]
+    },
+    "ShopBranchBattleFree": {
+        "desc": "有免费礼包",
+        "recognition": "And",
+        "all_of": [
+            "ShopProbeBattleFreeText"
+        ],
+        "next": [
+            "ShopProbeBought",
+            "ShopEnterBattleFree",
+            "[JumpBack]BaseBranchError"
         ]
     },
     "ShopEnterBattleFree": {
@@ -210,7 +221,8 @@
         "next": [
             "ShopClickTap",
             "[JumpBack]ShopClickBuyBotton",
-            "[JumpBack]BaseBranchError"
+            "[JumpBack]BaseBranchError",
+            "ShopProbeBought" // INFO 防止点太快 购买和免费按钮位置重叠
         ]
     },
     "ShopClickBuyBotton": {
