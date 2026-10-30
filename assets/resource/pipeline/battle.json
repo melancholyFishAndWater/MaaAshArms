@@ -430,6 +430,7 @@
         "action": "Click",
         "post_wait_freezes": 1000
     },
+    // 胜利/获得一览弹出时点 tap
     "BattleBranchClickTap": {
         "desc": "[jp] 条件点击tap区域",
         "recognition": "Or",

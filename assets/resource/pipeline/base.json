@@ -5,7 +5,7 @@
     使用任务链结构 v3.0 校验年月日 26/10/28
     使用节点命名与分类 v3.0 校验年月日 26/10/28
     */
-    /* -------------------- 探测 -------------------- */
+    /* -------------------- 通用探测 -------------------- */
     "BaseProbeHome": {
         "desc": "[end] 在游戏主页",
         "recognition": "OCR",
@@ -117,20 +117,6 @@
         "target": "BaseBranchError",
         "action": "Click",
         "post_wait_freezes": 1000
-    },
-    "BaseBranchNetworkError": {
-        "desc": "网络错误弹窗 点击确认继续",
-        "recognition": "OCR",
-        "expected": "通信异常",
-        "roi": [
-            373,
-            227,
-            192,
-            70
-        ],
-        "next": [
-            "BaseClickConfirm"
-        ]
     },
     /* -------------------- 动作-移动 -------------------- */
     // INFO 移动系列 起点是物品的话无法滑动，详见 TrainMoveToBottom

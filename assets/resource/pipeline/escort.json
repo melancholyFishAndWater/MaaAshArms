@@ -143,6 +143,7 @@
             "EscortClickCancel"
         ]
     },
+    // INFO 进入接取页面
     "EscortEnterAccept": {
         "desc": "进入接取页面",
         "recognition": "TemplateMatch",
@@ -189,7 +190,7 @@
     },
     // INFO 执行任务
     "EscortClickOk": {
-        "desc": "[end] 点击确认按钮执行任务",
+        "desc": "点击确认按钮执行任务",
         "recognition": "OCR",
         "expected": "确认",
         "roi": [
@@ -212,7 +213,7 @@
     },
     /* -------------------- 错误收尾 -------------------- */
     "EscortClickCancel": {
-        "desc": "[end] 接取任务失败 尝试点击取消(防卡死)",
+        "desc": "接取任务失败 尝试点击取消(防卡死)",
         "recognition": "And",
         "all_of": [
             "EscortProbeCancelPage",

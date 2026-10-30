@@ -251,7 +251,7 @@
         "post_wait_freezes": 1000
     },
     "EntrustClickNextChapter": {
-        "desc": "[max] 点击下一章区域",
+        "desc": "点击下一章区域",
         "recognition": "And",
         "all_of": [
             "EntrustProbeChaapterFinsh"
@@ -326,10 +326,9 @@
         "custom_action": "EntrustMoverAct"
     },
     /* -------------------- 工作 -------------------- */
-    // INFO 分支-委派按钮亮
+    // INFO 点亮的委派按钮
     "EntrustClickLight": {
-        "desc": "[max] 点击亮的委派按钮",
-        "max_hit": 10,
+        "desc": "点击亮的委派按钮",
         "recognition": "And",
         "all_of": [
             "EntrustProbeEntrustLight"
@@ -354,6 +353,7 @@
             "EntrustTouchDown"
         ]
     },
+    // 按住加号
     "EntrustTouchDown": {
         "desc": "按下加号",
         "recognition": "TemplateMatch",
@@ -375,6 +375,7 @@
             "EntrustStart"
         ]
     },
+    // 松开加号
     "EntrustTouchUp": {
         "desc": "松开加号",
         "recognition": "And",
@@ -442,6 +443,7 @@
             "Node.PipelineNode.Failed": "判断委派状态失败"
         }
     },
+    // 委派成功
     "EntrustStartSuccess": {
         "desc": "委派成功",
         "recognition": "Or",
@@ -455,7 +457,7 @@
             "EntrustDailyUpdate"
         ]
     },
-    // INFO 分支-委派按钮暗淡
+    // INFO 委派按钮暗淡
     "EntrustClickDart": {
         "desc": "[max] 点击暗淡的按钮 分析原因",
         "max_hit": 10,
@@ -465,6 +467,7 @@
         ],
         "action": "Click",
         "next": [
+            "BaseErrorNext",
             "EntrustBranchMax",
             "EntrustBranchDelegating",
             "EntrustClickDart"
@@ -473,6 +476,7 @@
             "Node.PipelineNode.Failed": "未定义的委派错误"
         }
     },
+    // 委派次数已达上限
     "EntrustBranchMax": {
         "desc": "委派次数耗尽",
         "recognition": "And",
@@ -486,6 +490,7 @@
             "Node.Recognition.Succeeded": "今日委托次数已达上限 任务结束"
         }
     },
+    // 正在委派
     "EntrustBranchDelegating": {
         "desc": "委派中",
         "recognition": "And",
@@ -498,6 +503,7 @@
             "[JumpBack]EntrustEnsureRewardInfo"
         ]
     },
+    // 更新每日一次
     "EntrustDailyUpdate": {
         "desc": "[end] 更新每日一次 结束任务",
         "action": "Custom",

@@ -1,4 +1,7 @@
 {
+    /*
+    INFO 启动游戏
+    */
     "TaskStartUp": {
         "desc": "启动游戏任务",
         "next": [
@@ -39,6 +42,7 @@
             "StartUpFailed"
         ]
     },
+    // 安装包启动
     "StartUpAshArms": {
         "desc": "使用安装包启动",
         "action": "StartApp",
@@ -134,6 +138,7 @@
             "Node.Recognition.Succeeded": "点击b站账号登录按钮"
         }
     },
+    // 进入游戏界面
     "StartUpClickSignIn": {
         "desc": "点击进入游戏界面",
         "recognition": "TemplateMatch",
@@ -162,6 +167,7 @@
             "StartUpFailed"
         ]
     },
+    // 点今日不再提示
     "NoticeClickDisable": {
         "desc": "点击公告不再提示",
         "recognition": "OCR",
@@ -187,6 +193,7 @@
             "Node.Recognition.Succeeded": "关闭公告页面"
         }
     },
+    // 检测到游戏更新
     "StartUpGameUpdate": {
         "desc": "提示更新",
         "recognition": "OCR",
@@ -204,6 +211,7 @@
             "Node.Recognition.Succeeded": "检测到游戏更新"
         }
     },
+    // 更新失败弹窗
     "StartUpGameUpdateError": {
         "desc": "更新失败",
         "recognition": "OCR",

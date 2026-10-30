@@ -576,6 +576,7 @@
             "BaseClickConfirm"
         ]
     },
+    // 取消重置编队
     "TrainBranchReset": {
         "desc": "重置编队弹窗 分支",
         "recognition": "OCR",
