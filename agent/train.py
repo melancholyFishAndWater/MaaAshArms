@@ -405,8 +405,8 @@ _can_not_enter_number: int | None = None
 
 
 # 返回目标STATION
-@AgentServer.custom_recognition("TrainProbeEnterFormationReco")
-class TrainProbeEnterFormationReco(CustomRecognition):
+@AgentServer.custom_recognition("TrainEnterFormationReco")
+class TrainEnterFormationReco(CustomRecognition):
     def analyze(
         self, context: Context, argv: CustomRecognition.AnalyzeArg
     ) -> Rect | None:
@@ -568,8 +568,8 @@ class TrainBranchAcceptableReco(CustomRecognition):
 
 # 返回目标路线名称box 或 None
 # 候选词数小于2则按解锁状态返回返回 优先最新路线
-@AgentServer.custom_recognition("TrainProbeAcceptInfoReco")
-class TrainProbeAcceptInfoReco(CustomRecognition):
+@AgentServer.custom_recognition("TrainClickAcceptInfoReco")
+class TrainClickAcceptInfoReco(CustomRecognition):
     # 路线解锁状态
     route_status: dict[str, bool] = {}
 
