@@ -12,12 +12,20 @@
 - 连带：`A7-jumpback-target` 的 `elif "Loop" in name` 分支（:902）、`A18-next-length` 的 Loop 档（`MAX_NEXT_LOOP`，:1520）、`CLASS_SUFFIXES` 里的 `"Loop"`（:131）。
 - 绕过：暂不改脚本，按现状报。等 `TrainLoop`/`TrainingLoop` 等剩余 21 个 `*Loop*` 节点退役时，一并把上面 5 条判据改成按语义（守卫 + next 含该守卫探针族）而不是名字后缀，或直接删掉。
 
-## `B7-default-case` 对 `checkbox` 误报（`default_case` 是数组）
+## `Ensure` 类别停用后，按名字识别 `Ensure` 的 7 条判据会变死规则
 
 - 命令：`python tools/validation/validate_refs.py`
-- 现象：`assets/resource/tasks/option/reward.json` 的 `reward` 是 `checkbox`，按协议 `default_case` 就是数组（`["siku_reward_switch"]`）；`check_option_shape` 用 `cases[0].get("name") != default_case` 做标量比较，字符串永远不等于数组 → 恒报 `option reward 的 default_case=['siku_reward_switch'] 与 cases[0]='siku_reward_switch' 不一致`。
-- 绕过：按现状报（是误报，不动 option 文件——改成字符串反而违反 checkbox 语义）。要修就改 `check_option_shape`：`default_case` 是 list 时判断 `cases[0].get("name") in default_case`，并补进 `--self-test`（「checkbox 的数组 default_case 不报 B7」）。
-- 出处：`tools/validation/validate_refs.py:1662-1676`、`.agents/interface.md` 的「switch / select 的默认项必须放 `cases[0]`」（checkbox 走 `SelectedCases`，与 `Index` 无关）
+- 现象：2026-10-30 起约定 `Ensure` 不允许再用、现存 9 个节点待删除，但下列判据仍把 `Ensure` 当正式类别（行号按 `44b472d`）：
+  - `A9-ensure-order`（`check_a9_ensure`，:943-992）
+  - `A16-ensure-depth`（`check_a16_ensure_depth`，:1458-1475；自测 :2813）
+  - `A13-ensure-jumpback`（:1194-1203）、`A13-ensure-loop-next`（:1210-1216）
+  - `check_a13_naming` 的 Ensure 跳过（:1174）
+  - `A18-next-length` 的 Task/Ensure 档（`MAX_NEXT_TASK_ENSURE`，:151 与 :1533）
+  - `check_a7_jumpback` 的 Ensure 分支（:885 起）、`_is_inverse_guard`（:1320，按 `Ensure` 名前缀判 inverse 守卫，牵连 `A15` 与 `check_a14_loop_fallback` :1281）
+  - `ENSURE_RE`（:257）、`MAX_ENSURE_DEPTH`（:149）
+- 连带：9 个节点定义（`battle.json:146`、`battle_training.json:67`、`entrust.json:194,226,276`、`entrust_reward.json:10,46`、`feidu.json:34`、`maintenance.json:100`）与 13 处 `[JumpBack]…Ensure…` 引用（`entrust` 7、`battle_training` 2、`entrust_reward` 1、`feidu` 1、`feidu_gift` 1、`maintenance` 1）要同批删；删完的悬空引用会被 `A1-dangling-node` 抓到，可当回归判据。
+- 绕过：暂不改脚本、按现状报。删节点时把上面判据改成按语义判（"逐级收缩到枢纽的就位链"现由 `Branch` 平铺 + 入口动作 + 调用方 `[JumpBack]` 兜底表达）或直接删掉，并补 `--self-test`。
+- 出处：本会话用户裁定"不允许 `Ensure`，其将在未来删除"（2026-10-30）；节点与引用分布为 `validate_refs.py` 按名扫描的结果。
 
 ---
 

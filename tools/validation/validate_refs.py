@@ -1960,15 +1960,29 @@ def check_option_shape(ctx: Ctx) -> None:
         cases = to_list(data.get("cases"))
         default_case = data.get("default_case")
         if default_case is not None and cases and isinstance(cases[0], dict):
-            if cases[0].get("name") != default_case:
-                ctx.add(
-                    "B7-default-case",
-                    "warn",
-                    file,
-                    line,
-                    f"option {name} 的 default_case={default_case!r} 与 cases[0]={cases[0].get('name')!r} 不一致；"
-                    "MFA 上 default_case 失效，默认项必须是 cases[0]",
-                )
+            first = cases[0].get("name")
+            if isinstance(default_case, list):
+                # checkbox（SelectedCases）：default_case 是默认勾选的 case 名数组，约定
+                # cases[0] 须在其中（与 switch/select「默认项必须是 cases[0]」同义）。
+                if first not in default_case:
+                    ctx.add(
+                        "B7-default-case",
+                        "warn",
+                        file,
+                        line,
+                        f"option {name} 的 checkbox default_case={default_case!r} 不含 cases[0]={first!r}；"
+                        "默认勾选项应含 cases[0]",
+                    )
+            else:
+                if first != default_case:
+                    ctx.add(
+                        "B7-default-case",
+                        "warn",
+                        file,
+                        line,
+                        f"option {name} 的 default_case={default_case!r} 与 cases[0]={first!r} 不一致；"
+                        "MFA 上 default_case 失效，默认项必须是 cases[0]",
+                    )
         for case in cases:
             if not isinstance(case, dict):
                 continue
@@ -3098,6 +3112,53 @@ def self_test() -> int:
     finally:
         section.unlink(missing_ok=True)
         tmp_dir.rmdir()
+
+    # B7：checkbox 的 default_case 是数组，不应再按标量比较误报
+    opt_ok = Ctx(repo_root=Path("."))
+    opt_ok.options = {
+        "reward": Option(
+            "reward",
+            {
+                "type": "checkbox",
+                "default_case": ["siku_reward_switch"],
+                "cases": [
+                    {"name": "siku_reward_switch", "label": "司库部奖励"},
+                    {"name": "shop", "label": "采购中心"},
+                ],
+            },
+            Path("assets/resource/tasks/option/reward.json"),
+        )
+    }
+    check_option_shape(opt_ok)
+    checks += [
+        (
+            not any(
+                f.id == "B7-default-case" and "reward" in f.message
+                for f in opt_ok.findings
+            ),
+            "checkbox 的数组 default_case 含 cases[0] → 不报 B7-default-case",
+        ),
+    ]
+
+    opt_bad = Ctx(repo_root=Path("."))
+    opt_bad.options = {
+        "reward_bad": Option(
+            "reward_bad",
+            {
+                "type": "checkbox",
+                "default_case": ["other"],
+                "cases": [{"name": "siku_reward_switch", "label": "司库部奖励"}],
+            },
+            Path("p.json"),
+        )
+    }
+    check_option_shape(opt_bad)
+    checks += [
+        (
+            any(f.id == "B7-default-case" for f in opt_bad.findings),
+            "checkbox 的 default_case 不含 cases[0] → 仍报 B7-default-case",
+        ),
+    ]
 
     bad = [name for ok, name in checks if not ok]
     if bad:
