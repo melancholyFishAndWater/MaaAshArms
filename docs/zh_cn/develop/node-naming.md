@@ -1,20 +1,23 @@
 # 节点命名与分类
 
-版本号: v3.0
+版本号: v3.1
 
-本文约束 pipeline 节点叫什么名、属于哪一类（探测 / 分支 / 就位 / 工作 / 动作），以及 agent 侧注册名、
+本文约束 pipeline 节点叫什么名、属于哪一类（探测 / 分支 / 工作 / 动作），以及 agent 侧注册名、
 参数键、文件名与目录的写法。改节点名、加新节点、拆分子任务时按本文执行。
+
+**v3.1 变更**：停用就位 `Ensure` 类别（改由调用方 `Branch` 平铺 + 入口动作 +
+`[JumpBack]BaseBranchError` 表达「保证当前处于某页」）；单探针内联；行内注释 4~6 字。
+判据见 §3「分支」「单探针内联」与 [任务链结构](./pipeline-structure.md) 第十节。
 
 **v3.0 变更**：动作节点不再分「主动作 / 兜底动作」，改为按**有没有自环**看：`next` 含自己的是**自环动作**，
 必须配 `BaseErrorNext`；`desc` 带 `[jp]` 的节点**不许**自环。判据见 §3 动作节与
 [任务链结构](./pipeline-structure.md)「〇」节。
 
-**v1.9 新增**：`Branch` 是页面导航的默认写法，`Ensure` 嵌套深度上限 2 层、首项探针按救回率取舍。
-判据与实测数据见 [任务链结构](./pipeline-structure.md) 第十节「识别预算」。
+**v1.9 新增**：`Branch` 成为页面导航的默认写法。
 
 **字段怎么配不在本文**：`recognition` / `next` / `pre_wait_freezes` / `rate_limit` / `max_hit` /
 `desc` 标记这些"写法"以编辑器里在用的那套模板为准——`tools/vscode/pipeline.snippets.schema.json`
-（它的 `$comment` 上写着对应的规范版本）。**页面类节点（`Probe` / `Branch` / `Ensure` / `Loop`（废弃））放在哪个位置、
+（它的 `$comment` 上写着对应的规范版本）。**页面类节点（`Probe` / `Branch` / `Loop`（废弃））放在哪个位置、
 `[JumpBack]` 和 `max_hit` 怎么算** 见 [任务链结构](./pipeline-structure.md)；节点该配哪些字段见
 [MaaFramework 文档](https://maafw.com/docs/1.1-QuickStarted)。
 
@@ -39,35 +42,29 @@
 | 任务入口 | `Task<任务名>` | `TaskEntrust`、`TaskFactory`、`TaskReplays` |
 | 动作节点 | `<任务前缀><动词><宾语>` | `EscortClickOk`、`FactoryChooseNumber` |
 | 探测节点 | `<任务前缀>Probe<页面/状态/元素>` | `EscortProbeHome`、`TrainProbeAcceptable`、`TrainingProbeHomeName` |
-| 就位节点 | `<任务前缀>Ensure<页面>` | `TrainingEnsureHome`、`EnsureMain` |
 | 分支节点 | `<任务前缀>Branch<状态/对象>` | `GiftBranchSortPage`、`BattleBranchClickTap` |
 | 工作循环（废弃） | `<任务前缀>Loop` | `TrainingLoop`、`MaintenanceLoop`；新代码用 `Branch` 平铺 |
 | 子过程入口 | `<任务前缀>Init` | `TrainingInit`、`EntrustInit` |
 | 出口节点 | `<任务前缀><动词>…Success/Failed` | `EscortClickOkEnd`、`FactoryGetRewardFailed` |
 | 日常门控 | `<任务前缀>ProbeDaily` / `<任务前缀>DailyUpdate` | `EntrustProbeDaily`、`GiftDailyUpdate` |
 
-## 三、节点分类（探测 / 分支 / 就位 / 工作 / 动作）
+## 三、节点分类（探测 / 分支 / 工作 / 动作）
 
-按"这个节点做什么"分五类，每类一个词，别的词不要引入：
+按"这个节点做什么"分四类，每类一个词，别的词不要引入：
 
 | 类别 | 命名 | 这一层有没有行为 | 做什么 |
 | --- | --- | --- | --- |
 | 探测 | `<前缀>Probe<页面/状态/元素>` | 无 | 只回答"现在是不是这样"，命中即终点 |
 | 分支 | `<前缀>Branch<状态/对象>` | 无 | 状态成立就把 `next` 交出去，一次就走 |
-| 就位 | `<前缀>Ensure<页面>` | 有 | 保证"当前处于该页面"，不在就点入口、被弹走就回 |
 | 工作（废弃） | `<前缀>Loop<宾语/动词?>` | 可有 | 在该页面里干活；新代码用 `Branch` 代替 |
 | 动作 | `<前缀><动词><宾语>` | 有 | 点一下、滑一下、领一次 |
 
-这一列说的是"这一层有没有行为"，**不是"节点上有没有 `action` 字段"**：就位节点实测都不写 `action`
-（`Ensure[A-Z]` 8/8），它把"探针 → 进入动作 → 上一级 `Ensure`"排在自己的 `next` 里，行为落在被引用的
-动作节点上。
+以 `Probe` / `Branch` / `Loop`（废弃）开头的节点分别固定属于探测、分支、工作层，其余前缀按第四节选词。
 
-以 `Probe` / `Branch` / `Ensure` / `Loop`（废弃）开头的节点分别固定属于探测、分支、就位、工作层，其余前缀按第四节选词。
-
-**分支与就位的分工**（v1.9）：`Branch` 命中即转、不保证页面，成本 1 次守卫；`Ensure` 保证在页面、不在就修，成本 5 次/层。页面导航默认用 `Branch` 平铺，只在需要「从任意页面保证到达」时用 `Ensure`。
+**分支的分工**（v3.1）：`Branch` 命中即转、不保证页面，成本 1 次守卫。页面导航默认用 `Branch` 平铺到调用方 `next`，由调用方决定下一步；「保证当前处于某页」不再有专门类别，改由调用方 `next` 里的 `Branch`（自带 `recognition`）+ 入口动作 + `[JumpBack]BaseBranchError` 兜底表达。
 
 本节只定"叫什么、属于哪一层"。**每个类别该配哪些字段、`next` 怎么排、限速用哪个键**，照
-`tools/vscode/pipeline.snippets.schema.json` 里的七个骨架（空节点 / Probe / Branch / Ensure / Loop（废弃）/ 动作 / Task）
+`tools/vscode/pipeline.snippets.schema.json` 里的七个骨架（空节点 / Probe / Branch / 动作 / 自环动作 / `[jp]` 一次性动作 / Task）
 写——那是编辑器里实际在用的模板，改写法改那里，不在本文复述。
 
 ### 探测 `Probe`
@@ -76,8 +73,8 @@
 
 识别之后还要继续走时，不要给它加 `next`，按目的换写法：
 
-- **接着点一下**：把探测条件并进动作节点的 `recognition`（`And` + `all_of: [<探针>]` + `action` + `target`），一个节点同时判和做。
-- **到某页再决定干什么**：那是守卫的职责，用 `Ensure` / `Branch`（自带 `recognition` 判页面），见 [任务链结构](./pipeline-structure.md) 第三节。
+- **接着点一下**：把探测条件并进动作节点的 `recognition`（单探针按下面「单探针内联」直接搬识别字段；多消费者或要组合条件时用 `And` + `all_of: [<探针>]`），一个节点同时判和做。
+- **到某页再决定干什么**：那是守卫的职责，用 `Branch`（自带 `recognition` 判页面），见 [任务链结构](./pipeline-structure.md) 第十节。
 
 名字统一用 `Probe` 作前缀，后缀写它在观察什么。
 
@@ -95,7 +92,7 @@
 
 只回答"这个状态成不成立"，成立就把 `next` 里的候选交出去：不写 `action`、不保证页面、不回到自己。
 
-**它也是页面导航的默认写法**（v1.9 新增）：把每个页面的守卫各写成一个 `Branch`，并列排进调用方的 `next`，代替嵌套的 `Ensure`。`Ensure` 每层固定 5 次识别，`Branch` 每次只要 1 次守卫；判据与示例见 [任务链结构](./pipeline-structure.md) 第十节。
+**它也是页面导航的默认写法**（v1.9 新增，v3.1 起是唯一写法）：把每个页面的守卫各写成一个 `Branch`，并列排进调用方的 `next`。`Branch` 每次只要 1 次守卫；判据与示例见 [任务链结构](./pipeline-structure.md) 第十节。
 
 用在"一个入口下按状态分流"的地方（点了按钮之后看是哪种结果）：
 
@@ -104,25 +101,23 @@
 | 读状态，命中即终点 | `Probe` |
 | 读到状态后转到别处（可能多个候选） | `Branch` |
 | 按页面分流（在 A 页做 A、在 B 页做 B） | `Branch` 平铺到调用方 |
-| 保证当前处于某页 | `Ensure` |
 | 在这一页反复干到有出口 | `Branch`（`Loop` 已废弃） |
 
 必须写 `recognition`：没有识别的分支等于无条件跳转，把 `next` 写在上一个节点里就行。`next` 至少一项。
 
-### 就位 `Ensure`
+### 单探针内联
 
-被引用时必须带 `[JumpBack]`（怎么写见 [任务链结构](./pipeline-structure.md)与上面的模板）。
+只被**一处**引用的探针不再单独留节点：把它的识别字段写进引用它的节点 `recognition`，删掉那个 `Probe` 节点。
 
-它保证页面正常，自己**不写业务候选**——业务属于 `Branch`，在 `Task*` 入口命中。它可以嵌套
-（一层层推进页面），内部按"目标页面的探针 → 进入动作 → 上一级 `Ensure` → 最后一个兜底候选"排候选，
-降级过程封在节点内部，调用方只看到"保证在训练所"这一个词。
+判据：
 
-**嵌套深度上限 2 层**（v1.9 新增）：单层 5 次识别、每多一层再付 5 次，深度 5 就是 24 次。需要第 3 层时改用 `Branch` 平铺，见 [任务链结构](./pipeline-structure.md) 第十节。
+- 全库只有一处引用。`And` + `all_of: [<探针>]` 的单探针包装也算一处引用——包装节点就是引用方，识别直接落到它身上。
+- 引用方不是通用节点：`base.json` 里的通用探针会被多个任务共用，保留。
+- 引用方要的是"识别"本身，不是"命中即终点"的独立出口。
 
-**首项探针只在守卫会误判时保留**（v1.9 新增）：`next` 首项通常是守卫里那个探针（"刚说不在，再问一遍"），救回率 < 25% 就删掉。实测数据与判据见 [任务链结构](./pipeline-structure.md) 第十节。
+做法：把探针的 `recognition` / `expected` / `template` / `roi` 等识别字段原样搬到引用方，引用方原有的识别条件用 `And` 合并；搬完删掉 `Probe` 节点。`Branch` 的单探针同样内联（`Branch` 自带 `recognition`，包装层没有额外语义）。
 
-`next` 的末项按嵌套与否分两种：单层 `Ensure`（上面就是枢纽那一级）的末项是最后一个兜底候选，通常是
-回主页/枢纽的那一级；嵌套 `Ensure` 的末项是上一级 `Ensure`。完整写法见 [任务链结构](./pipeline-structure.md)。
+多消费者（两处以上引用）保留 `Probe`：它承担的是复用，不是一次性判据。
 
 ### 工作 `Loop`（v1.10 废弃）
 
@@ -153,7 +148,7 @@
 `next` 里不放自己。
 
 `[jp]` 只是**提示标记**，不是角色的判据：本仓库多数一次性动作没带 `[jp]`（`BaseClickTapBox`、`BaseClickBackButton`、
-`BaseTaskStop` 这些通用节点一个都没带），而 9 个就位 `Ensure` 节点全带 `[jp]`、却不是动作节点。
+`BaseTaskStop` 这些通用节点一个都没带），而 v3.1 起停用的 9 个 `Ensure*` 节点（2026-10-31 已全部删除，`A25` 归零）全带 `[jp]`、却不是动作节点。
 写新节点时按 `action` / `next` 两个字段定角色，`[jp]` 标不标都不影响它成立。
 
 一次性动作的名字按同一套动词表写；与自环动作的区别是**宾语要能看出是同一个东西的另一种点法**：
