@@ -41,6 +41,8 @@ _ROUTE: dict[str, int] = {
     "遗迹": 6,
     "新大陆": 6,
 }
+# 总路线列表
+_ROUTE_LIST: list[str] = list(_ROUTE.keys())
 
 
 # 列车类
@@ -256,7 +258,7 @@ class TrainProbeStatusReco(CustomRecognition):
 
         name_result = context.run_recognition_direct(
             JRecognitionType.OCR,
-            JOCR([".+"], roi=roi, roi_offset=(-150, -5, 57, 45)),
+            JOCR(_ROUTE_LIST, roi=roi, roi_offset=(-150, -5, 57, 45)),
             image,
         )
         assert name_result and name_result.hit
@@ -576,6 +578,8 @@ class TrainClickAcceptInfoReco(CustomRecognition):
     def analyze(
         self, context: Context, argv: CustomRecognition.AnalyzeArg
     ) -> Rect | None:
+        _log_train_list()
+
         # 提取变量
         global _current_info_name
         node_name = argv.node_name
@@ -638,7 +642,8 @@ class TrainClickAcceptInfoReco(CustomRecognition):
                     log.debug(f"{node_name} 识别路线箭头失败")
 
             # 若路线繁忙 跳过此路线
-            if any(text in i.route for i in _train_list):
+            if any(text in i.route and i.stutus == "busy" for i in _train_list):
+                log.debug(f"{node_name} 路线繁忙，跳过路线: {text}")
                 continue
 
             # 若在候选词中 且 路线解锁 则 返回路线名称box
