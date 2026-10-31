@@ -15,10 +15,11 @@
 | 把 `pyright` 写进 `package.json` | 两份 lockfile（`package-lock.json` 与 `pnpm-lock.yaml`）都是入库文件，加一个带平台二进制的依赖要重新生成两份 | 走 `npx`（`check_pyright.mjs`），首次需要网络 |
 | 扫 vendored 目录 | `.python-runtime*/`、`install/`、`build/`、`node_modules/` 里有几千个第三方文件，查它们只会淹没真问题 | 只扫 `tools/**`、`agent/**`、`scripts/**` |
 | 校验资源语义（数值范围、图片内容） | 那是 schema 与 maa-tools 的职责，本目录只查"引用与命名对不对得上" | `validate_schema.py`、`npx @nekosu/maa-tools check` |
-| 不查需要语义判断的命名规则 | 只做结构层能判的：把"层级同义词"套成关键字会误报（`FeiduGetPart` 里的 `Part` 是拿"部件"这个宾语，不是层级）；"模块级可变状态"与"导出的配置"在源码里长得一样（都没有 `_` 前缀），静态判不出；"就位节点该不该有 `action`"实测 8 个就位节点都没有 `action`，规则与数据不符 | 人来判，写进评审意见 |
+| 不查需要语义判断的命名规则 | 只做结构层能判的：把"层级同义词"套成关键字会误报（`FeiduGetPart` 里的 `Part` 是拿"部件"这个宾语，不是层级）；"模块级可变状态"与"导出的配置"在源码里长得一样（都没有 `_` 前缀），静态判不出；"这个探针是不是真只服务一处"要读语义，`A26` 只按引用计数报 | 人来判，写进评审意见 |
 | 不写回文件头部的规范版本注解 | 校验脚本只读；写文件会让 CI 跑完工作区变脏 | 自己按 E3 的提示改注解版本（三种写法都认，见「规范版本」一节） |
-| 查 `desc` 该标没标标记 | 标记是给人读的提示，不是字段：`desc` 由模板生成，`[jp]` 按 `node-naming.md` §3 不标也成立（今天 83 个带 `[jp]` 的节点里 29 个还带 `next`） | 评审时人工看；机器能判的是"标了但字段对不上"，即 `A19-desc-marker-*` 那三条 |
+| 查 `desc` 该标没标标记 | 标记是给人读的提示，不是字段：`desc` 由模板生成，`[jp]` 按 `node-naming.md` §3 不标也成立（今天 65 个带 `[jp]` 的节点里 25 个还带 `next`） | 评审时人工看；机器能判的是"标了但字段对不上"，即 `A19-desc-marker-*` 那三条 |
 | 联网 | 除 pyright 首次拉取与 CI 里装 `jsonschema` 外不联网 | — |
+| 不消除 `A10-maxhit-in-loop` 的 2 条 warn | `battle_training.json` 的 `TrainingLoop.next` 里 `TrainingGetStatus`（`max_hit: 1`）与 `TrainingEnterOne`（`max_hit: 4`）属**有意的明确限次**，改掉会动行为 | 按 `--ignore A10` 处理；真要改行为时再评估 |
 
 ## 怎么跑
 
@@ -181,7 +182,7 @@ Pylance 是 VS Code 内的 LSP，没有命令行入口（`dist/server.bundle.js`
 **本脚本按两份规范的各自版本实现**：`NAMING_SPEC_VERSION`（`node-naming.md`）与
 `STRUCT_SPEC_VERSION`（`pipeline-structure.md`）。运行时只在输出里声明命名规范那一版（console 头部、
 `--format github` 的摘要、`--format json` 的 `spec_version` 字段）。命名类判据（`A13-*` / `A19-*` …）
-按命名文档实现，结构类判据（A4/A5/A7/A8/A9/A14/A16…）按结构文档实现，所以两份常量都要跟着对齐，
+按命名文档实现，结构类判据（A4/A5/A7/A8/A14…）按结构文档实现，所以两份常量都要跟着对齐，
 哪一份落后都在 `E2` 里报。
 
 规范、模板、脚本必须对齐，否则"这几条没查"会和"查了没问题"看起来一样：
@@ -196,33 +197,33 @@ Pylance 是 VS Code 内的 LSP，没有命令行入口（`dist/server.bundle.js`
 `tools/vscode/pipeline.snippets.schema.json` 的 `$comment` 三处是对齐的。文件没写注解的不报 E3
 （老文件太多，报了等于噪音），只报"看过的"。一份文件可以同时挂两份规范的注解，落后的那份会被单独报出来。
 
-`A13-*` 里属于**护栏**（今天一条都不报，为的是以后别写错）的几条：引用就位节点必须带 `[JumpBack]`、
-就位节点的 `next` 里不放业务 `Loop`、探测节点不该有 `next`、
+`A13-*` 里属于**护栏**（今天一条都不报，为的是以后别写错）的几条：探测节点不该有 `next`、
 工作循环必须有 `next`、参数键 snake_case、pipeline 片段文件名 snake_case、不用 `ClickYes` 这类同义写法。
+（v3.1 起 `Ensure` 停用，原来两条按 `Ensure` 名判的护栏随 `A13-ensure-*` 一起删掉。）
 
 `A15-error-branch-*` 是同一类护栏，管通用错误分支 `BaseBranchError`（`base.json`）挂在哪：引用必须带
-`[JumpBack]`；不能排在取反守卫（`Ensure*` / 顶层 `inverse`）之后——弹窗挡住页面时那些守卫必然命中，错误分支
+`[JumpBack]`；不能排在取反守卫（顶层 `inverse: true`，或识别配置里带 `inverse`）之后——弹窗挡住页面时那些守卫必然命中，错误分支
 永远轮不到；也不能排在自己会点「确认」的候选之前——同一个确认会被当成错误弹窗点掉。只判同一列表内的先后，
 "哪个模板在弹窗下仍会命中"静态判不了，按人工。判据见 `docs/zh_cn/develop/pipeline-structure.md` §9。
 
 `A19-desc-marker-*` 管 `desc` 里的方括号标记（`node-naming.md` §6：一共五个，含义固定）：
 
-| 规则 | 级别 | 判据 | 2026-10-26 实测 |
+| 规则 | 级别 | 判据 | 2026-10-31 实测 |
 | --- | --- | --- | --- |
 | `A19-desc-marker-unknown` | warn | 用了 `[end]` / `[jp]` / `[once]` / `[max]` / `[Loop]` 之外的写法（含大小写不符） | 0 |
-| `A19-desc-marker-mismatch` | warn | `[max]` 没有 `max_hit`；`[once]` 的 `max_hit` 不是 1；`[Loop]` 标在名字不含 `Loop` 的节点上 | 1（`EntrustClickNextChapter` 标了 `[max]` 却没有 `max_hit`） |
-| `A19-desc-marker-end` | info | `[end]` 却有 `next`，且不是只收 `BaseTaskStop` / `BaseTaskStopError` | 2（`EscortClickCancel`、`GiftClickFirstcharacter`） |
+| `A19-desc-marker-mismatch` | warn | `[max]` 没有 `max_hit`；`[once]` 的 `max_hit` 不是 1；`[Loop]` 标在名字不含 `Loop` 的节点上 | 0 |
+| `A19-desc-marker-end` | info | `[end]` 却有 `next`，且不是只收 `BaseTaskStop` / `BaseTaskStopError` | 0 |
 
 **只查"标了标记、字段对不上"，不查"该标没标"**：`desc` 由模板生成，而 `[jp]` 按 §3 只是提示标记——
-今天 83 个带 `[jp]` 的节点里有 29 个还带 `next`，标不标都不构成判据。标记按**开头连续**的那几个算
+今天 65 个带 `[jp]` 的节点里有 25 个还带 `next`，标不标都不构成判据。标记按**开头连续**的那几个算
 （`[once][jp] …`），正文里当括号用的字（"点击[确认]按钮"）不算，所以那类不会误报。三条都能 `--ignore` 单独放行。
 
 `A20` / `A21` / `A22` 管**自环动作与 `BaseErrorNext`**（`pipeline-structure.md` §0，v3.0 新增）：
 
-| 规则 | 级别 | 判据 | 2026-10-27 实测 |
+| 规则 | 级别 | 判据 | 2026-10-31 实测 |
 | --- | --- | --- | --- |
 | `A20-jp-self-loop` | error | `desc` 带 `[jp]`（只补一次）的节点，`next` 里含自己 | 0（已清零：`TrainingEnterHome`、`TrainCloseStatusArrow` 两处已按 v3.0 改写） |
-| `A21-self-loop-without-error-next` | warn | `next` 含自己的节点没有引用 `BaseErrorNext` | 17（存量，逐个确认后补齐） |
+| `A21-self-loop-without-error-next` | warn | `next` 含自己的节点没有引用 `BaseErrorNext` | 15（存量，逐个确认后补齐） |
 | `A22-error-next-not-first` | warn | 引用了 `BaseErrorNext` 但不在 `next[0]` | 0（护栏） |
 
 为什么必须有 `BaseErrorNext`：框架的 `timeout` 只限制「`next` 里一直找不到命中」的轮询，
@@ -232,25 +233,33 @@ Pylance 是 VS Code 内的 LSP，没有命令行入口（`dist/server.bundle.js`
 
 `A23-section-comment-probe` 管**分节注释的可读性**（warn）：`/* ---- 探测 ---- */` 这种分节注释下面
 **必须是动作 / 分支 / 任务入口**；`/* ---- 通用探测 ---- */` 下面允许是 `Probe`；非通用 `Probe` 要放到
-用到它的节点后面。实测 15 条（`base.json` 的 `BaseProbeHome`、`escort.json` 的 `EscortProbeEnterHome` 等）。
+用到它的节点后面。实测 8 条（`battle.json` 的 `BattleProbeHome`、`entrust.json` 的 `EntrustProbeDaily` 等）。
 只查带横线的分节注释，文件头那种多行 INFO 注释（写版本注解的）不在此列。
 
-`A24-node-comment-missing` 管**主干节点注释缺失**（warn）：**主干节点**（有 `next` 的：动作、分支、就位、任务入口）
+`A24-node-comment-missing` 管**主干节点注释缺失**（warn）：**主干节点**（有 `next` 的：动作、分支、任务入口）
 前面要写注释，说明这个节点做什么。纯辅助节点（没有 `next`，如 `EscortClickDeliveryButton` / `BaseClickHomeButton` /
 `BaseMoveUp`）不要求写注释——它们是跟着引用它们的节点一起读的，逐个加注释只会把文件撑长。
-实测 50 条主干节点缺注释（见 `validate_refs.py` 输出，`base.json` 占一半以上）。
+实测 26 条主干节点缺注释（见 `validate_refs.py` 输出，集中在 `factory.json` 7 条、`reward_shop.json` 6 条）。
 
-`A16` / `A17` / `A18` 管**识别预算**（`pipeline-structure.md` §10）：
+`A17` / `A18` 管**识别预算**（`pipeline-structure.md` §10）：
 
-| 规则 | 级别 | 判据 | 2026-10-26 实测 |
+| 规则 | 级别 | 判据 | 2026-10-31 实测 |
 | --- | --- | --- | --- |
-| `A16-ensure-depth` | warn | `Ensure` 嵌套深度 > 2（单层 5 次识别，每多一层再付 5 次） | 2（都在 `entrust`：`EntrustEnsureStage` 深度 3、`EntrustEnsureLevelInfo` 深度 4） |
 | `A17-guard-in-next` | info | 节点 `next` 里含本节点 `recognition` 已用过的探针（同一轮识别两遍） | 14 |
-| `A18-next-length` | warn | `Task` / `Ensure` 的 `next` > 4 项，`Loop` > 5 项 | 10（全是 Task/Ensure 档，没有 `Loop` 档） |
+| `A18-next-length` | warn | `Task` 的 `next` > 4 项，`Loop`（废弃）> 5 项 | 8（全是 Task 档） |
 
 `A17` 只报「同一轮会问两遍」这个事实，**留删由人按实测救回率定**（<25% 该删）——救回率要日志实测，
-静态判不了。`A16` 的修法是改用 `Branch` 平铺到调用方 `next`（同样效果只要 1 次守卫），不是把
-`Ensure` 删掉换名字。三条都可以 `--ignore` 单独放行。
+静态判不了。两条都可以 `--ignore` 单独放行。
+
+`A25` / `A26` 是 v3.1 新增的两条（`A25` 管 `Ensure` 停用，`A26` 管单探针内联，见 `node-naming.md` §3）：
+
+| 规则 | 级别 | 判据 | 2026-10-31 实测 |
+| --- | --- | --- | --- |
+| `A25-ensure-banned` | warn | 节点名匹配 `Ensure[A-Z]`：v3.1 起 `Ensure` 类别停用，此节点待删；改用调用方 `Branch` + 入口动作 + `[JumpBack]BaseBranchError`。**故意用 warn 不用 error**：留作回归护栏；存量 9 个节点已于 2026-10-31 全部删除 | 0（2026-10-31 已删净；原 9 个分布在 `battle.json`、`battle_training.json`、`entrust.json` ×3、`entrust_reward.json` ×2、`feidu.json`、`maintenance.json`） |
+| `A26-single-consumer-probe` | info | 纯探针只被一处引用（`next` / `on_error` / `roi` / `target` / `all_of` 都算）且唯一引用是 `And all_of [<探针>]` 单探针包装（或引用方是没有 recognition / action、`next` 只有这一项的纯路由）：可内联进引用它的节点 `recognition`。多消费者、自定义识别、`[JumpBack]`、`Task` / `Ensure` 引用方、interface / tasks / agent 提到的一律不报 | 0（2026-10-31 已清零：原 8 个目标已在各模块批次内联完毕，分布在 `entrust.json` ×2、`escort.json`、`maintenance.json`、`reward.json` ×2、`reward_siku.json` ×2） |
+
+`A26` 只按引用计数报，**不报"`next` 里唯一候选但引用方另有 recognition"那类**：那种内联会把「命中就转」
+改成「先满足守卫」，语义不等价，判不准就不报。
 
 ## 依赖与前置
 

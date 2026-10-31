@@ -1,7 +1,7 @@
 {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "type": "object",
-    "$comment": "使用命名规范 v3.0; 使用任务链结构 v3.0",
+    "$comment": "使用命名规范 v3.1; 使用任务链结构 v3.1",
     "patternProperties": {
         "^(?!\\$).*": {
             "defaultSnippets": [
@@ -21,30 +21,13 @@
                 },
                 {
                     "label": "Branch 分支节点",
-                    "$comment": "识别到该状态就把 next 交出去：不写 action、不保证页面、不回到自己（node-naming.md §3）。页面导航默认用它平铺到调用方 next，代替嵌套 Ensure（结构文档 §10）",
+                    "$comment": "识别到该状态就把 next 交出去：不写 action、不保证页面、不回到自己（node-naming.md §3）。页面导航默认用它平铺到调用方 next；单探针直接写进 recognition，不再包一层 Probe（结构文档 §10）",
                     "body": {
                         "desc": "$1",
                         "recognition": "And",
                         "all_of": [
                             "$2"
                         ],
-                        "next": [
-                            "$0",
-                            "[JumpBack]BaseBranchError"
-                        ]
-                    }
-                },
-                {
-                    "label": "Ensure 就位节点",
-                    "$comment": "next 末项：单层 Ensure 写最后一个兜底候选（通常是回主页那一级）；嵌套 Ensure 写上一级 Ensure（结构文档 §2）。嵌套深度上限 2 层，第 3 层改用 Branch 平铺（§10）",
-                    "body": {
-                        "desc": "[jp] $1",
-                        "recognition": "And",
-                        "all_of": [
-                            "$2"
-                        ],
-                        "inverse": true,
-                        "timeout": 30000,
                         "next": [
                             "$0",
                             "[JumpBack]BaseBranchError"

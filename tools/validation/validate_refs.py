@@ -26,6 +26,7 @@ import json
 import os
 import re
 import sys
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TypeGuard
@@ -144,11 +145,9 @@ CONFIRM_NODE_NAMES = frozenset({"BaseProbeConfirm", "BaseClickConfirm"})
 CONFIRM_WORDS = ("确认",)
 
 # pipeline-structure.md §10：识别预算上限。
-# 单层 `Ensure` 固定 5 次识别（守卫 + 首项探针 + 兜底 + 进入动作 + 末项），末项是上一级
-# `Ensure` 时那一层再付 5 次——深度 5 就是 24 次。第 3 层起改用 `Branch` 平铺。
-MAX_ENSURE_DEPTH = 2
 # 失败候选也要付识别，列表越长单轮成本越高；超限通常是"把好几件事塞进一个列表"。
-MAX_NEXT_TASK_ENSURE = 4
+# v3.1 起 Ensure 停用，A18 只按 Task 判；Loop 档保留到存量节点退役。
+MAX_NEXT_TASK = 4
 MAX_NEXT_LOOP = 5
 
 # --------------------------------------------------------------------------
@@ -157,15 +156,16 @@ MAX_NEXT_LOOP = 5
 
 # 两份规范各自的版本：脚本按哪一版实现。文档头部写着「版本号: vX.Y」；改了收录的规则就同步 +0.1。
 # 不一致时报 E2，提醒人复核新规则要不要收进脚本——版本号只印在输出里而没人对，等于没有。
-# 两份都收：结构类判据（A4/A5/A7/A8/A9/A14…）按 pipeline-structure.md 实现，只对命名规范算版本
+# 两份都收：结构类判据（A4/A5/A7/A8/A14…）按 pipeline-structure.md 实现，只对命名规范算版本
 # 等于让结构文档改了规则没人提醒。
 # v2.1：两份规范升到 v2.1（新增「Probe + 主动作 + 兜底动作 + 分支」四角色）。
 # v3.0：四角色作废，改为「动作自环 + BaseErrorNext」。新增四条判据（A20–A23），见各自函数：
 #   A20 `[jp]` 不许自环、A21 自环必须带 BaseErrorNext、A22 BaseErrorNext 必须在 next[0]、
 #   A23 分节注释下面不许紧跟非通用 Probe。
-NAMING_SPEC_VERSION = "v3.0"
+# v3.1：Ensure 类别停用，删 A9/A16；新增 A25（Ensure 存量 warn）、A26（单探针内联 info）。
+NAMING_SPEC_VERSION = "v3.1"
 NAMING_SPEC = Path("docs/zh_cn/develop/node-naming.md")
-STRUCT_SPEC_VERSION = "v3.0"
+STRUCT_SPEC_VERSION = "v3.1"
 STRUCT_SPEC = Path("docs/zh_cn/develop/pipeline-structure.md")
 
 
@@ -254,7 +254,6 @@ def version_finding(
 # pipeline 文件里没有定义的）。目前为空：本仓库注入的名字都已在 pipeline 里定义。
 DYNAMIC_NODES: frozenset[str] = frozenset()
 
-ENSURE_RE = re.compile(r"Ensure[A-Z]")
 IMAGE_EXT_RE = re.compile(r"\.(png|jpg|jpeg|webp)$", re.IGNORECASE)
 BOUNDED_QUANTIFIER_RE = re.compile(r"\{\d+(?:,\d+)?\}")
 
@@ -482,7 +481,7 @@ def complement_of(node: dict) -> str | None:
 def guard_probe(node: dict) -> str | None:
     """`And all_of [X]` 这种单探针守卫：返回 X（`inverse` 与否都算）。
 
-    用来判"两个守卫是不是同一个判据"：工作循环的守卫与它末项兜底 `Ensure` 的守卫
+    用来判"两个守卫是不是同一个判据"：工作循环的守卫与它末项兜底的取反守卫
     取同一个探针时，兜底等于把"守卫不成立"修成"守卫成立"（结构文档 §3）。
     """
     if node.get("recognition") != "And":
@@ -507,7 +506,7 @@ def iter_custom_refs(data):
 
 
 def leading_word(name: str) -> str:
-    """名字的第一个 CamelCase 词（`BattleEnsureHome` -> `Battle`、`BattleAuto` -> `Task`）。"""
+    """名字的第一个 CamelCase 词（`TrainEnterHome` -> `Train`、`BattleAuto` -> `Task`）。"""
     m = re.match(r"[A-Z][a-z0-9]*|[A-Z]+(?![a-z])", name)
     return m.group(0) if m else name
 
@@ -940,64 +939,6 @@ def check_a8_loop_guard(ctx: Ctx) -> None:
             )
 
 
-def check_a9_ensure(ctx: Ctx) -> None:
-    """就位节点的 `next` 顺序（结构文档 §2）。
-
-    **不查 `max_hit`**：§2 现在没有"就位节点不要用 max_hit 卡"这句话，而 §5 明确把 `max_hit`
-    划给"任务级导航（从枢纽到页面）"——就位节点正是导航，`BattleEnsureHome` 的 `max_hit: 2` 是
-    合规预算。真正该管的是"在循环自愈路径上依赖它"，那条由 A10 负责（`--ignore A10-…` 可放行）。
-    """
-    for node in ctx.nodes.values():
-        if not ENSURE_RE.search(node.name):
-            continue
-        items = to_list(node.data.get("next"))
-        if not items:
-            continue
-        names = [parse_ref(i)[0] for i in items]
-        first, last = names[0], names[-1]
-        if first and "Probe" not in first:
-            ctx.add(
-                "A9-ensure-order",
-                "warn",
-                node.file,
-                find_line(node.file, node.name),
-                f"{node.name}.next 第一项是 {first!r}；结构文档 §2 要求先放目标页面的探针（*Probe*）",
-            )
-        if last is None:
-            continue  # 未定义由 A1-dangling-node 负责
-        if ENSURE_RE.search(last):
-            continue  # 末项是上一级 Ensure（嵌套）或兜底用的 Ensure，符合 §2
-        if any(n and ENSURE_RE.search(n) for n in names[:-1]):
-            ctx.add(
-                "A9-ensure-order",
-                "warn",
-                node.file,
-                find_line(node.file, node.name),
-                f"{node.name}.next 末项是 {last!r}；嵌套 Ensure 的末项是上一级 Ensure（结构文档 §2）",
-            )
-            continue
-        # 单层：末项若是"必然命中 + 有 next + 没有 max_hit / 有限 timeout"，
-        # 它每轮都会抢走，这个 Ensure 自己的 timeout 永远触发不到。
-        target = ctx.nodes.get(last)
-        if target is None or not always_hit(target.data):
-            continue
-        if not to_list(target.data.get("next")):
-            continue
-        if target.data.get("max_hit") is not None:
-            continue
-        timeout = target.data.get("timeout")
-        if isinstance(timeout, int) and timeout > 0:
-            continue
-        ctx.add(
-            "A9-ensure-order",
-            "warn",
-            node.file,
-            find_line(node.file, node.name),
-            f"{node.name}.next 末项 {last!r} 必然命中且带 next，又没有 max_hit / 有限 timeout："
-            f"它每轮都会抢走，守卫的 timeout 永远触发不到（结构文档 §2）",
-        )
-
-
 def check_a10_maxhit_in_loop(ctx: Ctx) -> None:
     for node in ctx.nodes.values():
         if not node.name.endswith("Loop"):
@@ -1171,7 +1112,7 @@ def check_a13_naming(ctx: Ctx) -> None:
                 line,
                 f"{name} 是工作循环却没有 next（node-naming.md §3：业务候选排在里面）",
             )
-        if ENSURE_RE.search(name) or name.endswith("Loop"):
+        if name.endswith("Loop"):
             continue
         if name.startswith(CLASS_SUFFIXES) or name.endswith(CLASS_SUFFIXES):
             continue
@@ -1186,40 +1127,11 @@ def check_a13_naming(ctx: Ctx) -> None:
 
 
 def check_a13_references(ctx: Ctx) -> None:
-    """就位层的引用规则与片段/参数键的写法（node-naming.md §3/§7/§8）。
+    """片段文件名与参数键的写法（node-naming.md §7/§8）。
 
     这几条都是**今天一条都不报**的护栏：写它们是为了以后别写错，不是为了现在挑错。
     判定只看结构，不看语义，所以规则本身也有限——见 README「功能取舍」。
     """
-    ensure_nodes = {n for n in ctx.nodes if ENSURE_RE.search(n)}
-
-    # §3 就位：被引用时必须带 [JumpBack]——不带的话点了没进去就被弹回，页面保证不住
-    for name, info in ctx.nodes.items():
-        for key, items in ref_lists(info.data):
-            for item in items:
-                target, jump, enabled = parse_ref(item)
-                if target in ensure_nodes and not jump:
-                    ctx.add(
-                        "A13-ensure-jumpback",
-                        "warn",
-                        info.file,
-                        find_line(info.file, name),
-                        f"{name}.{key} 引用了就位节点 {target} 却没带 [JumpBack]（node-naming.md §3）",
-                    )
-                if (
-                    ENSURE_RE.search(name)
-                    and key == "next"
-                    and target
-                    and target.endswith("Loop")
-                ):
-                    ctx.add(
-                        "A13-ensure-loop-next",
-                        "warn",
-                        info.file,
-                        find_line(info.file, name),
-                        f"{name}.next 里放了工作循环 {target}（node-naming.md §3：Loop 在 Task* 入口命中）",
-                    )
-
     # §7 参数键用 snake_case（键名进 agent，改名要动两处，所以越早拦住越省事）
     def custom_keys(data, where: str) -> None:
         if isinstance(data, dict):
@@ -1262,10 +1174,12 @@ def check_a13_references(ctx: Ctx) -> None:
 
 
 def check_a14_loop_fallback(ctx: Ctx) -> None:
-    """工作循环末项兜底 `Ensure` 与循环守卫取同一个探针（结构文档 §3 末段）。
+    """工作循环末项兜底取反守卫与循环守卫取同一个探针（结构文档 §3 末段）。
 
     结构文档把它写成硬规则（"兜底的探针不能与本 `Loop` 的守卫探针相同（方向相反也算）"），
-    所以报 warn 而不是 info。确实合法的页面级循环（候选全是子守卫，全 miss 只可能意味着漂走）
+    所以报 warn 而不是 info。v3.1 起兜底改写 `[JumpBack]BaseBranchError`，存量 `Loop` 里仍可能
+    引用 `Ensure`——这里按**结构**判取反守卫（顶层 `inverse: true`），不再看名字前缀。
+    确实合法的页面级循环（候选全是子守卫，全 miss 只可能意味着漂走）
     用 `--ignore A14-fallback-same-probe` 放行——判不了的事交给人点名豁免，比让规则常年只当提示强。
     """
     for node in ctx.nodes.values():
@@ -1278,10 +1192,12 @@ def check_a14_loop_fallback(ctx: Ctx) -> None:
         if not items:
             continue
         last, jump, _enabled = parse_ref(items[-1])
-        if not jump or not last or not ENSURE_RE.search(last):
+        if not jump or not last:
             continue
         target = ctx.nodes.get(last)
-        if target is None or guard_probe(target.data) != probe:
+        if target is None or not _is_inverse_guard(target.data):
+            continue
+        if guard_probe(target.data) != probe:
             continue
         ctx.add(
             "A14-fallback-same-probe",
@@ -1317,9 +1233,16 @@ def _has_confirm_mark(name: str | None, data: dict) -> bool:
     return False
 
 
-def _is_inverse_guard(name: str | None, data: dict) -> bool:
-    """全取反守卫：`Ensure*`，或顶层 `inverse: true` 的节点（含取反的终点探针）。"""
-    return bool(name and ENSURE_RE.search(name)) or data.get("inverse") is True
+def _is_inverse_guard(data: dict) -> bool:
+    """全取反守卫：按结构判，不看名字。
+
+    两种写法都算：顶层 `inverse: true` 的节点（含取反的终点探针），以及识别配置写成对象、
+    在对象里带 `inverse: true` 的探针。v3.1 起 `Ensure` 类别停用，不能再按 `Ensure` 名前缀判。
+    """
+    if data.get("inverse") is True:
+        return True
+    recognition = data.get("recognition")
+    return isinstance(recognition, dict) and recognition.get("inverse") is True
 
 
 def _clicks_confirm(
@@ -1346,7 +1269,7 @@ def check_a15_error_branch(ctx: Ctx) -> None:
     三条都是**今天一条都不报**的护栏：写它们是为了接线时别挂错位置，不是为了现在挑错。
 
     - 引用必须带 `[JumpBack]`（候选位，"办完弹回我这里继续"）。
-    - 排在取反守卫（`Ensure*` / 顶层 `inverse`）之后等于没接：弹窗挡住页面时那个守卫必然命中。
+    - 排在取反守卫（顶层 `inverse: true`，或识别配置里带 `inverse`）之后等于没接：弹窗挡住页面时那个守卫必然命中。
     - 排在自己会点「确认」的候选之前会抢点，把正常流程记成"错误弹窗"。
 
     只判同一个 next/on_error 列表内的先后；跨列表的冲突、"哪个模板在弹窗下仍会命中"判不了。
@@ -1378,7 +1301,7 @@ def check_a15_error_branch(ctx: Ctx) -> None:
             for _item, cand in resolved[:first]:
                 if cand is None:
                     continue
-                if _is_inverse_guard(*cand):
+                if _is_inverse_guard(cand[1]):
                     ctx.add(
                         "A15-error-branch-shadowed",
                         "warn",
@@ -1403,39 +1326,6 @@ def check_a15_error_branch(ctx: Ctx) -> None:
                     break
 
 
-def ensure_parent(node: Node) -> str | None:
-    """`Ensure.next` 里指向的上一级 `Ensure`（嵌套链的下一个环）。
-
-    从末项往前找第一个 `Ensure` 引用：合规写法末项就是上一级；末项是别的兜底候选、
-    中间夹着上一级 `Ensure` 的写法（`EntrustEnsureStage`）由 A9 单独报顺序问题，
-    但嵌套深度照样要算——它一样会逐级往下退。
-    一个 `Ensure` 都没有时返回 None（单层 `Ensure`，末项是 `BaseReturnHome` 之类）。
-    """
-    for item in reversed(to_list(node.data.get("next"))):
-        name = parse_ref(item)[0]
-        if name and ENSURE_RE.search(name):
-            return name
-    return None
-
-
-def ensure_depth(name: str, nodes: dict[str, Node]) -> int:
-    """一个 `Ensure` 的嵌套深度：自身算 1，每有一级上一级 `Ensure` 加 1。
-
-    链上出现环时在第一次重复处停下（环本身由 A7 报），避免死循环。
-    """
-    depth = 1
-    seen = {name}
-    current = nodes.get(name)
-    while current is not None:
-        parent = ensure_parent(current)
-        if parent is None or parent in seen:
-            break
-        seen.add(parent)
-        depth += 1
-        current = nodes.get(parent)
-    return depth
-
-
 def guard_probes(node: dict) -> set[str]:
     """本节点 `recognition` 直接引用到的探针名（`And` / `Or` 的字符串子项）。
 
@@ -1455,37 +1345,10 @@ def guard_probes(node: dict) -> set[str]:
     }
 
 
-def check_a16_ensure_depth(ctx: Ctx) -> None:
-    """`Ensure` 嵌套深度上限（pipeline-structure.md §10）。
-
-    单层 `Ensure` 固定 5 次识别（守卫 + 首项探针 + 兜底 + 进入动作 + 末项），
-    末项是上一级 `Ensure` 时那一层再付 5 次，所以深度 5 就是 24 次。第 3 层往上
-    改用 `Branch` 平铺到调用方 `next`，同样效果只要 1 次守卫。
-    """
-    for node in ctx.nodes.values():
-        if not ENSURE_RE.search(node.name):
-            continue
-        parent = ensure_parent(node)
-        if parent is None:
-            continue
-        depth = ensure_depth(node.name, ctx.nodes)
-        if depth <= MAX_ENSURE_DEPTH:
-            continue
-        ctx.add(
-            "A16-ensure-depth",
-            "warn",
-            node.file,
-            find_line(node.file, node.name),
-            f"{node.name} 的 Ensure 嵌套深度 {depth}（上限 {MAX_ENSURE_DEPTH}）："
-            f"单层固定 5 次识别、每多一层再付 5 次，深度 {depth} 约 {5 * depth - 1} 次；"
-            f"结构文档 §10 要求第 3 层起改用 Branch 平铺到调用方 next",
-        )
-
-
 def check_a17_guard_in_next(ctx: Ctx) -> None:
     """守卫探针在 `next` 里重复（pipeline-structure.md §10）。
 
-    `Ensure.next` 首项常常是守卫里那个探针（"刚说不在，再问一遍"），救回率高的该留、
+    `next` 首项常常是守卫里那个探针（"刚说不在，再问一遍"），救回率高的该留、
     低的该删。这里只报"同一轮会问两遍"这个事实，留删由人按实测救回率定。
     """
     for node in ctx.nodes.values():
@@ -1513,16 +1376,17 @@ def check_a17_guard_in_next(ctx: Ctx) -> None:
 def check_a18_next_length(ctx: Ctx) -> None:
     """`next` 列表长度上限（pipeline-structure.md §10）。
 
-    失败候选也要付识别，列表越长单轮成本越高。上限按类别分：`Task` / `Ensure` 4 项、
-    `Loop` 5 项。超限通常是"把好几件事塞进一个列表"，该拆 `Branch` 或子 `Loop`。
+    失败候选也要付识别，列表越长单轮成本越高。上限按类别分：`Task` 4 项、
+    `Loop`（废弃）5 项。v3.1 起 `Ensure` 停用，不再按 `Ensure` 名判。
+    超限通常是"把好几件事塞进一个列表"，该拆 `Branch` 或子 `Loop`。
     """
     for node in ctx.nodes.values():
         items = to_list(node.data.get("next"))
         if not items:
             continue
         name = node.name
-        if ENSURE_RE.search(name) or name.startswith("Task"):
-            limit, kind = MAX_NEXT_TASK_ENSURE, "Task/Ensure"
+        if name.startswith("Task"):
+            limit, kind = MAX_NEXT_TASK, "Task"
         elif name.endswith("Loop"):
             limit, kind = MAX_NEXT_LOOP, "Loop"
         else:
@@ -1572,8 +1436,8 @@ def check_a19_desc_markers(ctx: Ctx) -> None:
       "这一段的终点"未必是 `BaseTaskStop`，人工复核；标了 `[end]` 又整条 next 收在
       `BaseTaskStop` / `BaseTaskStopError` 上的不报）。
 
-    **不查"该标没标"**：`desc` 由模板生成，而 `[jp]` 按 §3 只是提示标记——那里记的实测是 100 个
-    兜底动作里只有 51 个带 `[jp]`、9 个就位 `Ensure` 全带上却不是兜底动作，所以缺标记不构成判据。
+    **不查"该标没标"**：`desc` 由模板生成，而 `[jp]` 按 §3 只是提示标记——本仓库大量一次性动作
+    没带 `[jp]`，存量 9 个 `Ensure*` 节点（v3.1 停用）却全带上、又不是动作节点，所以缺标记不构成判据。
     """
     for node in ctx.nodes.values():
         desc = node.data.get("desc")
@@ -1727,7 +1591,7 @@ def is_auxiliary(data: dict) -> bool:
 
     这类节点（`EscortClickDeliveryButton`、`BaseClickHomeButton`、`BaseMoveUp` 这种）是给主干节点当"补一刀"
     或工具用的，读的时候是跟着引用它的节点一起看的，所以**节点前面不要求写注释**；
-    主干节点（有 `next` 的：动作 / 分支 / 就位 / 任务入口）才是分节注释要覆盖的对象。
+    主干节点（有 `next` 的：动作 / 分支 / 任务入口）才是分节注释要覆盖的对象。
     """
     return not to_list(data.get("next"))
 
@@ -1829,6 +1693,169 @@ def check_a23_section_comment(ctx: Ctx) -> None:
                     f"每个主干节点前写一行说明它做什么；"
                     f"纯辅助节点（没有 next）不要求",
                 )
+
+
+# v3.1：Ensure 类别停用。存量 9 个节点已于 2026-10-31 全部删除（A25 = 0）；判据保持 warn
+# 不用 error，留作回归护栏。
+BANNED_ENSURE_RE = re.compile(r"Ensure[A-Z]")
+
+
+def check_a25_ensure_banned(ctx: Ctx) -> None:
+    """Ensure 类别停用（node-naming.md v3.1、pipeline-structure.md v3.1）。
+
+    2026-10-30 与作者定：不再新增 `Ensure` 节点，"保证当前处于某页"改由调用方 `next` 里的
+    `Branch`（自带 recognition）+ 入口动作 + `[JumpBack]BaseBranchError` 兜底表达。
+    存量 9 个节点已于 2026-10-31 全部删除（`A25` = 0）；判据保持 warn 不用 error。
+    """
+    for node in ctx.nodes.values():
+        if not BANNED_ENSURE_RE.search(node.name):
+            continue
+        ctx.add(
+            "A25-ensure-banned",
+            "warn",
+            node.file,
+            find_line(node.file, node.name),
+            f"{node.name}：v3.1 起 Ensure 类别停用，此节点待删；"
+            f"改用调用方 Branch + 入口动作 + [JumpBack]BaseBranchError",
+        )
+
+
+def _string_mention_counts(ctx: Ctx) -> Counter[str]:
+    """所有节点数据里"整串等于某节点名"的字符串出现次数。
+
+    `next` / `on_error` / `roi` / `target` / `all_of` 都算引用；`[JumpBack]X` 去掉标签后
+    按 X 计。用来判"只被一处引用"——比只数 `next` 保守，`roi` / `target` 里用到的探针
+    不会被误判成可以内联。
+    """
+    counts: Counter[str] = Counter()
+
+    def walk(value) -> None:
+        if isinstance(value, dict):
+            for item in value.values():
+                walk(item)
+        elif isinstance(value, list):
+            for item in value:
+                walk(item)
+        elif isinstance(value, str):
+            name = _TAG_RE.sub("", value).strip()
+            if name:
+                counts[name] += 1
+
+    for node in ctx.nodes.values():
+        walk(node.data)
+    return counts
+
+
+def _external_mentions(ctx: Ctx) -> set[str]:
+    """interface / tasks / agent 里提到过的节点名（保守：出现就算被外部引用）。
+
+    这些文件不归 pipeline 域，但 `pipeline_override`、`next` 覆写、agent 里按名字取节点
+    都会引用到；只要文本里出现这个名字，就不建议内联。
+    """
+    chunks: list[str] = []
+    if ctx.interface is not None:
+        chunks.append(json.dumps(ctx.interface, ensure_ascii=False))
+    for option in ctx.options.values():
+        chunks.append(json.dumps(option.data, ensure_ascii=False))
+    for _path, preset in ctx.presets:
+        chunks.append(json.dumps(preset, ensure_ascii=False))
+    for path in ctx.agent_files:
+        with contextlib.suppress(OSError):
+            chunks.append(path.read_text(encoding="utf-8"))
+    text = "\n".join(chunks)
+    return {name for name in ctx.nodes if name in text}
+
+
+def _reference_kinds(ctx: Ctx) -> dict[str, list[tuple[str, str, bool]]]:
+    """每个节点被引用的位置：`[(引用方, 字段, 是否 JumpBack)]`。
+
+    `recognition` 的 `all_of` / `any_of` 记为 `recognition`，用来识别单探针包装；
+    `next` / `on_error` 按字段名记。
+    """
+    refs: dict[str, list[tuple[str, str, bool]]] = {}
+
+    def add(name: str | None, consumer: str, kind: str, jump: bool) -> None:
+        if name:
+            refs.setdefault(name, []).append((consumer, kind, jump))
+
+    for node in ctx.nodes.values():
+        for key, items in ref_lists(node.data):
+            for item in items:
+                name, jump, enabled = parse_ref(item)
+                if enabled:
+                    add(name, node.name, key, jump)
+        for key in ("all_of", "any_of"):
+            for item in to_list(node.data.get(key)):
+                name, _jump, enabled = parse_ref(item)
+                if enabled:
+                    add(name, node.name, "recognition", False)
+    return refs
+
+
+def check_a26_single_consumer_probe(ctx: Ctx) -> None:
+    """只被一处引用的探针可以内联（node-naming.md v3.1「单探针内联」）。
+
+    判据同时满足，宁少勿多：
+
+    - 纯探针形状：有 `recognition`、无 `action`、无 `next`；
+    - 全库只被一处引用（`next` / `on_error` / `roi` / `target` / `all_of` 都算）；
+    - 唯一那处是引用方 `recognition` 里的 `And all_of [<探针>]` 单探针包装——识别直接
+      落到引用方，内联前后语义等价；或者是"引用方没有 recognition / action、next 只有
+      这一项"的纯路由；
+    - 探针自身没有 `custom_recognition` / `custom_action`；
+    - 不是 `Task` 开头的入口；
+    - 唯一引用不带 `[JumpBack]`；
+    - 不被 interface / tasks / agent 提到。
+
+    只按 `next` 候选内联会改变语义（`Loop` / `Branch` 的候选是"命中就转"，不是守卫），
+    所以那类不报——这正是"拿不准就不报"。引用方是待删的 `Ensure` 或 `Task` 入口时也不报。
+    """
+    refs = _reference_kinds(ctx)
+    counts = _string_mention_counts(ctx)
+    external = _external_mentions(ctx)
+    for name, node in ctx.nodes.items():
+        data = node.data
+        if not is_probe_shape(data):
+            continue
+        if "Probe" not in name or name.startswith("Task"):
+            continue
+        if data.get("custom_recognition") is not None:
+            continue
+        if data.get("custom_action") is not None:
+            continue
+        if counts.get(name, 0) != 1:
+            continue
+        if name in external:
+            continue
+        entries = refs.get(name, [])
+        if len(entries) != 1:
+            continue
+        consumer_name, kind, jump = entries[0]
+        if jump:
+            continue
+        consumer = ctx.nodes.get(consumer_name)
+        if consumer is None:
+            continue
+        if BANNED_ENSURE_RE.search(consumer_name) or consumer_name.startswith("Task"):
+            continue
+        if kind == "recognition":
+            if guard_probe(consumer.data) != name:
+                continue
+        elif kind == "next":
+            # 纯路由：引用方自己没有识别与动作，next 只有这一项，内联才不改变派发语义
+            if "recognition" in consumer.data or "action" in consumer.data:
+                continue
+            if to_list(consumer.data.get("next")) != [name]:
+                continue
+        else:
+            continue
+        ctx.add(
+            "A26-single-consumer-probe",
+            "info",
+            node.file,
+            find_line(node.file, name),
+            f"{name} 只被 {consumer_name} 引用一次：可内联进引用它的节点 recognition",
+        )
 
 
 def annotations_of(text: str) -> list[tuple[Spec, str, str | None]]:
@@ -2450,8 +2477,14 @@ def self_test() -> int:
     check_a13_references(ref_ctx)
     ref_ids = {f.id for f in ref_ctx.findings}
     checks += [
-        ("A13-ensure-jumpback" in ref_ids, "引用就位节点未带 [JumpBack] 会被拦"),
-        ("A13-ensure-loop-next" in ref_ids, "就位节点的 next 里放 Loop 会被拦"),
+        (
+            "A13-ensure-jumpback" not in ref_ids,
+            "A13 不再按 Ensure 名前缀判（v3.1 停用）",
+        ),
+        (
+            "A13-ensure-loop-next" not in ref_ids,
+            "Ensure 节点的 next 里放 Loop 也不再报 A13",
+        ),
     ]
 
     naming_ctx = synth_ctx(
@@ -2554,80 +2587,7 @@ def self_test() -> int:
         )
     )
 
-    # 嵌套 Ensure 的末项是上一级 Ensure：不报 A9-ensure-order
-    ens_ctx = synth_ctx(
-        {
-            "XProbeTavern": {"recognition": "OCR"},
-            "XEnterTavern": {"action": "Click"},
-            "XEnsureHome": {"next": ["XProbeHome", "[JumpBack]XEnsureTavern"]},
-            "XProbeHome": {"recognition": "OCR"},
-            "XEnsureTavern": {
-                "next": ["XProbeTavern", "[JumpBack]XEnterTavern", "XEnsureHome"]
-            },
-        }
-    )
-    check_a9_ensure(ens_ctx)
-    checks.append(
-        (
-            not any(
-                "XEnsureTavern" in f.message and f.id == "A9-ensure-order"
-                for f in ens_ctx.findings
-            ),
-            "嵌套 Ensure 以上一级 Ensure 收尾不报 A9-ensure-order",
-        )
-    )
-
-    # A9：嵌套但末项不是上一级 Ensure → 报
-    ens_bad = synth_ctx(
-        {
-            "XProbeTavern": {"recognition": "OCR"},
-            "XEnterTavern": {"recognition": "OCR", "action": "Click"},
-            "XProbeHome": {"recognition": "OCR"},
-            "XEnsureHome": {"next": ["XProbeHome"]},
-            "XEnsureTavern": {
-                "next": ["XProbeTavern", "[JumpBack]XEnsureHome", "XEnterTavern"]
-            },
-        }
-    )
-    check_a9_ensure(ens_bad)
-    checks.append(
-        (
-            any(
-                "XEnsureTavern" in f.message and f.id == "A9-ensure-order"
-                for f in ens_bad.findings
-            ),
-            "嵌套 Ensure 末项不是上一级 Ensure → 报 A9-ensure-order",
-        )
-    )
-
-    # A9：单层末项必然命中且带 next、没有 max_hit / 有限 timeout → 报；带 max_hit → 不报
-    def ensure_with_last(last: dict) -> Ctx:
-        synth = synth_ctx(
-            {
-                "XProbeHome": {"recognition": "OCR"},
-                "XForward": last,
-                "XEnsureHome": {"next": ["XProbeHome", "XForward"]},
-            }
-        )
-        check_a9_ensure(synth)
-        return synth
-
-    forward_ctx = ensure_with_last({"next": ["XProbeHome"]})
-    checks.append(
-        (
-            any(f.id == "A9-ensure-order" for f in forward_ctx.findings),
-            "单层 Ensure 末项必然命中且无收尾 → 报 A9-ensure-order",
-        )
-    )
-    bounded_ctx = ensure_with_last({"max_hit": 2, "next": ["XProbeHome"]})
-    checks.append(
-        (
-            not any(f.id == "A9-ensure-order" for f in bounded_ctx.findings),
-            "末项带 max_hit 有收尾 → 不报 A9-ensure-order",
-        )
-    )
-
-    # A14：循环末项兜底 Ensure 与循环守卫同探针 → info；不同探针 → 不报
+    # A14：循环末项兜底取反守卫与循环守卫同探针 → warn；不同探针 → 不报
     fallback_ctx = synth_ctx(
         {
             "XProbeWork": {"recognition": "OCR"},
@@ -2652,6 +2612,15 @@ def self_test() -> int:
                 "all_of": ["XProbeWork"],
                 "next": ["[JumpBack]XEnsureElse"],
             },
+            "XPlainWork": {
+                "recognition": "And",
+                "all_of": ["XProbeWork"],
+            },
+            "XLoopPlain": {
+                "recognition": "And",
+                "all_of": ["XProbeWork"],
+                "next": ["[JumpBack]XPlainWork"],
+            },
         }
     )
     check_a14_loop_fallback(fallback_ctx)
@@ -2663,31 +2632,15 @@ def self_test() -> int:
                 and "XLoopWork" in f.message
                 for f in fallback_ctx.findings
             ),
-            "兜底 Ensure 与循环守卫同探针 → 报 A14（warn，结构文档 §3 是硬规则）",
+            "兜底取反守卫与循环守卫同探针 → 报 A14（warn，结构文档 §3 是硬规则）",
         ),
         (
             not any("XLoopElse" in f.message for f in fallback_ctx.findings),
-            "兜底 Ensure 换一个探针 → 不报 A14",
-        ),
-    ]
-
-    # A9 不再查 max_hit（§5 把 max_hit 划给任务级导航，就位节点正是导航），但仍要查 next 顺序
-    a9_ctx = synth_ctx(
-        {
-            "XProbeHome": {"recognition": "OCR"},
-            "XEnsureHome": {"max_hit": 2, "next": ["XProbeHome", "XEnterHome"]},
-            "XEnterHome": {"action": "Click"},
-        }
-    )
-    check_a9_ensure(a9_ctx)
-    checks += [
-        (
-            not any(f.id == "A9-ensure-maxhit" for f in a9_ctx.findings),
-            "就位节点带 max_hit 不再报 A9（§5 允许导航预算）",
+            "兜底取反守卫换一个探针 → 不报 A14",
         ),
         (
-            not a9_ctx.findings,
-            "就位节点 next 顺序合规时 A9 不报",
+            not any("XLoopPlain" in f.message for f in fallback_ctx.findings),
+            "末项不是取反守卫（没有 inverse）→ 不报 A14",
         ),
     ]
 
@@ -2760,11 +2713,26 @@ def self_test() -> int:
                 "any_of": ["ProbeHomeX"],
                 "inverse": True,
             },
+            "GuardInverseX": {
+                "recognition": "OCR",
+                "inverse": True,
+                "next": ["ProbeHomeX"],
+            },
+            "EnsureNoInverseX": {
+                "recognition": "OCR",
+                "next": ["ProbeHomeX"],
+            },
             "TaskOnlyError": {"next": ["[JumpBack]BaseBranchError"]},
             "TaskOk": {"next": ["[JumpBack]BaseBranchError", "EnsureX"]},
             "TaskNoJump": {"next": ["BaseBranchError"]},
             "TaskShadowed": {"next": ["EnsureX", "[JumpBack]BaseBranchError"]},
             "TaskInverseEnd": {"next": ["StopAllBusyX", "[JumpBack]BaseBranchError"]},
+            "TaskShadowedByGuard": {
+                "next": ["GuardInverseX", "[JumpBack]BaseBranchError"]
+            },
+            "TaskEnsureNoInverse": {
+                "next": ["EnsureNoInverseX", "[JumpBack]BaseBranchError"]
+            },
             "TaskConflict": {"next": ["[JumpBack]BaseBranchError", "ClickConfirmX"]},
             "TaskClaimFirst": {"next": ["ClickConfirmX", "[JumpBack]BaseBranchError"]},
         }
@@ -2783,11 +2751,19 @@ def self_test() -> int:
         ),
         (
             "A15-error-branch-shadowed" in a15_ids("TaskShadowed"),
-            "错误分支排在 Ensure 之后 → 报 shadowed",
+            "错误分支排在顶层 inverse 的节点之后 → 报 shadowed",
         ),
         (
             "A15-error-branch-shadowed" in a15_ids("TaskInverseEnd"),
             "顶层 inverse 的终点探针也算取反守卫 → 报 shadowed",
+        ),
+        (
+            "A15-error-branch-shadowed" in a15_ids("TaskShadowedByGuard"),
+            "不叫 Ensure、但顶层 inverse 的节点也算取反守卫 → 报 shadowed",
+        ),
+        (
+            not a15_ids("TaskEnsureNoInverse"),
+            "叫 Ensure、但没有 inverse 的节点不算取反守卫 → 不报 shadowed",
         ),
         (
             "A15-error-branch-conflict" in a15_ids("TaskConflict"),
@@ -2796,38 +2772,6 @@ def self_test() -> int:
         (
             not a15_ids("TaskClaimFirst"),
             "自己的确认排在错误分支之前 → 不报 conflict",
-        ),
-    ]
-
-    # A16：Ensure 嵌套深度上限（pipeline-structure.md §10）
-    depth_ctx = synth_ctx(
-        {
-            "XProbeHome": {"recognition": "OCR"},
-            "XEnsureHome": {"recognition": "And", "all_of": ["XProbeHome"]},
-            "XEnsureMid": {
-                "recognition": "And",
-                "all_of": ["XProbeHome"],
-                "next": ["XProbeHome", "XEnsureHome"],
-            },
-            "XEnsureDeep": {
-                "recognition": "And",
-                "all_of": ["XProbeHome"],
-                "next": ["XProbeHome", "XEnsureMid"],
-            },
-        }
-    )
-    check_a16_ensure_depth(depth_ctx)
-    checks += [
-        (
-            not any("XEnsureMid" in f.message for f in depth_ctx.findings),
-            "深度 2 的 Ensure → 不报 A16",
-        ),
-        (
-            any(
-                f.id == "A16-ensure-depth" and "XEnsureDeep" in f.message
-                for f in depth_ctx.findings
-            ),
-            "深度 3 的 Ensure → 报 A16",
         ),
     ]
 
@@ -2901,6 +2845,9 @@ def self_test() -> int:
                     "XProbeF",
                 ],
             },
+            "XEnsureLong": {
+                "next": ["XProbeA", "XProbeB", "XProbeC", "XProbeD", "XProbeE"]
+            },
         }
     )
     check_a18_next_length(length_ctx)
@@ -2926,6 +2873,10 @@ def self_test() -> int:
                 for f in length_ctx.findings
             ),
             "Loop 6 项 → 报 A18",
+        ),
+        (
+            not any("XEnsureLong" in f.message for f in length_ctx.findings),
+            "Ensure 不再按 A18 判（v3.1 停用，存量由 A25 管）",
         ),
     ]
 
@@ -3035,6 +2986,112 @@ def self_test() -> int:
         (
             not any(n in ("XSelfOk", "XJpNoLoop", "XOther") for _i, n in loop_ids),
             "带 BaseErrorNext 的自环、[jp] 不自环、没用 BaseErrorNext 的都不报 A20–A22",
+        ),
+    ]
+
+    # A25：Ensure 存量节点只报 warn（v3.1 类别停用，节点待删）
+    banned_ctx = synth_ctx(
+        {
+            "XEnsureHome": {"next": ["XProbeHome"]},
+            "XProbeHome": {"recognition": "OCR"},
+            "XEnterHome": {"action": "Click"},
+        }
+    )
+    check_a25_ensure_banned(banned_ctx)
+    checks += [
+        (
+            any(
+                f.id == "A25-ensure-banned"
+                and f.severity == "warn"
+                and "XEnsureHome" in f.message
+                for f in banned_ctx.findings
+            ),
+            "Ensure 节点报 A25（warn，迁移期不能用 error）",
+        ),
+        (
+            not any(
+                "XProbeHome" in f.message or "XEnterHome" in f.message
+                for f in banned_ctx.findings
+            ),
+            "非 Ensure 节点不报 A25",
+        ),
+    ]
+
+    # _is_inverse_guard：按结构判，不再看 Ensure 名字
+    checks += [
+        (_is_inverse_guard({"inverse": True}), "顶层 inverse → 取反守卫"),
+        (
+            _is_inverse_guard({"recognition": {"type": "And", "inverse": True}}),
+            "识别配置里带 inverse → 取反守卫",
+        ),
+        (
+            not _is_inverse_guard({"recognition": "And", "all_of": ["Z"]}),
+            "没有 inverse 的节点不算取反守卫（不再看 Ensure 名字）",
+        ),
+    ]
+
+    # A26：只被一处引用的探针（node-naming.md v3.1「单探针内联」）
+    probe_ctx = synth_ctx(
+        {
+            "XProbeWrap": {"recognition": "OCR", "expected": "主页"},
+            "XBranchWrap": {
+                "recognition": "And",
+                "all_of": ["XProbeWrap"],
+                "next": ["XClickDo"],
+            },
+            "XProbeMulti": {"recognition": "OCR"},
+            "XClickMultiA": {"action": "Click", "next": ["XProbeMulti"]},
+            "XClickMultiB": {"action": "Click", "next": ["XProbeMulti"]},
+            "XProbeCustom": {
+                "recognition": "Custom",
+                "custom_recognition": "XProbeCustomReco",
+            },
+            "XBranchCustom": {
+                "recognition": "And",
+                "all_of": ["XProbeCustom"],
+                "next": ["XClickDo"],
+            },
+            "XProbeJump": {"recognition": "OCR"},
+            "XClickJump": {"next": ["[JumpBack]XProbeJump"]},
+            "XProbeEnsure": {"recognition": "OCR"},
+            "XEnsureWrap": {
+                "recognition": "And",
+                "all_of": ["XProbeEnsure"],
+                "next": ["XClickDo"],
+            },
+            "XProbeRoi": {"recognition": "OCR"},
+            "XClickRoi": {
+                "action": "Click",
+                "roi": "XProbeRoi",
+                "next": ["XClickDo"],
+            },
+            "XProbeExternal": {"recognition": "OCR"},
+            "XClickExternal": {"next": ["XProbeExternal"]},
+            "XClickDo": {"action": "Click"},
+        }
+    )
+    probe_ctx.interface = {"next": ["XProbeExternal"]}
+    check_a26_single_consumer_probe(probe_ctx)
+    probe_ids = {(f.id, f.message.split(" ")[0]) for f in probe_ctx.findings}
+    checks += [
+        (
+            ("A26-single-consumer-probe", "XProbeWrap") in probe_ids,
+            "只被一处 And all_of 包装引用的探针 → 报 A26（info）",
+        ),
+        (
+            not any(
+                name
+                in (
+                    "XProbeMulti",
+                    "XProbeCustom",
+                    "XProbeJump",
+                    "XProbeEnsure",
+                    "XProbeRoi",
+                    "XProbeExternal",
+                )
+                for _id, name in probe_ids
+            ),
+            "多消费者 / 自定义 / JumpBack / Ensure 引用方 / roi 引用 / 外部引用都不报 A26",
         ),
     ]
 
@@ -3445,7 +3502,6 @@ def main(argv: list[str] | None = None) -> int:
         check_a6_complement(ctx)
         check_a7_jumpback(ctx)
         check_a8_loop_guard(ctx)
-        check_a9_ensure(ctx)
         check_a10_maxhit_in_loop(ctx)
         check_a11_expected(ctx)
         check_a12_focus(ctx)
@@ -3453,7 +3509,6 @@ def main(argv: list[str] | None = None) -> int:
         check_a13_references(ctx)
         check_a14_loop_fallback(ctx)
         check_a15_error_branch(ctx)
-        check_a16_ensure_depth(ctx)
         check_a17_guard_in_next(ctx)
         check_a18_next_length(ctx)
         check_a19_desc_markers(ctx)
@@ -3461,6 +3516,8 @@ def main(argv: list[str] | None = None) -> int:
         check_a21_self_loop_error_next(ctx)
         check_a22_error_next_first(ctx)
         check_a23_section_comment(ctx)
+        check_a25_ensure_banned(ctx)
+        check_a26_single_consumer_probe(ctx)
     # 规范版本与注解新鲜度：不属于任何域，给了 --pipeline 之类也要报
     check_spec_version(ctx)
     if domains["interface"]:
