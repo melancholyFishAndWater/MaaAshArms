@@ -102,7 +102,7 @@
     "EntrustProbeEntrustDart": {
         "desc": "[end] 委派按钮暗淡",
         "recognition": "TemplateMatch",
-        "template": "Entrust/unable.png",
+        "template": "Entrust/Unable.png",
         "roi": [
             827,
             546,
@@ -113,7 +113,7 @@
     "EntrustProbeEntrustLight": {
         "desc": "[end] 委派按钮亮",
         "recognition": "TemplateMatch",
-        "template": "Entrust/able.png",
+        "template": "Entrust/Able.png",
         "roi": [
             827,
             546,
