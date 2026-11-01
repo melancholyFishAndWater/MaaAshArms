@@ -42,9 +42,29 @@ def test_training_reward_reco_consumes_window(monkeypatch):
     assert entrust._rewardable_by_timestamp is None
 
 
-def _touch_max_ctx():
-    calls = []
-    return SimpleNamespace(run_action=lambda name: calls.append(name)), calls
+class _FakeCtx:
+    """`EntrustProbeTouchMaxReco` 用到的两个入口：`run_action` 与 `override_pipeline`。
+
+    用真类而不是 `SimpleNamespace`：`_number == 0` 那条分支走 `override_pipeline`
+    （把本节点的 `next` 覆写成 `BaseTaskStopError`），`SimpleNamespace` 没有这个方法，
+    用例会假红（`AttributeError: 'types.SimpleNamespace' object has no attribute
+    'override_pipeline'`）。
+    """
+
+    def __init__(self) -> None:
+        self.actions: list[str] = []
+        self.overrides: list[dict] = []
+
+    def run_action(self, name: str) -> None:
+        self.actions.append(name)
+
+    def override_pipeline(self, pipeline: dict) -> bool:
+        self.overrides.append(pipeline)
+        return True
+
+
+def _touch_max_ctx() -> _FakeCtx:
+    return _FakeCtx()
 
 
 def _patch_ocr(monkeypatch, text="5"):
@@ -54,8 +74,8 @@ def _patch_ocr(monkeypatch, text="5"):
 
 
 def test_touch_max_reco_stops_on_zero(monkeypatch):
-    """实际委派数为 0 属不该出现的状态，直接结束任务。"""
-    ctx, calls = _touch_max_ctx()
+    """实际委派数为 0 属不该出现的状态：覆写本节点 next 指向 BaseTaskStopError，命中一次收口。"""
+    ctx = _touch_max_ctx()
     _patch_ocr(monkeypatch)
     monkeypatch.setattr(entrust, "_number", 0)
 
@@ -63,13 +83,14 @@ def test_touch_max_reco_stops_on_zero(monkeypatch):
         entrust.EntrustProbeTouchMaxReco().analyze(
             ctx, SimpleNamespace(node_name="EntrustBranchTouchMax")
         )
-        is None
+        is DEFAULT_HIT_BOX
     )
-    assert calls == ["BaseTaskStopError"]
+    assert ctx.overrides == [{"EntrustBranchTouchMax": {"next": ["BaseTaskStopError"]}}]
+    assert ctx.actions == []
 
 
 def test_touch_max_reco_hits_when_full(monkeypatch):
-    ctx, calls = _touch_max_ctx()
+    ctx = _touch_max_ctx()
     _patch_ocr(monkeypatch)
     monkeypatch.setattr(entrust, "_number", 5)
     monkeypatch.setattr(entrust, "_max", 20)
@@ -81,11 +102,12 @@ def test_touch_max_reco_hits_when_full(monkeypatch):
         )
         is DEFAULT_HIT_BOX
     )
-    assert calls == []
+    assert ctx.actions == []
+    assert ctx.overrides == []
 
 
 def test_touch_max_reco_waits_when_not_full(monkeypatch):
-    ctx, calls = _touch_max_ctx()
+    ctx = _touch_max_ctx()
     _patch_ocr(monkeypatch)
     monkeypatch.setattr(entrust, "_number", 5)
     monkeypatch.setattr(entrust, "_max", 20)
@@ -97,4 +119,5 @@ def test_touch_max_reco_waits_when_not_full(monkeypatch):
         )
         is None
     )
-    assert calls == []
+    assert ctx.actions == []
+    assert ctx.overrides == []
