@@ -9,7 +9,7 @@ from rect import DEFAULT_HIT_BOX
 
 def test_get_reward_reco_without_window():
     """没有窗口就不命中——本轮任务链没成功委派，没记下可领取时间。"""
-    assert entrust.TaskEntrustGetRewardReco().analyze(None, None) is None
+    assert entrust.EntrustRewardableNowReco().analyze(None, None) is None
 
 
 def test_get_reward_reco_waits_before_due(monkeypatch):
@@ -18,7 +18,7 @@ def test_get_reward_reco_waits_before_due(monkeypatch):
         entrust, "_rewardable_by_timestamp", datetime.now() + timedelta(seconds=10)
     )
 
-    assert entrust.TaskEntrustGetRewardReco().analyze(None, None) is None
+    assert entrust.EntrustRewardableNowReco().analyze(None, None) is None
     assert entrust._rewardable_by_timestamp is not None
 
 
@@ -28,7 +28,7 @@ def test_get_reward_reco_hits_when_due(monkeypatch):
         entrust, "_rewardable_by_timestamp", datetime.now() - timedelta(seconds=1)
     )
 
-    assert entrust.TaskEntrustGetRewardReco().analyze(None, None) is DEFAULT_HIT_BOX
+    assert entrust.EntrustRewardableNowReco().analyze(None, None) is DEFAULT_HIT_BOX
     assert entrust._rewardable_by_timestamp is None
 
 
@@ -38,10 +38,7 @@ def test_training_reward_reco_consumes_window(monkeypatch):
         entrust, "_rewardable_by_timestamp", datetime.now() + timedelta(seconds=10)
     )
 
-    assert (
-        entrust.TaskEntrustTrainingGetRewardReco().analyze(None, None)
-        is DEFAULT_HIT_BOX
-    )
+    assert entrust.EntrustRewardableLateReco().analyze(None, None) is DEFAULT_HIT_BOX
     assert entrust._rewardable_by_timestamp is None
 
 
@@ -63,7 +60,7 @@ def test_touch_max_reco_stops_on_zero(monkeypatch):
     monkeypatch.setattr(entrust, "_number", 0)
 
     assert (
-        entrust.EntrustBranchTouchMaxReco().analyze(
+        entrust.EntrustProbeTouchMaxReco().analyze(
             ctx, SimpleNamespace(node_name="EntrustBranchTouchMax")
         )
         is None
@@ -79,7 +76,7 @@ def test_touch_max_reco_hits_when_full(monkeypatch):
     monkeypatch.setattr(entrust, "_times", 20)
 
     assert (
-        entrust.EntrustBranchTouchMaxReco().analyze(
+        entrust.EntrustProbeTouchMaxReco().analyze(
             ctx, SimpleNamespace(node_name="EntrustBranchTouchMax")
         )
         is DEFAULT_HIT_BOX
@@ -95,7 +92,7 @@ def test_touch_max_reco_waits_when_not_full(monkeypatch):
     monkeypatch.setattr(entrust, "_times", 10)
 
     assert (
-        entrust.EntrustBranchTouchMaxReco().analyze(
+        entrust.EntrustProbeTouchMaxReco().analyze(
             ctx, SimpleNamespace(node_name="EntrustBranchTouchMax")
         )
         is None
