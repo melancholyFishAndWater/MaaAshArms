@@ -1,6 +1,12 @@
 # 任务链结构
 
-版本号: v3.2
+版本号: v3.4
+
+**v3.4 变更**：`*Init` 不再触发 `A4-shadowed-candidate`——它**本质单次必须初始化、基本不需要 reco**，
+规范本来就要求放 `Task.next` 前段并配 `max_hit: 1`（见「八」节），"先挡一轮再让位"是设计意图。
+
+**v3.3 变更**：非任务入口的 `next` 一律 ≤ 7 项，`BaseBranchError` / `BaseErrorNext` 不计入（见「十」节，
+`A28-next-list-cap` warn）；任务入口仍由 `A18` 管（4 项）。
 
 **v3.2 变更**：`*Confirm`（确认按钮）必须排在 `BaseBranchError` 之前，`A15-error-branch-conflict` 由 warn
 提为 error（见「九」节）；确认按钮命名统一 `*Confirm`、不许 `ClickOk`（见 [节点命名](./node-naming.md) §6）。
@@ -239,7 +245,7 @@ v3.1 起末尾兜底写 `[JumpBack]BaseBranchError`，不再放 `Ensure`：`Ensu
 | 真初始化 | 写全局变量、读参数、清计数（`TrainingInitAct` 读 `attach`、`ReplaysInitAct` 写 `_max_count`） | 放 `Task.next` 前段（`ProbeDaily` 之后）合理，`max_hit: 1` 也是对的 |
 | 取状态再初始化 | 先识别一次状态再写全局（`TrainingGetStatusReco`、`TrainInitReco`） | **本质是探测**，按 `...Probe...` 命名；位置交给调用它的 `Branch` 决定，不要顶在 `Task.next` 第一位挡住后面候选 |
 
-这条只能人工判：一个动作节点到底"只是初始化"还是"顺便取状态"，工具看不出来。落到校验器上的只有 `A4-shadowed-candidate` 的提示——`Task.next` 里出现带 `max_hit` 的必然命中候选时，它后面的候选在额度用尽前不可达。
+这条只能人工判：一个动作节点到底"只是初始化"还是"顺便取状态"，工具看不出来。落到校验器上的只有 `A4-shadowed-candidate` 的提示——`Task.next` 里出现带 `max_hit` 的必然命中候选时，它后面的候选在额度用尽前不可达。**`*Init` 不在此列**（v3.4）：「真初始化」本来就该顶在前段挡一轮，`A4` 跳过它。
 
 ## 九、通用错误分支放哪
 
@@ -288,6 +294,8 @@ v3.1 起末尾兜底写 `[JumpBack]BaseBranchError`，不再放 `Ensure`：`Ensu
 ## 十、识别预算
 
 一次派发的成本 = **守卫识别**（本节点的 `recognition`）+ **候选识别**（`next` 里被依次评估的项）。失败也要付钱，所以 `next` 的顺序与长度就是预算。
+
+**长度上限（v3.3）**：任务入口（`Task*`）≤ 4 项（`A18`）；其余节点一律 ≤ 7 项（`A28`），计长度时不计 `BaseBranchError` / `BaseErrorNext`——这两项是每张表都该留的框架兜底，算进去会把正常表逼到超限。超限通常说明"把好几件事塞进一个列表"，该拆 `Branch`。
 
 ### 一次派发付几次识别
 
@@ -368,5 +376,6 @@ v3.1 起末尾兜底写 `[JumpBack]BaseBranchError`，不再放 `Ensure`：`Ensu
 | `A25-ensure-banned` | warn | 节点名匹配 `Ensure[A-Z]`：v3.1 起 Ensure 类别停用，此节点待删；改用调用方 `Branch` + 入口动作 + `[JumpBack]BaseBranchError`。存量 9 个节点 2026-10-31 已全部删除，`A25` = 0 |
 | `A26-single-consumer-probe` | info | 纯探针只被一处引用（含 `And all_of [<探针>]` 单探针包装）：可内联进引用它的节点 `recognition` |
 | `A27-click-ok-banned` | error | 节点名以 `Ok` 结尾：确认按钮统一 `*Confirm`，不许 `ClickOk`（见 [节点命名](./node-naming.md) §6） |
+| `A28-next-list-cap` | warn | 非任务入口的 `next` > 7 项（`BaseBranchError` / `BaseErrorNext` 不计入）；任务入口由 `A18` 管 |
 
 判不了的：救回率、动画实际时长、哪个候选命中率最高——都要日志实测（`debug/maafw.log` 里的 `Node.NextList.*` / `Node.Recognition.*` / `Node.WaitFreezes.*` 事件流）。
