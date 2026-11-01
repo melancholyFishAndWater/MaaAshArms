@@ -1,6 +1,22 @@
 # 任务链结构
 
-版本号: v3.4
+版本号: v3.9
+
+**v3.9 变更**：收窄「单探针内联」——只有单探针包装（`all_of` 恰好一项）与纯路由才内联；多条件 `And` 的子识别
+保持独立 `Probe` 节点，新增 `A30-and-inline-sub`（warn）报内联对象。见「十」节。
+
+**v3.8 变更**：`A18-next-length` 对 `Task*` 入口**完全不判**（入口的候选表由人工把关），只留 `*Loop` 的 5 项档；
+非入口根节点的 7 项上限仍由 `A28` 管。见「十」节。
+
+**v3.7 变更**：`A4-shadowed-candidate` 只报**没有 `max_hit`** 的必然命中候选——带额度的
+（`[jp]` / `[once]` 的一次性动作，如 `EntrustDelegatingReward`）"用尽即让位"，排 `next` 前段是设计意图。
+见「八」节。
+
+**v3.6 变更**：`A29-and-box-index` 只管**有 `action` 的节点**——没 action 的 `And`（`Probe` / `Branch` / `Loop`）
+框只进日志与事件，换个索引没有任何行为差别。见「十一」节。
+
+**v3.5 变更**：`And` 组合多个子识别时要显式写 `box_index`（`A29-and-box-index` warn）——取框默认
+`all_of[0]`，调序就会悄悄换掉落点。见「十一」节。
 
 **v3.4 变更**：`*Init` 不再触发 `A4-shadowed-candidate`——它**本质单次必须初始化、基本不需要 reco**，
 规范本来就要求放 `Task.next` 前段并配 `max_hit: 1`（见「八」节），"先挡一轮再让位"是设计意图。
@@ -73,7 +89,7 @@
 }
 ```
 
-`<前缀>Probe<对象>` 只被这一处引用时，按第十节「单探针内联」把它的识别字段直接写进 `recognition`，不要包 `And`；`And` 只留给多消费者共用或确实要组合多个条件的场合。
+`<前缀>Probe<对象>` 只被这一处引用时，按第十节「单探针内联」把它的识别字段直接写进 `recognition`，不要包 `And`；`And` 只留给多消费者共用或确实要组合多个条件的场合——多条件时子识别写独立 `Probe` 节点、按名字引用，别写内联对象（见第十节）。
 
 三条要求：
 
@@ -245,7 +261,7 @@ v3.1 起末尾兜底写 `[JumpBack]BaseBranchError`，不再放 `Ensure`：`Ensu
 | 真初始化 | 写全局变量、读参数、清计数（`TrainingInitAct` 读 `attach`、`ReplaysInitAct` 写 `_max_count`） | 放 `Task.next` 前段（`ProbeDaily` 之后）合理，`max_hit: 1` 也是对的 |
 | 取状态再初始化 | 先识别一次状态再写全局（`TrainingGetStatusReco`、`TrainInitReco`） | **本质是探测**，按 `...Probe...` 命名；位置交给调用它的 `Branch` 决定，不要顶在 `Task.next` 第一位挡住后面候选 |
 
-这条只能人工判：一个动作节点到底"只是初始化"还是"顺便取状态"，工具看不出来。落到校验器上的只有 `A4-shadowed-candidate` 的提示——`Task.next` 里出现带 `max_hit` 的必然命中候选时，它后面的候选在额度用尽前不可达。**`*Init` 不在此列**（v3.4）：「真初始化」本来就该顶在前段挡一轮，`A4` 跳过它。
+这条只能人工判：一个动作节点到底"只是初始化"还是"顺便取状态"，工具看不出来。落到校验器上的只有 `A4-shadowed-candidate`——它报的是**必然命中且没有 `max_hit`** 的候选：那种每一轮都命中，后面的候选永远轮不到。两类**不报**：**`*Init`**（v3.4，「真初始化」本来就该顶在前段挡一轮）与**带 `max_hit` 的**（v3.7，额度用尽即让位，`EntrustDelegatingReward` 这种 `[jp][once]` 一次性动作就是靠它排在前段先做一次）。
 
 ## 九、通用错误分支放哪
 
@@ -295,7 +311,7 @@ v3.1 起末尾兜底写 `[JumpBack]BaseBranchError`，不再放 `Ensure`：`Ensu
 
 一次派发的成本 = **守卫识别**（本节点的 `recognition`）+ **候选识别**（`next` 里被依次评估的项）。失败也要付钱，所以 `next` 的顺序与长度就是预算。
 
-**长度上限（v3.3）**：任务入口（`Task*`）≤ 4 项（`A18`）；其余节点一律 ≤ 7 项（`A28`），计长度时不计 `BaseBranchError` / `BaseErrorNext`——这两项是每张表都该留的框架兜底，算进去会把正常表逼到超限。超限通常说明"把好几件事塞进一个列表"，该拆 `Branch`。
+**长度上限（v3.8）**：`Task*` 入口**不判**（入口的候选表由人工把关）；其余节点一律 ≤ 7 项（`A28`），计长度时不计 `BaseBranchError` / `BaseErrorNext`——这两项是每张表都该留的框架兜底，算进去会把正常表逼到超限。超限通常说明"把好几件事塞进一个列表"，该拆 `Branch`。存量 `*Loop`（废弃）另有 `A18` 的 5 项档，随节点退役一起消失。
 
 ### 一次派发付几次识别
 
@@ -340,9 +356,11 @@ v3.1 起末尾兜底写 `[JumpBack]BaseBranchError`，不再放 `Ensure`：`Ensu
 
 ### 单探针内联
 
-只被一处引用的探针把识别写进引用它的节点 `recognition`，删掉 `Probe` 节点；`And all_of [<探针>]` 的单探针包装也算一处引用，`Branch` 的单探针同样内联。判据与做法见 [节点命名与分类](./node-naming.md) §3「单探针内联」。
+只被一处引用的探针把识别写进引用它的节点 `recognition`，删掉 `Probe` 节点；`And all_of [<探针>]` 的单探针包装、`Branch` 的单探针、以及"没有 `recognition` / `action`、`next` 只有这一项"的纯路由同样内联。判据与做法见 [节点命名与分类](./node-naming.md) §3「单探针内联」。
 
-省下的是「多一个节点」的派发与事件开销；多消费者（两处以上引用）保留 `Probe`，它承担的是复用。校验器用 `A26-single-consumer-probe` 找这类节点（info，只报拿得准的）。
+省下的是「多一个节点」的派发与事件开销；多消费者（两处以上引用）保留 `Probe`，它承担的是复用。
+
+**多条件 `And` 不在内联范围**（v3.9）：`all_of` 两个以上条件时，子识别保持独立 `Probe` 节点、按名字引用——命名节点才带得上注册名校验、`box_index` 的落点指认，也好单独复测。校验器 `A26-single-consumer-probe` 只认单探针包装（`all_of` 恰好一项），`A30-and-inline-sub`（warn）专门报多条件 `And` 里的内联对象。
 
 ### 首项探针只在守卫会误判时保留
 
@@ -367,15 +385,40 @@ v3.1 起末尾兜底写 `[JumpBack]BaseBranchError`，不再放 `Ensure`：`Ensu
 | 规则 | 级别 | 判据 |
 | --- | --- | --- |
 | `A17-guard-in-next` | info | 节点的 `next` 里含本节点 `recognition` 用到的同一个探针（重复识别） |
-| `A18-next-length` | warn | `Task` 的 `next` > 4 项，`Loop`（废弃）> 5 项 |
+| `A18-next-length` | warn | `Loop`（废弃）的 `next` > 5 项；`Task*` 入口不判（v3.8） |
 | `A20-jp-self-loop` | error | `desc` 带 `[jp]` 的节点，`next` 里含自己（见「〇」节） |
 | `A21-self-loop-without-error-next` | warn | `next` 含自己的节点没有引用 `BaseErrorNext`（见「〇」节） |
 | `A22-error-next-not-first` | warn | 引用了 `BaseErrorNext` 但不在 `next[0]`（见「〇」节） |
 | `A23-section-comment-probe` | warn | 分节注释下面紧跟非通用 `Probe`（见「〇」节「注释口径」） |
 | `A24-node-comment-missing` | warn | 主干节点（有 `next`）前面没有紧挨着的注释；纯辅助节点不要求 |
 | `A25-ensure-banned` | warn | 节点名匹配 `Ensure[A-Z]`：v3.1 起 Ensure 类别停用，此节点待删；改用调用方 `Branch` + 入口动作 + `[JumpBack]BaseBranchError`。存量 9 个节点 2026-10-31 已全部删除，`A25` = 0 |
-| `A26-single-consumer-probe` | info | 纯探针只被一处引用（含 `And all_of [<探针>]` 单探针包装）：可内联进引用它的节点 `recognition` |
+| `A26-single-consumer-probe` | info | 纯探针只被一处引用、且那处是**单探针包装**（`And all_of` 恰好一项）或纯路由：可内联进引用它的节点 `recognition` |
+| `A30-and-inline-sub` | warn | 多条件 `And` 的 `all_of` 里出现内联对象：改成独立 `Probe` 节点按名字引用（见「十」节「单探针内联」） |
 | `A27-click-ok-banned` | error | 节点名以 `Ok` 结尾：确认按钮统一 `*Confirm`，不许 `ClickOk`（见 [节点命名](./node-naming.md) §6） |
 | `A28-next-list-cap` | warn | 非任务入口的 `next` > 7 项（`BaseBranchError` / `BaseErrorNext` 不计入）；任务入口由 `A18` 管 |
+| `A29-and-box-index` | warn | 带 `action` 的节点：`recognition: And` 且 `all_of` > 1 项却没写 `box_index`（取框默认 `all_of[0]`，见「十一」节） |
 
 判不了的：救回率、动画实际时长、哪个候选命中率最高——都要日志实测（`debug/maafw.log` 里的 `Node.NextList.*` / `Node.Recognition.*` / `Node.WaitFreezes.*` 事件流）。
+
+## 十一、`And` 的取框（`box_index`）
+
+`And` 的输出框默认取 **`all_of[0]`**（vendor `deps/tools/pipeline.schema.json` 的 `And.box_index`：「指定输出哪个子识别的识别框…可选，默认 0」，范围 `0 <= box_index < all_of.size`）。`Click` 的落点、`target_offset` 都基于这个框。
+
+组合里各项的框一般不重合，所以"默认 0"是一条**隐式**约定：调整 `all_of` 顺序、或把某个探针换掉，落点就悄悄换了，图上看不出、只有行为变了才发现。
+
+规则（`A29-and-box-index`，warn）：节点**带 `action`**（框会被当落点用）、`recognition: And` 且 `all_of` 多于 1 项时，**显式写 `box_index`**，把意图写清楚：
+
+```json
+"TrainEnterHome": {
+    "recognition": "And",
+    "all_of": ["TrainProbeOverview", "TrainProbeStatus"],
+    "action": "Click",
+    "box_index": 1,
+    ...
+}
+```
+
+两种不写的情况：
+
++ **只有 1 项**（单探针包装）——那时 `0` 是唯一可能值。
++ **没有 `action`**（`Probe` / `Branch` / `Loop`）——框只进日志与事件，换个索引没有任何行为差别。
