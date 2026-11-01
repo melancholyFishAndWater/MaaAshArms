@@ -1,10 +1,11 @@
 # 节点命名与分类
 
-版本号: v3.1
+版本号: v3.2
 
 本文约束 pipeline 节点叫什么名、属于哪一类（探测 / 分支 / 工作 / 动作），以及 agent 侧注册名、
 参数键、文件名与目录的写法。改节点名、加新节点、拆分子任务时按本文执行。
 
+**v3.2 变更**：确认按钮统一以 `Confirm` 结尾，不允许 `ClickOk`（含 `…Ok` 后缀）；见 §6。
 **v3.1 变更**：停用就位 `Ensure` 类别（改由调用方 `Branch` 平铺 + 入口动作 +
 `[JumpBack]BaseBranchError` 表达「保证当前处于某页」）；单探针内联；行内注释 4~6 字。
 判据见 §3「分支」「单探针内联」与 [任务链结构](./pipeline-structure.md) 第十节。
@@ -40,12 +41,12 @@
 | 类型 | 骨架 | 示例 |
 | --- | --- | --- |
 | 任务入口 | `Task<任务名>` | `TaskEntrust`、`TaskFactory`、`TaskReplays` |
-| 动作节点 | `<任务前缀><动词><宾语>` | `EscortClickOk`、`FactoryChooseNumber` |
+| 动作节点 | `<任务前缀><动词><宾语>` | `EscortClickConfirm`、`FactoryChooseNumber` |
 | 探测节点 | `<任务前缀>Probe<页面/状态/元素>` | `EscortProbeHome`、`TrainProbeAcceptable`、`TrainingProbeHomeName` |
 | 分支节点 | `<任务前缀>Branch<状态/对象>` | `GiftBranchSortPage`、`BattleBranchClickTap` |
 | 工作循环（废弃） | `<任务前缀>Loop` | `TrainingLoop`、`MaintenanceLoop`；新代码用 `Branch` 平铺 |
 | 子过程入口 | `<任务前缀>Init` | `TrainingInit`、`EntrustInit` |
-| 出口节点 | `<任务前缀><动词>…Success/Failed` | `EscortClickOkEnd`、`FactoryGetRewardFailed` |
+| 出口节点 | `<任务前缀><动词>…Success/Failed` | `TrainGetRewardSuccess`、`FactoryGetRewardFailed` |
 | 日常门控 | `<任务前缀>ProbeDaily` / `<任务前缀>DailyUpdate` | `EntrustProbeDaily`、`GiftDailyUpdate` |
 
 ## 三、节点分类（探测 / 分支 / 工作 / 动作）
@@ -193,7 +194,7 @@
 
 点一个按钮或区域，提交或执行一次动作，通常伴随本页的显隐变化。宾语写界面上的按钮名。
 
-例：`EscortClickOk`（确认）、`FactoryClickStart`（开始建造）、`FactoryClickCancel`（取消订单）、`GiftClickSortConfirm`（确认排序）。
+例：`EscortClickConfirm`（确认）、`FactoryClickStart`（开始建造）、`FactoryClickCancel`（取消订单）、`GiftClickSortConfirm`（确认排序）。
 
 ### 其他动词
 
@@ -231,8 +232,9 @@
 
 ## 六、动作节点细节
 
-- 宾语与界面文字对齐（`确认` → `ClickOk`、`取消` → `BaseClickCancel`、`完成` → `ClickFinish`）。
-- 同一个按钮在不同任务里叫法保持一致：`ClickOk`、`EscortClickOk`、`FactoryClickSkipOk`；不要出现 `ClickYes` 这类同义写法。
+- 确认按钮统一以 `Confirm` 结尾，**不允许 `ClickOk`**（含 `…Ok` 后缀）：`BaseClickConfirm`、`EscortClickConfirm`、`FactoryClickSkipConfirm`。校验器 `A27-click-ok-banned` 按 error 报。
+- 宾语与界面文字对齐（`确认` → `ClickConfirm`、`取消` → `BaseClickCancel`、`完成` → `ClickFinish`）。
+- 同一个按钮在不同任务里叫法保持一致：`ClickConfirm`、`EscortClickConfirm`、`FactoryClickSkipConfirm`；不要出现 `ClickOk`、`ClickYes` 这类同义写法。
 - 出口/收尾节点在名字里标出性质：`*End`（链结束）、`*Success`（动作生效）、`*Failed`（失败分支）。成功探针节点用 `And all_of [<被探针节点>] + inverse` 时，名字取 `<被探针节点>Success`，例如 `EntrustClickFinishSuccess`。
 - `desc` 由模板生成（`[end]`、`[Loop]` 这些前缀见 `tools/vscode/pipeline.snippets.schema.json`），名字里不重复这些标记。
 - `desc` 的方括号标记一共五个，含义固定：

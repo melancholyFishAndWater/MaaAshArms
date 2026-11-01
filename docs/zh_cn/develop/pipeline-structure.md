@@ -1,6 +1,9 @@
 # 任务链结构
 
-版本号: v3.1
+版本号: v3.2
+
+**v3.2 变更**：`*Confirm`（确认按钮）必须排在 `BaseBranchError` 之前，`A15-error-branch-conflict` 由 warn
+提为 error（见「九」节）；确认按钮命名统一 `*Confirm`、不许 `ClickOk`（见 [节点命名](./node-naming.md) §6）。
 
 **v3.0 变更**：废弃「**[Probe + 主动作 + 兜底动作]**」三段拼法（v2.1 引入），改为「**动作自环 + `BaseErrorNext`**」。
 `BaseErrorNext` 是 `LoopErrorByTimes` 改名后的节点：在**非大循环**的链上，它仍然是必需的那道兜底。理由见「〇」节。
@@ -203,7 +206,7 @@ v3.1 起末尾兜底写 `[JumpBack]BaseBranchError`，不再放 `Ensure`：`Ensu
   + **守卫失效**：`recognition` 不再命中 → 该节点判失败、弹回调用方，等于替调用方做了一次探测。这是首选出口，页面上"已经做完/已经离开"的判据都该做成守卫或候选。
   + **`BaseErrorNext`**（v3.0）：这张 `next` 表连续 N 轮没有别的节点成功 → `BaseTaskStopError`。它管的是「一直在命中但没进展」，`timeout` 管不到这类情况（见下一条）。
   + **有限 `timeout`**：到点判失败，框架报 `Task timeout [pretask.name=<节点名>]`。`on_error` 只放**必须做的收尾**（松手、关弹窗、复位状态），这一层不需要收尾就不要写——失败本身就是合法出口，补一条 `focus` 把原因说清楚即可。
-+ **`timeout` 有个管不到的盲区**：它只限制「`next` 里一直找不到命中」的轮询。候选还在命中——尤其是 `[JumpBack]` 弹回的 jp 节点反复命中——`timeout` 永远不触发，任务既不失败也不结束。这就是 `BaseErrorNext` 存在的理由，也是它在**非大循环**的链上仍然必需的原因（v3.0）。实测样本：`EscortClickOk` 用同一个 `box=[1005,522,64,37]` 连点 8 次、26.9 s 而任务既不失败也不结束。
++ **`timeout` 有个管不到的盲区**：它只限制「`next` 里一直找不到命中」的轮询。候选还在命中——尤其是 `[JumpBack]` 弹回的 jp 节点反复命中——`timeout` 永远不触发，任务既不失败也不结束。这就是 `BaseErrorNext` 存在的理由，也是它在**非大循环**的链上仍然必需的原因（v3.0）。实测样本：`EscortClickConfirm` 用同一个 `box=[1005,522,64,37]` 连点 8 次、26.9 s 而任务既不失败也不结束。
 + `BaseErrorNext` 与 `timeout` 的分工不能互相替代：前者数「连续几轮没进展」，后者数「墙钟」。
 + `timeout` 按**当前节点自己**算，入口节点的大 `timeout` 管不到下游。进入型节点按实际耗时收敛；循环节点用 `timeout: 30000` 一类的有限值，`-1` 只留给"守卫本身会在结束时失效"的等待型循环（例如"在战斗中"），并在节点注释里写明出口是守卫而不是超时。
 
@@ -215,7 +218,7 @@ v3.1 起末尾兜底写 `[JumpBack]BaseBranchError`，不再放 `Ensure`：`Ensu
 | 分支 | `<前缀>Branch<状态>` |
 | 工作（废弃） | `<前缀>Loop` |
 
-`Probe` / `Branch` 后面的对象是页面或状态的短名，与 `Probe` 用的一致（`TrainingProbeHome` / `TrainingBranchHome`）。页面导航需要的动作节点仍按动词表命名（`EnterBattleMainPage`、`ClickOk` 等）。
+`Probe` / `Branch` 后面的对象是页面或状态的短名，与 `Probe` 用的一致（`TrainingProbeHome` / `TrainingBranchHome`）。页面导航需要的动作节点仍按动词表命名（`EnterBattleMainPage`、`ClickConfirm` 等）。
 
 ## 七、等次与枢纽
 
@@ -266,6 +269,8 @@ v3.1 起末尾兜底写 `[JumpBack]BaseBranchError`，不再放 `Ensure`：`Ensu
 | 全取反守卫（顶层 `inverse: true` 的节点与取反终点探针）排在它**后面** | 弹窗挡住页面时取反守卫必然命中，会把"看不见"当成"不在页面"，带着弹窗去点入口或按钮 |
 | 目标页的正向探针排在它**前面** | 页面正常就直接往下走，不必付这次识别 |
 
+第一条（自己会点「确认」的候选排在 `BaseBranchError` 前面，即 `*Confirm` 在前）v3.2 起由 `A15-error-branch-conflict` 按 **error** 报：确认按钮排到 `BaseBranchError` 之后即违规。
+
 ### 不要和专责的停止判断混排
 
 `BaseStopNoMetal` / `IsServerMaintenance` / `IsNetworkError` 是"判到就停"，`BaseBranchError` 是"点掉继续"。两类放在同一列表会互相抢顺序：同一个「确认」既可能被当成错误弹窗点掉，也可能被专责节点判成终止条件。维护弹窗尤其重复——`BaseBranchSeverClose` 与 `IsServerMaintenance` 都是 OCR「维护中」→ `StopTask`，接线时只留一处。
@@ -278,7 +283,7 @@ v3.1 起末尾兜底写 `[JumpBack]BaseBranchError`，不再放 `Ensure`：`Ensu
 
 ### 校验器能查的
 
-`A15-error-branch-jumpback`（引用不带 `[JumpBack]`）、`A15-error-branch-shadowed`（排在取反守卫之后）、`A15-error-branch-conflict`（排在自己会点「确认」的候选之前）。"压暗被误读"那条判不了——哪个模板在弹窗下仍会命中，静态看不出来，按人工。
+`A15-error-branch-jumpback`（引用不带 `[JumpBack]`）、`A15-error-branch-shadowed`（排在取反守卫之后）、`A15-error-branch-conflict`（排在自己会点「确认」的候选之前，v3.2 起 **error**）。"压暗被误读"那条判不了——哪个模板在弹窗下仍会命中，静态看不出来，按人工。
 
 ## 十、识别预算
 
@@ -362,5 +367,6 @@ v3.1 起末尾兜底写 `[JumpBack]BaseBranchError`，不再放 `Ensure`：`Ensu
 | `A24-node-comment-missing` | warn | 主干节点（有 `next`）前面没有紧挨着的注释；纯辅助节点不要求 |
 | `A25-ensure-banned` | warn | 节点名匹配 `Ensure[A-Z]`：v3.1 起 Ensure 类别停用，此节点待删；改用调用方 `Branch` + 入口动作 + `[JumpBack]BaseBranchError`。存量 9 个节点 2026-10-31 已全部删除，`A25` = 0 |
 | `A26-single-consumer-probe` | info | 纯探针只被一处引用（含 `And all_of [<探针>]` 单探针包装）：可内联进引用它的节点 `recognition` |
+| `A27-click-ok-banned` | error | 节点名以 `Ok` 结尾：确认按钮统一 `*Confirm`，不许 `ClickOk`（见 [节点命名](./node-naming.md) §6） |
 
 判不了的：救回率、动画实际时长、哪个候选命中率最高——都要日志实测（`debug/maafw.log` 里的 `Node.NextList.*` / `Node.Recognition.*` / `Node.WaitFreezes.*` 事件流）。
