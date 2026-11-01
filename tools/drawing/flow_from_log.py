@@ -85,7 +85,9 @@ from typing import Any, ClassVar
 #     多进程混画的临时父节点不再跨进程串（默认渲染的父节点可能变准）；新增 `--pid` / `--list-tasks`。
 # 12：把「Custom 回调没注册」（agent 缺位）标到对应步骤上，并在注记里说明——识别缺位原本与
 #     "纯识别超时"、动作缺位原本与"pipeline 自己的问题"在图上分不出来（见 ISSUES/README）。
-RENDERER_VERSION = 12
+# 13：轮内「未命中（聚合）」框改为按时间戳与命中步骤合并，不再一律缀在轮末——末轮"命中→多轮
+#     全未命中→终于命中→失败"的形状原本被画成"失败之后还在重试"。
+RENDERER_VERSION = 13
 
 # 框里最多列几个候选，多的折成"另 N 项"（`--list` 不受这个限制）。
 # 默认只列 2 个：父节点名字 + 本次真跑的那个候选是这一行最要紧的两件事，
@@ -1890,7 +1892,7 @@ def compose_columns(
     collapse: int = 1,
     miss_max: int = 8,
 ) -> list[list[Step]]:
-    """每轮 = 该轮命中步骤（按需折叠 ×N）+ 该轮内的"连续未命中"聚合框；异常事件挂到所属轮末尾。"""
+    """每轮 = 该轮命中步骤（按需折叠 ×N）与"连续未命中"聚合框按时间合并；异常事件挂到所属轮末尾。"""
     tail = max(
         [a.ts for a in parsed.attempts]
         + [e.ts for e in parsed.events]
@@ -1939,8 +1941,18 @@ def compose_columns(
         rows.sort(key=lambda s: s.ts)
         return rows
 
+    def merge_by_ts(hits: list[Step], misses: list[Step]) -> list[Step]:
+        """把未命中聚合框按时间插回本轮，而不是一律缀在末尾。
+
+        末轮常见形状是「命中几步 → 连续多轮全未命中 → 某个候选终于命中 → 失败」，
+        一律缀在末尾会让图上读成"已经失败了还在重试"，时序颠倒。`sorted` 稳定，
+        时间戳相同的命中框仍排在未命中框前面。
+        """
+        return sorted(hits + misses, key=lambda s: s.ts)
+
     columns = [
-        collapse_runs(list(r), collapse) + miss_rows(i) for i, r in enumerate(rounds)
+        merge_by_ts(collapse_runs(list(r), collapse), miss_rows(i))
+        for i, r in enumerate(rounds)
     ]
     for ev in parsed.events:
         if ev.kind != "event" or classify(ev) != "error":
