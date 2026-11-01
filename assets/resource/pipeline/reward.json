@@ -9,8 +9,7 @@
         "desc": "领取奖励任务",
         "timeout": 60000,
         "next": [
-            "[JumpBack]TaskEntrustGetReward",
-            "[JumpBack]SikuBranchReward",
+            "[JumpBack]EntrustRewardableNow",
             "[JumpBack]ShopEnterHome",
             "[JumpBack]MissionBranchReward",
             "[JumpBack]SikuBranchReward",

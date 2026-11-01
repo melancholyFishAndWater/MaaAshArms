@@ -2,59 +2,57 @@
     /*
     INFO 委派（委托）
     
-    使用任务链结构 v1.6 校验年月日 26/10/17
-    使用节点命名与分类 v1.8 校验年月日 26/10/17
+    使用任务链结构 v3.9 校验年月日 26/11/02
+    使用节点命名与分类 v3.9 校验年月日 26/11/02
     */
     "TaskEntrust": {
         "desc": "委派作战任务",
         "next": [
             "[JumpBack]EntrustProbeDaily",
             "[JumpBack]EntrustInit",
-            "EntrustClickLight",
-            "[JumpBack]EntrustClickDart",
-            "[JumpBack]EntrustLoopGetReward",
+            "[JumpBack]BattleEnterHome",
+            "EntrustBranchStage",
+            "EntrustEnterMainLine",
             "[JumpBack]BaseBranchError",
-            "[JumpBack]EntrustEnsureLevelInfo"
+            "[JumpBack]BaseReturnHome"
         ]
     },
-    // INFO 委派领取任务
-    "TaskEntrustGetReward": {
-        "desc": "[jp][once] 如果本次任务链中 委派能领取奖励则领取",
+    // INFO 现在委派可领取
+    "EntrustRewardableNow": {
+        "desc": "[jp][once] 如果现在委派能领取奖励则领取",
         "max_hit": 1,
         "recognition": "Custom",
-        "custom_recognition": "TaskEntrustGetRewardReco",
+        "custom_recognition": "EntrustRewardableNowReco",
         "next": [
-            "EntrustLoopGetReward",
+            "BaseErrorNext",
+            "EntrustClickRewardLevel",
+            "EntrustEnterRewardStage",
             "[JumpBack]BaseBranchError",
-            "[JumpBack]EntrustEnsureRewardInfo"
+            "[JumpBack]BaseReturnHome"
+        ],
+        "on_error": [
+            "EntrustStopRewardTimeout"
         ]
     },
-    // INFO 训练所专用委派领取任务
-    "TaskEntrustTrainingGetReward": {
-        "desc": "[jp][once] 训练所任务专用领取奖励",
+    /* -------------------- 子入口 -------------------- */
+    // INFO 委派将来可领取
+    "EntrustRewardableLate": {
+        "desc": "[jp][once] 如果已经委派且还没领取奖励 则等待直到可领取",
         "max_hit": 1,
         "recognition": "Custom",
-        "custom_recognition": "TaskEntrustTrainingGetRewardReco",
+        "custom_recognition": "EntrustRewardableLateReco",
+        "timeout": 35000,
         "next": [
-            "EntrustLoopGetReward",
+            "[JumpBack]EntrustProbeNow",
+            "EntrustClickRewardLevel",
+            "EntrustEnterRewardStage",
             "[JumpBack]BaseBranchError",
-            "[JumpBack]EntrustEnsureRewardInfo"
+            "[JumpBack]BaseReturnHome"
+        ],
+        "on_error": [
+            "EntrustStopRewardTimeout"
         ]
     },
-    "EntrustInit": {
-        "desc": "[once][jp] 委派作战初始化",
-        "max_hit": 1,
-        "action": "Custom",
-        "custom_action": "EntrustInitAct",
-        "attach": {
-            // INFO 提供给vscode调试 发布版中会被覆写
-            // 层级：章节（Chapter）→ 大关（stage_name）→ 小关（level）
-            "stage_name": "结晶废墟", // 大关名
-            "level": 10, // 目标小关的数字
-            "times": 3 // 委派次数
-        }
-    },
-    /* -------------------- 探测 -------------------- */
     "EntrustProbeDaily": {
         "desc": "[once] 检测每日一次",
         "max_hit": 1,
@@ -64,23 +62,25 @@
             "enable": true
         }
     },
-    "EntrustProbeChapter": {
-        "desc": "[end] 在章节页面",
-        "recognition": "OCR",
-        "expected": "完成度",
+    "EntrustProbeNow": {
+        "desc": "[end] 当前画面上有正在委派的关卡",
+        "recognition": "TemplateMatch",
+        "template": "Entrust/EntrustNow.png",
         "roi": [
-            38,
-            529,
-            82,
-            35
-        ]
+            158,
+            290,
+            991,
+            346
+        ],
+        "post_delay": 3000
     },
-    "EntrustProbeStageName": {
+    /* -------------------- 通用探测 -------------------- */
+    "EntrustProbeStageText": {
         "desc": "[end] 有符合配置的大关名字 代表在大关内 但选中了小关就看不见了",
         "recognition": "Custom",
-        "custom_recognition": "EntrustProbeStageNameReco"
+        "custom_recognition": "EntrustProbeStageTextReco"
     },
-    "EntrustProbeMapName": {
+    "EntrustProbeMapText": {
         "desc": "[end] 有地图这个文字 实际上章节和大关页面都有 所以很少用",
         "recognition": "OCR",
         "expected": "地图",
@@ -89,14 +89,6 @@
             14,
             115,
             42
-        ]
-    },
-    "EntrustProbeEntrust": {
-        "desc": "[end] 有委派按钮",
-        "recognition": "Or",
-        "any_of": [
-            "EntrustProbeEntrustLight",
-            "EntrustProbeEntrustDart"
         ]
     },
     "EntrustProbeEntrustDart": {
@@ -121,28 +113,6 @@
             174
         ]
     },
-    "EntrustProbeEntrustNow": {
-        "desc": "[end] 正在委派 识别文字",
-        "recognition": "OCR",
-        "expected": "正在执行委派",
-        "roi": [
-            343,
-            343,
-            608,
-            37
-        ]
-    },
-    "EntrustProbeEntrustMax": {
-        "desc": "[end] 委派次数已达上限",
-        "recognition": "OCR",
-        "expected": "已达上限",
-        "roi": [
-            343,
-            343,
-            608,
-            37
-        ]
-    },
     "EntrustProbeRewardButton": {
         "desc": "[end] 有领取按钮",
         "recognition": "OCR",
@@ -154,63 +124,39 @@
             103
         ]
     },
-    "EntrustProbeRewardText": {
-        "desc": "[end] 有委派完成文字",
-        "recognition": "OCR",
-        "expected": "委派完成",
-        "roi": [
-            0,
-            290,
-            1280,
-            346
-        ]
-    },
-    "EntrustProbeLevelInfo": {
-        "desc": "[end] 在小关详情页面",
-        "recognition": "Or",
-        "any_of": [
-            "EntrustProbeEntrust",
-            "EntrustProbeRewardButton"
-        ]
-    },
     "EntrustProbeCanStart": {
         "desc": "[end] 委派次数匹配 可以委派",
         "recognition": "Custom",
         "custom_recognition": "EntrustProbeCanStartReco"
     },
-    "EntrustProbeChaapterFinsh": {
-        "desc": "[end] 当前页面所有章节已完成",
+    "EntrustProbeLevel": {
+        "desc": "[end] 在小关页面",
         "recognition": "OCR",
-        "expected": "完成度.*?(\\d)/\\1",
+        "expected": "委派作战",
         "roi": [
-            45,
-            527,
-            125,
-            40
+            73,
+            223,
+            62,
+            162
         ]
     },
-    /* -------------------- 就位 -------------------- */
-    // INFO 章节
-    "EntrustEnsureChapter": {
-        "desc": "[jp] 确保在章节页面",
-        "recognition": "And",
-        "all_of": [
-            "EntrustProbeChapter"
-        ],
-        "inverse": true,
-        "timeout": 30000,
-        "focus": {
-            "Node.PipelineNode.Failed": "未找到章节页面，检查是否停留在主线页面"
-        },
-        "next": [
-            "EntrustProbeChapter",
-            "[JumpBack]BaseBranchError",
-            "[JumpBack]EntrustEnterMainLine",
-            "[JumpBack]BattleEnsureHome"
-        ]
+    /* -------------------- 动作-初始化 -------------------- */
+    "EntrustInit": {
+        "desc": "[once][jp] 委派作战初始化",
+        "max_hit": 1,
+        "action": "Custom",
+        "custom_action": "EntrustInitAct",
+        "attach": {
+            // INFO 提供给vscode调试 发布版中会被覆写
+            // 层级：章节（Chapter）→ 大关（stage_name）→ 小关（level）
+            "stage_name": "结晶废墟", // 大关名
+            "level": 10, // 目标小关的数字
+            "times": 3 // 委派次数
+        }
     },
+    /* -------------------- 动作-进入主线 -------------------- */
     "EntrustEnterMainLine": {
-        "desc": "[jp] 进入主线页面",
+        "desc": "进入主线页面",
         "recognition": "OCR",
         "expected": "主线篇章",
         "roi": [
@@ -220,89 +166,110 @@
             38
         ],
         "action": "Click",
-        "post_wait_freezes": 1000
-    },
-    // INFO 大关
-    "EntrustEnsureStage": {
-        "desc": "[jp] 确保在大关页面",
-        "recognition": "And",
-        "all_of": [
-            "EntrustProbeStageName"
-        ],
-        "inverse": true,
-        "timeout": 30000,
+        "post_wait_freezes": 1000,
         "next": [
-            "EntrustProbeStageName",
+            "BaseErrorNext",
+            "EntrustBranchChapter",
             "[JumpBack]BaseBranchError",
-            "[JumpBack]EntrustEnterStage",
-            "[JumpBack]EntrustClickNextChapter",
-            "[JumpBack]EntrustEnsureChapter",
-            "EntrustCheckStageLocked"
+            "EntrustEnterMainLine"
+        ]
+    },
+    /* -------------------- 分支-章节页面 -------------------- */
+    "EntrustBranchChapter": {
+        "desc": "在章节页面 找目标大关",
+        "recognition": "OCR",
+        "expected": "完成度",
+        "roi": [
+            38,
+            529,
+            82,
+            35
         ],
-        "focus": {
-            "Node.PipelineNode.Failed": "寻找关卡失败"
-        }
+        "next": [
+            "EntrustBranchStageFreezes",
+            "EntrustEnterStage",
+            "[JumpBack]EntrustClickNextChapter",
+            "[JumpBack]BaseBranchError"
+        ]
     },
-    "EntrustEnterStage": {
-        "desc": "[jp] 进入目标大关",
-        "recognition": "Custom",
-        "custom_recognition": "EntrustEnterStageReco",
-        "action": "Click",
-        "post_wait_freezes": 1000
-    },
+    // 点击下一章区域
     "EntrustClickNextChapter": {
         "desc": "点击下一章区域",
-        "recognition": "And",
-        "all_of": [
-            "EntrustProbeChaapterFinsh"
+        "max_hit": 8,
+        "recognition": "OCR",
+        "expected": "完成度.*?(\\d)/\\1", // 判断是否完成此章节
+        "roi": [
+            45,
+            527,
+            125,
+            40
         ],
         "target": [
             1247,
             280
-        ],
+        ], // INFO 不容易识别到下一章的文字 直接点击固定区域 识别是否完成此章节会容易点且方便
         "action": "Click"
     },
-    // INFO 关卡未解锁
-    "EntrustCheckStageLocked": {
-        "desc": "[end] 连续三次识别关卡完成度未达标",
-        "recognition": "Custom",
-        "custom_recognition": "EntrustCheckStageLockedReco",
-        "post_wait_freezes": 1000,
-        "focus": {
-            "Node.PipelineNode.Failed": "寻找关卡失败 可能关卡未解锁"
-        }
-    },
-    // INFO 委派详情页面
-    "EntrustEnsureLevelInfo": {
-        "desc": "[jp] 确保在小关详情页面",
+    // 页面未变化次数过多
+    "EntrustBranchStageFreezes": {
+        "desc": "[end] 在同一个页面次数过久，未识别到目标大关",
         "recognition": "And",
         "all_of": [
-            "EntrustProbeLevelInfo"
+            "BaseProbeFreezes"
         ],
-        "inverse": true,
-        "timeout": 45000, // INFO 防止电脑太卡
         "next": [
-            "EntrustProbeLevelInfo",
-            "[JumpBack]BaseBranchError",
-            "[JumpBack]EntrustChooseLevel",
-            "[JumpBack]EntrustMover",
-            "[JumpBack]EntrustEnsureStage"
+            "BaseTaskStopError"
         ],
         "focus": {
-            "Node.PipelineNode.Failed": "寻找小关卡失败 可能关卡未解锁"
+            "Node.Recognition.Succeeded": "未识别到目标章节"
         }
     },
-    "EntrustChooseLevel": {
-        "desc": "[jp] 选择关卡",
-        "recognition": "And",
-        "all_of": [
-            "EntrustProbeStageName",
-            {
-                "recognition": "Custom",
-                "custom_recognition": "EntrustChooseLevelReco"
-            }
+    /* -------------------- 动作-进入大关 -------------------- */
+    "EntrustEnterStage": {
+        "desc": "进入目标大关",
+        "recognition": "Custom",
+        "custom_recognition": "EntrustEnterStageReco",
+        "action": "Click",
+        "post_wait_freezes": 1000,
+        "next": [
+            "BaseErrorNext",
+            "EntrustBranchStage",
+            "[JumpBack]BaseBranchError",
+            "EntrustEnterStage"
+        ]
+    },
+    /* -------------------- 分支-大关页面 -------------------- */
+    // 在大关页 找目标小关
+    "EntrustBranchStage": {
+        "desc": "在大关页面 找目标小关",
+        "recognition": "Or",
+        "any_of": [
+            "EntrustProbeStageText",
+            "EntrustProbeLevelInfo" // INFO 防止太卡点到小关 无法识别到大关文字
         ],
-        "box_index": 1,
+        "next": [
+            "BaseErrorNext",
+            "EntrustChooseLevel",
+            "[JumpBack]BaseBranchError",
+            "[JumpBack]EntrustMover"
+        ]
+    },
+    "EntrustProbeLevelInfo": {
+        "desc": "[end] 在小关详情页面",
+        "recognition": "OCR",
+        "expected": "出击",
+        "roi": [
+            1068,
+            606,
+            140,
+            63
+        ]
+    },
+    // 选择目标关卡
+    "EntrustChooseLevel": {
+        "desc": "选择目标关卡",
+        "recognition": "Custom",
+        "custom_recognition": "EntrustChooseLevelReco",
         "target_offset": [
             -64,
             87,
@@ -310,23 +277,122 @@
             2
         ],
         "action": "Click",
-        "post_wait_freezes": 1000
+        "post_wait_freezes": 1000,
+        "next": [
+            "BaseErrorNext",
+            "EntrustBranchLevelInfo",
+            "[JumpBack]BaseBranchError",
+            "EntrustChooseLevel"
+        ]
     },
+    // 滑动直到找到目标关卡
     "EntrustMover": {
         "desc": "[jp] 识别并移动直到找到关卡",
-        "recognition": "And",
-        "all_of": [
-            "EntrustProbeStageName",
-            {
-                "recognition": "Custom",
-                "custom_recognition": "EntrustMoverReco"
-            }
-        ],
+        "recognition": "Custom",
+        "custom_recognition": "EntrustMoverReco",
         "action": "Custom",
         "custom_action": "EntrustMoverAct"
     },
-    /* -------------------- 工作 -------------------- */
-    // INFO 点亮的委派按钮
+    /* -------------------- 分支-小关详情 -------------------- */
+    // 到小关详情 委派或领奖
+    "EntrustBranchLevelInfo": {
+        "desc": "在小关详情页面 委派或领奖",
+        "recognition": "Or",
+        "any_of": [
+            "EntrustProbeEntrustLight",
+            "EntrustProbeEntrustDart",
+            "EntrustProbeRewardButton"
+        ],
+        "next": [
+            "EntrustClickLight",
+            "EntrustClickDart",
+            "EntrustBranchReward",
+            "[JumpBack]BaseBranchError"
+        ]
+    },
+    "EntrustBranchReward": {
+        "desc": "领取奖励",
+        "recognition": "And",
+        "all_of": [
+            "EntrustProbeRewardButton"
+        ],
+        "next": [
+            "BaseErrorNext",
+            "[JumpBack]EntrustClickRewardButton",
+            "EntrustChooseLevel", // INFO 领奖大循环 理论不会重复触发
+            "[JumpBack]BaseBranchError"
+        ]
+    },
+    /* -------------------- 动作-委派暗淡 -------------------- */
+    "EntrustClickDart": {
+        "desc": "点击暗淡的按钮 分析原因",
+        "recognition": "And",
+        "all_of": [
+            "EntrustProbeEntrustDart"
+        ],
+        "action": "Click",
+        "rate_limit": 0,
+        "next": [
+            "BaseErrorNext",
+            "EntrustBranchMax",
+            "EntrustBranchDelegating",
+            "EntrustClickDart"
+        ],
+        "focus": {
+            "Node.PipelineNode.Failed": "未定义的委派错误"
+        }
+    },
+    // 委派次数已达上限
+    "EntrustBranchMax": {
+        "desc": "委派次数耗尽",
+        "recognition": "OCR",
+        "expected": "已达上限",
+        "roi": [
+            343,
+            343,
+            608,
+            37
+        ],
+        "next": [
+            "EntrustDailyUpdate"
+        ],
+        "focus": {
+            "Node.Recognition.Succeeded": "今日委托次数已达上限 任务结束"
+        }
+    },
+    // 正在委派
+    "EntrustBranchDelegating": {
+        "desc": "[once] 委派中",
+        "max_hit": 1,
+        "recognition": "OCR",
+        "expected": "正在执行委派",
+        "roi": [
+            343,
+            343,
+            608,
+            37
+        ],
+        "next": [
+            "[JumpBack]EntrustDelegatingReward",
+            "EntrustBranchStage", // 大循环
+            "[JumpBack]BattleEnterHome",
+            "EntrustEnterMainLine", // 大循环
+            "[JumpBack]BaseReturnHome"
+        ]
+    },
+    // 领取奖励
+    "EntrustDelegatingReward": {
+        "desc": "[jp][once] 委派中-领取奖励",
+        "max_hit": 1,
+        "next": [
+            "[JumpBack]EntrustProbeNow",
+            "EntrustClickRewardLevel",
+            "EntrustEnterRewardStage",
+            "[JumpBack]BaseBranchError",
+            "[JumpBack]BaseReturnHome"
+        ]
+    },
+    /* -------------------- 动作-委派 -------------------- */
     "EntrustClickLight": {
         "desc": "点击亮的委派按钮",
         "recognition": "And",
@@ -335,23 +401,29 @@
         ],
         "action": "Click",
         "post_wait_freezes": 1000,
-        "timeout": 60000,
         "next": [
+            "BaseErrorNext",
             "EntrustBranchTouchMax",
-            "EntrustBranchClickTimesSuccess",
-            "[JumpBack]EntrustClickPlus",
-            "[JumpBack]EntrustClickMinus",
+            "EntrustBranchTouchPart",
             "EntrustClickLight"
         ]
     },
-    // INFO 委派完所有次数
+    /* -------------------- 分支-所有次数 -------------------- */
     "EntrustBranchTouchMax": {
         "desc": "条件委派全部次数",
-        "recognition": "Custom",
-        "custom_recognition": "EntrustBranchTouchMaxReco",
+        "recognition": "And",
+        "all_of": [
+            "EntrustProbeLevel",
+            "EntrustProbeTouchMax"
+        ],
         "next": [
             "EntrustTouchDown"
         ]
+    },
+    "EntrustProbeTouchMax": {
+        "desc": "[end] 最大委派次数",
+        "recognition": "Custom",
+        "custom_recognition": "EntrustProbeTouchMaxReco"
     },
     // 按住加号
     "EntrustTouchDown": {
@@ -371,8 +443,7 @@
         // // "auto_up": true,
         "pressure": 1,
         "on_error": [
-            "[JumpBack]EntrustTouchUp2",
-            "EntrustStart"
+            "EntrustTouchUp2"
         ]
     },
     // 松开加号
@@ -387,16 +458,33 @@
             "EntrustStart"
         ]
     },
+    // 无条件松手
     "EntrustTouchUp2": {
-        "desc": "[once][jp] 无条件松手",
-        "max_hit": 1,
+        "desc": "无条件松手 然后开始委派",
         "action": "TouchUp",
+        "next": [
+            "EntrustStart"
+        ],
         "focus": {
             "Node.Action.Succeeded": "警告，未识别到期望派遣数"
         }
     },
-    // INFO 委派部分次数
-    "EntrustBranchClickTimesSuccess": {
+    /* -------------------- 分支-部分次数 -------------------- */
+    "EntrustBranchTouchPart": {
+        "desc": "点到指定委派次数",
+        "recognition": "And",
+        "all_of": [
+            "EntrustProbeLevel"
+        ],
+        "next": [
+            "EntrustBranchTouchPartSuccess",
+            "[JumpBack]EntrustClickPlus",
+            "[JumpBack]EntrustClickMinus",
+            "[JumpBack]BaseBranchError"
+        ]
+    },
+    // 达到目标次数
+    "EntrustBranchTouchPartSuccess": {
         "desc": "达成数量 开始委派",
         "recognition": "And",
         "all_of": [
@@ -406,6 +494,7 @@
             "EntrustStart"
         ]
     },
+    // 点击加号
     "EntrustClickPlus": {
         "desc": "[jp] 点击加号",
         "recognition": "Custom",
@@ -413,6 +502,7 @@
         "action": "Click",
         "post_wait_freezes": 1000
     },
+    // 点击减号
     "EntrustClickMinus": {
         "desc": "[jp] 点击减号",
         "recognition": "Custom",
@@ -420,10 +510,9 @@
         "action": "Click",
         "post_wait_freezes": 1000
     },
-    // INFO 委派开始
+    /* -------------------- 动作-开始委派 -------------------- */
     "EntrustStart": {
-        "desc": "[max] 开始委派",
-        "max_hit": 10,
+        "desc": "开始委派",
         "recognition": "OCR",
         "expected": "出击",
         "roi": [
@@ -433,8 +522,9 @@
             46
         ],
         "action": "Click",
-        "post_wait_freezes": 500,
+        "rate_limit": 0,
         "next": [
+            "BaseErrorNext",
             "BaseStopNoMetal",
             "EntrustStartSuccess",
             "EntrustStart"
@@ -448,8 +538,8 @@
         "desc": "委派成功",
         "recognition": "Or",
         "any_of": [
-            "EntrustProbeStageName",
-            "EntrustProbeMapName"
+            "EntrustProbeStageText",
+            "EntrustProbeMapText"
         ],
         "action": "Custom",
         "custom_action": "EntrustStartSuccessAct",
@@ -457,59 +547,10 @@
             "EntrustDailyUpdate"
         ]
     },
-    // INFO 委派按钮暗淡
-    "EntrustClickDart": {
-        "desc": "[max] 点击暗淡的按钮 分析原因",
-        "max_hit": 10,
-        "recognition": "And",
-        "all_of": [
-            "EntrustProbeEntrustDart"
-        ],
-        "action": "Click",
-        "next": [
-            "BaseErrorNext",
-            "EntrustBranchMax",
-            "EntrustBranchDelegating",
-            "EntrustClickDart"
-        ],
-        "focus": {
-            "Node.PipelineNode.Failed": "未定义的委派错误"
-        }
-    },
-    // 委派次数已达上限
-    "EntrustBranchMax": {
-        "desc": "委派次数耗尽",
-        "recognition": "And",
-        "all_of": [
-            "EntrustProbeEntrustMax"
-        ],
-        "next": [
-            "EntrustDailyUpdate"
-        ],
-        "focus": {
-            "Node.Recognition.Succeeded": "今日委托次数已达上限 任务结束"
-        }
-    },
-    // 正在委派
-    "EntrustBranchDelegating": {
-        "desc": "委派中",
-        "recognition": "And",
-        "all_of": [
-            "EntrustProbeEntrustNow"
-        ],
-        "next": [
-            "EntrustLoopGetReward",
-            "[JumpBack]BaseBranchError",
-            "[JumpBack]EntrustEnsureRewardInfo"
-        ]
-    },
     // 更新每日一次
     "EntrustDailyUpdate": {
-        "desc": "[end] 更新每日一次 结束任务",
+        "desc": "[end] 更新每日一次",
         "action": "Custom",
-        "custom_action": "EntrustDailyUpdateAct",
-        "next": [
-            "BaseTaskStop"
-        ]
+        "custom_action": "EntrustDailyUpdateAct"
     }
 }

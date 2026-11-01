@@ -11,10 +11,8 @@ from maa.context import (
     Rect,
     RecognitionDetail,
     OCRResult,
-    ContextEventSink,
 )
 from maa.pipeline import JOCR
-from maa.event_sink import NotificationType
 
 from agentlog import log
 from params import parse_attach
@@ -26,7 +24,7 @@ stage_name: str = "结晶废墟"
 level: int = 10
 # 配置的委派次数
 _times = 0
-# 实际委派次数
+# 实际目标委派次数
 _number = 0
 # 最大委派次数
 _max = 0
@@ -50,7 +48,7 @@ def get_level_ocr(
     return context.run_recognition_direct(
         JRecognitionType.OCR,
         JOCR(
-            [r".+\d{1,2}"], roi=(158, 290, 991, 346), replace=[["o", "0"], ["O", "0"]]
+            [r"-\d{1,2}"], roi=(158, 290, 991, 346), replace=[["o", "0"], ["O", "0"]]
         ),
         argv.image,
     )
@@ -59,49 +57,46 @@ def get_level_ocr(
 def get_ocr_level_times(
     context: Context, argv: CustomRecognition.AnalyzeArg
 ) -> OCRResult | None:
-    """获取当前委派次数"""
+    """获取当前委派次数
+
+    Raises:
+        Exception: 识别失败时抛出异常
+    """
 
     global _number, _max
     node_name = argv.node_name
 
     # 条件识别 今日剩余次数
     if _number == 0 or _max == 0:
-        try:
-            # 识别数字
-            r = context.run_recognition_direct(
-                JRecognitionType.OCR,
-                JOCR([r"\d+/\d+"], roi=(396, 591, 61, 28)),
-                argv.image,
-            )
-            if r is None or not r.hit:
-                log.debug(f"{node_name} 识别本日剩余次数失败")
-                raise
-            b_r = r.best_result
-            assert type(b_r) == OCRResult
+        # 识别数字
+        r = context.run_recognition_direct(
+            JRecognitionType.OCR,
+            JOCR([r"\d+/\d+"], roi=(396, 591, 61, 28)),
+            argv.image,
+        )
+        if r is None or not r.hit:
+            raise Exception("识别本日剩余次数失败")
+        b_r = r.best_result
+        assert type(b_r) == OCRResult
 
-            # 正则匹配剩余次数
-            m = search(r"(\d+)/\d+", b_r.text)
-            if m is None:
-                log.debug(f"{node_name} 剩余次数正则匹配失败")
-                raise
+        # 正则匹配剩余次数
+        m = search(r"(\d+)/\d+", b_r.text)
+        if m is None:
+            raise Exception("剩余次数正则匹配失败")
 
-            # 设置最大次数
-            _max = int(m.group(1))
-            if _times > 0:
-                _number = min(_times, _max)
-            else:
-                _number = _max
+        # 设置最大次数
+        _max = int(m.group(1))
+        if _times > 0:
+            _number = min(_times, _max)
+        else:
+            _number = _max
 
-            # 覆写日志
-            result = context.override_pipeline(
-                {node_name: {"focus": {"Node.Action.Succeeded": f"委派 {_number} 次"}}}
-            )
-            if not result:
-                log.debug(f"{node_name} 覆写失败")
-        except Exception as e:
-            log.debug(f"{node_name} 捕获错误: {e}")
-            log.debug(f"{node_name} 将期望剩余次数设为 30")
-            _number = 30
+        # 覆写日志
+        result = context.override_pipeline(
+            {node_name: {"focus": {"Node.Action.Succeeded": f"委派 {_number} 次"}}}
+        )
+        if not result:
+            log.debug(f"{node_name} 覆写委派次数日志失败")
 
     # 识别当前次数
     r2 = context.run_recognition_direct(
@@ -119,8 +114,15 @@ def get_ocr_level_times(
 def get_difference_number(
     context: Context, argv: CustomRecognition.AnalyzeArg
 ) -> int | None:
-    """返回实际委派次数与当前画面派遣次数的差值"""
-    r = get_ocr_level_times(context, argv)
+    """返回实际委派次数与当前画面派遣次数的差值
+
+    Raises:
+        Exception: 识别失败时抛出异常
+    """
+    try:
+        r = get_ocr_level_times(context, argv)
+    except Exception as e:
+        raise e
 
     if r is None:
         log.debug(f"{argv.node_name} 识别委派剩余次数失败")
@@ -185,7 +187,11 @@ class EntrustProbeCanStartReco(CustomRecognition):
     def analyze(
         self, context: Context, argv: CustomRecognition.AnalyzeArg
     ) -> list[int] | None:
-        r = get_difference_number(context, argv)
+        try:
+            r = get_difference_number(context, argv)
+        except Exception as e:
+            log.debug(f"{argv.node_name} 识别委派次数失败: {e!r}")
+            return
         if r is None:
             return
         if r == 0:
@@ -198,7 +204,11 @@ class EntrustClickPlusReco(CustomRecognition):
     def analyze(
         self, context: Context, argv: CustomRecognition.AnalyzeArg
     ) -> list[int] | None:
-        r = get_difference_number(context, argv)
+        try:
+            r = get_difference_number(context, argv)
+        except Exception as e:
+            log.debug(f"{argv.node_name} 识别委派次数失败: {e!r}")
+            return
         if r is None:
             return
         if r > 0:
@@ -211,7 +221,11 @@ class EntrustClickMinusReco(CustomRecognition):
     def analyze(
         self, context: Context, argv: CustomRecognition.AnalyzeArg
     ) -> list[int] | None:
-        r = get_difference_number(context, argv)
+        try:
+            r = get_difference_number(context, argv)
+        except Exception as e:
+            log.debug(f"{argv.node_name} 识别委派次数失败: {e!r}")
+            return
         if r is None:
             return
         if r < 0:
@@ -219,8 +233,8 @@ class EntrustClickMinusReco(CustomRecognition):
 
 
 # 返回是否可以领取奖励
-@AgentServer.custom_recognition("TaskEntrustGetRewardReco")
-class TaskEntrustGetRewardReco(CustomRecognition):
+@AgentServer.custom_recognition("EntrustRewardableNowReco")
+class EntrustRewardableNowReco(CustomRecognition):
     def analyze(
         self, context: Context, argv: CustomRecognition.AnalyzeArg
     ) -> list[int] | None:
@@ -232,8 +246,8 @@ class TaskEntrustGetRewardReco(CustomRecognition):
 
 
 # 返回是否有委派任务（执行中或执行完毕）
-@AgentServer.custom_recognition("TaskEntrustTrainingGetRewardReco")
-class TaskEntrustTrainingGetRewardReco(CustomRecognition):
+@AgentServer.custom_recognition("EntrustRewardableLateReco")
+class EntrustRewardableLateReco(CustomRecognition):
     def analyze(
         self, context: Context, argv: CustomRecognition.AnalyzeArg
     ) -> list[int] | None:
@@ -244,27 +258,34 @@ class TaskEntrustTrainingGetRewardReco(CustomRecognition):
 
 
 # 返回是否委派完剩余次数
-@AgentServer.custom_recognition("EntrustBranchTouchMaxReco")
-class EntrustBranchTouchMaxReco(CustomRecognition):
+@AgentServer.custom_recognition("EntrustProbeTouchMaxReco")
+class EntrustProbeTouchMaxReco(CustomRecognition):
     def analyze(
         self, context: Context, argv: CustomRecognition.AnalyzeArg
     ) -> list[int] | None:
-        r = get_ocr_level_times(context, argv)
+        try:
+            r = get_ocr_level_times(context, argv)
+        except Exception as e:
+            log.debug(f"{argv.node_name} 识别委派次数失败: {e!r}")
+            return
+
         if r is None:
             return
 
         if _number == 0:
-            log.ferror(f"{argv.node_name} 错误 不应出现的实际委派数字0 任务结束")
-            context.run_action("BaseTaskStopError")
-            return
+            log.ferror(f"{argv.node_name} 错误 不可能出现的实际委派数字0 任务结束")
+            context.override_pipeline(
+                {"EntrustBranchTouchMax": {"next": ["BaseTaskStopError"]}}
+            )
+            return DEFAULT_HIT_BOX
 
         if _max <= _times:
             return DEFAULT_HIT_BOX
 
 
 # 返回是否在目标大关内
-@AgentServer.custom_recognition("EntrustProbeStageNameReco")
-class EntrustProbeStageNameReco(CustomRecognition):
+@AgentServer.custom_recognition("EntrustProbeStageTextReco")
+class EntrustProbeStageTextReco(CustomRecognition):
     def analyze(
         self, context: Context, argv: CustomRecognition.AnalyzeArg
     ) -> list[int] | None:
@@ -281,7 +302,7 @@ class EntrustProbeStageNameReco(CustomRecognition):
             assert type(i) == OCRResult
             if stage_name not in i.text:
                 log.debug(f"{argv.node_name} 识别的大关名不匹配 {stage_name}/{i.text}")
-                return
+                continue
             else:
                 return DEFAULT_HIT_BOX
 
@@ -323,6 +344,19 @@ class EntrustStartSuccessAct(CustomAction):
         return True
 
 
+# 领取超时处理 防止部分任务强制失败
+@AgentServer.custom_action("EntrustStopRewardTimeoutAct")
+class EntrustStopRewardTimeoutAct(CustomAction):
+    def run(
+        self, context: Context, argv: CustomAction.RunArg
+    ) -> CustomAction.RunResult | bool:
+        log.warn(f"{argv.node_name} 领取委派奖励超时，部分任务可能会失败")
+        global _rewardable_by_timestamp
+        if _rewardable_by_timestamp is not None:
+            _rewardable_by_timestamp = None
+        return True
+
+
 # ----- EntrustMover -----
 
 # 移动方向 默认右滑
@@ -350,7 +384,7 @@ class EntrustMoverReco(CustomRecognition):
             assert type(i) == OCRResult
 
             try:
-                m = search(r"(\d+)", i.text)
+                m = search(r"-(\d+)", i.text)
                 if m is None:
                     log.debug(f"{node_name} 未提取到数字: {i.text!r}")
                     continue
@@ -393,42 +427,3 @@ class EntrustMoverAct(CustomAction):
         if r is not None and r.success:
             return True
         return False
-
-
-# ----- EntrustCheckStageLocked -----
-
-_locked_count = 0
-
-
-# 连续三次识别时 返回box
-@AgentServer.custom_recognition("EntrustCheckStageLockedReco")
-class EntrustCheckStageLockedReco(CustomRecognition):
-    def analyze(
-        self, context: Context, argv: CustomRecognition.AnalyzeArg
-    ) -> list[int] | None:
-        node_name = argv.node_name
-
-        ocr_r = context.run_recognition("EntrustProbeChaapterFinsh", argv.image)
-        if ocr_r is not None and ocr_r.hit:
-            log.debug(f"{node_name} 当前画面所有章节完成 跳过累加")
-            return
-        elif ocr_r is None:
-            log.debug(f"{node_name} ocr失败 跳过累加")
-            return
-
-        global _locked_count
-        _locked_count += 1
-        if _locked_count >= 3:
-            log.debug(
-                f"{node_name} 当前画面所有章节未完成 累加 当前次数: {_locked_count}"
-            )
-            return DEFAULT_HIT_BOX
-
-
-# 注册上下文监听器 当next中有节点命中时，清空累积次数
-@AgentServer.context_sink()
-class _LoopErrorResetSink(ContextEventSink):
-    def on_node_pipeline_node(self, context, noti_type, detail) -> None:
-        global _locked_count
-        if noti_type == NotificationType.Succeeded:
-            _locked_count = 0
