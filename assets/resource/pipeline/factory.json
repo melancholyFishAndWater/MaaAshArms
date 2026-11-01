@@ -119,11 +119,11 @@
         "action": "Click",
         "post_wait_freezes": 500,
         "next": [
-            "FactoryClickSkipOk"
+            "FactoryClickSkipConfirm"
         ]
     },
     // TODO 验证是否有多余生产许可
-    "FactoryClickSkipOk": {
+    "FactoryClickSkipConfirm": {
         "desc": "点击确认跳过按钮",
         "recognition": "OCR",
         "expected": "确认",

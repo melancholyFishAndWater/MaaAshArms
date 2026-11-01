@@ -180,7 +180,7 @@
         "pre_wait_freezes": 1000,
         "next": [
             "BaseErrorNext",
-            "EscortClickOk",
+            "EscortClickConfirm",
             "[JumpBack]BaseBranchError",
             "EscortProbeHomeName" // INFO 防止点到其他区域 窗口消失导致卡死
         ],
@@ -189,7 +189,7 @@
         ]
     },
     // INFO 执行任务
-    "EscortClickOk": {
+    "EscortClickConfirm": {
         "desc": "点击确认按钮执行任务",
         "recognition": "OCR",
         "expected": "确认",
@@ -203,7 +203,7 @@
         "post_wait_freezes": 1000,
         "next": [
             "BaseErrorNext",
-            "EscortClickOk",
+            "EscortClickConfirm",
             "[JumpBack]BaseBranchError",
             "EscortProbeHomeName"
         ],
