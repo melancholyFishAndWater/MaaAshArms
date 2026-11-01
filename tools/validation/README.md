@@ -203,7 +203,7 @@ Pylance 是 VS Code 内的 LSP，没有命令行入口（`dist/server.bundle.js`
 
 `A15-error-branch-*` 是同一类护栏，管通用错误分支 `BaseBranchError`（`base.json`）挂在哪：引用必须带
 `[JumpBack]`；不能排在取反守卫（顶层 `inverse: true`，或识别配置里带 `inverse`）之后——弹窗挡住页面时那些守卫必然命中，错误分支
-永远轮不到；也不能排在自己会点「确认」的候选之前——同一个确认会被当成错误弹窗点掉。只判同一列表内的先后，
+永远轮不到；也不能排在自己会点「确认」的候选之前——同一个确认会被当成错误弹窗点掉（v3.2 起这条按 **error** 报）。只判同一列表内的先后，
 "哪个模板在弹窗下仍会命中"静态判不了，按人工。判据见 `docs/zh_cn/develop/pipeline-structure.md` §9。
 
 `A19-desc-marker-*` 管 `desc` 里的方括号标记（`node-naming.md` §6：一共五个，含义固定）：
@@ -260,6 +260,14 @@ Pylance 是 VS Code 内的 LSP，没有命令行入口（`dist/server.bundle.js`
 
 `A26` 只按引用计数报，**不报"`next` 里唯一候选但引用方另有 recognition"那类**：那种内联会把「命中就转」
 改成「先满足守卫」，语义不等价，判不准就不报。
+
+`A27` 是 v3.2 新增的一条（`node-naming.md` §6），**error**：
+
+| 规则 | 级别 | 判据 |
+| --- | --- | --- |
+| `A27-click-ok-banned` | error | 节点名以 `Ok` 结尾（含 `ClickOk`）：确认按钮统一 `*Confirm`，改用 `BaseClickConfirm` / `<前缀>ClickConfirm` |
+
+确认按钮的**位次**不单列规则：`*Confirm` 必须排在 `BaseBranchError` 之前，由 `A15-error-branch-conflict` 管（v3.2 起 warn → **error**）。
 
 ## 依赖与前置
 

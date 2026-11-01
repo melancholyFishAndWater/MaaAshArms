@@ -137,6 +137,9 @@ LEGACY_PREFIXES = ("Is", "Has", "In", "At", "Can", "Able", "Unable")
 # 不做"猜同义词"。`GiftClickSortConfirm` 这类宾语本身就是"排序确认"的不算。
 CLICK_SYNONYMS = ("ClickYes", "ClickNo", "ClickSure")
 
+# node-naming.md §6（v3.2）：确认按钮统一以 `Confirm` 结尾，不许用 `ClickOk`。
+OK_SUFFIX = "Ok"
+
 # pipeline-structure.md §9：通用错误分支（base.json 的 BaseBranchError，:36-92）。
 # 它只在"中央弹窗区出现确认"时命中，所以位置只影响谁先抢画面，不影响正常流程语义。
 GENERIC_ERROR_BRANCH = "BaseBranchError"
@@ -163,9 +166,11 @@ MAX_NEXT_LOOP = 5
 #   A20 `[jp]` 不许自环、A21 自环必须带 BaseErrorNext、A22 BaseErrorNext 必须在 next[0]、
 #   A23 分节注释下面不许紧跟非通用 Probe。
 # v3.1：Ensure 类别停用，删 A9/A16；新增 A25（Ensure 存量 warn）、A26（单探针内联 info）。
-NAMING_SPEC_VERSION = "v3.1"
+# v3.2：确认按钮统一 `*Confirm`、禁 `ClickOk`（A27 error）；`*Confirm` 必须排在
+#   `BaseBranchError` 之前（`A15-error-branch-conflict` 由 warn 提为 error，结构文档 §9）。
+NAMING_SPEC_VERSION = "v3.2"
 NAMING_SPEC = Path("docs/zh_cn/develop/node-naming.md")
-STRUCT_SPEC_VERSION = "v3.1"
+STRUCT_SPEC_VERSION = "v3.2"
 STRUCT_SPEC = Path("docs/zh_cn/develop/pipeline-structure.md")
 
 
@@ -1101,7 +1106,7 @@ def check_a13_naming(ctx: Ctx) -> None:
                     "warn",
                     info.file,
                     line,
-                    f"{name} 用了同义写法 {synonym}（node-naming.md §6：统一 ClickOk / BaseClickCancel / ClickFinish）",
+                    f"{name} 用了同义写法 {synonym}（node-naming.md §6：统一 ClickConfirm / BaseClickCancel / ClickFinish）",
                 )
                 break
         if name.endswith("Loop") and not to_list(data.get("next")):
@@ -1270,7 +1275,8 @@ def check_a15_error_branch(ctx: Ctx) -> None:
 
     - 引用必须带 `[JumpBack]`（候选位，"办完弹回我这里继续"）。
     - 排在取反守卫（顶层 `inverse: true`，或识别配置里带 `inverse`）之后等于没接：弹窗挡住页面时那个守卫必然命中。
-    - 排在自己会点「确认」的候选之前会抢点，把正常流程记成"错误弹窗"。
+    - 排在自己会点「确认」的候选之前会抢点，把正常流程记成"错误弹窗"。v3.2 起这条按 **error** 报
+      （`*Confirm` 必须排在 `BaseBranchError` 之前）。
 
     只判同一个 next/on_error 列表内的先后；跨列表的冲突、"哪个模板在弹窗下仍会命中"判不了。
     """
@@ -1317,7 +1323,7 @@ def check_a15_error_branch(ctx: Ctx) -> None:
                 if _clicks_confirm(cand[0], cand[1], ctx.nodes):
                     ctx.add(
                         "A15-error-branch-conflict",
-                        "warn",
+                        "error",
                         node.file,
                         line,
                         f"{node.name}.{key} 里 {GENERIC_ERROR_BRANCH} 排在自己会点「确认」的候选 {cand[0]} 之前："
@@ -1534,7 +1540,7 @@ def check_a21_self_loop_error_next(ctx: Ctx) -> None:
     `timeout` 永远不触发；`[JumpBack]` 弹回的 jp 节点反复命中也一样。所以自环必须另有一个
     "连续几轮没进展就报错"的出口，就是 `BaseErrorNext`（`LoopErrorByTimes` 改名而来）。
 
-    实测样本：`EscortClickOk` 用同一个 box 连点 8 次、26.9 s，任务既不失败也不结束。
+    实测样本：`EscortClickConfirm` 用同一个 box 连点 8 次、26.9 s，任务既不失败也不结束。
     """
     for node in ctx.nodes.values():
         names = [parse_ref(item)[0] for item in to_list(node.data.get("next"))]
@@ -1856,6 +1862,28 @@ def check_a26_single_consumer_probe(ctx: Ctx) -> None:
             find_line(node.file, name),
             f"{name} 只被 {consumer_name} 引用一次：可内联进引用它的节点 recognition",
         )
+
+
+def check_a27_click_ok(ctx: Ctx) -> None:
+    """确认按钮的命名（node-naming.md §6 v3.2）。
+
+    `A27-click-ok-banned`（error）：节点名以 `Ok` 结尾（`EscortClickOk`、`FactoryClickSkipOk`）。
+    确认按钮统一以 `Confirm` 结尾（`BaseClickConfirm`、`EscortClickConfirm`），
+    同一个按钮在各任务里叫法要一致。
+
+    确认按钮的**位次**不在这里判：`*Confirm` 必须排在 `BaseBranchError` 之前，
+    由 `A15-error-branch-conflict`（v3.2 起 error）管，见 pipeline-structure.md §9。
+    """
+    for node in ctx.nodes.values():
+        if "ClickOk" in node.name or node.name.endswith(OK_SUFFIX):
+            ctx.add(
+                "A27-click-ok-banned",
+                "error",
+                node.file,
+                find_line(node.file, node.name),
+                f"{node.name}：确认按钮统一命名 *ClickConfirm（如 BaseClickConfirm），"
+                f"不要用 ClickOk / …Ok 后缀（node-naming.md §6）",
+            )
 
 
 def annotations_of(text: str) -> list[tuple[Spec, str, str | None]]:
@@ -2766,8 +2794,12 @@ def self_test() -> int:
             "叫 Ensure、但没有 inverse 的节点不算取反守卫 → 不报 shadowed",
         ),
         (
-            "A15-error-branch-conflict" in a15_ids("TaskConflict"),
-            "错误分支排在自己的确认之前 → 报 conflict",
+            any(
+                f.id == "A15-error-branch-conflict" and f.severity == "error"
+                for f in a15_ctx.findings
+                if f.message.startswith("TaskConflict.")
+            ),
+            "错误分支排在自己的确认之前 → 报 conflict（v3.2 起 error）",
         ),
         (
             not a15_ids("TaskClaimFirst"),
@@ -3092,6 +3124,28 @@ def self_test() -> int:
                 for _id, name in probe_ids
             ),
             "多消费者 / 自定义 / JumpBack / Ensure 引用方 / roi 引用 / 外部引用都不报 A26",
+        ),
+    ]
+
+    # A27：确认按钮统一 *Confirm、禁 ClickOk（v3.2）
+    click_ctx = synth_ctx(
+        {
+            "XClickOk": {"action": "Click"},
+            "XClickConfirm": {"action": "Click"},
+        }
+    )
+    check_a27_click_ok(click_ctx)
+    checks += [
+        (
+            any(
+                f.id == "A27-click-ok-banned" and "XClickOk" in f.message
+                for f in click_ctx.findings
+            ),
+            "节点名以 Ok 结尾 → 报 A27（error）",
+        ),
+        (
+            not any("XClickConfirm" in f.message for f in click_ctx.findings),
+            "Confirm 结尾的节点不报 A27",
         ),
     ]
 
@@ -3518,6 +3572,7 @@ def main(argv: list[str] | None = None) -> int:
         check_a23_section_comment(ctx)
         check_a25_ensure_banned(ctx)
         check_a26_single_consumer_probe(ctx)
+        check_a27_click_ok(ctx)
     # 规范版本与注解新鲜度：不属于任何域，给了 --pipeline 之类也要报
     check_spec_version(ctx)
     if domains["interface"]:
