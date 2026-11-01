@@ -84,10 +84,13 @@ from typing import Any, ClassVar
 # 11：解析按 `(进程, task_id)` 归属——`active_task` 从全局改成按 `Px<pid>` 存，
 #     多进程混画的临时父节点不再跨进程串（默认渲染的父节点可能变准）；新增 `--pid` / `--list-tasks`。
 # 12：把「Custom 回调没注册」（agent 缺位）标到对应步骤上，并在注记里说明——识别缺位原本与
-#     "纯识别超时"、动作缺位原本与"pipeline 自己的问题"在图上分不出来（见 ISSUES/README）。
+#     "纯识别超时"、动作缺位原本与"pipeline 自己的问题"在图上分不出来（见 README「agent 缺位」）。
 # 13：轮内「未命中（聚合）」框改为按时间戳与命中步骤合并，不再一律缀在轮末——末轮"命中→多轮
 #     全未命中→终于命中→失败"的形状原本被画成"失败之后还在重试"。
-RENDERER_VERSION = 13
+# 14：补回 `Node.Action.Failed`——它比框架随后补的 `node not completed` 早且精确（带动作名、
+#     action_id、box），单独画一类失败框；动作没派发（`action=""`、`action_id=0`）时命中框里
+#     也补「动作未派发」，否则 `detail()` 的 `if self.action` 会把失败整段吞掉。
+RENDERER_VERSION = 14
 
 # 框里最多列几个候选，多的折成"另 N 项"（`--list` 不受这个限制）。
 # 默认只列 2 个：父节点名字 + 本次真跑的那个候选是这一行最要紧的两件事，
@@ -138,9 +141,18 @@ INVALID_RE = re.compile(r"invalid node id, handle error \[node\.name=([^\]]+)\]"
 NOT_COMPLETED_RE = re.compile(
     r"node not completed, handle error \[node\.name=([^\]]+)\]"
 )
+# 动作失败事件：`!!!OnEventNotify!!! [msg=Node.Action.Failed] [details={…}]`。
+# 它比框架随后补的 `node not completed` 早（实测 3.4 s / 0.2 s），且带节点名、动作名、
+# `action_id` 与 `box`——两者对应完全相反的排查方向（动作/坐标 vs 识别/ROI）。
+# 同一事件日志里会出现两条（MFA 进程与 agent 进程各发一次 EventDispatcher 通知，相差 1 ms），
+# 所以只认 `[msg=…][details=…]` 这一种写法，再按 (节点, task, action_id, 动作名) + 时间窗去重。
+ACTION_FAILED_RE = re.compile(
+    r"\[msg=Node\.Action\.Failed\]\s*\[details=(\{.*\})\]\s*$"
+)
+ACTION_FAILED_DEDUP_SECONDS = 1.0
 # agent 缺位：Custom 回调没注册时框架打的两条 ERR。只在"引用了回调名但没人注册"时出现，
 # 所以有它就是硬证据；反过来没有它不代表 agent 在场（回调注册了但抛异常/返回 false 不打这两条）。
-# 判据与三个反例见 tools/drawing/ISSUES.md。
+# 判据与三个反例见 README 的「agent 缺位」一节。
 CUSTOM_NULL_RECO_RE = re.compile(
     r"recognition is null \[name_=(?P<node>[^\]]+)\] \[param_\.name=(?P<reg>[^\]]+)\]"
 )
@@ -354,7 +366,7 @@ class Step:
     # nextlist | walk | entry | none：归到父节点靠的是哪一层证据（读图的人要能看出可信度）
     parent_source: str = ""
     # 非空 = 这一步踩在「Custom 回调没注册」上（值是该回调的注册名）。由 `_mark_agent_missing` 填。
-    # 存在理由见 tools/drawing/ISSUES.md：识别缺位与"纯超时"、动作缺位与"pipeline 自己的问题"
+    # 存在理由见 README 的「agent 缺位」：识别缺位与"纯超时"、动作缺位与"pipeline 自己的问题"
     # 在图上一模一样，读图的人会往 ROI/UI 方向查。
     agent_missing: str = ""
 
@@ -416,6 +428,10 @@ class Step:
                     if self.action_ok is None
                     else f"{self.action}{'' if self.action_ok else '(失败)'}"
                 )
+            elif self.action_ok is False:
+                # 动作没派发时结果里没有动作名（`action=""`、`action_id=0`），上面那支整段跳过，
+                # 失败就一点痕迹都不留（实测 `GiftChooseFirstGift` 只剩一条 `node not completed`）。
+                bits.append("动作未派发" if self.action_id == 0 else "动作失败")
         if self.texts:
             bits.append(short(self.texts))
         if self.agent_missing:
@@ -618,6 +634,9 @@ def parse_log(
     # 父节点：`Node.NextList.*` 记录的 (派发者, 候选表)。与 `[cur_node_=X]` 不同，这类记录**带 task_id**，
     # 所以按 task 归属而不是按进程——MFA 侧发事件、agent 进程写 node done，天然跨进程。
     nextlists: list[Dispatcher] = []
+    # `Node.Action.Failed` 同一事件会有两条通知（MFA 进程 + agent 进程，相差 1 ms），
+    # 按 (节点, task, action_id, 动作名) 记最后一次的时间做去重，否则一张图会画出两个同样的失败框。
+    seen_action_failed: dict[tuple[str, int | None, int | None, str], datetime] = {}
 
     def attach_parent(step: Step, px: str, *, allow_walk: bool = True) -> Step:
         """给一步贴上父节点与候选表；三层退回，取不到就留空（图上写"未记录"）。
@@ -664,6 +683,7 @@ def parse_log(
         kind: str = "event",
         completed: bool = False,
         px: str = "",
+        task_id: int | None = None,
     ) -> Step:
         """框架级事件也认一次父节点。
 
@@ -676,6 +696,9 @@ def parse_log(
         正在跑的那个 task**（`active_task`）。框架级失败事件的 `task_id` 字段仍然留空：`parse_log()`
         末尾的区间过滤靠它把别的运行的失败事件排掉，填上就过滤不掉了。
         `Task timeout` 的 pretask 是**正在跑的那个**节点，还没被选中进候选表，查不到属正常。
+
+        `task_id` 只给**自带 task_id 的事件**用（`Node.Action.Failed` 的 details 里就有）：
+        这类事件归属明确，不必退回时间窗，也能被 `--task-id` 精确排掉别的任务。
         """
         step = Step(
             ts=ts,
@@ -683,7 +706,7 @@ def parse_log(
             completed=completed,
             kind=kind,
             action=action,
-            task_id=task_ref if kind == "task" else None,
+            task_id=task_id if task_id is not None else (task_ref if kind == "task" else None),
         )
         if node:
             record, _gap = resolve_parent(
@@ -853,6 +876,42 @@ def parse_log(
                         kind="hit" if j.get("box") else "miss",
                     ),
                     line_px,
+                )
+            )
+            continue
+
+        # 动作失败事件（Node.Action.Failed）：比框架随后补的 `node not completed` 早且精确
+        mf = ACTION_FAILED_RE.search(msg)
+        if mf:
+            try:
+                jf = json.loads(mf.group(1))
+            except json.JSONDecodeError:
+                stats.truncated_skipped += 1
+                continue
+            node_name = jf.get("name") or ""
+            ad = jf.get("action_details") or {}
+            act_name = ad.get("action") or ""
+            act_aid = ad.get("action_id")
+            tid = jf.get("task_id")
+            tid = tid if isinstance(tid, int) else None
+            key = (node_name, tid, act_aid, act_name)
+            prev = seen_action_failed.get(key)
+            if prev is not None and (
+                ts - prev
+            ).total_seconds() <= ACTION_FAILED_DEDUP_SECONDS:
+                continue
+            seen_action_failed[key] = ts
+            # 动作没派发时 `action` 与 `action_details.name` 都是空串、`action_id` 是 0
+            label = f"动作失败 {act_name}" if act_name else "动作未派发"
+            out.events.append(
+                event_step(
+                    ts,
+                    label,
+                    node_name,
+                    node_name,
+                    task_ref=tid,
+                    px=line_px,
+                    task_id=tid,
                 )
             )
             continue
@@ -1959,7 +2018,11 @@ def compose_columns(
             continue
         for col in reversed(columns):
             if col and col[0].ts <= ev.ts:
-                col.append(ev)
+                # 按时间插回去，不是一律缀在列末：`Node.Action.Failed` 比节点跑完更早
+                # （实测早 3.4 s），缀在末尾会让图上读成"节点跑完才失败"。时间戳相同的
+                # 仍排在命中框之后（`insert` 只找第一个更晚的），与 merge_by_ts 的口径一致。
+                at = next((k for k, s in enumerate(col) if s.ts > ev.ts), len(col))
+                col.insert(at, ev)
                 break
     return columns
 

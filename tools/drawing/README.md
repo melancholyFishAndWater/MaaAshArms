@@ -218,6 +218,27 @@ python tools/drawing/whiteboard_images.py --dry-run   # 报告将要做什么，
 `custom_recognition` 对照），所以归属不用绕注册名；`clear_custom_registration` **不是**断开信号，
 它是每次 `MaaAgentClientConnect` 的准备工作（本机实测 23 次入口对应 22 次 Connect），拿它当"断开"会误报。
 
+### 失败框（`动作失败` / `动作未派发` / `node not completed` / `Task timeout`）
+
+图上红色框有四种来源，按**时间戳**插进轮内（不是一律缀在列末）：
+
+| 框 | 来自 | 说明 |
+| --- | --- | --- |
+| `动作失败 <动作名>` | `Node.Action.Failed` 的 `action_details.action` | 动作派发了但返回 `success=false` |
+| `动作未派发` | 同上，但 `action` 为空、`action_details.action_id=0` | 动作根本没派发（常见于识别给了零矩形、或任务正在停止） |
+| `node not completed` | `PipelineTask.cpp` | 框架级收尾，**比上两条晚**（实测 0.2 s / 3.4 s） |
+| `Task timeout` / `invalid node id` | 框架 | 同属框架级收尾 |
+
+`Node.Action.Failed` 与 `node not completed` 对应**相反**的排查方向（动作/坐标 vs 识别/ROI），
+所以前者不再被后者吞掉。同一事件日志里会出现两条（MFA 进程与 agent 进程各发一次通知，相差 1 ms），
+按 `(节点, task, action_id, 动作名)` + 1 s 窗口去重，图上只画一个。
+
+命中框里也会标出"动作没派发"（`detail()` 里 `action` 为空时原本整段跳过，失败一点痕迹不留）：
+`GiftChooseFirstGift` 那种 `action=""`、`action_id=0` 的步骤现在显示 `动作未派发`。
+
+**`BaseTaskStopError` 的失败是设计如此**：`BaseTaskStopErrorAct` 恒返回 `false`（`agent/shared/generic.py:124`），
+用来让任务报错结束。所以它那个 `动作失败 Custom` 框是**正常收尾**，不是动作坏了。
+
 ### 画不出来时的报错
 
 `--from/--to/--task-id` 写错、路径写错、窗口落在日志时间范围外，报的话各不相同，且都会报出
