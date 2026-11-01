@@ -152,6 +152,10 @@ CONFIRM_WORDS = ("确认",)
 # v3.1 起 Ensure 停用，A18 只按 Task 判；Loop 档保留到存量节点退役。
 MAX_NEXT_TASK = 4
 MAX_NEXT_LOOP = 5
+# pipeline-structure.md §10（v3.3）：非任务入口的 `next` 一律 ≤ 7 项。
+# 任务入口由 A18 管（更严的 4 项）；框架兜底候选不计入长度——它们是每张表都该有的，不是"业务候选"。
+NEXT_LIST_CAP = 7
+NEXT_CAP_EXCLUDED = frozenset({"BaseBranchError", "BaseErrorNext"})
 
 # --------------------------------------------------------------------------
 # 规范版本
@@ -168,9 +172,11 @@ MAX_NEXT_LOOP = 5
 # v3.1：Ensure 类别停用，删 A9/A16；新增 A25（Ensure 存量 warn）、A26（单探针内联 info）。
 # v3.2：确认按钮统一 `*Confirm`、禁 `ClickOk`（A27 error）；`*Confirm` 必须排在
 #   `BaseBranchError` 之前（`A15-error-branch-conflict` 由 warn 提为 error，结构文档 §9）。
+# v3.3：非任务入口的 `next` 一律 ≤ 7 项、不计 BaseBranchError/BaseErrorNext（A28 warn，结构文档 §10）。
+# v3.4：`*Init` 不再触发 A4——单次初始化必须在前段执行，不是"后面不可达"（结构文档 §八）。
 NAMING_SPEC_VERSION = "v3.2"
 NAMING_SPEC = Path("docs/zh_cn/develop/node-naming.md")
-STRUCT_SPEC_VERSION = "v3.2"
+STRUCT_SPEC_VERSION = "v3.4"
 STRUCT_SPEC = Path("docs/zh_cn/develop/pipeline-structure.md")
 
 
@@ -757,6 +763,12 @@ def check_a3_custom_mapping(ctx: Ctx) -> None:
 
 
 def check_a4_shadowed(ctx: Ctx) -> None:
+    """`next` 里"必然命中"的候选会把后面的候选挡在门外（pipeline-structure.md §8）。
+
+    `*Init` 例外：它是**真初始化**（写全局变量 / 读参数 / 清计数），本质单次必须执行、
+    基本不需要 `reco`；规范本来就要求它放 `Task.next` 前段并配 `max_hit: 1`（见结构文档
+    「`Init` 的两类」）。这种"先挡一轮再让位"是设计意图，不是"后面不可达"。
+    """
     for node in ctx.nodes.values():
         for key, items in ref_lists(node.data):
             for idx, item in enumerate(items):
@@ -767,6 +779,8 @@ def check_a4_shadowed(ctx: Ctx) -> None:
                 if not hits_always(target):
                     continue
                 if idx == len(items) - 1:
+                    continue
+                if name.endswith("Init"):
                     continue
                 has_max = target.data.get("max_hit") is not None
                 ctx.add(
@@ -1406,6 +1420,37 @@ def check_a18_next_length(ctx: Ctx) -> None:
             find_line(node.file, name),
             f"{name}.next 有 {len(items)} 项（{kind} 上限 {limit}）："
             f"每项失败也要付识别；结构文档 §10 建议拆 Branch 或子 Loop",
+        )
+
+
+def check_a28_next_list_cap(ctx: Ctx) -> None:
+    """非任务入口的 `next` 不得超过 7 项（pipeline-structure.md §10，v3.3）。
+
+    与 `A18` 分工：任务入口（`Task*`）由 `A18` 管（更严的 4 项），本规则跳过入口、管其余节点。
+    计长度时**不计** `BaseBranchError` / `BaseErrorNext`——这两项是每张表都该留的框架兜底，
+    不是"业务候选"，算进去会把正常表逼到超限。
+    """
+    for node in ctx.nodes.values():
+        if node.name.startswith("Task"):
+            continue
+        items = to_list(node.data.get("next"))
+        if not items:
+            continue
+        counted = [
+            name
+            for name, _jump, _enabled in (parse_ref(item) for item in items)
+            if name not in NEXT_CAP_EXCLUDED
+        ]
+        if len(counted) <= NEXT_LIST_CAP:
+            continue
+        ctx.add(
+            "A28-next-list-cap",
+            "warn",
+            node.file,
+            find_line(node.file, node.name),
+            f"{node.name}.next 有 {len(counted)} 项（上限 {NEXT_LIST_CAP}，"
+            f"不计 BaseBranchError / BaseErrorNext）：每项失败也要付识别；"
+            f"结构文档 §10 建议拆 Branch",
         )
 
 
@@ -2841,6 +2886,32 @@ def self_test() -> int:
         ),
     ]
 
+    # A4：必然命中挡住后面；`*Init` 例外（v3.4）
+    shadow_ctx = synth_ctx(
+        {
+            "XPlainShadow": {"action": "Custom"},
+            "XDoInit": {"action": "Custom", "max_hit": 1},
+            "XTarget": {"recognition": "OCR"},
+            "XBranchList": {
+                "recognition": "OCR",
+                "next": ["XPlainShadow", "XTarget"],
+            },
+            "XBranchInit": {"recognition": "OCR", "next": ["XDoInit", "XTarget"]},
+        }
+    )
+    check_a4_shadowed(shadow_ctx)
+    shadow_msgs = [f.message for f in shadow_ctx.findings]
+    checks += [
+        (
+            any("XPlainShadow" in m for m in shadow_msgs),
+            "必然命中的普通候选挡住后面 → 报 A4",
+        ),
+        (
+            not any("XDoInit" in m for m in shadow_msgs),
+            "`*Init` 必然命中 → 不报 A4（v3.4：单次初始化）",
+        ),
+    ]
+
     # A18：next 列表长度上限（pipeline-structure.md §10）
     length_ctx = synth_ctx(
         {
@@ -2910,6 +2981,46 @@ def self_test() -> int:
             not any("XEnsureLong" in f.message for f in length_ctx.findings),
             "Ensure 不再按 A18 判（v3.1 停用，存量由 A25 管）",
         ),
+    ]
+
+    # A28：非任务入口 next ≤ 7 项、不计 BaseBranchError / BaseErrorNext（v3.3）
+    cap_ctx = synth_ctx(
+        {
+            "XSev": {
+                "recognition": "OCR",
+                "next": ["P1", "P2", "P3", "P4", "P5", "P6", "P7"],
+            },
+            "XEight": {
+                "recognition": "OCR",
+                "next": ["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8"],
+            },
+            "XSevFallback": {
+                "recognition": "OCR",
+                "next": [
+                    "P1",
+                    "P2",
+                    "P3",
+                    "P4",
+                    "P5",
+                    "P6",
+                    "P7",
+                    "BaseErrorNext",
+                    "[JumpBack]BaseBranchError",
+                ],
+            },
+            "TaskNine": {"next": [f"P{i}" for i in range(1, 10)]},
+        }
+    )
+    check_a28_next_list_cap(cap_ctx)
+    cap_hit = {f.message.split(".")[0] for f in cap_ctx.findings}
+    checks += [
+        ("XSev" not in cap_hit, "非入口 7 项 → 不报 A28"),
+        ("XEight" in cap_hit, "非入口 8 项 → 报 A28"),
+        (
+            "XSevFallback" not in cap_hit,
+            "7 项 + BaseErrorNext + BaseBranchError → 不计入、不报 A28",
+        ),
+        ("TaskNine" not in cap_hit, "任务入口不报 A28（由 A18 管）"),
     ]
 
     # A19：desc 的方括号标记。左边是四条该报的，右边是三条合规的不该报
@@ -3573,6 +3684,7 @@ def main(argv: list[str] | None = None) -> int:
         check_a25_ensure_banned(ctx)
         check_a26_single_consumer_probe(ctx)
         check_a27_click_ok(ctx)
+        check_a28_next_list_cap(ctx)
     # 规范版本与注解新鲜度：不属于任何域，给了 --pipeline 之类也要报
     check_spec_version(ctx)
     if domains["interface"]:

@@ -269,6 +269,12 @@ Pylance 是 VS Code 内的 LSP，没有命令行入口（`dist/server.bundle.js`
 
 确认按钮的**位次**不单列规则：`*Confirm` 必须排在 `BaseBranchError` 之前，由 `A15-error-branch-conflict` 管（v3.2 起 warn → **error**）。
 
+`A28` 是 v3.3 新增的一条（`pipeline-structure.md` §10），**warn**：
+
+| 规则 | 级别 | 判据 |
+| --- | --- | --- |
+| `A28-next-list-cap` | warn | 非任务入口的 `next` > 7 项；计长度时**不计** `BaseBranchError` / `BaseErrorNext`。任务入口（`Task*`）不归它管，仍按 `A18` 的 4 项 |
+
 ## 依赖与前置
 
 - `check_python.py`、`validate_refs.py`、`check_sentry_offline.py`：**零第三方依赖**（纯标准库）。
