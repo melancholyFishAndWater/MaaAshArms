@@ -20,6 +20,7 @@
 | 查 `desc` 该标没标标记 | 标记是给人读的提示，不是字段：`desc` 由模板生成，`[jp]` 按 `node-naming.md` §3 不标也成立（今天 65 个带 `[jp]` 的节点里 25 个还带 `next`） | 评审时人工看；机器能判的是"标了但字段对不上"，即 `A19-desc-marker-*` 那三条 |
 | 联网 | 除 pyright 首次拉取与 CI 里装 `jsonschema` 外不联网 | — |
 | 不消除 `A10-maxhit-in-loop` 的 2 条 warn | `battle_training.json` 的 `TrainingLoop.next` 里 `TrainingGetStatus`（`max_hit: 1`）与 `TrainingEnterOne`（`max_hit: 4`）属**有意的明确限次**，改掉会动行为 | 按 `--ignore A10` 处理；真要改行为时再评估 |
+| 判不了 `And` 的框会不会被落点消费（`action: Custom` 读不读 `argv.box`） | `CustomAction.RunArg` 里带 `box`，读不读只有回调代码知道；`A29` 只能按"节点有没有 `action`"粗判（无 `action` 的 `Probe`/`Branch`/`Loop` 不报） | 写 `Custom` 动作时自己确认要不要 `box_index`；`A29` 报了就补一个显式值（补 `0` 与默认等价，不改行为） |
 
 ## 怎么跑
 
@@ -246,7 +247,7 @@ Pylance 是 VS Code 内的 LSP，没有命令行入口（`dist/server.bundle.js`
 | 规则 | 级别 | 判据 | 2026-10-31 实测 |
 | --- | --- | --- | --- |
 | `A17-guard-in-next` | info | 节点 `next` 里含本节点 `recognition` 已用过的探针（同一轮识别两遍） | 14 |
-| `A18-next-length` | warn | `Task` 的 `next` > 4 项，`Loop`（废弃）> 5 项 | 8（全是 Task 档） |
+| `A18-next-length` | warn | `Loop`（废弃）的 `next` > 5 项；**`Task*` 入口完全不判**（v3.8，入口的候选表由人工把关） | 0（存量 `*Loop` 里没有超限的） |
 
 `A17` 只报「同一轮会问两遍」这个事实，**留删由人按实测救回率定**（<25% 该删）——救回率要日志实测，
 静态判不了。两条都可以 `--ignore` 单独放行。
@@ -256,7 +257,7 @@ Pylance 是 VS Code 内的 LSP，没有命令行入口（`dist/server.bundle.js`
 | 规则 | 级别 | 判据 | 2026-10-31 实测 |
 | --- | --- | --- | --- |
 | `A25-ensure-banned` | warn | 节点名匹配 `Ensure[A-Z]`：v3.1 起 `Ensure` 类别停用，此节点待删；改用调用方 `Branch` + 入口动作 + `[JumpBack]BaseBranchError`。**故意用 warn 不用 error**：留作回归护栏；存量 9 个节点已于 2026-10-31 全部删除 | 0（2026-10-31 已删净；原 9 个分布在 `battle.json`、`battle_training.json`、`entrust.json` ×3、`entrust_reward.json` ×2、`feidu.json`、`maintenance.json`） |
-| `A26-single-consumer-probe` | info | 纯探针只被一处引用（`next` / `on_error` / `roi` / `target` / `all_of` 都算）且唯一引用是 `And all_of [<探针>]` 单探针包装（或引用方是没有 recognition / action、`next` 只有这一项的纯路由）：可内联进引用它的节点 `recognition`。多消费者、自定义识别、`[JumpBack]`、`Task` / `Ensure` 引用方、interface / tasks / agent 提到的一律不报 | 0（2026-10-31 已清零：原 8 个目标已在各模块批次内联完毕，分布在 `entrust.json` ×2、`escort.json`、`maintenance.json`、`reward.json` ×2、`reward_siku.json` ×2） |
+| `A26-single-consumer-probe` | info | 纯探针只被一处引用（`next` / `on_error` / `roi` / `target` / `all_of` 都算）且唯一引用是**单探针包装**（`And all_of` 恰好一项，或引用方是没有 recognition / action、`next` 只有这一项的纯路由）：可内联进引用它的节点 `recognition`。多条件 `And` 的子识别不算（v3.9，改由 `A30` 管）。多消费者、自定义识别、`[JumpBack]`、`Task` / `Ensure` 引用方、interface / tasks / agent 提到的一律不报 | 6 |
 
 `A26` 只按引用计数报，**不报"`next` 里唯一候选但引用方另有 recognition"那类**：那种内联会把「命中就转」
 改成「先满足守卫」，语义不等价，判不准就不报。
@@ -273,7 +274,19 @@ Pylance 是 VS Code 内的 LSP，没有命令行入口（`dist/server.bundle.js`
 
 | 规则 | 级别 | 判据 |
 | --- | --- | --- |
-| `A28-next-list-cap` | warn | 非任务入口的 `next` > 7 项；计长度时**不计** `BaseBranchError` / `BaseErrorNext`。任务入口（`Task*`）不归它管，仍按 `A18` 的 4 项 |
+| `A28-next-list-cap` | warn | 非任务入口的 `next` > 7 项；计长度时**不计** `BaseBranchError` / `BaseErrorNext`。`Task*` 入口完全不判（v3.8，也不归 `A18` 管了） |
+
+`A29` 是 v3.5 新增的一条（`pipeline-structure.md` 第十一节），**warn**：
+
+| 规则 | 级别 | 判据 |
+| --- | --- | --- |
+| `A29-and-box-index` | warn | 带 `action` 的节点里，`recognition: And` 且 `all_of` 多于 1 项却没写 `box_index`：输出框默认 `all_of[0]`，调序会悄悄换落点，要求显式写出。没 `action` 的（`Probe` / `Branch` / `Loop`）不报——框只进日志，换索引没有行为差别 |
+
+`A30` 是 v3.9 新增的一条（`node-naming.md` §3「单探针内联」），**warn**：
+
+| 规则 | 级别 | 判据 |
+| --- | --- | --- |
+| `A30-and-inline-sub` | warn | 多条件 `And`（`all_of` 两项以上）里出现内联子识别对象：内联对象没有名字，注册名校验 / `box_index` 落点指认 / 单独复测三样都落空，应拆成独立 `Probe` 节点按名字引用。单探针包装（`all_of` 恰好一项）不算——那是 `A26` 认可的内联写法 |
 
 ## 依赖与前置
 

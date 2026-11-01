@@ -149,11 +149,11 @@ CONFIRM_WORDS = ("确认",)
 
 # pipeline-structure.md §10：识别预算上限。
 # 失败候选也要付识别，列表越长单轮成本越高；超限通常是"把好几件事塞进一个列表"。
-# v3.1 起 Ensure 停用，A18 只按 Task 判；Loop 档保留到存量节点退役。
-MAX_NEXT_TASK = 4
+# v3.8 起 `Task*` 入口完全不判（作者裁定：入口的候选表由人工把关），A18 只剩 `Loop` 一档，
+# 保留到存量 `*Loop` 节点退役；非入口根节点的 7 项上限由 A28 管。
 MAX_NEXT_LOOP = 5
 # pipeline-structure.md §10（v3.3）：非任务入口的 `next` 一律 ≤ 7 项。
-# 任务入口由 A18 管（更严的 4 项）；框架兜底候选不计入长度——它们是每张表都该有的，不是"业务候选"。
+# `Task*` 入口不判（v3.8）；框架兜底候选不计入长度——它们是每张表都该有的，不是"业务候选"。
 NEXT_LIST_CAP = 7
 NEXT_CAP_EXCLUDED = frozenset({"BaseBranchError", "BaseErrorNext"})
 
@@ -174,9 +174,16 @@ NEXT_CAP_EXCLUDED = frozenset({"BaseBranchError", "BaseErrorNext"})
 #   `BaseBranchError` 之前（`A15-error-branch-conflict` 由 warn 提为 error，结构文档 §9）。
 # v3.3：非任务入口的 `next` 一律 ≤ 7 项、不计 BaseBranchError/BaseErrorNext（A28 warn，结构文档 §10）。
 # v3.4：`*Init` 不再触发 A4——单次初始化必须在前段执行，不是"后面不可达"（结构文档 §八）。
-NAMING_SPEC_VERSION = "v3.2"
+# v3.5：`And` 组合多个子识别时要显式写 `box_index`（A29 warn，结构文档 §十一）。
+# v3.6：A29 只管**有 `action` 的节点**——没 action 的框只进日志，换索引没有行为差别。
+# v3.7：A4 只报**没有 `max_hit`** 的必然命中候选——带额度的（`[jp]`/`[once]` 一次性动作、
+#   `EntrustDelegatingReward` 这种）"用尽即让位"，排前段是设计意图。
+# v3.8：A18 对 `Task*` 入口**完全不判**（作者裁定：入口候选表由人工把关），只留 `Loop` 档。
+# v3.9：A26 口径收窄为「单探针包装」（`all_of` 恰好一项）；新增 A30（多条件 `And` 里写内联
+#   子识别对象 → warn，改独立 `Probe` 节点）。命名规范同步 v3.3。
+NAMING_SPEC_VERSION = "v3.3"
 NAMING_SPEC = Path("docs/zh_cn/develop/node-naming.md")
-STRUCT_SPEC_VERSION = "v3.4"
+STRUCT_SPEC_VERSION = "v3.9"
 STRUCT_SPEC = Path("docs/zh_cn/develop/pipeline-structure.md")
 
 
@@ -763,11 +770,17 @@ def check_a3_custom_mapping(ctx: Ctx) -> None:
 
 
 def check_a4_shadowed(ctx: Ctx) -> None:
-    """`next` 里"必然命中"的候选会把后面的候选挡在门外（pipeline-structure.md §8）。
+    """`next` 里"必然命中且没有退路"的候选会把后面的候选永远挡住（pipeline-structure.md §八）。
 
-    `*Init` 例外：它是**真初始化**（写全局变量 / 读参数 / 清计数），本质单次必须执行、
-    基本不需要 `reco`；规范本来就要求它放 `Task.next` 前段并配 `max_hit: 1`（见结构文档
-    「`Init` 的两类」）。这种"先挡一轮再让位"是设计意图，不是"后面不可达"。
+    只报**没有 `max_hit`** 的那种：它每一轮都命中，后面那几项永远轮不到。
+
+    两种不报的情况（v3.4 / v3.7）：
+
+    - **带 `max_hit`**：额度用尽即让位，是显式的"先做一次/几次再继续"契约。
+      `[jp]` / `[once]` 的一次性动作（`EntrustDelegatingReward`）与 `*Init` 都是这个写法，
+      排在 `next` 前段是设计意图（例如 `EntrustBranchDelegating.next[0]`）。
+    - **名字以 `Init` 结尾**：真初始化（写全局变量 / 读参数 / 清计数），本质单次必须执行、
+      基本不需要 `reco`，规范本来就要求它放前段配 `max_hit: 1`（见结构文档「`Init` 的两类」）。
     """
     for node in ctx.nodes.values():
         for key, items in ref_lists(node.data):
@@ -780,17 +793,15 @@ def check_a4_shadowed(ctx: Ctx) -> None:
                     continue
                 if idx == len(items) - 1:
                     continue
-                if name.endswith("Init"):
+                if name.endswith("Init") or target.data.get("max_hit") is not None:
                     continue
-                has_max = target.data.get("max_hit") is not None
                 ctx.add(
                     "A4-shadowed-candidate",
-                    "warn" if has_max else "error",
+                    "error",
                     node.file,
                     find_line(node.file, node.name),
-                    f"{node.name}.{key} 第 {idx + 1} 项 {name!r} 必然命中"
-                    + ("（带 max_hit，用尽后才轮到后面）" if has_max else "")
-                    + f"，其后 {len(items) - idx - 1} 项在它之前不可达",
+                    f"{node.name}.{key} 第 {idx + 1} 项 {name!r} 必然命中且没有 max_hit："
+                    f"每一轮都会命中，其后 {len(items) - idx - 1} 项永远轮不到",
                 )
 
 
@@ -1396,8 +1407,10 @@ def check_a17_guard_in_next(ctx: Ctx) -> None:
 def check_a18_next_length(ctx: Ctx) -> None:
     """`next` 列表长度上限（pipeline-structure.md §10）。
 
-    失败候选也要付识别，列表越长单轮成本越高。上限按类别分：`Task` 4 项、
-    `Loop`（废弃）5 项。v3.1 起 `Ensure` 停用，不再按 `Ensure` 名判。
+    失败候选也要付识别，列表越长单轮成本越高。上限按类别分：`Loop`（废弃）5 项。
+
+    `Task*` 入口**完全不判**（v3.8）：入口的候选表由人工把关，规则只对非入口节点生效；
+    非入口的 7 项上限由 `A28` 管。`Ensure` 自 v3.1 停用，也不再按 `Ensure` 名判。
     超限通常是"把好几件事塞进一个列表"，该拆 `Branch` 或子 `Loop`。
     """
     for node in ctx.nodes.values():
@@ -1405,20 +1418,16 @@ def check_a18_next_length(ctx: Ctx) -> None:
         if not items:
             continue
         name = node.name
-        if name.startswith("Task"):
-            limit, kind = MAX_NEXT_TASK, "Task"
-        elif name.endswith("Loop"):
-            limit, kind = MAX_NEXT_LOOP, "Loop"
-        else:
+        if name.startswith("Task") or not name.endswith("Loop"):
             continue
-        if len(items) <= limit:
+        if len(items) <= MAX_NEXT_LOOP:
             continue
         ctx.add(
             "A18-next-length",
             "warn",
             node.file,
             find_line(node.file, name),
-            f"{name}.next 有 {len(items)} 项（{kind} 上限 {limit}）："
+            f"{name}.next 有 {len(items)} 项（Loop 上限 {MAX_NEXT_LOOP}）："
             f"每项失败也要付识别；结构文档 §10 建议拆 Branch 或子 Loop",
         )
 
@@ -1451,6 +1460,64 @@ def check_a28_next_list_cap(ctx: Ctx) -> None:
             f"{node.name}.next 有 {len(counted)} 项（上限 {NEXT_LIST_CAP}，"
             f"不计 BaseBranchError / BaseErrorNext）：每项失败也要付识别；"
             f"结构文档 §10 建议拆 Branch",
+        )
+
+
+def check_a29_and_box_index(ctx: Ctx) -> None:
+    """`And` 组合多个子识别时要显式写 `box_index`（pipeline-structure.md §十一，v3.5/v3.6）。
+
+    `And` 的输出框默认取 `all_of[0]`（vendor `pipeline.schema.json:1520-1525`：
+    「指定输出哪个子识别的识别框…可选，默认 0」）。组合里各项的框基本不重合，
+    默认值意味着"落点跟着第一个子识别走"——这是隐式约定，调整 `all_of` 顺序就会
+    悄悄换掉落点。写出来让读者看得见，也免得下次调序踩坑。
+
+    只管**有 `action` 的节点**（v3.6）：框是被 `Click` / `target_offset` 当落点用的；
+    纯 `Probe` / `Branch` / `Loop` 的框只进日志与事件，换个索引没有任何行为差别。
+    """
+    for node in ctx.nodes.values():
+        if node.data.get("recognition") != "And":
+            continue
+        if "action" not in node.data:
+            continue
+        items = to_list(node.data.get("all_of"))
+        if len(items) <= 1 or node.data.get("box_index") is not None:
+            continue
+        ctx.add(
+            "A29-and-box-index",
+            "warn",
+            node.file,
+            find_line(node.file, node.name),
+            f"{node.name} 的 And 组合了 {len(items)} 个子识别却没写 box_index："
+            f"取框默认 all_of[0]，显式写出来（0..{len(items) - 1}）免得调序时悄悄换落点",
+        )
+
+
+def check_a30_and_inline_sub(ctx: Ctx) -> None:
+    """多条件 `And` 的子识别不要写成内联对象（node-naming.md v3.3、pipeline-structure.md 第十节）。
+
+    `all_of` 里写 `{...}` 内联对象时，子识别没有名字——命名文档 §7 的注册名校验、`box_index`
+    的落点指认（只能指到"第几项"）、单独复测，三样全部落空。多条件 `And` 的子识别一律拆成
+    独立 `Probe` 节点、按名字引用。
+
+    只报多条件（`all_of` 两项以上）里的对象项：单探针包装内联后引用方往往**就是**一个对象
+    子项（`recognition: And` + `all_of: [{…}]`），那是 A26 认可的写法。
+    """
+    for node in ctx.nodes.values():
+        if node.data.get("recognition") != "And":
+            continue
+        items = to_list(node.data.get("all_of"))
+        if len(items) <= 1:
+            continue
+        inline = [item for item in items if isinstance(item, dict)]
+        if not inline:
+            continue
+        ctx.add(
+            "A30-and-inline-sub",
+            "warn",
+            node.file,
+            find_line(node.file, node.name),
+            f"{node.name} 的 And 有 {len(inline)} 项内联子识别（all_of 共 {len(items)} 项）："
+            f"命名节点才带得上注册名校验 / box_index 落点指认 / 单独复测，建议拆成独立 Probe",
         )
 
 
@@ -1844,15 +1911,16 @@ def _reference_kinds(ctx: Ctx) -> dict[str, list[tuple[str, str, bool]]]:
 
 
 def check_a26_single_consumer_probe(ctx: Ctx) -> None:
-    """只被一处引用的探针可以内联（node-naming.md v3.1「单探针内联」）。
+    """只被一处引用的探针可以内联（node-naming.md v3.3「单探针内联」）。
 
     判据同时满足，宁少勿多：
 
     - 纯探针形状：有 `recognition`、无 `action`、无 `next`；
     - 全库只被一处引用（`next` / `on_error` / `roi` / `target` / `all_of` 都算）；
-    - 唯一那处是引用方 `recognition` 里的 `And all_of [<探针>]` 单探针包装——识别直接
+    - 唯一那处是**单探针包装**——`And all_of` 恰好一项（`guard_probe()` 只认这种），识别直接
       落到引用方，内联前后语义等价；或者是"引用方没有 recognition / action、next 只有
-      这一项"的纯路由；
+      这一项"的纯路由。**多条件 `And`（`all_of` 两项以上）不算**：子识别要留成有名字的
+      `Probe`（v3.3，见 `check_a30_and_inline_sub`）；
     - 探针自身没有 `custom_recognition` / `custom_action`；
     - 不是 `Task` 开头的入口；
     - 唯一引用不带 `[JumpBack]`；
@@ -2886,29 +2954,37 @@ def self_test() -> int:
         ),
     ]
 
-    # A4：必然命中挡住后面；`*Init` 例外（v3.4）
+    # A4：必然命中挡住后面；`*Init` 与带 `max_hit` 的例外（v3.4 / v3.7）
     shadow_ctx = synth_ctx(
         {
             "XPlainShadow": {"action": "Custom"},
             "XDoInit": {"action": "Custom", "max_hit": 1},
+            "XMaxShadow": {"action": "Custom", "max_hit": 3},
             "XTarget": {"recognition": "OCR"},
             "XBranchList": {
                 "recognition": "OCR",
                 "next": ["XPlainShadow", "XTarget"],
             },
             "XBranchInit": {"recognition": "OCR", "next": ["XDoInit", "XTarget"]},
+            "XBranchMax": {"recognition": "OCR", "next": ["XMaxShadow", "XTarget"]},
         }
     )
     check_a4_shadowed(shadow_ctx)
-    shadow_msgs = [f.message for f in shadow_ctx.findings]
+    shadow_hits = {
+        f.message.split(".")[0]: f.severity for f in shadow_ctx.findings
+    }
     checks += [
         (
-            any("XPlainShadow" in m for m in shadow_msgs),
-            "必然命中的普通候选挡住后面 → 报 A4",
+            shadow_hits.get("XBranchList") == "error",
+            "必然命中且没有 max_hit、挡住后面 → 报 A4（error）",
         ),
         (
-            not any("XDoInit" in m for m in shadow_msgs),
+            "XBranchInit" not in shadow_hits,
             "`*Init` 必然命中 → 不报 A4（v3.4：单次初始化）",
+        ),
+        (
+            "XBranchMax" not in shadow_hits,
+            "必然命中但带 max_hit → 不报 A4（v3.7：用尽即让位）",
         ),
     ]
 
@@ -2956,15 +3032,12 @@ def self_test() -> int:
     check_a18_next_length(length_ctx)
     checks += [
         (
-            not any("TaskShort" in f.message for f in length_ctx.findings),
-            "Task 4 项 → 不报 A18",
+            not any("TaskLong" in f.message for f in length_ctx.findings),
+            "`Task*` 入口 5 项 → 不报 A18（v3.8：入口完全不判）",
         ),
         (
-            any(
-                f.id == "A18-next-length" and "TaskLong" in f.message
-                for f in length_ctx.findings
-            ),
-            "Task 5 项 → 报 A18",
+            not any("TaskShort" in f.message for f in length_ctx.findings),
+            "Task 4 项 → 不报 A18",
         ),
         (
             not any("XFiveLoop" in f.message for f in length_ctx.findings),
@@ -3021,6 +3094,63 @@ def self_test() -> int:
             "7 项 + BaseErrorNext + BaseBranchError → 不计入、不报 A28",
         ),
         ("TaskNine" not in cap_hit, "任务入口不报 A28（由 A18 管）"),
+    ]
+
+    # A29：And 组合多个子识别要写 box_index（v3.5；v3.6 起只管有 action 的节点）
+    box_ctx = synth_ctx(
+        {
+            "XAndTwo": {
+                "recognition": "And",
+                "all_of": ["XOcrA", "XOcrB"],
+                "action": "Click",
+            },
+            "XAndTwoBox": {
+                "recognition": "And",
+                "all_of": ["XOcrA", "XOcrB"],
+                "action": "Click",
+                "box_index": 1,
+            },
+            "XAndOne": {
+                "recognition": "And",
+                "all_of": ["XOcrA"],
+                "action": "Click",
+            },
+            "XAndNoAct": {"recognition": "And", "all_of": ["XOcrA", "XOcrB"]},
+            "XOcrA": {"recognition": "OCR"},
+            "XOcrB": {"recognition": "OCR"},
+        }
+    )
+    check_a29_and_box_index(box_ctx)
+    box_hit = {f.message.split(" ")[0] for f in box_ctx.findings}
+    checks += [
+        ("XAndTwo" in box_hit, "And 组合 2 个子识别、有 action、没写 box_index → 报 A29"),
+        ("XAndTwoBox" not in box_hit, "And 写了 box_index → 不报 A29"),
+        ("XAndOne" not in box_hit, "And 只有 1 个子识别 → 不报 A29"),
+        ("XAndNoAct" not in box_hit, "And 组合多项但没有 action → 不报 A29（v3.6）"),
+    ]
+
+    # A30：多条件 And 的子识别写成内联对象（v3.3）
+    sub_ctx = synth_ctx(
+        {
+            "XAndInline": {
+                "recognition": "And",
+                "all_of": ["XOcrA", {"recognition": "OCR", "expected": "x"}],
+            },
+            "XAndNamed": {"recognition": "And", "all_of": ["XOcrA", "XOcrB"]},
+            "XAndSingleInline": {
+                "recognition": "And",
+                "all_of": [{"recognition": "OCR", "expected": "y"}],
+            },
+            "XOcrA": {"recognition": "OCR"},
+            "XOcrB": {"recognition": "OCR"},
+        }
+    )
+    check_a30_and_inline_sub(sub_ctx)
+    sub_hit = {f.message.split(" ")[0] for f in sub_ctx.findings}
+    checks += [
+        ("XAndInline" in sub_hit, "多条件 And 里写内联子识别 → 报 A30"),
+        ("XAndNamed" not in sub_hit, "多条件 And 全用命名引用 → 不报 A30"),
+        ("XAndSingleInline" not in sub_hit, "单探针包装内联（all_of 一项）→ 不报 A30"),
     ]
 
     # A19：desc 的方括号标记。左边是四条该报的，右边是三条合规的不该报
@@ -3685,6 +3815,8 @@ def main(argv: list[str] | None = None) -> int:
         check_a26_single_consumer_probe(ctx)
         check_a27_click_ok(ctx)
         check_a28_next_list_cap(ctx)
+        check_a29_and_box_index(ctx)
+        check_a30_and_inline_sub(ctx)
     # 规范版本与注解新鲜度：不属于任何域，给了 --pipeline 之类也要报
     check_spec_version(ctx)
     if domains["interface"]:
