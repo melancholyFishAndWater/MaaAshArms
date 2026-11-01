@@ -13,6 +13,7 @@
             "[JumpBack]SikuBranchReward",
             "[JumpBack]ShopEnterHome",
             "[JumpBack]MissionBranchReward",
+            "[JumpBack]SikuBranchReward",
             "[JumpBack]BaseBranchError",
             "[JumpBack]BaseReturnHome",
             "BaseTaskStop"
