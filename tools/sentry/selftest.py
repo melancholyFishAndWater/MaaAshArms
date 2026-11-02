@@ -1334,6 +1334,40 @@ def check_evidence() -> list[str]:
     )
     _eq(ev.parse_task_id("log_20261014-part01.zip"), None, "非附件名不瞎猜")
 
+    # 2b) 附件名 → run_id（现场图按 run 分目录的键），以及"已下过哪些 run / 事件索引"
+    _eq(
+        ev.parse_run_id(
+            "mfa-task-failure-3204f818b4e04a3494b29d911ec47724-200000062-screenshots.zip"
+        ),
+        "3204f818b4e04a3494b29d911ec47724",
+        "附件名里的 run_id",
+    )
+    _eq(ev.parse_run_id("log_20261014-part01.zip"), None, "非附件名没有 run_id")
+    _eq(
+        ev.existing_run_ids(
+            [
+                "debug/on_error/aaa/1_x.png",
+                "debug/on_error/aaa/2_y.png",
+                "debug/on_error/bbb/3_z.png",
+                "debug/on_error/legacy.png",
+            ]
+        ),
+        {"aaa", "bbb"},
+        "已下过现场图的 run_id（平铺老图不算）",
+    )
+    indexed = ev.event_index(
+        ["debug/on_error/aaa/1_x.png", "debug/on_error/bbb/2_y.png"],
+        [{"run_id": "aaa", "event_id": "e1", "task_id": 7}],
+    )
+    _eq(
+        [
+            (i["run_id"], i["event_id"], i["task_id"], len(i["images"]))
+            for i in indexed
+        ],
+        [("aaa", "e1", 7, 1), ("bbb", None, None, 1)],
+        "事件索引按 run 归拢、没有元数据的留空",
+    )
+
     # 3) 逐字节相同的行要合并（MFA 续写的 64 KB 前缀重叠）
     _eq(ev.dedupe_lines(["a", "b", "a", "c", "b"]), (["a", "b", "c"], 2), "重复行合并")
 
@@ -1436,6 +1470,16 @@ def check_evidence_disk_agreement() -> list[str]:
             / "on_error"
             / "2026.10.14-19.20.37.889_EntrustEnterMainLine.png"
         ).write_bytes(blank)
+        # 新格式：现场图按失败事件分目录（`debug/on_error/<run_id>/`），递归扫描要认出来
+        nested = (
+            directory
+            / "debug"
+            / "on_error"
+            / "9fecde7baf654fe1943bafda3313d583"
+            / "2026.11.02-21.14.00.000_MaintenanceBranchAble.png"
+        )
+        nested.parent.mkdir(parents=True, exist_ok=True)
+        nested.write_bytes(blank)
         (directory / "debug" / "on_error" / "readme.txt").write_text(
             "不是现场图", encoding="utf-8"
         )
@@ -1444,8 +1488,43 @@ def check_evidence_disk_agreement() -> list[str]:
         _eq(log_rel, "debug/maafw.log", "扫到磁盘上的日志")
         _eq(
             images,
-            ["debug/on_error/2026.10.14-19.20.37.889_EntrustEnterMainLine.png"],
-            "只算 on_error/*.png",
+            [
+                "debug/on_error/2026.10.14-19.20.37.889_EntrustEnterMainLine.png",
+                "debug/on_error/9fecde7baf654fe1943bafda3313d583/"
+                "2026.11.02-21.14.00.000_MaintenanceBranchAble.png",
+            ],
+            "递归扫到平铺图与按 run 分目录的现场图",
+        )
+        _eq(
+            ev.existing_run_ids(images),
+            {"9fecde7baf654fe1943bafda3313d583"},
+            "分目录的那份被认成已下过的 run",
+        )
+
+        # 附件 zip → `debug/on_error/<run_id>/`：去掉 zip 里的 `debug/on_error/` 前缀再落盘
+        import io as _io2
+        import zipfile as _zipfile
+
+        write_dir = scratch / "write-test"
+        buffer = _io2.BytesIO()
+        with _zipfile.ZipFile(buffer, "w") as archive:
+            archive.writestr(
+                "debug/on_error/2026.11.02-21.14.00.000_MaintenanceBranchAble.png",
+                blank,
+            )
+        written_images = ev.write_event_images(buffer.getvalue(), write_dir, "9fecde7b")
+        _eq(
+            written_images,
+            [
+                "debug/on_error/9fecde7b/"
+                "2026.11.02-21.14.00.000_MaintenanceBranchAble.png"
+            ],
+            "现场图按 run 分目录落盘",
+        )
+        _eq(
+            (write_dir / written_images[0]).is_file(),
+            True,
+            "落盘路径真的写出了文件",
         )
 
         # 本次没下任何东西（--force --no-log）：磁盘上有的都要补进清单并给出提示
@@ -1459,7 +1538,7 @@ def check_evidence_disk_agreement() -> list[str]:
         ev.reconcile_written(directory, written, log_rel, images, notes)
         _eq(written["log"], "debug/maafw.log", "磁盘上的日志进了 written")
         _eq(written["log_bytes"], len(log_bytes), "原有日志记了真实字节数")
-        _eq(len(written["images"]), 1, "磁盘上的现场图进了 written")
+        _eq(len(written["images"]), 2, "磁盘上的现场图（平铺 + 分目录）都进了 written")
         _contains(notes[0], "原有的", "记清楚了是原有的、不是本次下的")
 
         issue = ev.Issue(
@@ -1489,14 +1568,14 @@ def check_evidence_disk_agreement() -> list[str]:
         again: dict[str, Any] = {
             "log": "debug/maafw.log",
             "log_bytes": 999,
-            "images": [images[0]],
+            "images": list(images),
             "zip_bytes": 1,
         }
         more: list[str] = []
         ev.reconcile_written(directory, again, log_rel, images, more)
         _eq(
             (again["log_bytes"], len(again["images"]), more),
-            (999, 1, []),
+            (999, 2, []),
             "本次下过就不动它",
         )
 

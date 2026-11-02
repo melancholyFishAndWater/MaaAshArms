@@ -7,9 +7,18 @@
 产出（`temp/`，不入库）刻意照真机 `debug/` 那棵树，`flow --case` 与 `flow_from_log` 两条路都认：
 
     temp/evidence/<SHORT-ID>/
-      debug/maafw.log                     ← `sentry trace logs` 拼出来的那次运行日志
-      debug/on_error/<时间戳>_<节点名>.png   ← 附件 zip 里的原成员（有附件时才有）
-      evidence.json                       ← 账目：两道闸门的状态、失败字段、重复行数、写了什么
+      debug/maafw.log                          ← `sentry trace logs` 拼出来的那次运行日志
+      debug/on_error/<run_id>/<时间戳>_<节点名>.png  ← **按失败事件分目录**：一个 issue 常有多次失败，
+                                                  每次一份 `mfa-task-failure-<run_id>-<task_id>-screenshots.zip`
+      evidence.json                            ← 账目：两道闸门的状态、失败字段、重复行数、写了什么、每个事件的图
+
+## 现场图按失败事件逐个取（不是只取一个事件）
+
+`sentry issue view` 只回**一个**事件，只查它就会永远只有那一份现场图（实测同一个 issue 有 3 份，
+其中同一任务 `200000003` 在 10-31 与 11-02 两次运行里都失败）。这里枚举最近 `--max-events` 个事件，
+逐个查附件列表，有图的下到 `debug/on_error/<run_id>/`；已下过的 run 跳过（增量，不重下、不覆盖）。
+日志仍只取 `issue view` 那个事件（`issue events` 精简视图拿不到 trace id）。只画某一次失败就
+`--on-error temp/evidence/<issue>/debug/on_error/<run_id>`。
 
 ## 两道 Sentry 侧的闸门（先看再下，不然白等）
 
@@ -37,13 +46,20 @@
 对目录要求根下有 `maafw.log`/`maa.log`——直接把解出来的目录喂 `--case` 会报"找不到 maafw.log"。
 工具把 `trace logs` 写进 `debug/maafw.log`，这条目录才成为完整的证据包。
 
-**清单说的是目录里有什么，不是本次下了什么**（`written` 与 `hints` 都按这个口径）：工具不删旧文件，
+**清单说的是目录里有什么，不是本次下了什么**（`written` / `events` / `hints` 都按这个口径）：工具不删旧文件，
 所以 `--force` 配 `--no-log` / `--no-images` 只重下一半时，`collect()` 会先扫目录
 （`existing_artifacts()`）再把磁盘上还在的文件补进清单（`reconcile_written()`）——否则清单写着
 "没有日志"，而 `debug/maafw.log` 就在旁边放着，照清单走的人会以为画不了图。
 
-**不做**：不翻页（CLI 没有游标）、不把 newest+oldest 拼起来（中间有洞比截断更误导）、不下载 vision 帧
-（附件里没有）、不自动画图（只打印命令）、不打印也不落盘 token。
+**复用旧包时回显它属于哪个事件**：以前只打一句"已存在"，照旧包出图却不知道画的是哪一次；
+现在打 `event.id` / `received` / `release`。事件对不上时不复用日志，会重新取。
+
+**单份附件失败不废整包**：SSL 中断之类只跳过那一份、记进 `written.attachment_failed` 并提示，
+日志和其它事件的现场图照常处理（以前一个附件失败会把已经能拿到的日志一起带没）。
+
+**不做**：不翻页取全历史事件（`issue events` 没有游标，只取最近 `--max-events` 个）、不把
+newest+oldest 拼起来（中间有洞比截断更误导）、不下载 vision 帧（附件里没有）、不自动画图
+（只打印命令）、不打印也不落盘 token。
 """
 
 from __future__ import annotations
@@ -86,15 +102,21 @@ DEFAULT_OUTDIR = "temp/evidence"
 DEFAULT_PERIOD = "7d"
 DEFAULT_LIMIT = 20
 DEFAULT_LOG_LIMIT = 1000
+# 现场图按**失败事件**逐个取：一个 issue 常有多次失败、各一份 on_error 包，默认看最近 10 个事件。
+# `sentry issue events` 没有批量接口、每次要单独查附件列表，所以上限必须有（不能无限翻）。
+DEFAULT_MAX_EVENTS = 10
 # Sentry CLI 自己限死的：`--limit` 只能 1~1000，且 trace logs 没有游标
 MAX_LOG_LIMIT = 1000
 LOG_SORTS = ("newest", "oldest")
 HTTP_TIMEOUT_SECONDS = 60
 SENTRY_HOST = "https://sentry.io"
 
-# 附件名形如 mfa-task-failure-<run.id>-<task.id>-screenshots.zip，task.id 就是日志里的 task_id
+# 附件名形如 mfa-task-failure-<run.id>-<task.id>-screenshots.zip：
+# `run.id` 是 MFA 的一次运行（= 一个 Sentry 事件对应的那趟 trace），`task.id` 是失败的任务。
+# 两个都要：run.id 是"哪次运行的现场图"，也是按失败事件分目录落盘的键（同一事件只有一份图），
+# task.id 用来拼 `--task-id`。
 ATTACHMENT_NAME_RE = re.compile(
-    r"^mfa-task-failure-[0-9a-f]+-(\d+)-screenshots\.zip$", re.IGNORECASE
+    r"^mfa-task-failure-([0-9a-f]+)-(\d+)-screenshots\.zip$", re.IGNORECASE
 )
 
 # 失败标记：把 context 里的 node_id 换成人能读的名字时用（与 flow_from_log 的判据同一批）
@@ -155,6 +177,8 @@ class Issue:
     # Sentry 事件顶层字段 `release`（如 `MFA@v2.16.1+MaaAshArms@v1.0.0-beta.38`），
     # 画图时它是「疑似过时」最可靠的版本来源——原生 maafw.log 没有「资源版本」那行。
     release: str = ""
+    # 事件时间（`dateCreated`/`timestamp`）：复用旧包时要能说出"这是哪一次失败"
+    received: str = ""
     evidence: dict[str, Any] = field(default_factory=dict)
 
     @property
@@ -190,6 +214,9 @@ def survey_issue(sentry: str, short_id: str, *, verbose: bool, timeout: float) -
         event_id=str(event.get("id") or ""),
         trace_id=str(trace.get("traceId") or ""),
         release=str(event.get("release") or ""),
+        received=str(
+            event.get("dateCreated") or event.get("timestamp") or ""
+        ),
         evidence=issue_context(event),
     )
 
@@ -289,6 +316,101 @@ def list_attachments(
     return [item for item in body or [] if isinstance(item, dict)]
 
 
+def list_events(
+    sentry: str, short_id: str, *, verbose: bool, timeout: float, limit: int
+) -> list[dict]:
+    """`sentry issue events <short-id> --json` → 最近若干事件，只留 id 与收到时间（新的在前）。
+
+    `issue view` 只给**一个**事件，所以只取它就永远只有那一份现场图（实测一个 issue 有 3 份
+    不同运行的 on_error 包，而只会拿到最旧的那份）。要拿齐一个 issue 的多次失败，就得多看几个事件。
+    这个视图是精简的（拿不到 `attachment.*` / `trace`），但有 event id——够用：拿 id 再逐个查附件列表。
+
+    枚举不了时返回 `[]`（子命令变了、没登录、网络失败），调用方退回"只查 issue view 那一个事件"
+    的旧行为，而不是整条命令报错。
+    """
+    try:
+        raw = report_common.run_sentry_json_value(
+            sentry,
+            ["issue", "events", short_id, "--json"],
+            verbose=verbose,
+            timeout_seconds=timeout,
+        )
+    except RuntimeError:
+        return []
+    rows = raw.get("data") if isinstance(raw, dict) else raw
+    if not isinstance(rows, list):
+        return []
+    out: list[dict] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        eid = str(row.get("id") or row.get("eventID") or "")
+        if not eid:
+            continue
+        out.append(
+            {
+                "id": eid,
+                "received": str(
+                    row.get("received") or row.get("dateCreated") or ""
+                ),
+            }
+        )
+    # 按收到时间倒序（拿不到时间就保持原序，排在时间已知的后面）
+    out.sort(key=lambda e: e.get("received") or "", reverse=True)
+    return out[: max(0, limit)]
+
+
+def collect_image_attachments(
+    sentry: str,
+    issue: Issue,
+    *,
+    verbose: bool,
+    timeout: float,
+    max_events: int = DEFAULT_MAX_EVENTS,
+) -> list[dict]:
+    """枚举该 issue 最近若干失败事件，取每个事件挂着现场图的附件。
+
+    返回 `[{event_id, received, run_id, task_id, attachment_id, name}]`。`run_id` 从附件名取
+    （`mfa-task-failure-<run_id>-<task_id>-screenshots.zip`），就是"哪次运行"的现场图。
+
+    为什么逐个事件查：一个 issue 的多次失败各有一份 on_error 包，而 `issue view` 只回一个事件，
+    只查它就永远只有那一份（实测 3 份、其中同一任务 `200000003` 在不同运行里失败了两次）。
+    代表事件（`issue.event_id`）无论如何都查一次，这样 `issue events` 不可用时也能拿到它的图。
+    """
+    jobs: list[dict] = []
+    events = list_events(
+        sentry, issue.short_id, verbose=verbose, timeout=timeout, limit=max_events
+    )
+    ids = [str(e["id"]) for e in events]
+    received_of = {str(e["id"]): str(e.get("received") or "") for e in events}
+    if issue.event_id and issue.event_id not in ids:
+        ids.insert(0, issue.event_id)
+    for event_id in ids:
+        try:
+            attachments = list_attachments(
+                sentry, CONFIG.target, event_id, verbose=verbose, timeout=timeout
+            )
+        except RuntimeError:
+            continue
+        for item in attachments:
+            aid = str(item.get("id") or "")
+            name = str(item.get("name") or f"attachment-{aid}.zip")
+            run_id = parse_run_id(name)
+            if not aid or run_id is None:
+                continue
+            jobs.append(
+                {
+                    "event_id": event_id,
+                    "received": received_of.get(event_id, ""),
+                    "run_id": run_id,
+                    "task_id": parse_task_id(name),
+                    "attachment_id": aid,
+                    "name": name,
+                }
+            )
+    return jobs
+
+
 def download_attachment(
     target: str, event_id: str, attachment_id: str, token: str
 ) -> bytes:
@@ -380,7 +502,17 @@ def safe_members(names: Sequence[str]) -> list[str]:
 def parse_task_id(attachment_name: str) -> int | None:
     """从附件名里抠出 task_id（`mfa-task-failure-<run>-<task>-screenshots.zip`）。"""
     match = ATTACHMENT_NAME_RE.match(attachment_name.strip())
-    return int(match.group(1)) if match else None
+    return int(match.group(2)) if match else None
+
+
+def parse_run_id(attachment_name: str) -> str | None:
+    """从附件名里抠出 run_id（`mfa-task-failure-<run>-<task>-screenshots.zip`）。
+
+    run_id 是"哪次运行"的现场图。一个 issue 常有多次失败、各一份图，按 run_id 分目录落盘，
+    多次失败的现场图才不会互相覆盖，也不会只剩最旧的那一份。
+    """
+    match = ATTACHMENT_NAME_RE.match(attachment_name.strip())
+    return match.group(1).lower() if match else None
 
 
 def dedupe_lines(lines: Sequence[str]) -> tuple[list[str], int]:
@@ -414,13 +546,21 @@ def marker_lines(lines: Sequence[str], limit: int = 8) -> list[str]:
 
 
 def build_hints(
-    outdir: Path, issue: Issue, *, log_rel: str | None, has_images: bool
+    outdir: Path,
+    issue: Issue,
+    *,
+    log_rel: str | None,
+    has_images: bool,
+    runs: Sequence[str] = (),
 ) -> list[str]:
     """可复制的下一步命令（相对仓库根，命令都在仓库根跑）。
 
     `log_rel` / `has_images` 说的是**磁盘上有没有**（`existing_artifacts()` 的结论），不是本次下没下：
     清单里写着日志就一定能画，别再让"本次没下"把可用的命令藏掉。文件名也照磁盘上那个来
     （`LOG_NAMES` 里可能是 `maa.log`），别硬写 `maafw.log` 指到不存在的文件。
+
+    `runs` 非空且不止一个时，多给一条"只画某一次失败"的写法：现场图按 run_id 分了目录，
+    `--on-error <case>/on_error/<run_id>` 就能只贴那一次的现场图。
     """
     if not log_rel:
         return []
@@ -443,6 +583,13 @@ def build_hints(
         hints.append(
             f"python tools/drawing/flow_from_log.py {shown}/{log_rel}{task_arg} --no-thumbs"
         )
+    ordered = sorted(runs)
+    if len(ordered) > 1:
+        shown_runs = "、".join(ordered[:6]) + ("…" if len(ordered) > 6 else "")
+        hints.append(
+            f"只贴某一次失败的现场图：--on-error {case_dir}/on_error/<run_id>"
+            f"（共 {len(ordered)} 次：{shown_runs}）"
+        )
     return hints
 
 
@@ -457,12 +604,57 @@ def existing_artifacts(directory: Path) -> tuple[str | None, list[str]]:
     )
     log_rel = f"debug/{log_name}" if log_name else None
     on_error = directory / "debug" / "on_error"
+    # 递归扫：现场图按失败事件放在 `debug/on_error/<run_id>/` 子目录里，
+    # 只 glob 顶层会漏掉（老包是平铺的，递归同样认）。
     images = (
-        sorted(f"debug/on_error/{item.name}" for item in on_error.glob("*.png"))
+        sorted(
+            "debug/on_error/" + item.relative_to(on_error).as_posix()
+            for item in on_error.rglob("*.png")
+        )
         if on_error.is_dir()
         else []
     )
     return log_rel, images
+
+
+def existing_run_ids(images: Sequence[str]) -> set[str]:
+    """从 `existing_artifacts()` 的图片列表里取出"已经下过现场图的 run_id"。
+
+    只认按 run 分了目录的（`debug/on_error/<run_id>/<文件>.png`）：平铺的老图不带 run，
+    不算已下过——那样下一次会把新的那份补上，不会因为"目录里已经有点图"就整个跳过。
+    """
+    runs: set[str] = set()
+    for rel in images:
+        parts = rel.replace("\\", "/").split("/")
+        if len(parts) >= 4 and parts[0] == "debug" and parts[1] == "on_error":
+            runs.add(parts[2])
+    return runs
+
+
+def event_index(images: Sequence[str], jobs: Sequence[dict]) -> list[dict]:
+    """把磁盘上的现场图按 run_id 归拢，补上来自附件的 event_id / task_id，供清单展示。
+
+    `evidence.json` 的 `events` 就是它的产物：一眼看出哪份图属于哪次失败（哪个事件、哪个 task）。
+    """
+    by_run: dict[str, list[str]] = {}
+    for rel in images:
+        parts = rel.replace("\\", "/").split("/")
+        if len(parts) >= 4 and parts[0] == "debug" and parts[1] == "on_error":
+            by_run.setdefault(parts[2], []).append(rel)
+    meta = {str(j["run_id"]): j for j in jobs}
+    out: list[dict] = []
+    for run_id in sorted(by_run):
+        job = meta.get(run_id)
+        out.append(
+            {
+                "run_id": run_id,
+                "event_id": str(job["event_id"]) if job else None,
+                "received": str(job.get("received") or "") if job else "",
+                "task_id": job.get("task_id") if job else None,
+                "images": sorted(by_run[run_id]),
+            }
+        )
+    return out
 
 
 def reconcile_written(
@@ -505,19 +697,40 @@ def reconcile_written(
 # --------------------------------------------------------------------------- #
 
 
-def write_members(blob: bytes, dest: Path) -> list[str]:
-    """把附件 zip 的安全成员按原相对路径解到 dest 下（附件里就是 `debug/on_error/*.png`）。"""
+def write_members(blob: bytes, dest: Path, *, strip_prefix: str = "") -> list[str]:
+    """把附件 zip 的安全成员写到 dest 下，返回写下去的**相对路径**。
+
+    `strip_prefix` 开头的成员名会去掉该前缀再落盘：现场图 zip 里的成员是
+    `debug/on_error/<文件>.png`，按事件分目录时要写成 `<run_id>/<文件>.png`，
+    所以调用方 strip 掉 `debug/on_error/`。
+    """
     written: list[str] = []
     with zipfile.ZipFile(io.BytesIO(blob)) as archive:
         members = set(safe_members(archive.namelist()))
         for name in archive.namelist():
             if name not in members:
                 continue
-            target = dest / name
+            rel = name
+            if strip_prefix and name.startswith(strip_prefix):
+                rel = name[len(strip_prefix):]
+            target = dest / rel
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(archive.read(name))
-            written.append(name)
+            written.append(rel)
     return written
+
+
+def write_event_images(blob: bytes, directory: Path, run_id: str) -> list[str]:
+    """把一个失败事件的现场图写到 `debug/on_error/<run_id>/`，返回相对 `directory` 的路径。
+
+    按 run_id 分目录是这里的关键：一个 issue 的多次失败各有一份 on_error 图，文件名里的时间戳
+    可能撞（同一秒失败两次），平铺进 `debug/on_error/` 会互相覆盖；而只取一个事件的老做法
+    会把其余几次的现场图整个丢掉。绘图侧的 `MediaResolver` / `OnErrorIndex` 都是递归扫目录、
+    按文件名匹配，所以子目录天然支持。
+    """
+    dest = directory / "debug" / "on_error" / run_id
+    members = write_members(blob, dest, strip_prefix="debug/on_error/")
+    return [f"debug/on_error/{run_id}/{rel}" for rel in members]
 
 
 @dataclass
@@ -544,41 +757,29 @@ def collect(
     keep_duplicates: bool,
     verbose: bool,
     timeout: float,
+    max_events: int = DEFAULT_MAX_EVENTS,
 ) -> Evidence:
-    """把一个 issue 的证据落盘；已经下过就直接返回（`--force` 重新下）。
+    """把一个 issue 的证据落盘；已经下过就补缺、不重下（`--force` 重新下）。
 
     清单里 `written` 说的是**这个证据目录里有什么**，不是"本次下了什么"：本次没下但磁盘上还在的
     文件（`--force` 配 `--no-log` / `--no-images`）照样记进去，`written` 与 `hints` 才对得上磁盘。
+
+    现场图按**失败事件**逐个取（见 `collect_image_attachments`）：一个 issue 常有多次失败、各一份
+    on_error 包，只取"issue view 那一个事件"就永远只有那一份（实测 3 份不同运行的图）。这里枚举
+    最近 `max_events` 个事件、逐个下到 `debug/on_error/<run_id>/`，已下过的 run 跳过（增量：
+    不重下，也不覆盖别的事件）。
     """
     directory = outdir / issue.short_id
     manifest_path = directory / "evidence.json"
-    if manifest_path.is_file() and not force:
+    recorded: dict[str, Any] = {}
+    if manifest_path.is_file():
         try:
-            recorded = json.loads(manifest_path.read_text(encoding="utf-8"))
+            loaded = json.loads(manifest_path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                recorded = loaded
         except (OSError, json.JSONDecodeError):
             recorded = {}
-        if recorded.get("event", {}).get("id") == issue.event_id:
-            # 上一趟记的清单也可能与磁盘脱节（旧版本工具写的、或文件被手工删过）：按磁盘复查一遍
-            log_rel, images = existing_artifacts(directory)
-            stale: list[str] = []
-            disk_written = recorded.get("written")
-            if not isinstance(disk_written, dict):
-                disk_written = {
-                    "log": None,
-                    "log_bytes": 0,
-                    "images": [],
-                    "zip_bytes": 0,
-                }
-                recorded["written"] = disk_written
-            reconcile_written(directory, disk_written, log_rel, images, stale)
-            return Evidence(
-                directory=directory,
-                inventory=recorded,
-                hints=build_hints(
-                    directory, issue, log_rel=log_rel, has_images=bool(images)
-                ),
-                notes=["已存在（--force 重新下载）", *stale],
-            )
+    reused = bool(recorded) and recorded.get("event", {}).get("id") == issue.event_id
 
     written: dict[str, Any] = {
         "log": None,
@@ -590,37 +791,59 @@ def collect(
     notes: list[str] = []
     # 上一趟留下的文件（`--force` 只重下一半时它们仍在原地）：先记下来，免得清单与磁盘脱节
     existing_log, existing_images = existing_artifacts(directory)
+    have_runs = existing_run_ids(existing_images)
 
-    if do_images and issue.images:
-        attachments = list_attachments(
-            sentry, CONFIG.target, issue.event_id, verbose=verbose, timeout=timeout
+    jobs: list[dict] = []
+    downloaded_images = 0
+    if do_images:
+        jobs = collect_image_attachments(
+            sentry, issue, verbose=verbose, timeout=timeout, max_events=max_events
         )
-        if not attachments:
-            notes.append(
-                "Sentry 说附件状态是 attached，但附件列表是空的（可能刚被保留策略清掉）"
-            )
-        for item in attachments:
-            attachment_id = str(item.get("id") or "")
-            name = str(item.get("name") or f"attachment-{attachment_id}.zip")
-            if not attachment_id:
-                continue
+        wanted = jobs if force else [j for j in jobs if j["run_id"] not in have_runs]
+        failed: list[str] = []
+        for job in wanted:
             if token is None:
                 token = sentry_token(sentry, verbose=verbose, timeout=timeout)
-            blob = download_attachment(
-                CONFIG.target, issue.event_id, attachment_id, token
-            )
-            if blob[:4] != b"PK\x03\x04":
-                raise RuntimeError(
-                    f"附件 {name} 不是 zip（前 4 字节 {blob[:4]!r}），不写盘。"
+            # 单份附件失败不能把整包废掉：原来一个 SSL 中断就抛出去了，连这次已经能拿到的
+            # 日志和别的失败的现场图一起没了（ISSUES 里记的那条）。这里跳过它、继续下一份。
+            try:
+                blob = download_attachment(
+                    CONFIG.target, str(job["event_id"]), str(job["attachment_id"]), token
                 )
+            except (RuntimeError, OSError) as exc:
+                failed.append(f"{job['run_id']}（{exc}）")
+                continue
+            if blob[:4] != b"PK\x03\x04":
+                notes.append(
+                    f"附件 {job['name']} 不是 zip（前 4 字节 {blob[:4]!r}），跳过"
+                )
+                continue
             written["zip_bytes"] += len(blob)
-            written["images"].extend(write_members(blob, directory))
-    elif do_images:
-        notes.append(
-            f"没有现场图（attachment.status={issue.evidence.get('attachment_status') or '未知'}）"
-        )
+            written["images"].extend(
+                write_event_images(blob, directory, str(job["run_id"]))
+            )
+            have_runs.add(str(job["run_id"]))
+            downloaded_images += 1
+        if failed:
+            written["attachment_failed"] = failed
+            notes.append(
+                f"{len(failed)} 份现场图没下成，已跳过（日志和其它事件的现场图照常）："
+                + "；".join(failed)
+            )
+        if not jobs:
+            notes.append(
+                f"没有现场图（最近 {max_events} 个事件里都没有 "
+                "`mfa-task-failure-*.zip` 附件）"
+            )
+        elif not wanted:
+            notes.append(
+                f"现场图共 {len(jobs)} 份、都是上一趟下过的（增量只补新的失败事件）"
+            )
 
-    if do_log and issue.logs and issue.trace_id:
+    got_log = False
+    # 日志仍取 `issue view` 那个事件的 trace（`issue events` 精简视图拿不到 trace id）。
+    # 已下过且没 --force 就不重下，由 reconcile 把磁盘上那份记进清单。
+    if do_log and issue.logs and issue.trace_id and (force or not existing_log):
         lines, has_more = fetch_log_lines(
             sentry,
             CONFIG.target,
@@ -674,23 +897,48 @@ def collect(
                 f"这次运行共 {task_count} 个任务，日志是整段的：标记可能来自别的任务，"
                 f"按 --task-id {issue.evidence.get('failure_task_id')} 才只看本次失败的那个"
             )
-    elif do_log:
+        got_log = True
+    elif do_log and not existing_log:
         notes.append(
             f"没有日志（logs.status={issue.evidence.get('logs_status') or '未知'}）"
         )
+    if not got_log and isinstance(recorded.get("trace"), dict):
+        # 复用时保留上一趟的 trace 账（行数/去重/标记），别让清单里那几项变空
+        trace_meta = dict(recorded["trace"])
 
     # 清单记的是"目录里有什么"：本次没下但磁盘上还在的（`--force` 配 `--no-log`/`--no-images`）也补进来
     reconcile_written(directory, written, existing_log, existing_images, notes)
 
+    runs = sorted(existing_run_ids(written["images"]))
     has_log = written["log"] is not None
     hints = build_hints(
         directory,
         issue,
         log_rel=str(written["log"]) if has_log else None,
         has_images=bool(written["images"]),
+        runs=runs,
     )
     if not hints:
-        notes.append("既没有日志也没有现场图：画不出流程图（画图必须有日志）")
+        # hints 为空 = 没有日志（`build_hints` 第一条就要求 log_rel）；现场图再多也画不了流程图
+        if written["images"]:
+            notes.append(
+                f"没有日志：画不出流程图（现场图有 {len(written['images'])} 张，"
+                "但图上的步骤来自日志）"
+            )
+        else:
+            notes.append("既没有日志也没有现场图：画不出流程图（画图必须有日志）")
+    if reused and downloaded_images == 0 and not got_log:
+        # 复用旧包时必须回显它属于哪个事件：否则照着旧包出图却不知道画的是哪一次（踩过的坑）
+        old = recorded.get("event", {}) or {}
+        bits = []
+        if old.get("id"):
+            bits.append(f"event.id={old['id']}")
+        if old.get("received"):
+            bits.append(f"received={old['received']}")
+        if old.get("release"):
+            bits.append(f"release={old['release']}")
+        detail = f"（{'，'.join(bits)}）" if bits else ""
+        notes.append(f"已存在（--force 重新下载）{detail}")
 
     inventory = {
         "schema": EVIDENCE_SCHEMA,
@@ -702,7 +950,14 @@ def collect(
             "count": issue.count,
             "last_seen": issue.last_seen,
         },
-        "event": {"id": issue.event_id, **issue.evidence, "release": issue.release},
+        "event": {
+            "id": issue.event_id,
+            "received": issue.received,
+            **issue.evidence,
+            "release": issue.release,
+        },
+        # 每个失败事件一份现场图（`debug/on_error/<run_id>/`）：哪份图属哪次运行、哪个 task
+        "events": event_index(written["images"], jobs),
         "trace": trace_meta,
         "written": written,
         "hints": hints,
@@ -758,6 +1013,22 @@ def format_result(evidence: Evidence, output: TextIO, stderr: TextIO) -> None:
         f"（附件 {written.get('zip_bytes', 0)} 字节）",
         file=output,
     )
+    events = inventory.get("events") or []
+    if events:
+        # 一个失败事件一份现场图：列出「run_id（task）几张」，
+        # 现场图目录是 `debug/on_error/<run_id>/`，要只画某一次就 --on-error 指过去
+        rows = []
+        for item in events:
+            task = item.get("task_id")
+            count = len(item.get("images") or [])
+            rows.append(f"{item['run_id']}（task {task or '?'}，{count} 张）")
+        print(f"  失败事件: {len(events)} 个 —— {'；'.join(rows)}", file=output)
+    failed = written.get("attachment_failed") or []
+    if failed:
+        print(
+            f"  现场图未下成: {len(failed)} 份（已跳过，不影响日志）—— {'；'.join(failed)}",
+            file=output,
+        )
     if written.get("log"):
         print(
             f"  日志:   {written['log']}（{written['log_bytes']} 字节"
@@ -837,6 +1108,13 @@ def create_argument_parser(prog: str | None = None) -> argparse.ArgumentParser:
         "--keep-duplicates", action="store_true", help="保留完全重复的行（默认去重）"
     )
     parser.add_argument(
+        "--max-events",
+        type=int,
+        default=DEFAULT_MAX_EVENTS,
+        help=f"现场图按失败事件逐个取，最多看最近几个事件（默认 {DEFAULT_MAX_EVENTS}）。"
+        "一个 issue 常有多次失败、各一份 on_error 包，只取 issue view 那一个事件会只有最旧的那份",
+    )
+    parser.add_argument(
         "--timeout",
         type=float,
         default=180.0,
@@ -908,6 +1186,7 @@ def main(argv: Sequence[str] | None = None, prog: str | None = None) -> int:
             keep_duplicates=arguments.keep_duplicates,
             verbose=arguments.verbose,
             timeout=arguments.timeout,
+            max_events=arguments.max_events,
         )
         collected.append(evidence)
         format_result(evidence, sys.stdout, sys.stderr)

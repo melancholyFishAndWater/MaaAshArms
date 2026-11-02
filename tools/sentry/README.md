@@ -23,7 +23,7 @@
 | 保留历史工件 | `fetch` 不删旧文件，也不缓存 Sentry 侧的历史 | 自己清 `temp/telemetry/`；窗口上限见「统计口径」第 6 条 |
 | 搬运 M9A 的 `SKILL.md` | `.agents/` 被 gitignore，技能文件无法入库 | 等价内容就是本文档 |
 | 把 `trace logs` 翻页取全 | Sentry CLI 限死 `--limit ≤ 1000` 且没有游标；把 newest 与 oldest 拼起来会在中间留洞，比截断更误导 | 默认取 `newest`（失败在运行末尾），`has_more` 写进 `evidence.json` |
-| 枚举同一 issue 的其它事件 | `sentry issue view` 只给最近一次，`sentry issue events --json` 是精简视图、没有 context（拿不到 `attachment.*`），也没有批量接口 | 用 `evidence --event <event-id>` 直接指 |
+| 把同一 issue 的**全部**历史事件翻页取全 | `sentry issue events` 只返回最近一批、没有游标；再往前要手工翻，且每个事件都得单独查附件列表（没有批量接口） | `evidence --max-events N` 决定看最近几个（默认 10）；更早的失败用 `--event <event-id>` 直接指。**日志仍只取 `issue view` 那一个事件**（`issue events` 精简视图拿不到 trace id），现场图才是按事件抓全的 |
 | 把 Sentry CLI 的缓存库自动搬到可写目录 | 那等于由工具替人复制 OAuth 凭据（`cli.db` 里有 token 与 refresh_token），凭据会散落到 `temp/` 且不会自己清掉；而这个问题只需在受限沙箱下处理一次 | 照「前置条件」手动两条命令；报错时 `report_common.authority_error_hint()` 会把这两条打出来 |
 | 让画图脚本直接吃 Explore CSV | 导出的正文是**按块切碎**的（每格约 3.3 KB，块首块尾都丢头去尾），格子顺序也不是时间顺序，直接拼会拼出假行 | 先过 `python -m tools.sentry.cli explore-csv <csv>`，再拿它产出的日志正文去画 |
 | 还原被截断的行、猜丢失的内容 | 导出按字节裁过（实测 53 条 reco/action/node-done 读不出、104 行断头、1080 块碎片），猜出来的内容会变成假事实 | 只统计并提示；要完整证据用本机 `debug/` 目录 |
@@ -131,19 +131,30 @@ python -m tools.sentry.cli flow --case temp/evidence/PYTHON-14/debug --task-id 2
 
 ```
 temp/evidence/PYTHON-14/
-  debug/maafw.log                      ← sentry trace logs 拼出来的那次运行日志
-  debug/on_error/2026.10.14-19.20.37.889_EntrustEnterMainLine.png   ← 附件 zip 里的原成员
-  evidence.json                        ← 账目：两道闸门的状态、失败字段、重复行数、写了什么、可复制命令；
-                                          其中 `event.release`（Sentry 那次运行的版本，形如
-                                          `MFA@v2.16.1+MaaAshArms@v1.0.0-beta.61`）会被 `flow --case` 直接
-                                          当作「疑似过时」的版本基线——原生 maafw.log 没有「资源版本」那行，
-                                          同装 MFA 界面日志也不会被下载，所以这是遥测图唯一可靠的版本来源
+  debug/maafw.log                        ← sentry trace logs 拼出来的那次运行日志（issue view 那个事件）
+  debug/on_error/<run_id>/<时间>_<节点>.png  ← **按失败事件分目录**：一个 issue 常有多次失败，
+                                            每次一份 `mfa-task-failure-<run_id>-<task_id>-screenshots.zip`，
+                                            各存进自己的 `run_id/`，互不覆盖
+  evidence.json                          ← 账目：两道闸门的状态、失败字段、重复行数、写了什么、可复制命令；
+                                            其中 `event.release`（Sentry 那次运行的版本，形如
+                                            `MFA@v2.16.1+MaaAshArms@v1.0.0-beta.61`）会被 `flow --case` 直接
+                                            当作「疑似过时」的版本基线——原生 maafw.log 没有「资源版本」那行，
+                                            同装 MFA 界面日志也不会被下载，所以这是遥测图唯一可靠的版本来源；
+                                            `events[]` 逐条记 run_id / event.id / received / task_id / 图
 ```
+
+**现场图按失败事件逐个取，不是只取一个事件。** 一个 issue 常有多次失败、每次一份 on_error 包
+（实测同一个 issue 有 3 份，其中同一任务 `200000003` 在 10-31 与 11-02 两次运行里都失败）；
+`sentry issue view` 只回**一个**事件，只查它就会永远只有那一份。工具先用 `sentry issue events` 枚举
+最近 `--max-events`（默认 10）个事件，再逐个查 `api …/events/<eid>/attachments/`，有图的下到
+`debug/on_error/<run_id>/`；已下过的 run 跳过（增量，不重下、也不覆盖别的事件）。
+只画某一次失败就 `--on-error temp/evidence/<issue>/debug/on_error/<run_id>`。
 
 ```bash
 python -m tools.sentry.cli evidence [--period 7d] [--limit 20] [--issue PYTHON-14] [--event <event-id>]
     [--outdir temp/evidence] [--list] [--force] [--no-images] [--no-log]
-    [--log-limit 1000] [--sort newest|oldest] [--keep-duplicates] [--verbose] [--timeout 180]
+    [--log-limit 1000] [--sort newest|oldest] [--keep-duplicates] [--max-events 10]
+    [--verbose] [--timeout 180]
 ```
 
 三个把路子堵住的 CLI 事实（都实测过，工具已经绕开）：
@@ -157,18 +168,24 @@ python -m tools.sentry.cli evidence [--period 7d] [--limit 20] [--issue PYTHON-1
 - **批次之间有逐字节相同的行**（实测 5951 行里 1366 行重复，其中 737 行是 maafw 原生行：24 条 `node done` 里有 6 条是重复的）。
   来源是 MFA 续写日志时带的 `LogPreludeBytes = 64 KB` 前缀重叠，不去重会把图上未命中次数灌水 → 默认去重并记账，`--keep-duplicates` 可关。
 
-**附件里只有 `debug/on_error/*.png`，没有 `maafw.log`**——而 `flow --case <目录>` 要求根下有 `maafw.log`，
-所以直接解包喂 `--case` 会报"找不到 maafw.log"。工具把 `trace logs` 写进 `debug/maafw.log`，这条目录才成为完整证据包。
+**附件 zip 里只有 `debug/on_error/*.png`，没有 `maafw.log`**——而 `flow --case <目录>` 要求根下有 `maafw.log`，
+所以直接解包喂 `--case` 会报"找不到 maafw.log"。工具把 `trace logs` 写进 `debug/maafw.log`，这条目录才成为完整证据包
+（现场图则按 run 写进 `debug/on_error/<run_id>/`，绘图侧递归扫目录，默认就能认）。
+**单份附件下载失败不废整包**：SSL 中断之类只跳过那一份、记进 `attachment_failed` 并给出提示，
+日志和其它事件的现场图照常落盘（以前一个附件失败会把整包带没）。
 同一条 trace 可能同时挂着多个 issue（实测 PYTHON-14 与 PYTHON-16 就是同一趟运行的两次失败），
 日志是**整个运行**的，所以标记可能来自同一运行里的别的任务——按 `--task-id <failure.task_id>` 才只看本次那个。
 
 `evidence.json` 里还有 `failure.*` 那组字段（`task_id` / `node_id` / `message` / `duration_ms`）：**这就是
 "失败卡在哪个节点"**——spans 上的 `failure.node` 恒为空（见「功能取舍」），但事件 context 里有，工具顺手记了下来。
 
-**`evidence.json` 记的是"这个目录里有什么"，不是"本次下了什么"**（`written` 与 `hints` 都按这个口径）：
+**`evidence.json` 记的是"这个目录里有什么"，不是"本次下了什么"**（`written` / `events` / `hints` 都按这个口径）：
 工具不删旧文件，所以 `--force --no-log` / `--force --no-images` 只重下一半时，上一趟的
-`debug/maafw.log`、`debug/on_error/*.png` 仍在原地，清单会把它们一并记上并注明"原有的"。
+`debug/maafw.log`、`debug/on_error/<run_id>/*.png` 仍在原地，清单会把它们一并记上并注明"原有的"。
 换句话说，**照着清单里的 `hints` 走就一定画得出来**——清单说没有日志时才是真的没有。
+
+**复用旧包时会回显它属于哪个事件**（`提示：已存在（--force 重新下载）（event.id=…，received=…，release=…）`）：
+以前只打一句"已存在"，照旧包出图却不知道画的是哪一次（踩过的坑）。事件对不上时不会复用日志，会重新取。
 
 ## Explore CSV：浏览器导出的那份怎么用
 
