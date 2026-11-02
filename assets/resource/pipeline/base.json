@@ -100,23 +100,33 @@
     /* -------------------- 分支 -------------------- */
     // INFO 错误弹窗
     "BaseBranchError": {
-        "desc": "捕获任何确认按钮 点击确认并输出日志 需要注意不要和任务冲突",
+        "desc": "捕获错误并尝试回正 然后重置 BaseErrorNext 计数器",
+        "recognition": "Or",
+        "any_of": [
+            "BaseClickErrorConfirm",
+            "BaseClickRewardTap",
+            "BaseStopServerMaintenance"
+        ],
+        "action": "Custom",
+        "custom_action": "BaseBranchErrorAct",
+        "next": [] // agent 侧覆写
+    },
+    // 点击确认弹窗
+    "BaseClickErrorConfirm": {
+        "desc": "[end] 输出日志 点击确认按钮",
         "recognition": "And",
         "all_of": [
-            "BaseProbeConfirm"
+            "BaseProbeConfirm",
+            "BaseProbeErrorConfirm"
         ],
-        "next": [
-            "BaseStopServerMaintenance",
-            "BaseClickErrorConfirm"
-        ]
-    },
-    "BaseClickErrorConfirm": {
-        "desc": "[end] 点击确认按钮 并输出日志",
-        "recognition": "Custom",
-        "custom_recognition": "BaseClickErrorConfirmReco",
-        "target": "BaseBranchError",
+        "box_index": 0,
         "action": "Click",
         "post_wait_freezes": 1000
+    },
+    "BaseProbeErrorConfirm": {
+        "desc": "[end] 输出弹窗日志",
+        "recognition": "Custom",
+        "custom_recognition": "BaseClickErrorConfirmReco"
     },
     /* -------------------- 动作-移动 -------------------- */
     // INFO 移动系列 起点是物品的话无法滑动，详见 TrainMoveToBottom

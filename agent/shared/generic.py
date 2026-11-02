@@ -130,6 +130,37 @@ class BaseTaskStopErrorAct(CustomAction):
         return False
 
 
+#
+@AgentServer.custom_action("BaseBranchErrorAct")
+class BaseBranchErrorAct(CustomAction):
+    def run(
+        self, context: Context, argv: CustomAction.RunArg
+    ) -> CustomAction.RunResult | bool:
+        subs = (argv.reco_detail.all_results or [None])[0]
+        subs = getattr(subs, "sub_results", None) or []
+        hit = next((s for s in subs if s.hit), None)
+        if hit is None:
+            log.ferror(f"{argv.node_name} 获取子识别失败，无法执行动作")
+            return False
+
+        r = context.run_action(hit.name, box=hit.box or (0, 0, 0, 0))
+        if not bool(r and r.success):
+            log.ferror(f"{argv.node_name} 执行动作 {hit.name} 失败")
+            return False
+
+        r2 = context.override_next(
+            argv.node_name, (context.get_node_data(hit.name) or {}).get("next", [])
+        )
+        if not r2:
+            log.warn(f"{argv.node_name} 覆盖 next 失败")
+            return False
+
+        reset_error_next_father(
+            argv.task_detail.task_id, argv.node_name, lambda t: True
+        )
+        return True
+
+
 # ----- BaseErrorNext -----
 
 # 当前任务id
