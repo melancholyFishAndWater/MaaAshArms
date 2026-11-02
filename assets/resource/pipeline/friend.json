@@ -29,7 +29,8 @@
             "BaseErrorNext",
             "FriendEnterHome",
             "[JumpBack]FriendClickButtonLight",
-            "FriendProbeButtonDart"
+            "FriendProbeButtonDart",
+            "BaseTaskStop"
         ]
     },
     "FriendClickButtonLight": {
