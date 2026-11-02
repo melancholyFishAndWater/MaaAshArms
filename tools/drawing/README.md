@@ -64,7 +64,9 @@ python tools/drawing/flow_cases.py --case log_20261014-part01.zip log_20261014-p
 python tools/drawing/flow_cases.py --case D:/MaaAshArms/debug --list-cases
 #    目录里只有轮转后的 maafw.bak.*.log 也认（取 mtime 最新）；
 #    截图/现场图默认取 <case>/vision、<case>/on_error；传单份日志文件时取日志所在目录的那两个
-#    子目录，也可用 --vision / --on-error 指定别处
+#    子目录，也可用 --vision / --on-error 指定别处；
+#    `on_error/` 会递归扫子目录：遥测证据包把每次失败的现场图放在 on_error/<run_id>/，
+#    只画某一次就 --on-error <case>/on_error/<run_id>（不指定则按节点名+时间就近匹配）
 python tools/drawing/flow_cases.py --case D:/MaaAshArms/debug --vision D:/MaaAshArms/vision --task-id 200000118
 
 # 3. 白板图片转 png 并改写引用
