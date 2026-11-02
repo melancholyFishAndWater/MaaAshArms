@@ -17,6 +17,7 @@
             "[JumpBack]BaseReturnHome"
         ]
     },
+    /* -------------------- 子入口 -------------------- */
     // INFO 现在委派可领取
     "EntrustRewardableNow": {
         "desc": "[jp][once] 如果现在委派能领取奖励则领取",
@@ -24,7 +25,6 @@
         "recognition": "Custom",
         "custom_recognition": "EntrustRewardableNowReco",
         "next": [
-            "BaseErrorNext",
             "EntrustClickRewardLevel",
             "EntrustEnterRewardStage",
             "[JumpBack]BaseBranchError",
@@ -34,7 +34,6 @@
             "EntrustStopRewardTimeout"
         ]
     },
-    /* -------------------- 子入口 -------------------- */
     // INFO 委派将来可领取
     "EntrustRewardableLate": {
         "desc": "[jp][once] 如果已经委派且还没领取奖励 则等待直到可领取",
