@@ -38,6 +38,7 @@ import zipfile
 from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 # 兄弟模块与本包都在同一目录：先把这里加进 sys.path，`from flow_from_log import ...` 才成立。
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -49,6 +50,8 @@ if str(REPO_ROOT) not in sys.path:
 from flow_from_log import (
     DEFAULT_OUTDIR,
     RENDERER_VERSION,
+    VERSION_SOURCE_CLI,
+    VERSION_SOURCE_TELEMETRY,
     FlowOptions,
     FlowResult,
     MediaResolver,
@@ -61,8 +64,72 @@ from flow_from_log import (
 
 MANIFEST_NAME = "manifest.json"
 LOG_NAMES = ("maafw.log", "maa.log")
+# 轮转后的日志（`maafw.bak.2026.11.02-08.57.51.341.log`）：MFA 每次启动轮转一次，名字里带时间戳。
+# **只在没有确切名字时**才认，多份取 mtime 最新的那份——别把 `maafw.log` 本身漏给这个兜底。
+ROTATED_LOG_RE = re.compile(r"^(?:maafw|maa)[\w.\-]*\.log$", re.IGNORECASE)
 # MFA 分卷命名：`<名字>-partNN.zip`；分组时按去掉这一段的名字归并
 PART_RE = re.compile(r"-part\d+$", re.IGNORECASE)
+# 遥测 release（Sentry 事件字段）：`MFA@v2.16.1+MaaAshArms@v1.0.0-beta.38`
+# 取最后一个 `vX.Y.Z` 段——拼接格式下它永远是本仓库的资源版本，前面的 MFA 版本段忽略。
+RELEASE_VERSION_RE = re.compile(r"v[0-9][0-9A-Za-z.\-]*")
+
+
+def resource_version_from_release(release: str) -> str | None:
+    """从遥测 release 字符串里抠出资源版本（`v1.0.0-beta.38`）。
+
+    与 `tools/sentry/report_common.version_label` 同一结论，但这里只依赖正则、不依赖 sentry 包，
+    让 `flow_cases` 不必反向 import `tools.sentry`。拿不到返回 None。
+    """
+    if not release:
+        return None
+    matches = RELEASE_VERSION_RE.findall(release)
+    return matches[-1] if matches else None
+
+
+def _version_from_evidence(case: Case) -> str | None:
+    """遥测证据包（Sentry 拉下来的）里记着那次运行的 release：`evidence.json` 的 `event.release`。
+
+    比从 maafw.log 抠「资源版本」可靠——原生 maafw.log 根本没有那行，同装 MFA 界面日志
+    也不会被 `evidence` 下载进来。证据包目录按 issue 短号建（`temp/evidence/<SHORT-ID>/`），
+    所以 `debug/` 的上一级就是 evidence.json 所在目录。
+    """
+    if not case.root:
+        return None
+    parent = os.path.dirname(case.root)
+    cands: list[str] = []
+    if ISSUE_RE.match(os.path.basename(parent) or ""):
+        cands.append(os.path.join(parent, "evidence.json"))
+    elif ISSUE_RE.match(os.path.basename(case.root) or ""):
+        cands.append(os.path.join(case.root, "evidence.json"))
+    for path in cands:
+        if not os.path.isfile(path):
+            continue
+        try:
+            data = json.loads(Path(path).read_text(encoding="utf-8", errors="replace"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        rel = ((data.get("event") or {}).get("release")) or ""
+        return resource_version_from_release(rel)
+    return None
+
+
+def _pick_log(directory: str) -> str | None:
+    """目录里的日志文件：先认确切名字（`LOG_NAMES` 顺序），没有再认轮转名（取 mtime 最新）。
+
+    实测用户目录里只有轮转后的 `maafw.bak.2026.11.02-08.57.51.341.log`，按确切名字找会报
+    "没找到带日志的证据包"——明明有日志。轮转名归一主多份时按 mtime 排序，最新的那份才是
+    当前这一次运行。
+    """
+    for name in LOG_NAMES:
+        cand = os.path.join(directory, name)
+        if os.path.isfile(cand):
+            return cand
+    rotated = [
+        os.path.join(directory, name)
+        for name in os.listdir(directory)
+        if ROTATED_LOG_RE.match(name) and os.path.isfile(os.path.join(directory, name))
+    ]
+    return max(rotated, key=os.path.getmtime) if rotated else None
 
 
 @dataclass
@@ -98,17 +165,28 @@ class Case:
                 continue
         return MediaResolver(members=entries) if entries else None
 
+    def _media_dir(self, name: str) -> str | None:
+        """媒体子目录：目录 case 用 `<root>/<name>`；**单个日志文件**用日志所在目录的 `<name>/`。
+
+        传单个日志文件时 `root` 为空，原来直接落到 `_zip_subdir()`（没有归档 → None），
+        于是"能出图但一张截图都不贴"（实测 184 KB vs 带图的 731 KB）。日志旁边就是
+        `vision/` / `on_error/`，与目录 case 同一个约定。
+        """
+        base = self.root or (
+            os.path.dirname(self.log_path) if self.log_path else None
+        )
+        if not base:
+            return None
+        sub = os.path.join(base, name)
+        return sub if os.path.isdir(sub) else None
+
     def vision(self):
-        if self.root:
-            sub = os.path.join(self.root, "vision")
-            return MediaResolver(sub) if os.path.isdir(sub) else None
-        return self._zip_subdir("vision")
+        sub = self._media_dir("vision")
+        return MediaResolver(sub) if sub else self._zip_subdir("vision")
 
     def on_error(self):
-        if self.root:
-            sub = os.path.join(self.root, "on_error")
-            return MediaResolver(sub) if os.path.isdir(sub) else None
-        return self._zip_subdir("on_error")
+        sub = self._media_dir("on_error")
+        return MediaResolver(sub) if sub else self._zip_subdir("on_error")
 
     def describe(self) -> str:
         if self.root:
@@ -172,17 +250,16 @@ def load_case(case_arg: list[str]) -> Case:
 
     if dirs:
         root = dirs[0]
-        for name in LOG_NAMES:
-            cand = os.path.join(root, name)
-            if os.path.isfile(cand):
-                return Case(
-                    label=os.path.basename(os.path.normpath(root)) or "case",
-                    log_path=cand,
-                    root=root,
-                )
+        log = _pick_log(root)
+        if log:
+            return Case(
+                label=os.path.basename(os.path.normpath(root)) or "case",
+                log_path=log,
+                root=root,
+            )
         raise FileNotFoundError(
-            f"{root} 下找不到 {' / '.join(LOG_NAMES)}。给它 debug/ 那一层，"
-            "或直接把日志文件路径当 --case 传。"
+            f"{root} 下找不到 {' / '.join(LOG_NAMES)}（也没有轮转后的 {root}/maafw*.log）。"
+            "给它 debug/ 那一层，或直接把日志文件路径当 --case 传。"
         )
 
     if zips:
@@ -218,13 +295,13 @@ def discover_cases(root: str) -> list[Case]:
     found: list[Case] = []
     if not os.path.isdir(root):
         return found
-    if any(os.path.isfile(os.path.join(root, n)) for n in LOG_NAMES):
+    if _pick_log(root):
         found.append(load_case([root]))
         return found
     for name in sorted(os.listdir(root)):
         sub = os.path.join(root, name)
         if os.path.isdir(sub):
-            if any(os.path.isfile(os.path.join(sub, n)) for n in LOG_NAMES):
+            if _pick_log(sub):
                 found.append(load_case([sub]))
         elif os.path.isfile(sub) and _is_zip(sub):
             try:
@@ -461,6 +538,8 @@ def run_case(
     mermaid: bool,
     force: bool,
     manifest: dict,
+    vision_override: Any = None,
+    on_error_override: Any = None,
 ) -> FlowResult | None:
     """渲染一个 case；命中 manifest 且产物还在就跳过（幂等）。
 
@@ -469,11 +548,25 @@ def run_case(
     manifest 记到新名字上。幂等检查因此要同时认普通名与带后缀的名——上一轮画出来的
     是哪一个，这一轮还不知道。
     """
-    name = out_filename(case, options, outdir, manifest)
-    vision, on_error = case.vision(), case.on_error()
+    # 资源版本基线：命令行 --version 优先；否则从遥测证据包 evidence.json 的 release 取
+    # （原生 maafw.log 没有「资源版本」那行，同装 MFA 界日志也不会被下载进来）。
+    version, version_source = options.version, options.version_source
+    if version is None:
+        found = _version_from_evidence(case)
+        if found:
+            version, version_source = found, VERSION_SOURCE_TELEMETRY
+    case_options = (
+        replace(options, version=version, version_source=version_source)
+        if (version != options.version or version_source != options.version_source)
+        else options
+    )
+
+    name = out_filename(case, case_options, outdir, manifest)
+    vision = vision_override if vision_override is not None else case.vision()
+    on_error = on_error_override if on_error_override is not None else case.on_error()
     fingerprint = {
         "log": log_digest(case),
-        "options": options.summary(),
+        "options": case_options.summary(),
         "source": case.describe(),
         "has_vision": bool(vision),
         "has_on_error": bool(on_error),
@@ -498,7 +591,7 @@ def run_case(
         vision=vision,
         on_error=on_error,
         out=target,
-        options=options,
+        options=case_options,
         mermaid=mermaid,
     )
     assert isinstance(result, FlowResult)
@@ -530,7 +623,7 @@ def run_case(
         "truncated_start": result.truncated_start,
         "derived_from": result.derived_from,
         "out_of_order": result.out_of_order,
-        "notes": list(result.notes),
+        "notes": [n.text for n in result.notes],
         "rendered_at": datetime.now().isoformat(timespec="seconds"),
         "stale": _stale_record(result.stale),
     }
@@ -555,7 +648,7 @@ def run_case(
             file=sys.stderr,
         )
     for note in result.notes:
-        print(f"提示：{note}", file=sys.stderr)
+        print(f"提示：{note.text}", file=sys.stderr)
     if case.bad_packages:
         print(
             f"警告：以下卷读不了，结果可能不完整：{case.bad_packages}", file=sys.stderr
@@ -576,11 +669,28 @@ def create_argument_parser(prog: str | None = None) -> argparse.ArgumentParser:
         help="证据包：一个 debug 目录、一个/多个归档（多卷一起给）、或一份日志文件",
     )
     ap.add_argument(
+        "--vision",
+        default=None,
+        help="截图目录（默认取 `<case>/vision`；传单个日志文件时取日志所在目录的 `vision/`）",
+    )
+    ap.add_argument(
+        "--on-error",
+        dest="on_error",
+        default=None,
+        help="on_error 现场图目录（默认取 `<case>/on_error`，单日志文件同理取日志所在目录）",
+    )
+    ap.add_argument(
         "--outdir", default=DEFAULT_OUTDIR, help=f"输出目录（默认 {DEFAULT_OUTDIR}）"
     )
     ap.add_argument("--from", dest="t_from", default=None, help="起始时间")
     ap.add_argument("--to", dest="t_to", default=None, help="结束时间")
     ap.add_argument("--task-id", type=int, default=None, help="只看某个 task_id")
+    ap.add_argument(
+        "--pid",
+        default=None,
+        help="只看某个进程（Px<进程号>）。一份 maafw.log 里常有两个进程复用同一 task_id，"
+        "只给 --task-id 会把两趟混进同一张图，步骤数对不上就是它",
+    )
     ap.add_argument("--cut-on", default=None, help="手动指定分轮节点（逗号分隔）")
     ap.add_argument(
         "--max-rounds", type=int, default=40, help="最多画多少轮（默认 40）"
@@ -608,6 +718,12 @@ def create_argument_parser(prog: str | None = None) -> argparse.ArgumentParser:
         help="连续几轮同形才合并（默认 2；0 或 1 等于关闭）",
     )
     ap.add_argument("--mermaid", action="store_true", help="额外输出 .mmd")
+    ap.add_argument(
+        "--version",
+        default=None,
+        help="手动指定资源版本（vX.Y.Z）作为「疑似过时」的基线；不传时遥测证据包会自己从 "
+        "evidence.json 的 release 取，本地日志从「资源版本：vX.Y.Z」或同装 MFA 日志取",
+    )
     ap.add_argument("--force", action="store_true", help="忽略 manifest，强制重画")
     ap.add_argument(
         "--list-cases", action="store_true", help="只列出发现的证据包，不画"
@@ -639,6 +755,7 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
         t_from=t_from,
         t_to=t_to,
         task_id=args.task_id,
+        px=args.pid,
         cut_on=args.cut_on,
         max_rounds=args.max_rounds,
         collapse=args.collapse,
@@ -646,14 +763,12 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
         parents=args.parents,
         overlay=args.overlay,
         overlay_min=args.overlay_min,
+        version=args.version,
+        version_source=VERSION_SOURCE_CLI if args.version else "",
     )
 
     single = args.case[0]
-    whole_dir = (
-        len(args.case) == 1
-        and os.path.isdir(single)
-        and not any(os.path.isfile(os.path.join(single, n)) for n in LOG_NAMES)
-    )
+    whole_dir = len(args.case) == 1 and os.path.isdir(single) and not _pick_log(single)
     try:
         cases = discover_cases(single) if whole_dir else [load_case(args.case)]
     except (FileNotFoundError, ValueError) as exc:
@@ -702,6 +817,8 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
                 mermaid=args.mermaid,
                 force=args.force,
                 manifest=manifest,
+                vision_override=args.vision,
+                on_error_override=args.on_error,
             )
         except (FileNotFoundError, ValueError, OSError) as exc:
             failed += 1

@@ -90,7 +90,16 @@ from typing import Any, ClassVar
 # 14：补回 `Node.Action.Failed`——它比框架随后补的 `node not completed` 早且精确（带动作名、
 #     action_id、box），单独画一类失败框；动作没派发（`action=""`、`action_id=0`）时命中框里
 #     也补「动作未派发」，否则 `detail()` 的 `if self.action` 会把失败整段吞掉。
-RENDERER_VERSION = 14
+# 15：「疑似过时」的基线版本改取日志里的 `资源版本：vX`（MFA 自己报的），安装目录名只作兜底
+#     并标"仅参考"——目录名是用户机器上的文件夹名，可以被改（实测目录名 beta.42 / 资源版本 beta.58）。
+# 16：不再拿安装目录名当版本（更新资源后一定是错的），判不出来就照实说；第二行注记按类型上色、
+#     一条一行，判出资源版本时在顶部标出来。
+# 17：原生 maafw.log 里没有 `资源版本`（那是 MFAAvalonia 写的），取不到时改去同装
+#     `logs/log-*.log` 借，并按本次日志起点挑"那一刻生效"的那条（一份日志里可能先后两个版本）。
+# 18：资源版本来源再加"遥测证据包"——从 `evidence.json` 的 `release`（Sentry 事件字段）取，
+#     比从 maafw.log 里抠更稳（原生 maafw.log 根本没有那行，同装 MFA 界面日志也不会被下载）。
+#     同时支持 `--version` 手动指定基线。
+RENDERER_VERSION = 18
 
 # 框里最多列几个候选，多的折成"另 N 项"（`--list` 不受这个限制）。
 # 默认只列 2 个：父节点名字 + 本次真跑的那个候选是这一行最要紧的两件事，
@@ -1551,38 +1560,26 @@ def text_width(font: Any, text: str) -> float:
         return len(text) * 10.0
 
 
-def _wrap_notes(notes: list[str], font, maxw: int) -> list[str]:
-    """把诊断注记折成若干行。
+def _note_lines(notes: list[Note], font, maxw: int) -> list[tuple[str, str]]:
+    """把诊断注记排成若干行，返回 `[(行文本, kind)]`。
 
-    先按注记边界换行、单条本身超宽再按字符硬折：这些字是"这份图不是完整过程"的前提，
-    超出画布右边被裁掉就等于没说。
+    **一条注记独占一行**（超宽就在自身内硬折，续行沿用同一个 kind）：这样每一行只有一种
+    颜色，"哪句是前提、哪句是警告"一眼能分开。原来把多条塞进一行用 `|` 隔开，全是同一个颜色。
     """
     if not notes:
         return []
-    sep = "   |   "
-    packed: list[str] = []
-    cur = ""
-    for note in notes:
-        piece = f"注：{note}" if not cur else note
-        cand = f"{cur}{sep}{piece}" if cur else piece
-        if not cur or text_width(font, cand) <= maxw:
-            cur = cand
-            continue
-        packed.append(cur)
-        cur = piece
-    if cur:
-        packed.append(cur)
-
-    lines: list[str] = []
-    for line in packed:
-        while text_width(font, line) > maxw and len(line) > 1:
-            cut = len(line) - 1
-            while cut > 1 and text_width(font, line[:cut]) > maxw:
+    out: list[tuple[str, str]] = []
+    for idx, note in enumerate(notes):
+        text = ("注：" if idx == 0 else "　　") + note.text
+        while text and text_width(font, text) > maxw:
+            cut = len(text) - 1
+            while cut > 1 and text_width(font, text[:cut]) > maxw:
                 cut -= 1
-            lines.append(line[:cut])
-            line = "    " + line[cut:]
-        lines.append(line)
-    return [line for line in lines if line.strip()]
+            out.append((text[:cut], note.kind))
+            text = "　　　　" + text[cut:]
+        if text.strip():
+            out.append((text, note.kind))
+    return out
 
 
 PALETTE = {
@@ -1613,13 +1610,22 @@ PARENT_COLORS: tuple[
 # 节点是否"疑似过时"：日志所属版本之后，该节点所在模块有没有提交
 # --------------------------------------------------------------------------- #
 
-# 安装目录名里带版本号：`MaaAshArms-win-x86_64-v1.0.0-beta.42`。日志头部那行
-# `Working E:/.../MaaAshArms-win-x86_64-v1.0.0-beta.42` 就是这么写的——遥测附件只带
-# 日志尾部，这份日志里常常**没有**版本号（实测 PYTHON-1P / PYTHON-24 就取不到），
-# 那时整项检查做不了（`StaleCheck.reason` 会说清原因，不静默跳过）。
-INSTALL_VERSION_RE = re.compile(
-    r"MaaAshArms-[A-Za-z0-9_]+-[A-Za-z0-9_]+-(v[0-9][0-9A-Za-z.\-]*)"
-)
+# **资源版本**是唯一可信来源：MFA 日志里那行 `[cfg=Default] 资源版本：v1.0.0-beta.58`。
+# **不拿安装目录名当版本**：正常安装目录本来就不带版本；带了也是装机时的名字，更新资源后
+# 只会是错的（实测同一份日志目录名 `beta.42`、资源版本 `beta.58`）。判不出来就照实说，
+# 不猜——猜错的基线会把几个月前的重构全标成"疑似过时"（2026-11-02 用户两次反馈）。
+RESOURCE_VERSION_RE = re.compile(r"资源版本[:：]\s*(v[0-9][0-9A-Za-z.\-]*)")
+# 日志行首的时间戳（`[2026-11-02 08:38:15.973]`）：判断"这条资源版本是什么时候报的"要用。
+_LINE_TS_RE = re.compile(r"^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3})\]")
+# MFA 的界面日志文件名：`log-20261102.log`。资源版本只写在它里面（原生 maafw.log 没有）。
+MFA_LOG_NAME_RE = re.compile(r"^log-\d{8}\.log$", re.IGNORECASE)
+# 版本从哪来：日志自己写的 / 同装 MFA 界面日志里借的（后者要在图注里说明，读图的人才不疑惑）
+VERSION_SOURCE_LOG = "日志"
+VERSION_SOURCE_MFA_LOG = "MFA日志"
+# 遥测证据包：release 写在 evidence.json 里（Sentry 事件字段），不是从 maafw.log 抠的
+VERSION_SOURCE_TELEMETRY = "遥测"
+# 用 --version 手动指定基线
+VERSION_SOURCE_CLI = "手动指定"
 
 
 @dataclass(frozen=True)
@@ -1640,11 +1646,13 @@ class StaleCheck:
     人要照它说的去补信息，不能当成"没有过时节点"。
     """
 
-    version: str = ""  # 日志所属版本（v1.0.0-beta.42）
+    version: str = ""  # 日志所属资源版本（v1.0.0-beta.58）
     tag: str = ""  # 对应的 git tag
     nodes: list[StaleNode] = field(default_factory=list)
     missing: list[str] = field(default_factory=list)  # 当前 pipeline 里已不存在的节点名
     reason: str = ""  # 非空 = 检查没做成的原因
+    # 版本是从哪来的：`日志`（自己写的）或 `MFA日志`（同装 logs/log-*.log 里借的）
+    source: str = ""
 
     @property
     def ok(self) -> bool:
@@ -1669,10 +1677,30 @@ def _git(repo: Path, *args: str) -> tuple[int, str]:
     return proc.returncode, proc.stdout
 
 
-def log_version(text: str) -> str | None:
-    """从日志正文里取版本号（`v1.0.0-beta.42` 那种），取不到返回 None。"""
-    m = INSTALL_VERSION_RE.search(text)
+def resource_version(text: str) -> str | None:
+    """从一行日志里取**资源版本**（`资源版本：v1.0.0-beta.58`），取不到返回 None。
+
+    这是 MFA 自己报的、与资源包对得上的版本。安装目录名**不作来源**（见上面常量的注释）。
+    """
+    m = RESOURCE_VERSION_RE.search(text)
     return m.group(1) if m else None
+
+
+def _version_marks(lines) -> list[tuple[datetime, str]]:
+    """`[(行首时间, 资源版本)]`：只收"有行首时间戳、也有资源版本"的行。
+
+    一份日志里可能出现**多条**（实测 `log-20261102.log` 里 08:38:15 是 beta.58、08:38:54
+    更新完资源后变成 beta.61）。调用方按时间挑，不要一律取第一条。
+    """
+    out: list[tuple[datetime, str]] = []
+    for raw in lines:
+        ver = resource_version(raw)
+        if not ver:
+            continue
+        m = _LINE_TS_RE.match(raw)
+        if m:
+            out.append((parse_ts(m.group(1)), ver))
+    return out
 
 
 def _strip_jsonc(text: str) -> str:
@@ -1796,14 +1824,16 @@ def main_last_commit(repo: Path, tag: str, module: str) -> str:
 
 
 def check_stale_nodes(
-    repo: Path, node_names: set[str], version: str | None
+    repo: Path, node_names: set[str], version: str | None, source: str = ""
 ) -> StaleCheck:
     """查这批节点里哪些"疑似过时"。
 
     口径（**只标疑似，不判断是否真的过时**）：
 
-    - 版本取自日志里的安装目录名（`v1.0.0-beta.42`），取不到就查不了——
-      `reason` 写明"日志里没有版本号"，不是"没有过时节点"；
+    - 版本只认 **`资源版本：vX.Y.Z`**（MFA 自己报的，与资源包对得上）：优先取日志自己的，
+      没有就从同装 `logs/log-*.log` 借（`source` 记来源）。**不看安装目录名**——正常安装目录
+      不带版本，带了也是装机时的旧名字（更新资源后就是错的）。取不到就查不了，`reason` 写明
+      原因，不是"没有过时节点"；
     - 节点名在**当前** `assets/resource/pipeline/` 里找不到 → 记进 `missing`
       （这是"已被改名或删除"的事实，不是推测）；
     - 找得到 → 拿它**在 `vX.Y.Z` 那一刻的定义**和**现在的定义**逐字段比：
@@ -1814,17 +1844,20 @@ def check_stale_nodes(
     """
     if not version:
         return StaleCheck(
-            reason="日志里没有版本号（安装目录名形如 MaaAshArms-win-x86_64-v1.0.0-beta.42），"
-            "无法确定「之后」的起点"
+            reason="日志和同装的 MFA 日志（logs/log-*.log）里都没有「资源版本：vX.Y.Z」，"
+            "判断不了这批资源属于哪个版本，跳过「疑似过时」检查"
         )
     code, tags = _git(repo, "tag", "--list", version)
     if code != 0:
         return StaleCheck(
-            version=version, reason="不是 git 仓库或 git 不可用，查不了提交历史"
+            version=version,
+            source=source,
+            reason="不是 git 仓库或 git 不可用，查不了提交历史",
         )
     if version not in tags.split():
         return StaleCheck(
             version=version,
+            source=source,
             reason=f"本地没有 {version} 这个 tag（先 git fetch --tags），"
             "查不了该版本之后的提交",
         )
@@ -1842,7 +1875,7 @@ def check_stale_nodes(
         if isinstance(data, dict):
             now[module] = {k: v for k, v in data.items() if isinstance(v, dict)}
 
-    out = StaleCheck(version=version, tag=version)
+    out = StaleCheck(version=version, tag=version, source=source)
     for name in sorted(node_names):
         module = owner.get(name)
         if module is None:
@@ -1862,21 +1895,65 @@ def check_stale_nodes(
     return out
 
 
-def _log_version_of(log: Any) -> str | None:
-    """从日志正文里找版本号（安装目录名那种）。
+def _sibling_mfa_logs(log: Any) -> list[str]:
+    """找同一套安装里的 MFA 界面日志（`logs/log-YYYYMMDD.log`）。
 
-    读取整份日志：版本号出现在头部 `Working E:/.../MaaAshArms-win-x86_64-v1.0.0-beta.42`
-    那一行，而窗口过滤之后它可能不在 `parsed` 里。读失败一律返回 None，交给
-    `check_stale_nodes` 写明"日志里没有版本号"。
+    原生 `debug/maafw.log` 里**没有** `资源版本` 行——那是 MFAAvalonia 写的，只进它自己的
+    `logs/log-*.log`。安装布局是 `<根>\\debug\\maafw.log` + `<根>\\logs\\log-*.log`，
+    所以按"日志所在目录"和"它的上一级"各自找一次 `logs/`。
+    """
+    path = log if isinstance(log, str) else getattr(log, "name", None)
+    if not isinstance(path, str) or "\n" in path or not os.path.isfile(path):
+        return []
+    here = os.path.dirname(os.path.abspath(path))
+    out: list[str] = []
+    for logdir in (os.path.join(here, "logs"), os.path.join(os.path.dirname(here), "logs")):
+        if not os.path.isdir(logdir):
+            continue
+        for name in sorted(os.listdir(logdir)):
+            if MFA_LOG_NAME_RE.match(name):
+                out.append(os.path.join(logdir, name))
+    return out
+
+
+def _version_from_siblings(log: Any, since: datetime | None) -> str | None:
+    """从同装的 MFA 界面日志里取**那一刻**生效的资源版本。
+
+    取 `since`（这段内容的末尾时刻）之前最后一条；都在它之后（日志比 MFA 日志还早）
+    就取最早的一条。判不出来返回 None。
+    """
+    marks: list[tuple[datetime, str]] = []
+    for path in _sibling_mfa_logs(log):
+        try:
+            marks += _version_marks(_open_log_lines(path))
+        except OSError:
+            continue
+    if not marks:
+        return None
+    marks.sort(key=lambda m: m[0])
+    if since is None:
+        return marks[-1][1]
+    before = [m for m in marks if m[0] <= since]
+    return (before[-1] if before else marks[0])[1]
+
+
+def _log_version_of(log: Any, since: datetime | None = None) -> tuple[str, str] | None:
+    """找这批资源所属的**资源版本**，返回 `(版本, 来源)`；找不到返回 None。
+
+    来源：`日志`（日志自己写了 `资源版本`，取最后一条——更新过资源就以更新后的为准）或
+    `MFA日志`（从同装的 `logs/log-*.log` 里按 `since` 挑）。
+
+    **不看安装目录名**：正常安装目录不带版本，带了也是装机时的旧名字（更新资源后就是错的）。
+    判不出来就说判不出来——猜一个错基线比不查更糟。
     """
     try:
-        for raw in _open_log_lines(log):
-            found = log_version(raw)
-            if found:
-                return found
+        marks = _version_marks(_open_log_lines(log))
     except (OSError, TypeError):
         return None
-    return None
+    if marks:
+        return marks[-1][1], VERSION_SOURCE_LOG
+    found = _version_from_siblings(log, since)
+    return (found, VERSION_SOURCE_MFA_LOG) if found else None
 
 
 def _apply_stale(check: StaleCheck) -> None:
@@ -2338,7 +2415,7 @@ def draw_flow(parsed: ParsedLog, options: FlowOptions, out_path: str) -> DrawRes
     # 画布宽度只由列数与版式决定，先算出来：诊断注记要在定标题高度之前折行
     width = margin * 2 + max(len(b) for b in bands) * (box_w + gap_x)
     width = max(width, int(900 * options.scale))
-    note_lines = _wrap_notes(options.notes, f_leg, width - margin * 2)
+    note_lines = _note_lines(options.notes, f_leg, width - margin * 2)
     title_h = int(64 * options.scale) + len(note_lines) * int(20 * options.scale)
 
     def box_height_for(ci: int, ri: int) -> int:
@@ -2419,12 +2496,12 @@ def draw_flow(parsed: ParsedLog, options: FlowOptions, out_path: str) -> DrawRes
     d.text((margin, int(40 * options.scale)), sub, font=f_leg, fill=(96, 104, 122))
     # 诊断注记单独一行：由识别记录还原、时间戳已重排、多少条被裁断——这些是读图前提，
     # 挤在副标题里会被一起读过去（也可能超出画布右边被裁掉）
-    for i, note in enumerate(note_lines):
+    for i, (note, kind) in enumerate(note_lines):
         d.text(
             (margin, int(58 * options.scale) + i * int(20 * options.scale)),
             note,
             font=f_leg,
-            fill=(168, 112, 30),
+            fill=NOTE_COLORS.get(kind, NOTE_COLORS["info"]),
         )
 
     # 三种字体共用的截断（画父节点角标时就要用，所以定义在这里，不放在"框"那一段）
@@ -2865,6 +2942,29 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fi
 DEFAULT_OUTDIR = os.path.join(REPO_ROOT, "temp", "flow")
 
 
+@dataclass(frozen=True)
+class Note:
+    """图上第二行的一条诊断注记。
+
+    带 `kind` 是为了**按类型上色**：顶部注记一多，全用一个颜色就读不出哪句是"前提"、
+    哪句是"警告"、哪句只是"这次用的资源版本"。
+    """
+
+    text: str
+    kind: str = "info"  # info | version | stale | agent | derive | time
+
+
+# 注记按类型分色（只用作前景色，浅底上都够对比）。`info` 是默认灰。
+NOTE_COLORS: dict[str, tuple[int, int, int]] = {
+    "info": (96, 104, 122),  # 灰：普通前提说明
+    "version": (30, 110, 70),  # 绿：这次用的资源版本
+    "stale": (168, 112, 30),  # 琥珀：疑似过时 / 记录被裁断
+    "agent": (176, 48, 48),  # 红：agent 缺位
+    "derive": (54, 96, 150),  # 蓝：由识别记录还原
+    "time": (108, 74, 150),  # 紫：时间戳回跳已重排
+}
+
+
 @dataclass
 class FlowOptions:
     """画图参数。默认值与命令行默认值一致，调用方只改需要的项。"""
@@ -2900,13 +3000,18 @@ class FlowOptions:
     # 日志只剩尾部（第一行晚于请求的 --from）：会印在图的副标题上，别省成"完整日志"
     truncated_start: bool = False
     # 诊断注记（由 render_flow 填好并印在图上的第二行）：由识别记录还原、时间戳回跳已重排、
-    # 有多少记录被导出裁断……读图的人必须先知道这些，否则会把图当作完整过程
-    notes: list[str] = field(default_factory=list)
+    # 有多少记录被导出裁断……读图的人必须先知道这些，否则会把图当作完整过程。
+    # 每条带 `kind`，画的时候按类型上色。
+    notes: list[Note] = field(default_factory=list)
     # 节点是否"疑似过时"：日志所属版本之后，该节点所在 pipeline 模块有没有提交。
     # 默认开——这条信息决定"这张图能不能用来判断当前代码"。关掉要显式 --no-stale-check。
     stale_check: bool = True
     # 上面的检查结果（由 render_flow 填好）：图上给节点名加后缀，注记里写清楚口径
     stale: StaleCheck | None = None
+    # 资源版本基线（「疑似过时」比对用）。默认 None = 自动从日志 / 同装 MFA 日志 /
+    # 遥测证据包 evidence.json 取；用 --version 或 flow_cases 从证据包带下来时一并带 version_source 标来源。
+    version: str | None = None
+    version_source: str = ""
     # 版面
     thumbs: bool = True
     thumb_height: int = 132
@@ -2946,7 +3051,7 @@ class FlowResult:
     columns: int = 0  # 图上实际列数（= rounds - 被合并掉的轮数）
     overlay_groups: int = 0  # 合并了多少段（0 = 没有重复可合）
     truncated_start: bool = False  # 日志只剩尾巴：第一行晚于请求的 --from
-    notes: list[str] = field(default_factory=list)  # 与图上第二行相同的诊断注记
+    notes: list[Note] = field(default_factory=list)  # 与图上第二行相同的诊断注记（带 kind）
     derived_from: str = ""  # 非空 = 步骤由识别记录合成（仅事件模式）
     out_of_order: int = 0  # 时间戳回跳的行数（>0 表示已按时间重排）
     stale: StaleCheck | None = None  # 疑似过时的节点（None = 没做这项检查）
@@ -3039,7 +3144,11 @@ def describe_empty_window(parsed: ParsedLog, opts: FlowOptions, source: Any) -> 
                 f"它也不含任何一行日志正文"
             )
         if st.source_kind == "file":
-            return f"文件读到了，但没有一行匹配日志格式（不是 maafw.log？）：{st.source_name}"
+            return (
+                f"文件读到了，但没有一行匹配日志格式（不是 maafw.log？"
+                f"MFA 的 `logs/log-*.log` 只有界面日志、没有 pipeline 执行记录，"
+                f"流程在安装目录的 `debug/maafw.log` 里）：{st.source_name}"
+            )
         return f"入参里没有一行匹配日志格式，不是日志正文：{st.source_name}"
     if st.lines_in_window == 0:
         return (
@@ -3083,7 +3192,7 @@ def nextlist_stats_of(parsed: ParsedLog, task_id: int | None) -> list[NextListSt
 
 def stall_notes(
     parsed: ParsedLog, task_id: int | None, step_names: set[str], limit: int = 2
-) -> list[str]:
+) -> list[Note]:
     """把"卡在派发层"的任务说清楚：某派发者的候选表连续 N 轮一个都没命中。
 
     这是"node done 只有两三步、时间却过了十几秒"那类任务的**唯一可复现证据**——`reco [result=]`
@@ -3091,7 +3200,7 @@ def stall_notes(
 
     只报 `failed >= 2` 的（1 轮无命中是循环推进的正常现象），按没命中轮数取前 `limit` 个。
     """
-    notes: list[str] = []
+    notes: list[Note] = []
     for stat in nextlist_stats_of(parsed, task_id):
         if len(notes) >= limit:
             break
@@ -3100,7 +3209,7 @@ def stall_notes(
         ran = [c for c in stat.real_candidates if c in step_names]
         head = f"{stat.name} 的候选表 {stat.failed} 轮全未命中"
         if stat.real_candidates:
-            shown = " ・ ".join(stat.real_candidates[:4])
+            shown = "、".join(stat.real_candidates[:4])
             more = (
                 f" 另 {len(stat.real_candidates) - 4} 项"
                 if len(stat.real_candidates) > 4
@@ -3110,8 +3219,8 @@ def stall_notes(
         if not ran:
             head += "，一个候选都没跑起来：任务一直停在派发层"
         else:
-            head += f"，跑起来的候选：{' ・ '.join(ran[:4])}"
-        notes.append(head)
+            head += f"，跑起来的候选：{'、'.join(ran[:4])}"
+        notes.append(Note(head, "stale"))
     return notes
 
 
@@ -3171,7 +3280,7 @@ def _agent_gap_of(parsed: ParsedLog, ts: datetime) -> datetime | None:
     return None if present else gap_ts
 
 
-def agent_missing_note(parsed: ParsedLog, opts: FlowOptions) -> list[str]:
+def agent_missing_note(parsed: ParsedLog, opts: FlowOptions) -> list[Note]:
     """agent 缺位那件事怎么说：命中数、涉及节点、缺位区间（判得出来才写）、以及反向提醒。
 
     **只数窗口内的**：ERR 行不带 `task_id`，选中某个任务时按它的判定窗口夹（与框架级事件同一个
@@ -3187,8 +3296,11 @@ def agent_missing_note(parsed: ParsedLog, opts: FlowOptions) -> list[str]:
     shown = "、".join(nodes[:5])
     more = f" 等 {len(nodes)} 个" if len(nodes) > 5 else ""
     notes = [
-        f"{len(records)} 处 Custom 回调未注册（agent 缺位）：{shown}{more}"
-        f"——图里这些步骤的注记写了「agent 缺位」，属环境故障，不要往 ROI / UI 方向查"
+        Note(
+            f"{len(records)} 处 Custom 回调未注册（agent 缺位）：{shown}{more}"
+            f"——图里这些步骤的注记写了「agent 缺位」，属环境故障，不要往 ROI / UI 方向查",
+            "agent",
+        )
     ]
     gaps = [_agent_gap_of(parsed, m.ts) for m in records]
     real = [g for g in gaps if g is not None]
@@ -3196,30 +3308,36 @@ def agent_missing_note(parsed: ParsedLog, opts: FlowOptions) -> list[str]:
         # 全部命中都落在"销毁之后、重连之前"，才能说成一段区间；参差不齐就只说现象
         start = min(real).strftime("%H:%M:%S")
         notes.append(
-            f"agent 客户端在 {start} 被销毁，之后没有重新连上"
-            f"（`MaaAgentClientConnect` 未返回），这批缺位都落在这个区间内"
+            Note(
+                f"agent 客户端在 {start} 被销毁，之后没有重新连上"
+                f"（`MaaAgentClientConnect` 未返回），这批缺位都落在这个区间内",
+                "agent",
+            )
         )
     # 这条必须写：这两条 ERR 是**单向证据**，没有它不代表 agent 在场（回调抛异常/返回 false 不打）
     notes.append(
-        "注意：**没有**「agent 缺位」标记不代表 agent 在场——回调注册了但抛异常或返回 false 时"
-        "框架不打这两条 ERR，那种情况要看 debug/agent/agent.log"
+        Note(
+            "注意：**没有**「agent 缺位」标记不代表 agent 在场——回调注册了但抛异常或返回 false 时"
+            "框架不打这两条 ERR，那种情况要看 debug/agent/agent.log",
+            "agent",
+        )
     )
     return notes
 
 
-def build_notes(parsed: ParsedLog, opts: FlowOptions) -> list[str]:
-    """图上第二行与终端提示共用的诊断注记。
+def build_notes(parsed: ParsedLog, opts: FlowOptions) -> list[Note]:
+    """图上第二行与终端提示共用的诊断注记（每条带 `kind`，画的时候按类型上色）。
 
     只用中文字符：`⚠` 这类符号在 msyh 里没有字形，会画成方框。
     """
     st = parsed.stats
-    notes: list[str] = []
+    notes: list[Note] = []
     if parsed.derived_from:
-        notes.append("由识别记录还原（日志没有 PipelineTask node done）")
+        notes.append(Note("由识别记录还原（日志没有 PipelineTask node done）", "derive"))
         if parsed.derived_clamped:
-            notes.append("识别范围已按该 task 的起始时间夹住")
+            notes.append(Note("识别范围已按该 task 的起始时间夹住", "derive"))
         elif opts.task_id:
-            notes.append("识别记录里没有 task_id，同窗口其他任务可能混入")
+            notes.append(Note("识别记录里没有 task_id，同窗口其他任务可能混入", "derive"))
     # 卡在派发层：只在"图只涉及一个 task"时报（多任务混在一张图上点名某个 task 的候选表会误导）
     task_ids = {s.task_id for s in parsed.steps if s.task_id is not None}
     if opts.task_id is not None:
@@ -3232,51 +3350,70 @@ def build_notes(parsed: ParsedLog, opts: FlowOptions) -> list[str]:
     if st.nextlist_seen and (st.parent_fallback_entry or st.parent_unknown):
         missed = st.parent_fallback_entry + st.parent_unknown
         notes.append(
-            f"{missed} 步的父节点没落在本窗口的派发记录里，已退回任务入口或留空"
+            Note(f"{missed} 步的父节点没落在本窗口的派发记录里，已退回任务入口或留空")
         )
     if opts.parents and st.nextlist_seen == 0 and (parsed.steps or parsed.attempts):
-        notes.append("日志里没有 Node.NextList 事件，父节点只能留空")
+        notes.append(Note("日志里没有 Node.NextList 事件，父节点只能留空"))
     if st.out_of_order:
-        notes.append(f"日志时间戳有回跳，已按时间重排（{st.out_of_order} 行）")
+        notes.append(Note(f"日志时间戳有回跳，已按时间重排（{st.out_of_order} 行）", "time"))
     if st.truncated_skipped:
-        notes.append(f"{st.truncated_skipped} 条记录因导出截断读不出，已跳过")
+        notes.append(Note(f"{st.truncated_skipped} 条记录因导出截断读不出，已跳过", "stale"))
     if st.truncated_kept:
-        notes.append(f"{st.truncated_kept} 条记录尾部被截断，数字可能不全")
+        notes.append(Note(f"{st.truncated_kept} 条记录尾部被截断，数字可能不全", "stale"))
     if st.events_dropped:
         notes.append(
-            f"已排除其他 task 的 {st.events_dropped} 条失败事件（本会画进图里）"
+            Note(f"已排除其他 task 的 {st.events_dropped} 条失败事件（本会画进图里）")
         )
     notes.extend(stale_notes(opts.stale))
     notes.extend(agent_missing_note(parsed, opts))
     return notes
 
 
-def stale_notes(check: StaleCheck | None) -> list[str]:
-    """疑似过时那件事怎么说。
+def stale_notes(check: StaleCheck | None) -> list[Note]:
+    """疑似过时那件事怎么说（图上第二行）。
 
-    三句话：口径（版本之后模块有没有提交）、哪些节点被标（带模块与最新提交）、
-    以及**做不成时为什么**——"查不了"和"没有过时节点"必须能分开读。
+    三类，各自一个颜色：
+
+    - 绿色 `version`：这次用的**资源版本**（判出来了就总要标一行，读图的人才知道拿哪版比的）；
+    - 琥珀 `stale`：哪些节点疑似过时（只列名字 + 模块@短 hash，长提交信息留给终端）；
+    - 灰色 `info`：哪些节点在当前 pipeline 里已找不到。
+
+    做不成时只出一条琥珀 `stale`，把"为什么查不了"写清楚——"查不了"与"没有过时节点"必须能分开读。
     """
     if check is None:
         return []
     if not check.ok:
-        return [f"没有做「疑似过时」检查：{check.reason}"]
-    notes: list[str] = []
+        return [Note(f"疑似过时检查跳过：{check.reason}", "stale")]
+    src = (
+        "（取自 MFA 日志 logs/log-*.log）"
+        if check.source == VERSION_SOURCE_MFA_LOG
+        else "（取自遥测证据包 evidence.json 的 release）"
+        if check.source == VERSION_SOURCE_TELEMETRY
+        else "（手动指定）"
+        if check.source == VERSION_SOURCE_CLI
+        else ""
+    )
+    notes: list[Note] = [Note(f"资源版本 {check.version}{src}", "version")]
     if check.nodes:
         parts = []
         for node in check.nodes[:4]:
-            parts.append(f"{node.name}（{node.module}，最新 {node.last_commit}）")
+            short = node.last_commit.split(" ")[0] if node.last_commit else "?"
+            parts.append(f"{node.name}（{node.module}@{short}）")
         more = f"；另 {len(check.nodes) - 4} 个" if len(check.nodes) > 4 else ""
         notes.append(
-            f"{len(check.nodes)} 个节点疑似过时（{check.version} 时的定义与现在不同）："
-            f"{'；'.join(parts)}{more}——只标疑似，改动有没有影响这个节点的行为要自己核对"
+            Note(
+                f"{len(check.nodes)} 个节点疑似过时：{'、'.join(parts)}{more}",
+                "stale",
+            )
         )
     if check.missing:
-        shown = " ・ ".join(check.missing[:6])
+        shown = "、".join(check.missing[:6])
         more = f" 另 {len(check.missing) - 6} 个" if len(check.missing) > 6 else ""
         notes.append(
-            f"{len(check.missing)} 个节点在当前 pipeline 里找不到（已被改名或删除）："
-            f"{shown}{more}"
+            Note(
+                f"{len(check.missing)} 个节点在当前 pipeline 里已找不到：{shown}{more}",
+                "info",
+            )
         )
     return notes
 
@@ -3284,17 +3421,21 @@ def stale_notes(check: StaleCheck | None) -> list[str]:
 def stale_summary(check: StaleCheck | None) -> str | None:
     """「疑似过时」命中时的一句话提示；没命中（或没做这项检查）返回 None。
 
-    与 `stale_notes` 的分工：notes 是图上第二行的注记（详细、含模块与提交），
+    与 `stale_notes` 的分工：notes 是图上第二行的注记（带模块与短 hash），
     这条是画完图后在终端显式打的一行——**只看 stdout 的人也能知道这张图有存疑的节点**。
+    终端能贴长文，所以这里把每个节点的"哪次提交"写全。
     """
     if check is None or not check.ok or not check.nodes:
         return None
-    names = "、".join(n.name for n in check.nodes[:5])
-    more = f" 等 {len(check.nodes)} 个" if len(check.nodes) > 5 else ""
+    lines = [
+        f"  {n.name}（{n.module}，最新 {n.last_commit}）" for n in check.nodes[:8]
+    ]
+    more = f"\n  …另 {len(check.nodes) - 8} 个" if len(check.nodes) > 8 else ""
     return (
-        f"疑似过时：{len(check.nodes)} 个节点在 {check.version} 之后改过"
-        f"（{names}{more}）——图里这些节点名带「疑似过时」，"
-        f"改动有没有影响它们的行为要自己核对"
+        f"疑似过时：{len(check.nodes)} 个节点在资源版本 {check.version} 之后改过"
+        f"——图里这些节点名带「疑似过时」，改动有没有影响它们的行为要自己核对\n"
+        + "\n".join(lines)
+        + more
     )
 
 
@@ -3337,8 +3478,19 @@ def render_flow(
     # 节点是否"疑似过时"：日志所属版本之后，该节点所在模块有没有提交。
     # 要在 build_notes 之前算，标过的节点名才能进注记。
     if opts.stale_check:
+        if opts.version:
+            # 手动指定（--version）或遥测证据包带下来的 release：直接当基线，不再去日志里抠
+            found = (opts.version, opts.version_source or VERSION_SOURCE_TELEMETRY)
+        else:
+            # 用"这段内容的末尾时刻"去挑版本：一份 maafw.log 可能横跨好几天（实测 11-01 16:06 起、
+            # 11-02 08:41 的任务），而资源可能中途更新过（同一份 MFA 日志里先后 beta.58 / beta.61）。
+            at = parsed.span[1] if parsed.span else parsed.stats.last_ts
+            found = _log_version_of(log, at)
         opts.stale = check_stale_nodes(
-            Path(REPO_ROOT), {s.name for s in raw}, _log_version_of(log)
+            Path(REPO_ROOT),
+            {s.name for s in raw},
+            found[0] if found else None,
+            found[1] if found else "",
         )
         _apply_stale(opts.stale)
 
@@ -3543,6 +3695,8 @@ def build_flow_options(args: argparse.Namespace) -> FlowOptions:
         overlay=args.overlay,
         overlay_min=args.overlay_min,
         stale_check=args.stale_check,
+        version=args.version,
+        version_source=VERSION_SOURCE_CLI if args.version else "",
         vision=_pick_subdir(args.vision, "vision") if args.vision else None,
         on_error=_pick_subdir(args.on_error, "on_error") if args.on_error else None,
         thumbs=args.thumbs,
@@ -3682,9 +3836,16 @@ def create_argument_parser(prog: str | None = None) -> argparse.ArgumentParser:
         "--no-stale-check",
         dest="stale_check",
         action="store_false",
-        help="不查「节点疑似过时」。默认会从日志里取安装版本号（MaaAshArms-win-x86_64-vX.Y.Z），"
-        "再看该节点所在 pipeline 模块在那个版本之后有没有提交；有就把节点名标成「疑似过时」。"
-        "只标疑似，不判断节点本身有没有变。取不到版本号时注记会写明原因",
+        help="不查「节点疑似过时」。默认取日志里的「资源版本：vX.Y.Z」（MFA 自己报的；"
+        "安装目录名不带版本、更新后也是错的，不作来源）。再看该节点所在 pipeline 模块在那个版本"
+        "之后有没有提交；有就把节点名标成「疑似过时」。只标疑似，不判断节点本身有没有变。"
+        "日志里没有「资源版本」那行时不做这项检查，注记会写明原因",
+    )
+    ap.add_argument(
+        "--version",
+        default=None,
+        help="手动指定资源版本（vX.Y.Z）作为「疑似过时」的基线；不传时优先取日志里的"
+        "「资源版本：vX.Y.Z」，再到同装 MFA 日志，再到遥测证据包 evidence.json 的 release",
     )
     ap.add_argument(
         "--thumb-height", type=int, default=132, help="截图高度 px（默认 132）"
@@ -3788,7 +3949,7 @@ def main(argv: list[str] | None = None) -> int:
         )
     for note in result.notes:
         # 与图上第二行同一批注记：终端里再打一遍，免得只看 stdout 的人漏掉读图前提
-        print(f"提示：{note}", file=sys.stderr)
+        print(f"提示：{note.text}", file=sys.stderr)
     if result.mermaid:
         print(f"mermaid → {result.mermaid}")
     return 0

@@ -32,7 +32,7 @@
 | 加 `--include-attempts` 把失败识别并进 node-done 视图 | 两套记录口径不同：`reco` 行**没有 `task_id`**，并进步骤后既可能混进别的任务（同窗口一起跑的任务），又会和「未命中（聚合）」框画重；"卡住"这件事 `Node.NextList` 的连续 `Failed` 已经能精确说清（见「解析口径」），不需要改步骤来源 | 看图第二行的 `N 轮全未命中` 注记，或 `--list` 末尾的「父节点评估」账；要看逐次识别用 `--from/--to` 圈住那段，它会走"由识别记录还原" |
 | 加 `--keep-order` 之类的开关保留原始行序 | 时间戳回跳是数据坏了，按时间重排是修数据而不是风格选择 | 要看原始顺序直接读日志文件 |
 | 把"前缀差一步"的两轮当重复折在一起（子序列匹配） | `A,B,C,D,E` 与 `B,C,D,E` 看着是同一个循环，但短的那轮是从中间开始的；硬折会让列头写的轮号区间与实际首尾不符，读图的人会以为第 3 轮也跑了 `A` | 只从列首逐项比。真要看这两轮怎么衔接，用 `--no-overlay` 逐列看 |
-| 判断节点"是不是真的过时" | 只能比"日志所属版本时的定义"和"现在的定义"有没有差异；先后顺序、字段增删、注释都算不同，而"改动有没有影响这个节点的行为"要读代码 | 图上只标「疑似过时」并给出最近一次改动该模块的提交，按它去核对（见「节点"疑似过时"」） |
+| 判断节点"是不是真的过时" | 只能比"日志所属资源版本时的定义"和"现在的定义"有没有差异；先后顺序、字段增删、注释都算不同，而"改动有没有影响这个节点的行为"要读代码 | 图上只标「疑似过时」；终端给出最近一次改动该模块的提交，按它去核对（见「节点"疑似过时"」） |
 | 判断"agent 在场但回调抛异常/返回 false" | 框架只在回调**没注册**时打那两条 ERR，注册了却失败不打——日志里没有这个信号 | 看 `debug/agent/agent.log`；图上「agent 缺位」是**单向**证据（见「agent 缺位」） |
 
 判据都写在代码里：`round_steps()`、`compose_columns()`、`describe_empty_window()` 的文档字符串。
@@ -57,11 +57,15 @@ python tools/drawing/flow_from_log.py <安装根>/debug/maafw.log --overlay-min 
 # 不想查、或仓库不是 git（只拷了 debug 目录）时用 --no-stale-check
 python tools/drawing/flow_from_log.py <安装根>/debug/maafw.log --no-stale-check
 
-# 2. 证据包（debug 目录 / MFA 导出 zip / 多卷）→ 流程图，带 manifest 幂等
+# 2. 证据包（debug 目录 / MFA 导出 zip / 多卷 / 单份日志）→ 流程图，带 manifest 幂等
 #    产物名优先用遥测问题名（temp/evidence/<SHORT-ID>/ → <SHORT-ID>），其次任务名，见「产物文件名」
 python tools/drawing/flow_cases.py --case D:/MaaAshArms/debug --task-id 200000118
 python tools/drawing/flow_cases.py --case log_20261014-part01.zip log_20261014-part02.zip --task-id 200000118
 python tools/drawing/flow_cases.py --case D:/MaaAshArms/debug --list-cases
+#    目录里只有轮转后的 maafw.bak.*.log 也认（取 mtime 最新）；
+#    截图/现场图默认取 <case>/vision、<case>/on_error；传单份日志文件时取日志所在目录的那两个
+#    子目录，也可用 --vision / --on-error 指定别处
+python tools/drawing/flow_cases.py --case D:/MaaAshArms/debug --vision D:/MaaAshArms/vision --task-id 200000118
 
 # 3. 白板图片转 png 并改写引用
 python tools/drawing/whiteboard_images.py
@@ -148,31 +152,52 @@ python tools/drawing/whiteboard_images.py --dry-run   # 报告将要做什么，
 
   再 `--pid Px6448 --task-id 200000001`。不给 `--pid` 时保持旧行为（只按编号切，全文混合）。
   `--list-tasks` 只列有节点执行的任务；`MaaTaskerPostStop` 那种 0 步的停止指令不列。
-- **诊断注记**：由上面这些事实构成的注记印在图第二行（琥珀色）并同时打到 stderr，别只看 stdout。
+  `flow_cases.py` 也接受 `--pid`（透传给 `FlowOptions.px`），产物名会带上 `_px<进程>`：
+  实测 `maafw.bak.2026.11.02-08.57.51.341.log` 里 `200000003` 同时属于 `Px12748` 与 `Px3352`，
+  不给 `--pid` 是 16 步、给 `--pid Px3352` 是 9 步。
+- **诊断注记**：由上面这些事实构成的注记印在图第二行，**一条一行、按类型上色**并同时打到 stderr。
+  绿 = 这次用的资源版本；琥珀 = 疑似过时 / 记录被裁断；红 = agent 缺位；蓝 = 由识别记录还原；紫 = 时间戳回跳；灰 = 其他前提。
 
 ### 节点"疑似过时"（默认开，`--no-stale-check` 关闭）
 
 `evidence`/`flow` 拉的是**当时**的日志。图照常产出，但那些节点在新版本里可能早已被改名、删除或改了字段——
 读图的人如果不核对，就会拿一张过时的图去解释当前代码。所以渲染时顺手比一次：
 
-1. **版本**：从日志头部的安装目录名取（`Working E:/.../MaaAshArms-win-x86_64-v1.0.0-beta.42` → `v1.0.0-beta.42`）。
-   **取不到就整项不做**，注记写明原因——遥测附件只带日志尾部，实测 `PYTHON-1P`、`PYTHON-24` 这份日志里没有版本号。
+1. **版本**：只取 **`资源版本：vX.Y.Z`**（MFA 自己报的，与资源包对得上）。
+   **不看安装目录名**：正常安装目录本来就不带版本；带了也只是装机时的名字，更新资源后就是错的——
+   实测同一份日志目录名 `beta.42`、资源版本 `beta.58`（2026-11-02 用户反馈），拿目录名当基线会把
+   基线整体前移、多标一堆"疑似过时"。判出来的版本会作为一条绿色注记写在图顶部。
+   来源三处，按顺序找：
+   - **日志自己**（取最后一条——同一份日志里可能先后两个版本，如 `log-20261102.log` 的
+     `08:38:15 beta.58` 与 `08:38:54 beta.61`）；
+   - 日志里没有（原生 `debug/maafw.log` 就是这种，那行是 MFAAvalonia 写的）→ 去**同装
+     `logs/log-*.log`** 借，按"这段内容的末尾时刻"挑那一刻生效的那条，注记标明
+     「取自 MFA 日志 logs/log-*.log」；
+   - 都没有 → **遥测证据包**会从 `evidence.json` 的 `event.release`（Sentry 事件字段，
+     形如 `MFA@v2.16.1+MaaAshArms@v1.0.0-beta.61`）取资源版本，注记标明
+     「取自遥测证据包 evidence.json 的 release」。这条是 `flow --case temp/evidence/<问题号>/debug`
+     的主路径——原生 maafw.log 没有「资源版本」那行，同装 MFA 界面日志也不会被 `evidence` 下载，
+     所以只能靠遥测自己报的 release 兜底。
+   三处都没有就不做这项检查，注记写明原因（遥测附件只带日志尾部、且 `evidence.json` 没记到 release 时，
+   实测 `PYTHON-25`/`28`/`2F`/`2G` 里取不到）。
 2. **节点所在模块**：读当前 `assets/resource/pipeline/*.json` 的顶层 key。找不到 → 记进"已被改名或删除"
    那条注记（这是事实，不是推测；例如 `TrainClickArrow` / `TrainEnsureHome` / `TrainEnsureInfo`）。
 3. **比定义**：`git show <tag>:<pipeline 文件>` 取那个版本的定义，与当前定义逐字段比（按键排序，
-   避免键顺序造成假差异）。**不同 → 节点名后标「疑似过时」**，注记里写最近一次改动该模块的提交。
-   定义一字未动的节点不标。
+   避免键顺序造成假差异）。**不同 → 节点名后标「疑似过时」**；图上注记写 `模块@短hash`，
+   终端那条把"最近一次改动该模块的提交"写全。定义一字未动的节点不标。
 
 **只标疑似，不判断是否真的过时**：边界先后、字段增删、注释都算"不同"，到底有没有影响这个节点的行为要人核对。
 
-命中时**画完图后会额外打一行**（`flow_from_log.py` 与 `flow_cases.py` 都打，走 stdout，与产物路径挨着）：
+命中时**画完图后会额外打一段**（`flow_from_log.py` 与 `flow_cases.py` 都打，走 stdout，与产物路径挨着）：
 
 ```text
-疑似过时：2 个节点在 v1.0.0-beta.42 之后改过（BaseReturnHome、TaskTrain）——图里这些节点名带「疑似过时」，改动有没有影响它们的行为要自己核对
+疑似过时：2 个节点在资源版本 v1.0.0-beta.58 之后改过——图里这些节点名带「疑似过时」，改动有没有影响它们的行为要自己核对
+  BaseReturnHome（base.json，最新 8c97bf6 2026-10-28T12:08:20+08:00 refactor: 重构 base 模块，使其符合 v3.0 规范）
+  TaskTrain（train.json，最新 b39d5cd 2026-10-31T15:12:02+08:00 chore: 更新重构后的过时注释）
 ```
 
-`flow_cases.py` 还会把这个后缀写进文件名（`_疑似过时`）。图上第二行的注记仍然保留更细的信息
-（模块名、最近一次改动该模块的提交），终端里那条只给"有几个、是哪几个"。
+`flow_cases.py` 还会把这个后缀写进文件名（`_疑似过时`）。图上第二行的注记只给
+"几个、哪几个、`模块@短hash`"，完整提交信息在终端那一段里。
 
 几个刻意的选择：
 
@@ -261,7 +286,8 @@ python tools/drawing/whiteboard_images.py --dry-run   # 报告将要做什么，
 `flow_from_log.py` 的日志入参接受**路径（含 `pathlib.Path`）/ 正文 / 文本流**三种；图片证据接受目录、zip、
 多卷 zip、内存字节，都经 `MediaResolver`（zip 里的图**延迟解压**，避免整包读进内存）。
 
-`FlowResult` 里有 `truncated_start`（日志只剩尾部）、`notes`（与图上第二行同一批注记）、
+`FlowResult` 里有 `truncated_start`（日志只剩尾部）、`notes`（与图上第二行同一批注记，元素是
+`Note(text, kind)`，`kind` 决定图上颜色）、
 `derived_from`（非空 = 步骤由识别记录合成）、`out_of_order`（回跳行数）、`stale`（疑似过时的节点清单，
 `None` = 没做这项检查）——库调用方不用去猜图是按什么口径画的。
 
