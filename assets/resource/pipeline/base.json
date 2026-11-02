@@ -251,6 +251,7 @@
         "action": "Click",
         "post_wait_freezes": 1000,
         "next": [
+            "BaseErrorNext",
             "[JumpBack]BaseBranchError",
             "BaseProbeNoReward",
             "[JumpBack]BaseClickTapBox"

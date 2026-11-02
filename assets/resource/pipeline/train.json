@@ -176,26 +176,11 @@
         "post_wait_freezes": 1000,
         "next": [
             "BaseErrorNext",
-            "TrainGetRewardSuccess",
+            "BaseClickRewardTap",
             "[JumpBack]BaseClickTapBox",
             "[JumpBack]BaseBranchError",
             "TrainGetReward"
         ]
-    },
-    // INFO 领取成功
-    "TrainGetRewardSuccess": {
-        "desc": "[end] 领取列车奖励成功",
-        "recognition": "TemplateMatch",
-        "template": "Train/CanTrainButton.png",
-        "method": 10001,
-        "roi": [
-            886,
-            128,
-            119,
-            533
-        ],
-        "action": "Custom",
-        "custom_action": "TrainGetRewardSuccessAct"
     },
     /* -------------------- 分支-接取发车 -------------------- */
     "TrainBranchAcceptable": {
