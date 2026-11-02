@@ -197,6 +197,14 @@ class TrainGoSuccessAct(CustomAction):
     def run(
         self, context: Context, argv: CustomAction.RunArg
     ) -> CustomAction.RunResult | bool:
+        # 校验当前路线是否发车
+        is_busy = len(_train_list) > 0 and any(
+            i.stutus == "busy" and i.route == _current_info_name for i in _train_list
+        )
+        if is_busy:
+            log.debug(f"{argv.node_name} 警告 列车对象列表中目标对象已发车")
+            log.debug(f"{argv.node_name} {_current_info_name} 已发车")
+
         first = next((i for i in _train_list if i.stutus == "acceptable"), None)
 
         # 判断是否 None

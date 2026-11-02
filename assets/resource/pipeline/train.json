@@ -383,25 +383,11 @@
         ],
         "next": [
             "[JumpBack]BaseClickConfirm",
-            "TrainGoSuccess",
-            "[JumpBack]TrainClickGoButtonLight",
+            "TrainClickGoButtonLight",
             "[JumpBack]TrainBranchOverride",
             "[JumpBack]TrainBranchReset",
             "[JumpBack]BaseClick"
         ]
-    },
-    "TrainGoSuccess": {
-        "desc": "[end] 发车成功",
-        "recognition": "TemplateMatch",
-        "template": "Train/CancelTrain.png",
-        "roi": [
-            886,
-            105,
-            119,
-            585
-        ],
-        "action": "Custom",
-        "custom_action": "TrainGoSuccessAct"
     },
     // INFO 点击出发按钮
     "TrainClickGoButtonLight": {
@@ -423,6 +409,19 @@
             "[JumpBack]BaseBranchError",
             "TrainClickGoButtonLight"
         ]
+    },
+    "TrainGoSuccess": {
+        "desc": "[end] 发车成功",
+        "recognition": "TemplateMatch",
+        "template": "Train/CancelTrain.png",
+        "roi": [
+            886,
+            105,
+            119,
+            585
+        ],
+        "action": "Custom",
+        "custom_action": "TrainGoSuccessAct"
     },
     /* -------------------- 分支-通用弹窗 -------------------- */
     "TrainBranchOverride": {
