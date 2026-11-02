@@ -84,7 +84,7 @@
         "next": [
             "BaseErrorNext",
             "[JumpBack]BaseProbeBlackPage",
-            "EscortBranchDelivery",
+            "[JumpBack]EscortBranchDelivery",
             "EscortEnterHome",
             "[JumpBack]BaseBranchError"
         ],
@@ -94,7 +94,8 @@
     },
     /* -------------------- 工作-领取奖励 -------------------- */
     "EscortBranchDelivery": {
-        "desc": "点击一键交付",
+        "desc": "[jp][once] 点击一键交付",
+        "max_hit": 1,
         "recognition": "And",
         "all_of": [
             "EscortProbeHomeName"
