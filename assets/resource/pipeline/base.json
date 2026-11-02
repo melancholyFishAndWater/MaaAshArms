@@ -105,6 +105,7 @@
         "any_of": [
             "BaseClickErrorConfirm",
             "BaseClickRewardTap",
+            "StartUpClickLogin",
             "BaseStopServerMaintenance"
         ],
         "action": "Custom",

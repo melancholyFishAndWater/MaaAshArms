@@ -31,6 +31,25 @@
             "times": 2 // 执行次数
         }
     },
+    /* -------------------- 掉线重连 -------------------- */
+    "ReplaysStopConnect": {
+        "desc": "[end] 游戏掉线重连成功 代理结束",
+        "recognition": "And",
+        "all_of": [
+            "BaseProbeHome"
+        ],
+        "action": "StopTask",
+        "focus": {
+            "Node.Action.Succeeded": {
+                "content": "游戏掉线，代理结束",
+                "display": [
+                    "log",
+                    "notification",
+                    "modal"
+                ]
+            }
+        }
+    },
     /* -------------------- 工作 -------------------- */
     "ReplaysLoopFormation": {
         "desc": "[Loop] 多次代理编队 循环",

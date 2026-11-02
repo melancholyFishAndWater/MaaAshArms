@@ -135,7 +135,7 @@
         ],
         "post_wait_freezes": 3000,
         "focus": {
-            "Node.Recognition.Succeeded": "点击b站账号登录按钮"
+            "Node.Recognition.Succeeded": "游戏掉线，尝试重连"
         }
     },
     // 进入游戏界面

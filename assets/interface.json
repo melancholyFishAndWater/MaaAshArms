@@ -48,7 +48,14 @@
             "name": "StartUp",
             "label": "启动游戏",
             "entry": "TaskStartUp",
-            "default_check": true
+            "default_check": true,
+            "pipeline_override": {
+                "StartUpClickLogin": {
+                    "focus": {
+                        "Node.Recognition.Succeeded": "点击b站账号登录按钮"
+                    }
+                }
+            }
         },
         {
             "name": "Friend",
@@ -202,7 +209,17 @@
             ],
             "group": [
                 "metal"
-            ]
+            ],
+            "pipeline_override": {
+                "StartUpClickLogin": {
+                    "next": [
+                        "ReplaysStopConnect",
+                        "[JumpBack]BaseClickRewardTap",
+                        "[JumpBack]NoticeClickDisable",
+                        "StartUpClickLogin"
+                    ]
+                }
+            }
         }
         // TODO
         // {
