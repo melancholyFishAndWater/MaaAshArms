@@ -10,6 +10,7 @@ main.py 的 import 不能漏——装饰器只在模块导入时执行，漏了�
 """
 
 import json
+from typing import Callable
 
 from maa.agent.agent_server import AgentServer
 from maa.custom_action import CustomAction
@@ -137,6 +138,30 @@ _current_task_id: int = -1
 _times_by_name: dict[str, int] = {}
 
 
+def reset_error_next_father(task_id: int, task_name: str, func: Callable[[str], bool]):
+    """条件清空 BaseErrorNext 累积的父节点次数
+
+    可以给无 next 的异常修复节点使用
+
+    Args:
+        task_id (int): 任务id
+        task_name (str): 节点名字
+        func (Callable[[str], bool]): 条件函数，传入父节点名，返回 True 则清空
+    """
+    # 1) 获取派发者节点名
+    father = father_name(task_id, task_name)
+    if father is None:
+        log.debug(f"{task_name} 获取父节点失败")
+        return
+    elif father == task_name:  # 自环
+        return
+
+    # 2) 条件清空
+    if func(father):
+        _times_by_name.pop(father, None)
+        log.debug(f"{task_name} 清空 {father} 累积次数")
+
+
 # 若同一个父节点的 next列表识别次数过多 则返回box
 @AgentServer.custom_recognition("BaseErrorNextReco")
 class BaseNextTimeOutErrorReco(CustomRecognition):
@@ -177,18 +202,11 @@ class _BaseErrorNextSink(ContextEventSink):
         if noti_type != NotificationType.Succeeded:
             return
 
-        # 2) 获取派发者节点名
-        father = father_name(detail.task_id, detail.name)
-        if father is None:
-            log.debug(f"{detail.name} 获取父节点失败")
-            return
-        elif father == detail.name:  # 自环
-            return
+        def func(t) -> bool:
+            data = context.get_node_data(detail.name)
+            return data is not None and len(data.get("next", [])) > 0
 
-        # 3) 条件清空
-        data = context.get_node_data(detail.name)
-        if data and data.get("next"):
-            _times_by_name.pop(father, None)
+        reset_error_next_father(detail.task_id, detail.name, func)
 
 
 # ----- BaseMoveUpDown -----
