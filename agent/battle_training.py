@@ -22,7 +22,7 @@ _all = ["战斗演习", "狩猎行动", "拓展训练", "资源筹备"]
 # 要进行的训练所关卡名: 难度 存储模块使用
 battle_targets: dict[str, str] = {}
 # 完成的关卡
-_done_targets: list[str] = []
+_done_targets: set[str] = set()
 # 当前关卡名
 _current_level_name: str = ""
 
@@ -67,8 +67,12 @@ class TrainingGetStatusReco(CustomRecognition):
 
         # 识别关卡
         r = context.run_recognition_direct(
-            JRecognitionType.TemplateMatch,
-            JTemplateMatch(["Battle/BattleTraining/01.png"], roi=(192, 524, 900, 68)),
+            JRecognitionType.OCR,
+            JOCR(
+                ["0", "0/1"],
+                roi=(192, 524, 900, 68),
+                replace=[["O", "0"], ["o", "0"], ["D", "0"], ["d", "0"]],
+            ),
             argv.image,
         )
         if r is None or not r.hit:
@@ -102,7 +106,7 @@ class TrainingGetStatusReco(CustomRecognition):
                 continue
 
             # 追加
-            _done_targets.append(name)
+            _done_targets.add(name)
 
         # 日志
         if len(_done_targets) > 0:
@@ -162,63 +166,73 @@ class TrainingEnterOneReco(CustomRecognition):
         global _current_level_name
         node_name = argv.node_name
 
-        # 识别关卡是否还有剩余次数
+        # 识别关卡次数
         r = context.run_recognition_direct(
-            JRecognitionType.TemplateMatch,
-            JTemplateMatch(["Battle/BattleTraining/11.png"], roi=(192, 524, 900, 68)),
+            JRecognitionType.OCR,
+            JOCR(
+                ["0", "0/1", "1", "1/1"],
+                roi=(192, 524, 900, 68),
+                replace=[["O", "0"], ["o", "0"], ["D", "0"], ["d", "0"]],
+            ),
             argv.image,
         )
         if r is None or not r.hit:
             log.debug(f"{node_name} 识别关卡剩余次数失败")
             return
 
-        # 遍历识别还有次数的关卡名
+        # 遍历识别关卡名
         expected = list(battle_targets.keys())
+        _current_level_name = ""
         for i in r.filtered_results:
-            assert type(i) == TemplateMatchResult
+            assert type(i) == OCRResult
 
-            # 识别关卡名字
-            r2 = context.run_recognition_direct(
-                JRecognitionType.OCR,
-                JOCR(
-                    expected,
-                    roi=toTuple(i.box),
-                    roi_offset=(-63, -243, 126, 42),
-                ),
-                argv.image,
-            )
-            if r2 is None or not r2.hit:
-                log.debug(f"{node_name} 识别关卡名字失败")
-                continue
-            b_r2 = r2.best_result
-            assert type(b_r2) == OCRResult
+            # 条件识别关卡名字
+            if _current_level_name == "":
+                r2 = context.run_recognition_direct(
+                    JRecognitionType.OCR,
+                    JOCR(
+                        expected,
+                        roi=toTuple(i.box),
+                        roi_offset=(-63, -243, 126, 42),
+                    ),
+                    argv.image,
+                )
+                if r2 is None or not r2.hit:
+                    log.debug(f"{node_name} 识别关卡名字失败")
+                    continue
+                b_r2 = r2.best_result
+                assert type(b_r2) == OCRResult
 
-            # 提取关卡信息
-            name = next((k for k in battle_targets if k in b_r2.text), None)
-            if name is None:
-                log.debug(f"{node_name} 识别到的关卡名无法匹配: {b_r2.text}")
-                continue
-            level = battle_targets[name]
-            _current_level_name = name
+                # 提取关卡信息
+                name = next((k for k in battle_targets if k in b_r2.text), None)
+                if name is None:
+                    log.debug(f"{node_name} 识别到的关卡名无法匹配: {b_r2.text}")
+                    continue
+                level = battle_targets[name]
+                _current_level_name = name
 
-            # 覆写
-            ov_r = context.override_pipeline(
-                {
-                    "TrainingEnterOne": {
-                        "focus": {"Node.Action.Starting": f"进入{name}"}
-                    },
-                    "TrainingEnterFormation": {
-                        "custom_recognition_param": {"level": level},
-                        "focus": {"Node.Action.Starting": f"选择{name} 难度{level}"},
-                    },
-                    "TrainingDailyUpdate": {"custom_action_param": {"name": [name]}},
-                }
-            )
-            if not ov_r:
-                log.debug(f"{node_name} 覆写提示日志失败")
+            # 识别到关卡没有剩余次数
+            if i.text.isdigit() and int(i.text) == 0:
+                log.debug(f"{node_name} 识别到的关卡没有剩余次数: {i.text}")
+                _done_targets.add(_current_level_name)
+                return
 
-            # 返回文字位置
-            return b_r2.box
+        # 覆写
+        ov_r = context.override_pipeline(
+            {
+                "TrainingEnterOne": {"focus": {"Node.Action.Starting": f"进入{name}"}},
+                "TrainingEnterFormation": {
+                    "custom_recognition_param": {"level": level},
+                    "focus": {"Node.Action.Starting": f"选择{name} 难度{level}"},
+                },
+                "TrainingDailyUpdate": {"custom_action_param": {"name": [name]}},
+            }
+        )
+        if not ov_r:
+            log.debug(f"{node_name} 覆写提示日志失败")
+
+        # 返回文字位置
+        return b_r2.box
 
 
 # 识别关卡难度 返回匹配难度的出击按钮box
@@ -295,5 +309,5 @@ class TrainingBattleWinAct(CustomAction):
         if _current_level_name not in _all:
             log.ferror(f"{argv.node_name} 非法的关卡名字: {_current_level_name}")
             return False
-        _done_targets.append(_current_level_name)
+        _done_targets.add(_current_level_name)
         return True
