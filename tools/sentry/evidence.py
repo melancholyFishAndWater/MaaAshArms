@@ -152,6 +152,9 @@ class Issue:
     last_seen: str
     event_id: str
     trace_id: str
+    # Sentry 事件顶层字段 `release`（如 `MFA@v2.16.1+MaaAshArms@v1.0.0-beta.38`），
+    # 画图时它是「疑似过时」最可靠的版本来源——原生 maafw.log 没有「资源版本」那行。
+    release: str = ""
     evidence: dict[str, Any] = field(default_factory=dict)
 
     @property
@@ -186,6 +189,7 @@ def survey_issue(sentry: str, short_id: str, *, verbose: bool, timeout: float) -
         last_seen=str(raw.get("lastSeen") or ""),
         event_id=str(event.get("id") or ""),
         trace_id=str(trace.get("traceId") or ""),
+        release=str(event.get("release") or ""),
         evidence=issue_context(event),
     )
 
@@ -698,7 +702,7 @@ def collect(
             "count": issue.count,
             "last_seen": issue.last_seen,
         },
-        "event": {"id": issue.event_id, **issue.evidence},
+        "event": {"id": issue.event_id, **issue.evidence, "release": issue.release},
         "trace": trace_meta,
         "written": written,
         "hints": hints,
@@ -763,6 +767,11 @@ def format_result(evidence: Evidence, output: TextIO, stderr: TextIO) -> None:
         )
     else:
         print("  日志:   无", file=output)
+    rel = inventory.get("event", {}).get("release")
+    if rel:
+        label = report_common.version_label(rel)
+        tag = f"（资源版本 {label}）" if label else ""
+        print(f"  release: {rel}{tag}", file=output)
     for marker in trace.get("markers") or []:
         print(f"  失败标记: {marker}", file=output)
     for hint in evidence.hints:

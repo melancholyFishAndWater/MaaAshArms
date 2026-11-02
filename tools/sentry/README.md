@@ -133,7 +133,11 @@ python -m tools.sentry.cli flow --case temp/evidence/PYTHON-14/debug --task-id 2
 temp/evidence/PYTHON-14/
   debug/maafw.log                      ← sentry trace logs 拼出来的那次运行日志
   debug/on_error/2026.10.14-19.20.37.889_EntrustEnterMainLine.png   ← 附件 zip 里的原成员
-  evidence.json                        ← 账目：两道闸门的状态、失败字段、重复行数、写了什么、可复制命令
+  evidence.json                        ← 账目：两道闸门的状态、失败字段、重复行数、写了什么、可复制命令；
+                                          其中 `event.release`（Sentry 那次运行的版本，形如
+                                          `MFA@v2.16.1+MaaAshArms@v1.0.0-beta.61`）会被 `flow --case` 直接
+                                          当作「疑似过时」的版本基线——原生 maafw.log 没有「资源版本」那行，
+                                          同装 MFA 界面日志也不会被下载，所以这是遥测图唯一可靠的版本来源
 ```
 
 ```bash

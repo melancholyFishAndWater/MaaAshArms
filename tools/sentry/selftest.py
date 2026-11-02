@@ -257,6 +257,11 @@ def _contains(haystack: str, needle: str, what: str) -> None:
         raise CheckFailure(f"{what}: 输出里找不到 {needle!r}")
 
 
+def _note_text(notes: Any) -> str:
+    """注记是 `Note(text, kind)`（图上按 kind 上色），断言只看文本。"""
+    return " ".join(n.text for n in notes)
+
+
 def _raises(action: Callable[[], Any], error: type[Exception], what: str) -> None:
     """断言动作抛出指定异常类型（入参错误这类路径要能测到）。
 
@@ -827,7 +832,7 @@ def check_flow_diagnostics() -> list[str]:
     parsed = parse_log(shuffled, None, None, None, False)
     _eq(parsed.stats.out_of_order, 1, "回跳行数")
     _eq([s.name for s in parsed.steps], ["First", "Second"], "回跳后按时间重排的顺序")
-    _contains("".join(build_notes(parsed, FlowOptions())), "已按时间重排", "回跳注记")
+    _contains(_note_text(build_notes(parsed, FlowOptions())), "已按时间重排", "回跳注记")
 
     # 2) 只有识别事件：用识别记录合成步骤，不再抛"没有解析到任何节点执行记录"
     only_events = "\n".join(
@@ -839,7 +844,7 @@ def check_flow_diagnostics() -> list[str]:
     _eq(len(round_steps(parsed, FlowOptions(collapse=3))), 1, "--collapse 3 折成一格")
     _eq(len(round_steps(parsed, FlowOptions(collapse=1))), 4, "--collapse 1 每次一格")
     _contains(
-        "".join(build_notes(parsed, FlowOptions())), "由识别记录还原", "仅事件模式注记"
+        _note_text(build_notes(parsed, FlowOptions())), "由识别记录还原", "仅事件模式注记"
     )
 
     # 3) 行尾被截断的 Task timeout：仍要出现，并标明数字不全
@@ -902,7 +907,7 @@ def check_flow_diagnostics() -> list[str]:
     )
     _eq(parsed.stats.events_dropped, 1, "被排掉的失败事件数")
     _contains(
-        "".join(build_notes(parsed, FlowOptions(task_id=100))),
+        _note_text(build_notes(parsed, FlowOptions(task_id=100))),
         "已排除其他 task",
         "排掉事件的注记",
     )
@@ -1770,7 +1775,7 @@ def check_flow_parents() -> list[str]:
         "未归属计数",
     )
     _contains(
-        " ".join(build_notes(only_done, FlowOptions(task_id=100))),
+        _note_text(build_notes(only_done, FlowOptions(task_id=100))),
         "父节点只能留空",
         "没有 NextList 事件时的注记",
     )
@@ -1846,10 +1851,12 @@ def check_flow_parents() -> list[str]:
     )
     notes = stall_notes(parsed, 100, {"TaskLoop"})
     _eq(len(notes), 1, "只报一个派发者")
-    _contains(notes[0], "3 轮全未命中", "注记给出未命中轮数")
-    _contains(notes[0], "一个候选都没跑起来", "候选全没跑起来时的说法")
+    _contains(notes[0].text, "3 轮全未命中", "注记给出未命中轮数")
+    _contains(notes[0].text, "一个候选都没跑起来", "候选全没跑起来时的说法")
     _eq(
-        stall_notes(parsed, 100, {"TaskLoop", "ReplaysStart"})[0].count("跑起来的候选"),
+        stall_notes(parsed, 100, {"TaskLoop", "ReplaysStart"})[0].text.count(
+            "跑起来的候选"
+        ),
         1,
         "有候选跑起来时改说跑起来的是哪个",
     )
