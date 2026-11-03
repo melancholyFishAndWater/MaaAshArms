@@ -1514,7 +1514,14 @@ class OnErrorIndex:
             except ValueError:
                 continue
             self.items.append((ts, m.group("name"), entry))
-        self.items.sort()
+        # 同一张现场图可能同时落在 on_error/ 与 on_error/<附件id>/ 下（`--force` 重复下载留下的），
+        # 文件名与时间戳完全一致：按 (时间, 节点名) 去重只留一条。排序也必须给 key ——
+        # `MediaEntry` 不可比较，两个同 (ts, name) 的元组会让 `sort()` 抛
+        # `'<' not supported between instances of 'MediaEntry'`，整张图渲染失败。
+        unique: dict[tuple[datetime, str], MediaEntry] = {}
+        for ts, name, entry in self.items:
+            unique.setdefault((ts, name), entry)
+        self.items = [(ts, name, e) for (ts, name), e in sorted(unique.items())]
 
     def find(self, step: Step, tol: float = 8.0) -> MediaEntry | None:
         """按时间就近找；`Task timeout X` / `invalid node id` 事件的 action 里存着失败节点名，优先同名。"""
