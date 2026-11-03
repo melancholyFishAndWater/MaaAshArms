@@ -187,27 +187,17 @@
         "next": [
             "EntrustBranchStageFreezes",
             "EntrustEnterStage",
-            "[JumpBack]EntrustClickNextChapter",
+            "[JumpBack]EntrustClickSwitchChapter",
             "[JumpBack]BaseBranchError"
         ]
     },
-    // 点击下一章区域
-    "EntrustClickNextChapter": {
-        "desc": "点击下一章区域",
-        "max_hit": 8,
-        "recognition": "OCR",
-        "expected": "(\\d)/\\1", // 判断是否完成此章节
-        "roi": [
-            45,
-            527,
-            125,
-            40
-        ],
-        "target": [
-            1247,
-            280
-        ], // INFO 不容易识别到下一章的文字 直接点击固定区域 识别是否完成此章节会容易点且方便
-        "action": "Click"
+    // 点击切换章节
+    "EntrustClickSwitchChapter": {
+        "desc": "点击切换章节",
+        "recognition": "Custom",
+        "custom_recognition": "EntrustClickSwitchChapterReco",
+        "action": "Click",
+        "post_wait_freezes": 1000
     },
     // 页面未变化次数过多
     "EntrustBranchStageFreezes": {

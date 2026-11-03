@@ -12,12 +12,27 @@ from maa.context import (
     RecognitionDetail,
     OCRResult,
 )
-from maa.pipeline import JOCR
+from maa.pipeline import JOCR, JActionType, JStopTask
 
 from agentlog import log
 from params import parse_attach
 from rect import DEFAULT_HIT_BOX
 
+# 总章节及其大关
+CHAPTER: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("边境巡回篇·上", ("荒原", "结晶废墟", "沙漠", "沙漠腹地", "冰原", "冰原核心")),
+    ("边境巡回篇·下", ("森丘", "森丘深处", "火山", "火山中心")),
+    ("废都残响篇", ("禁区边缘", "荒芜禁区", "污染区", "辐射区", "核心辐射区")),
+    ("空王座篇·上", ("阴霾腹地", "文明坟场", "至高废墟")),
+    ("空王座篇·下", ("阴霾深处", "疮痍废土", "深渊之底", "失落世界")),
+    ("红帷幕·上", ("光辉年代", "反叛的种子", "先知的衣钵")),
+    ("红帷幕·下", ("预言者之道", "天使祭祀场", "灰烬战线")),
+    ("铁幕残照", ("无主之地", "死城")),
+)
+# 总章节名
+CHAPTER_NAMES: tuple[str, ...] = tuple(i[0] for i in CHAPTER)
+# 目标章节名
+target_chapter: str = "边境巡回篇·上"
 # 大关名
 stage_name: str = "结晶废墟"
 # 目标小关的数字
@@ -47,9 +62,7 @@ def get_level_ocr(
     """
     return context.run_recognition_direct(
         JRecognitionType.OCR,
-        JOCR(
-            [r"-\d{1,2}"], roi=(158, 290, 991, 346), replace=[["o", "0"], ["O", "0"]]
-        ),
+        JOCR([r"-\d{1,2}"], roi=(158, 290, 991, 346), replace=[["o", "0"], ["O", "0"]]),
         argv.image,
     )
 
@@ -307,6 +320,67 @@ class EntrustProbeStageTextReco(CustomRecognition):
                 return DEFAULT_HIT_BOX
 
 
+# 返回上一章还是下一章的box
+@AgentServer.custom_recognition("EntrustClickSwitchChapterReco")
+class EntrustClickSwitchChapterReco(CustomRecognition):
+    def analyze(
+        self, context: Context, argv: CustomRecognition.AnalyzeArg
+    ) -> list[int] | None:
+        node_name = argv.node_name
+
+        # 识别当前章节
+        ocr_r = context.run_recognition_direct(
+            JRecognitionType.OCR, JOCR([".+"], roi=(6, 119, 383, 354)), argv.image
+        )
+        if ocr_r is None or not ocr_r.hit:
+            log.debug(f"{node_name} 识别当前章节名失败")
+            return
+
+        for i in CHAPTER_NAMES:
+            # 目标大关字符串拆成子串列表
+            str_targets = [i[0], i[1]] + [i[-1]] if i[-1] in "上下" else []
+
+            # 遍历识别结果
+            for j in ocr_r.filtered_results:
+                assert type(j) == OCRResult
+                # 遍历校验子串 若子串匹配成功 移除子串
+                for k in str_targets:
+                    if k in j.text:
+                        str_targets.remove(k)
+
+            # 若子串全部匹配 循环终止
+            if len(str_targets) == 0:
+                current_chapter_name = i
+                break
+        else:
+            log.debug(f"{node_name} 查找当前关卡名索引失败")
+            return
+
+        current_index = CHAPTER_NAMES.index(current_chapter_name)
+        target_index = CHAPTER_NAMES.index(target_chapter)
+        log.debug(f"{node_name} current: {current_index}, target: {target_index}")
+
+        # 返回点击区域 不容易识别到下一章的文字 直接点击固定区域 识别是否完成此章节会容易点且方便
+        if current_index < target_index:
+            return [1247, 280, 1, 1]  # 下一章
+        elif current_index > target_index:
+            ocr_r2 = context.run_recognition_direct(
+                JRecognitionType.OCR,
+                JOCR([r"(\d)/\1"], roi=(45, 527, 125, 40)),
+                argv.image,
+            )
+            if ocr_r2 is None:
+                log.debug(f"{node_name} 识别当前章节是否完成失败")
+            elif not ocr_r2.hit:
+                log.warn(
+                    f"当前章节未完成 无法前往下一章 请确保大关名字输入正确 任务结束"
+                )
+                context.run_action_direct(JActionType.StopTask, JStopTask())
+                return
+
+            return [37, 279, 1, 1]  # 上一章
+
+
 # ---------- Action ----------
 
 
@@ -318,9 +392,18 @@ class EntrustInitAct(CustomAction):
     ) -> CustomAction.RunResult | bool:
         node_name = argv.node_name
         try:
-            global stage_name, level, _number, _rewardable_by_timestamp, _times, _max
+            global stage_name, level, _number, _rewardable_by_timestamp, _times, _max, target_chapter
             attach = parse_attach(context, argv, "stage_name", "level", "times")
             stage_name = attach["stage_name"]
+            t_target_chapter = next(
+                (i[0] for i in CHAPTER if any(stage_name in j for j in i[1])), None
+            )  # 子串匹配 确保只填一部分大关名也能匹配中
+            if t_target_chapter is None:
+                log.error(f"未找到 {stage_name} 所属章节名，请确认大关名是否正确")
+                r = context.run_action_direct(JActionType.StopTask, JStopTask())
+                return r is not None and r.success
+
+            target_chapter = t_target_chapter
             level = attach["level"]
             _times = attach["times"]
             _number = 0
