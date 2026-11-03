@@ -81,7 +81,7 @@ class TrainingGetStatusReco(CustomRecognition):
 
         # 获取已完成的关卡
         for i in r.filtered_results:
-            assert type(i) == TemplateMatchResult
+            assert type(i) == OCRResult
 
             # 识别关卡名字
             r2 = context.run_recognition_direct(
