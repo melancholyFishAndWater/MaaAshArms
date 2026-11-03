@@ -84,7 +84,7 @@
         "next": [
             "BaseErrorNext",
             "[JumpBack]BaseProbeBlackPage",
-            "[JumpBack]EscortBranchDelivery",
+            "EscortBranchHome",
             "EscortEnterHome",
             "[JumpBack]BaseBranchError"
         ],
@@ -92,28 +92,47 @@
             "EscortClickCancel"
         ]
     },
-    /* -------------------- 工作-领取奖励 -------------------- */
-    "EscortBranchDelivery": {
-        "desc": "[jp][once] 点击一键交付",
-        "max_hit": 1,
+    "EscortBranchHome": {
+        "desc": "主页面分支",
         "recognition": "And",
         "all_of": [
             "EscortProbeHomeName"
         ],
         "next": [
             "BaseErrorNext",
+            "[JumpBack]EscortBranchDelivery",
+            "[JumpBack]EscortEnterAccept",
+            "[JumpBack]BaseBranchError",
+            "BaseProbeFreezes",
+            "[JumpBack]BaseMoveRight"
+        ],
+        "on_error": [
+            "EscortClickCancel"
+        ]
+    },
+    /* -------------------- 工作-领取奖励 -------------------- */
+    "EscortBranchDelivery": {
+        "desc": "[jp] 点击一键交付",
+        "recognition": "TemplateMatch",
+        "template": "Escort/Rewardable.png",
+        "roi": [
+            48,
+            525,
+            813,
+            61
+        ],
+        "next": [
+            "BaseErrorNext",
             "BaseClickRewardTap",
             "[JumpBack]EscortClickDeliveryButton",
-            "[JumpBack]BaseBranchError",
-            "EscortBranchAccept"
+            "[JumpBack]BaseBranchError"
         ],
         "on_error": [
             "EscortClickCancel"
         ]
     },
     "EscortClickDeliveryButton": {
-        "desc": "[jp][max] 点击一键交付按钮",
-        "max_hit": 2,
+        "desc": "[jp] 点击一键交付按钮",
         "recognition": "TemplateMatch",
         "template": "Escort/EscortDelivery.png",
         "method": 10001,
@@ -126,24 +145,7 @@
         "action": "Click",
         "post_wait_freezes": 1000
     },
-    /* -------------------- 工作-找到并接取任务 -------------------- */
-    "EscortBranchAccept": {
-        "desc": "接取任务",
-        "recognition": "And",
-        "all_of": [
-            "EscortProbeHomeName"
-        ],
-        "next": [
-            "BaseErrorNext",
-            "BaseProbeFreezes",
-            "[JumpBack]EscortEnterAccept",
-            "[JumpBack]BaseBranchError",
-            "[JumpBack]BaseMoveRight"
-        ],
-        "on_error": [
-            "EscortClickCancel"
-        ]
-    },
+    /* -------------------- 工作-接取任务 -------------------- */
     // INFO 进入接取页面
     "EscortEnterAccept": {
         "desc": "进入接取页面",
@@ -164,6 +166,9 @@
             "EscortChooseRecommend",
             "EscortEnterAccept",
             "[JumpBack]BaseBranchError"
+        ],
+        "on_error": [
+            "EscortClickCancel"
         ]
     },
     // INFO 动作链 推荐-接取-确认
