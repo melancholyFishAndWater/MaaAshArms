@@ -28,14 +28,12 @@
         "next": [
             "BaseErrorNext",
             "FriendEnterHome",
-            "[JumpBack]FriendClickButtonLight",
-            "FriendProbeButtonDart",
-            "BaseTaskStop"
+            "FriendClickButtonLight",
+            "FriendProbeButtonDart"
         ]
     },
     "FriendClickButtonLight": {
-        "desc": "[jp][max] 按钮可按",
-        "max_hit": 2,
+        "desc": "按钮可按",
         "method": 10001,
         "recognition": "TemplateMatch",
         "template": "Friend/LightButton.png",
@@ -45,6 +43,9 @@
             582,
             307,
             138
+        ],
+        "next": [
+            "BaseTaskStop"
         ]
     },
     "FriendProbeButtonDart": {
