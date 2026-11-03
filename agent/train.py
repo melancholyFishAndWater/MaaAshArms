@@ -97,7 +97,7 @@ def _in_info_bottom(context: Context, image: ndarray) -> bool:
     # 是否为最终路线
     last_result = context.run_recognition_direct(
         JRecognitionType.OCR,
-        JOCR(["新大陆路线"], roi=(52, 563, 118, 73)),
+        JOCR([_ROUTE_LIST[-1]], roi=(52, 563, 118, 73)),
         image,
     )
     if last_result and last_result.hit:
@@ -702,6 +702,7 @@ class TrainInfoMoverReco(CustomRecognition):
     def analyze(
         self, context: Context, argv: CustomRecognition.AnalyzeArg
     ) -> list[int] | None:
+        global _move_up
         # 提取变量
         n_name = argv.node_name
 
