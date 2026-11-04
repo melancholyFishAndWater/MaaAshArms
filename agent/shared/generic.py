@@ -193,12 +193,10 @@ def reset_error_next_father(task_id: int, task_name: str, func: Callable[[str], 
         log.debug(f"{task_name} 清空 {father} 累积次数")
 
 
-# 若同一个父节点的 next列表识别次数过多 则返回box
+# 若同一个父节点的 next列表识别次数过多 则覆写此节点next使其直接失败
 @AgentServer.custom_recognition("BaseErrorNextReco")
 class BaseNextTimeOutErrorReco(CustomRecognition):
-    def analyze(
-        self, context: Context, argv: CustomRecognition.AnalyzeArg
-    ) -> list[int] | None:
+    def analyze(self, context: Context, argv: CustomRecognition.AnalyzeArg) -> None:
         # 1) 提取变量
         task_id = argv.task_detail.task_id
 
@@ -217,12 +215,20 @@ class BaseNextTimeOutErrorReco(CustomRecognition):
         # 4) 修改变量
         _times_by_name[name] = _times_by_name.get(name, 0) + 1
 
-        # 5) 条件返回box
+        # 5) 条件覆写
         times = 10  # 连续次数
         if _times_by_name[name] >= times:
             log.warn(f"{name} 连续 {_times_by_name[name]} 轮未命中其他节点 任务结束")
-            return DEFAULT_HIT_BOX
-        return
+            context.override_pipeline(
+                {
+                    f"{name}ErrorNext": {
+                        "recognition": "DirectHit",
+                        "action": "Custom",
+                        "custom_action": "BaseTaskStopErrorAct",
+                    },
+                    name: {"next": [f"{name}ErrorNext"]},
+                }
+            )
 
 
 # 命中时 若非自环且节点候选列表不为空 清空累积次数
@@ -237,6 +243,7 @@ class _BaseErrorNextSink(ContextEventSink):
             data = context.get_node_data(detail.name)
             return data is not None and len(data.get("next", [])) > 0
 
+        # 2) 条件重置
         reset_error_next_father(detail.task_id, detail.name, func)
 
 
