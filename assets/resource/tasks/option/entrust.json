@@ -37,8 +37,8 @@
                     "label": "关卡小节",
                     "default": "10",
                     "pipeline_type": "int",
-                    "verify": "^([1-9]|10)$",
-                    "pattern_msg": "请输入1~10"
+                    "verify": "^([1-9]|1[0-5])$",
+                    "pattern_msg": "请输入1~15"
                 },
                 {
                     "name": "times",
