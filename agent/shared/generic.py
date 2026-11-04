@@ -219,7 +219,7 @@ class BaseNextTimeOutErrorReco(CustomRecognition):
         times = 10  # 连续次数
         if _times_by_name[name] >= times:
             log.warn(f"{name} 连续 {_times_by_name[name]} 轮未命中其他节点 任务结束")
-            context.override_pipeline(
+            ov_r = context.override_pipeline(
                 {
                     f"{name}ErrorNext": {
                         "recognition": "DirectHit",
@@ -229,6 +229,8 @@ class BaseNextTimeOutErrorReco(CustomRecognition):
                     name: {"next": [f"{name}ErrorNext"]},
                 }
             )
+            if not ov_r:
+                log.error(f"覆写 {name} 的 next 失败。无法自主停止异常任务")
 
 
 # 命中时 若非自环且节点候选列表不为空 清空累积次数
