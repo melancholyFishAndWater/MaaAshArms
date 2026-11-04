@@ -156,6 +156,19 @@ def issue_context(event: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def release_version(event: dict[str, Any]) -> str:
+    """`event.release` 归一成版本字符串。
+
+    Sentry 的 `event.release` 是**对象**（`{"id":…, "version":"MFA@v…+MaaAshArms@v1.0.0-beta.55", …}`），
+    不是字符串。直接 `str()` 会把 Python repr 写进 `evidence.json`（`"{'id': …}"`），
+    下游 `version_label()` 虽然碰巧能从中抠出 `vX.Y.Z`，但那是脏数据。这里统一取 `version`。
+    """
+    rel = event.get("release")
+    if isinstance(rel, dict):
+        return str(rel.get("version") or "")
+    return str(rel or "")
+
+
 def wants_images(evidence: dict[str, Any]) -> bool:
     return evidence.get("attachment_status") == "attached"
 
@@ -213,7 +226,7 @@ def survey_issue(sentry: str, short_id: str, *, verbose: bool, timeout: float) -
         last_seen=str(raw.get("lastSeen") or ""),
         event_id=str(event.get("id") or ""),
         trace_id=str(trace.get("traceId") or ""),
-        release=str(event.get("release") or ""),
+        release=release_version(event),
         received=str(
             event.get("dateCreated") or event.get("timestamp") or ""
         ),

@@ -42,6 +42,7 @@ try:
         speed_report,
         task_failure_report,
         task_trend_report,
+        telemetry_index,
     )
 except ImportError:
     import evidence  # type: ignore[no-redef]
@@ -51,6 +52,7 @@ except ImportError:
     import speed_report  # type: ignore[no-redef]
     import task_failure_report  # type: ignore[no-redef]
     import task_trend_report  # type: ignore[no-redef]
+    import telemetry_index  # type: ignore[no-redef]
 
 try:
     from tools.drawing import flow_cases
@@ -68,6 +70,10 @@ REPORTS: dict[str, tuple[str, ReportMain]] = {
     "evidence": ("把失败现场图与那次运行的日志拉到本地", evidence.main),
     "explore-csv": ("把 Explore 导出的 CSV 还原成日志正文 + 清单", explore_csv.main),
     "flow": ("把本地证据包（日志 + 图片）渲染成流程图", flow_cases.main),
+    "telemetry": (
+        "本地遥测库：增量下载 issue 详情，按本地日志反查对应的问题",
+        telemetry_index.main,
+    ),
 }
 
 CONTEXT_DEFAULTS = ("--sections", "runtime")

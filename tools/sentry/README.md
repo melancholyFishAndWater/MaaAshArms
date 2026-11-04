@@ -75,7 +75,8 @@ Python 侧零第三方依赖——只用标准库和 `sentry` 命令行。
 | `context` | 只看运行环境（os / environment）分布 | `7d` |
 | `evidence` | 把失败现场图与**那次运行**的日志拉到本地（联网；不画图，只打印命令） | `7d` |
 | `explore-csv` | 把浏览器导出的 Explore CSV 还原成日志正文 + 清单（不联网） | — |
-| `flow` | 把本地日志证据包渲染成流程图（不联网） | — |
+| `flow` | 把本地日志证据包渲染成流程图（默认按本地遥测库反查问题，见下） | — |
+| `telemetry` | 本地遥测库：增量下载 issue 详情，并按本地日志反查对应的问题 | — |
 | `selftest` | 零网络的纯逻辑自检 | — |
 
 典型用法：
@@ -279,6 +280,58 @@ python tools/drawing/flow_cases.py --case D:/MaaAshArms/debug --list-cases
 限制是 `--limit ≤ 1000` 且没有游标：超长运行只能取最新那段（失败在末尾）。
 这份日志里还带着 `Node.NextList` 事件，所以画出来的图上**每一步的父节点（本轮派发者）与它的候选表**也有
 （见 [`tools/drawing` 的「解析口径」](../drawing/README.md#解析口径读图前先看这里)）——不需要本机 `debug/` 才能看父子链。
+
+## `telemetry`：本地遥测库与反查（画图默认开）
+
+用户发来的是**本地日志包**，而画图是离线的。两边唯一对得上的键是日志里的失败信息：
+`Node.PipelineNode.Failed` 的 `name` / `node_id` / `task_id`，以及 `Task timeout` /
+`node not completed` 的节点名；Sentry 事件 context 里正好有 `failure.task_id` / `failure.node_id`。
+所以先把 issue 详情**增量**落一份本地库，画图时在库里查。
+
+```
+temp/telemetry/issues/<SHORT-ID>.json   ← 每个 issue 一份（title/count/lastSeen/release/failure.*）
+temp/telemetry/index.json               ← {schema, issues: {<SHORT>: {status, lastSeen, fetched_at}}}
+```
+
+```bash
+# 只刷新本地库（联网一次；只补新增或 lastSeen 变了的）
+python -m tools.sentry.cli telemetry --refresh
+
+# 反查一个包对应哪些问题（先刷新，再在本地查）
+python -m tools.sentry.cli telemetry --case D:/MaaAshArms/debug
+```
+
+画图默认就带这层关联（`flow_cases` / `flow_from_log` 的 `--telemetry` 默认开）：
+`--no-telemetry` 关掉，`--telemetry-offline` 只读本地库、不联网。
+
+### 反查给的是候选，不是唯一答案
+
+| 级别 | 判据 | 实测（30 个真实证据包） |
+| --- | --- | --- |
+| 高 | `task_id` **且** `node_id` 全等 | 25/30 能精确对上 |
+| 中 | 节点名相同 + 时间差 ≤ `--telemetry-gap`（默认 3 天） | — |
+| 低 | 只有节点名相同 | — |
+
+**一次运行经常产出多个失败事件**（同一个 `BaseTaskStopError` 一小时里失败 4 次），所以
+"这个包对应哪个 issue"本来就不唯一：30 个包里期望的 issue 有 26 个出现在候选里、17 个排第一。
+工具因此列候选 + 级别，只有"**恰好一个**高置信"时才自动采用；否则取时间最近的那个并明确 warning。
+要精确指定就用 `--telemetry-issue PYTHON-2X`。
+
+排序按 **级别 → 时间差 → 事件新旧**，刻意**不用 `count`**：热门问题会把真正的那次压下去。
+
+### 清理（过时 / 已解决）
+
+- `status` 是 resolved / ignored / archived → **删**（`--telemetry-keep-resolved` 才留）；
+- `lastSeen` 早于 `--telemetry-days`（默认 14 天）→ 删；
+- 不在最近一次 `issue list` 里 → 删；
+- `index.json` 的 `schema` 变了 → 整库重建，不做迁移。
+
+不清理的后果很直接：一个已解决的旧 issue 留在库里，就会凭节点名抢走本该属于新 issue 的匹配。
+
+### 默认开、失败不影响画图
+
+刷新失败（没装 `sentry` CLI / 没登录 / 网络不通）只打一条提示，然后用本地已有数据；
+本地库为空时再补一条"先跑 `telemetry --refresh`"。**遥测是加分项，不是画图的前提**。
 
 ## speed：跨版本耗时趋势
 

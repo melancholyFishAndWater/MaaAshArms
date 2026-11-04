@@ -1956,9 +1956,13 @@ def check_flow_overlay() -> list[str]:
         sys.path.insert(0, str(root))
     from tools.drawing.flow_from_log import (
         ColumnSpan,
+        MediaEntry,
         Step,
+        backfill_failure_thumbs,
         column_signature,
+        member_clock,
         overlay_repeats,
+        window_failure_images,
     )
 
     def step(
@@ -2052,9 +2056,270 @@ def check_flow_overlay() -> list[str]:
         "不连续的重复各自成段",
     )
 
-    return [
-        "同形合并 / 有图断开 / 失败断开 / 未命中进签名 / 前缀不等价 / 阈值 / 不连续 各自有断言"
+    # 9) 失败现场图回贴：只贴"时间紧挨着"的那一步、一格只留最近那张、不覆盖自己的精确帧。
+    #    踩过的坑：同名 `BaseTaskStopError` 一天失败 4 次，没有时间上限时 45 分钟后那张会赢，
+    #    本次失败框就贴着别的跑次的图，读图的人分不出哪张是真的。
+    from datetime import timedelta as _td
+
+    base = _dt(2026, 11, 3, 8, 52, 0)
+
+    def at(sec: float, name: str) -> Step:
+        return Step(ts=base + _td(seconds=sec), name=name, completed=True, kind="hit")
+
+    hits = [[at(54.330, "BaseTaskStopError")]]
+    own = MediaEntry("vision/own.jpg")
+    near = MediaEntry("on_error/2026.11.03-08.52.54.334_BaseTaskStopError.png")
+    far = MediaEntry("on_error/2026.11.03-09.03.47.104_BaseTaskStopError.png")
+    items = [
+        (base + _td(minutes=11, seconds=47.104), "BaseTaskStopError", far),
+        (base + _td(seconds=54.334), "BaseTaskStopError", near),
     ]
+
+    exact_slot = {(0, 0): (own, True, "")}
+    _eq(
+        backfill_failure_thumbs(hits, items, exact_slot),
+        [],
+        "已有自己的精确识别帧时不覆盖",
+    )
+    _eq(exact_slot[(0, 0)][0], own, "精确帧保住了")
+
+    empty_slot: dict = {}
+    _eq(
+        backfill_failure_thumbs(hits, items, empty_slot),
+        [near.member],
+        "只取时间最近、且在时间上限内的那张（45 分钟后那张不贴）",
+    )
+    _eq(empty_slot[(0, 0)][2], "失败现场", "角标是失败现场")
+
+    far_only: dict = {}
+    _eq(
+        backfill_failure_thumbs(hits, [items[0]], far_only),
+        [],
+        "隔了十几分钟的另一次失败不算这一步的现场图",
+    )
+
+    # 该 task 的判定窗口：相邻 task 首尾相接（实测差 51 ms）时，光靠 ±8 s 会把上一个
+    # task 的现场图算进来；左端不放宽才是对的。
+    windowed: dict = {}
+    _eq(
+        backfill_failure_thumbs(
+            hits, items, windowed, window=(base, base + _td(seconds=60))
+        ),
+        [near.member],
+        "落在本 task 窗口里的现场图才贴",
+    )
+    outside: dict = {}
+    _eq(
+        backfill_failure_thumbs(
+            hits,
+            items,
+            outside,
+            window=(base + _td(seconds=60), base + _td(seconds=120)),
+        ),
+        [],
+        "窗口外的现场图不贴",
+    )
+
+    # 10) 文件名 → 时刻；本窗口内的现场图才点名（顶部注记用）
+    _eq(member_clock(near), "08:52:54.334", "现场图文件名里的时刻")
+    _eq(member_clock(far), "09:03:47.104", "另一张现场图的时刻")
+    _eq(member_clock(MediaEntry("vision/x.jpg")), "", "不是现场图就没有时刻")
+    _eq(
+        window_failure_images(
+            items, base + _td(seconds=7), base + _td(seconds=56)
+        ),
+        ["2026.11.03-08.52.54.334_BaseTaskStopError.png"],
+        "只有落在窗口内的现场图才点名",
+    )
+
+    return [
+        "同形合并 / 有图断开 / 失败断开 / 未命中进签名 / 前缀不等价 / 阈值 / 不连续 各自有断言；"
+        "失败现场图回贴按时间上限 + 最近优先 + 不覆盖精确帧"
+    ]
+
+
+def check_telemetry_index() -> list[str]:
+    """本地遥测库：纯逻辑（候选抽取 / release 归一 / 分级匹配 / 卡片注记）。
+
+    网络那部分（`refresh`）不在这里测——它要登录，自检必须零网络。
+    """
+    import sys
+    from datetime import datetime as _dt
+    from pathlib import Path as _Path
+
+    root = _Path(__file__).resolve().parents[2]
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    from tools.sentry import telemetry_index as ti
+
+    # 1) 候选抽取：两种 `PipelineNode.Failed` 写法 + 其它失败标记
+    lines = [
+        "[2026-11-03 08:52:54.330][INF][Px1][Tx1][Node.cpp][L1][F] "
+        '[msg=Node.PipelineNode.Failed] [details={"focus":null,"name":"BaseTaskStopError",'
+        '"node_id":300000054,"task_id":200000003}]',
+        "[2026-11-03 08:52:54.331][INF][Px1][Tx1][Node.cpp][L1][F] "
+        "[msg=Node.PipelineNode.Failed] [name=OnlyName]",
+        "[2026-11-03 08:52:54.332][WRN][Px1][Tx1][Task.cpp][L1][F] "
+        "Task timeout [pretask.name=BaseProbeConfirm] [duration_since(start_clock)=1ms]",
+    ]
+    cands = ti.extract_candidates("\n".join(lines))
+    _eq(len(cands), 3, "三种失败标记都抽到")
+    _eq(cands[0].name, "BaseTaskStopError", "details 写法的节点名")
+    _eq((cands[0].node_id, cands[0].task_id), (300000054, 200000003), "details 的 id")
+    _eq((cands[1].node_id, cands[1].task_id), (None, None), "只有 name 的写法没 id")
+    _eq(cands[2].name, "BaseProbeConfirm", "Task timeout 的节点名")
+
+    # 2) release 是**对象** → 取 version（上一版 str() 写成 Python repr，这是回归）
+    card = ti.parse_issue_view(
+        {
+            "shortId": "PYTHON-X",
+            "title": "Maa task failed: Entrust (X/recognition)",
+            "count": 3,
+            "lastSeen": "2026-11-03T08:52:54Z",
+            "event": {
+                "id": "e1",
+                "release": {"version": "MFA@v2.16.1+MaaAshArms@v1.0.0-beta.55"},
+                "context": {
+                    "failure.task_id": 200000003,
+                    "failure.node_id": 300000054,
+                },
+            },
+        },
+        "PYTHON-X",
+    )
+    _eq(card.release, "MFA@v2.16.1+MaaAshArms@v1.0.0-beta.55", "release 对象取 version")
+    _eq((card.failure_task_id, card.failure_node_id), (200000003, 300000054), "失败字段")
+    _eq((card.label, card.node_name, card.stage), ("Entrust", "X", "recognition"), "title 拆开")
+
+    # 3) 分级：高（task+node 全等）> 中（同节点 + 时间近）> 低（只有节点名）
+    local = _dt(2026, 11, 3, 8, 52, 54)
+    stamp = (local - ti._utc_offset()).strftime("%Y-%m-%dT%H:%M:%SZ")
+    cards = [
+        ti.IssueCard(
+            "PYTHON-H",
+            "Maa task failed: Train (BaseTaskStopError/action)",
+            failure_task_id=200000003,
+            failure_node_id=300000054,
+            received=stamp,
+            release="MFA@v2.16.1+MaaAshArms@v1.0.0-beta.55",
+        ),
+        ti.IssueCard(
+            "PYTHON-M",
+            "Maa task failed: Train (BaseTaskStopError/action)",
+            failure_task_id=999,
+            failure_node_id=999,
+            received=stamp,
+        ),
+        ti.IssueCard(
+            "PYTHON-L",
+            "Maa task failed: Train (BaseTaskStopError/action)",
+            failure_task_id=999,
+            failure_node_id=999,
+            received="",
+        ),
+    ]
+    matches = ti.match(cands[:1], cards, gap_days=3)
+    _eq([m.card.short_id for m in matches], ["PYTHON-H", "PYTHON-M", "PYTHON-L"], "按级别排")
+    _eq([m.tier for m in matches], ["high", "mid", "low"], "高/中/低")
+    _eq(matches[0].detail, "task_id + node_id 全等", "高级的判据说明")
+
+    # 4) 注记
+    notes = ti.card_notes(cards[0], matches, chosen="PYTHON-H")
+    _eq(len(notes), 3, "卡片两行 + 候选一行")
+    _contains(notes[0][0], "遥测问题 PYTHON-H", "问题号")
+    _contains(notes[0][0], "beta.55", "release 版本")
+    _contains(notes[1][0], "BaseTaskStopError", "失败标题")
+    _eq(notes[0][1], "version", "版本注记的颜色")
+
+    return ["候选抽取（两种写法）/ release 归一 / 分级匹配 / 注记 各自有断言"]
+
+
+def check_overview_render() -> list[str]:
+    """遥测 issue 的概览卡渲染 + 文件名碰撞（`--telemetry-bulk` 没命中日志包时的降级产物）。"""
+    import os as _os
+    import shutil as _shutil
+    from pathlib import Path as _Path
+
+    root = _Path(__file__).resolve().parents[2]
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    from tools.drawing.flow_from_log import Note, render_overview
+    from tools.drawing.flow_cases import overview_filename
+    from tools.sentry import telemetry_index as ti
+
+    tmp = _os.path.join(str(root), "temp", "flow", "_selftest_overview")
+    _os.makedirs(tmp, exist_ok=True)
+    try:
+        # 1) 文件名：空闲 → 基础名；被不同指纹占用 → 追加哈希；同指纹 → 不追加
+        manifest: dict = {"schema": 1, "cases": {}}
+        fp_a = {
+            "short_id": "PYTHON-Z",
+            "last_seen": "2026-11-03T00:50:57Z",
+            "release": "MFA@v2.16.1+MaaAshArms@v1.0.0-beta.55",
+            "images": 0,
+            "renderer": 20,
+        }
+        _eq(
+            overview_filename("PYTHON-Z", tmp, manifest, fp_a),
+            "PYTHON-Z.png",
+            "空闲文件名",
+        )
+        manifest["cases"]["PYTHON-Z.png"] = {"fingerprint": dict(fp_a, last_seen="OTHER")}
+        taken = overview_filename("PYTHON-Z", tmp, manifest, fp_a)
+        _eq(
+            taken != "PYTHON-Z.png"
+            and taken.startswith("PYTHON-Z_")
+            and taken.endswith(".png"),
+            True,
+            "被别指纹占用时追加哈希",
+        )
+        manifest["cases"]["PYTHON-Z.png"]["fingerprint"] = fp_a
+        _eq(
+            overview_filename("PYTHON-Z", tmp, manifest, fp_a),
+            "PYTHON-Z.png",
+            "同指纹不算占用（幂等跳过）",
+        )
+
+        # 2) 渲染：合成卡片 → 一张非空 PNG（+ --mermaid 时的 .mmd），来源标记为 overview
+        card = ti.IssueCard(
+            "PYTHON-Z",
+            "Maa task failed: Entrust (EntrustBranchChapter/recognition)",
+            count=12,
+            status="unresolved",
+            last_seen="2026-11-03T00:50:57Z",
+            received="2026-11-03T00:50:57Z",
+            release="MFA@v2.16.1+MaaAshArms@v1.0.0-beta.55",
+            failure_task_id=200001359,
+            failure_node_id=1001,
+            permalink="https://example.sentry.io/PYTHON-Z",
+        )
+        notes = [Note(t, k) for t, k in ti.card_notes(card, [])]
+        out = _os.path.join(tmp, "PYTHON-Z.png")
+        res = render_overview(
+            out,
+            title="遥测问题 PYTHON-Z",
+            subtitle="12 次 · unresolved",
+            fields=[("问题号", "PYTHON-Z"), ("标题", card.title)],
+            images=[],
+            notes=notes,
+            mermaid=True,
+        )
+        _eq(
+            _os.path.isfile(res.path) and _os.path.getsize(res.path) > 0,
+            True,
+            "概览卡 PNG 产出且非空",
+        )
+        _eq(
+            res.mermaid is not None and _os.path.isfile(res.mermaid),
+            True,
+            "--mermaid 产出 .mmd",
+        )
+        _eq(res.derived_from, "overview", "概览卡来源标记")
+        _contains(notes[0].text, "beta.55", "注记带资源版本")
+    finally:
+        _shutil.rmtree(tmp, ignore_errors=True)
+
+    return ["概览卡渲染（PNG + .mmd）/ 文件名碰撞 / 来源标记 各自有断言"]
 
 
 CHECKS: tuple[tuple[str, Callable[[], list[str]]], ...] = (
@@ -2076,6 +2341,8 @@ CHECKS: tuple[tuple[str, Callable[[], list[str]]], ...] = (
     ("并发锁的持有者判据", check_report_lock),
     ("流程图的父节点（派发者）", check_flow_parents),
     ("流程图重复轮次合并", check_flow_overlay),
+    ("本地遥测库（候选/分级/注记）", check_telemetry_index),
+    ("遥测概览卡（渲染/命名）", check_overview_render),
     ("跨版本耗时报告", check_speed_report),
 )
 
