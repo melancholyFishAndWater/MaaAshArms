@@ -256,7 +256,12 @@ def read_card(short_id: str) -> IssueCard | None:
     return IssueCard(**{k: v for k, v in data.items() if k in IssueCard.__dataclass_fields__})
 
 
-def _drop(short_id: str, notes: list[str]) -> None:
+def _drop(short_id: str, notes: list[str], index: dict | None = None) -> None:
+    """把一个 issue 从本地库清掉：卡片文件 + `index["issues"]` 里的条目。
+
+    只删卡片文件不够——索引项还在的话，"库里有几个 issue"（索引）和"实际能画几个"
+    （卡片）会对不上，`load_cards` 也会静默跳过（实测 13 vs 11）。
+    """
     path = card_path(short_id)
     if path.is_file():
         try:
@@ -264,6 +269,8 @@ def _drop(short_id: str, notes: list[str]) -> None:
         except OSError as exc:
             notes.append(f"{short_id} 的卡片删不掉（{exc}）")
             return
+    if index is not None:
+        index.get("issues", {}).pop(short_id, None)
     notes.append(f"{short_id} 从本地遥测库清掉")
 
 
@@ -370,7 +377,7 @@ def refresh(
     if index.get("schema") != SCHEMA:
         notes.append(f"本地遥测库 schema {index.get('schema')} ≠ {SCHEMA}，整库重建")
         for old in list(index.get("issues", {})):
-            _drop(old, notes)
+            _drop(old, notes, index)
         index = {"schema": SCHEMA, "issues": {}}
 
     # 先让服务端只回未解决的（本地 `status` 字段不一定有）；老 CLI 不认 `--query` 就退回全量
@@ -410,18 +417,18 @@ def refresh(
         last_seen = _parse_time(last_seen_raw)
         # 已解决/已忽略：默认清掉（它不再代表"当前问题"，留着会让匹配误命中）
         if status in ISSUE_CLOSED_STATUSES and not keep_resolved:
-            _drop(short, notes)
+            _drop(short, notes, index)
             continue
         # 过时：最后事件早于保留期
         if last_seen is not None and last_seen < cutoff:
-            _drop(short, notes)
+            _drop(short, notes, index)
             continue
         live[short] = {"status": status, "lastSeen": last_seen_raw}
 
     # 服务器上已经没了 → 清掉
     for short in list(index.get("issues", {})):
         if short not in live:
-            _drop(short, notes)
+            _drop(short, notes, index)
 
     fetched = 0
     for short, meta in live.items():
@@ -447,13 +454,24 @@ def refresh(
 
 
 def load_cards(index: dict, *, short_ids: list[str] | None = None) -> list[IssueCard]:
-    """读出卡片；`short_ids` 为空时读全部。读不了的跳过（不抛）。"""
+    """读出卡片；`short_ids` 为空时读全部。读不了的跳过（不抛）。
+
+    索引里有、卡片缺失或读不出时打一条 warning：不然"库里有几个 issue"（索引）和
+    "实际能画几个"（卡片）会对不上，批量出图会静默少画（实测 13 vs 11）。
+    """
     keys = short_ids if short_ids is not None else list(index.get("issues", {}))
     out: list[IssueCard] = []
+    missing: list[str] = []
     for short in keys:
         card = read_card(short)
         if card is not None:
             out.append(card)
+        else:
+            missing.append(short)
+    if missing and short_ids is None:
+        shown = "、".join(missing[:8])
+        more = f" 等 {len(missing)} 个" if len(missing) > 8 else ""
+        log.warning("索引里有、卡片缺失或读不出，已跳过：%s%s", shown, more)
     return out
 
 
