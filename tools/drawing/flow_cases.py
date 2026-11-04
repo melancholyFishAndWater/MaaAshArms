@@ -475,7 +475,11 @@ def _safe_part(text: str) -> str:
 
 
 def base_filename(
-    case: Case, options: FlowOptions, *, issue_only: bool = False
+    case: Case,
+    options: FlowOptions,
+    *,
+    issue_only: bool = False,
+    stem_extra: str = "",
 ) -> str:
     """不含去重后缀的文件名主干：优先遥测问题名，其次任务名，最后证据包目录名。
 
@@ -500,6 +504,9 @@ def base_filename(
     elif issue and task and not issue_only:
         # 有 issue 名但没有 task_id：把任务名也带上，图才读得出画的是哪个任务
         parts.append(_safe_part(task))
+    if stem_extra:
+        # 例如 BaseTaskStopError 那类 issue：按 BaseErrorNext 的派发者分桶，带进文件名
+        parts.append(_safe_part(stem_extra))
     if options.px:
         # 多进程日志里同号任务会出现多次，进程号必须进名字，否则两次运行互相覆盖
         parts.append(_safe_part(options.px).lower())
@@ -513,6 +520,7 @@ def out_filename(
     manifest: dict | None = None,
     *,
     issue_only: bool = False,
+    stem_extra: str = "",
 ) -> str:
     """产物文件名：`<问题名或任务名>[_task<id>][_<日志时间>][_<短指纹>].png`.
 
@@ -525,7 +533,7 @@ def out_filename(
     「疑似过时」的后缀不在这里加：那项检查要等渲染完才知道有没有命中，
     所以后缀由 `stale_name()` 在渲染后补上。
     """
-    base = base_filename(case, options, issue_only=issue_only)
+    base = base_filename(case, options, issue_only=issue_only, stem_extra=stem_extra)
     digest = log_digest(case)
     recorded = (manifest or {}).get("cases", {})
 
@@ -601,6 +609,7 @@ def run_case(
     vision_override: Any = None,
     on_error_override: Any = None,
     issue_only: bool = False,
+    stem_extra: str = "",
 ) -> FlowResult | None:
     """渲染一个 case；命中 manifest 且产物还在就跳过（幂等）。
 
@@ -621,8 +630,22 @@ def run_case(
         if (version != options.version or version_source != options.version_source)
         else options
     )
+    # 遥测证据包：把用的是哪次运行（event.id / 运行时间）画到图上（ISSUES #1）
+    ev_note = _evidence_event_note(case)
+    if ev_note is not None:
+        case_options = replace(
+            case_options,
+            extra_notes=list(case_options.extra_notes) + [ev_note],
+        )
 
-    name = out_filename(case, case_options, outdir, manifest, issue_only=issue_only)
+    name = out_filename(
+        case,
+        case_options,
+        outdir,
+        manifest,
+        issue_only=issue_only,
+        stem_extra=stem_extra,
+    )
     vision = vision_override if vision_override is not None else case.vision()
     on_error = on_error_override if on_error_override is not None else case.on_error()
     fingerprint = {
@@ -810,6 +833,55 @@ def _evidence_task_id(case: Case, card: Any) -> tuple[int | None, int]:
             if norm == want:
                 return task.task_id, len(tasks)
     return None, len(tasks)
+
+
+def _evidence_event_note(case: Case) -> tuple[str, str] | None:
+    """遥测证据包 `evidence.json` 里的 `event.id` / 运行时间，画到图上注明用的是哪次运行。"""
+    if not case.root:
+        return None
+    parent = os.path.dirname(case.root)
+    cands: list[str] = []
+    if ISSUE_RE.match(os.path.basename(parent) or ""):
+        cands.append(os.path.join(parent, "evidence.json"))
+    elif ISSUE_RE.match(os.path.basename(case.root) or ""):
+        cands.append(os.path.join(case.root, "evidence.json"))
+    for path in cands:
+        if not os.path.isfile(path):
+            continue
+        try:
+            data = json.loads(Path(path).read_text(encoding="utf-8", errors="replace"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        event = data.get("event") or {}
+        eid = str(event.get("id") or "")
+        received = str(event.get("received") or "")
+        if not eid and not received:
+            return None
+        when = _fmt_local(received) if received else "?"
+        return (f"遥测证据事件：{eid or '?'}（{when}）", "version")
+    return None
+
+
+def _terminal_dispatcher(case: Case, card: Any, task_id: int | None) -> str:
+    """终端失败是 `BaseTaskStopError` 时，取 `BaseErrorNext` 的派发者（本次失败的上游环节）。
+
+    同一个 issue 的不同运行/任务里，`BaseErrorNext` 的派发者可能不同（ISSUES #3 的
+    `EscortClickOk` / `EscortEnterHome`）；拿它当文件名后缀，把不同上游分桶、互不覆盖。
+    """
+    if card.node_name != "BaseTaskStopError":
+        return ""
+    try:
+        parsed = parse_log(case.log_source(), None, None, None, False)
+    except (OSError, TypeError, ValueError):
+        return ""
+    hits = [
+        s
+        for s in parsed.steps
+        if s.name == "BaseErrorNext"
+        and s.dispatcher
+        and (task_id is None or s.task_id in (None, task_id))
+    ]
+    return hits[-1].dispatcher if hits else ""
 
 
 def _fetch_evidence(short_id: str) -> None:
@@ -1329,6 +1401,11 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
                         t_from=None,
                         t_to=None,
                     )
+                    dispatcher = _terminal_dispatcher(ev_case, card, task_id)
+                    if dispatcher and task_id is not None:
+                        stem_extra = f"{dispatcher}_task{task_id}"
+                    else:
+                        stem_extra = dispatcher
                     try:
                         res = run_case(
                             ev_case,
@@ -1340,6 +1417,7 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
                             vision_override=None,
                             on_error_override=None,
                             issue_only=True,
+                            stem_extra=stem_extra,
                         )
                     except (FileNotFoundError, ValueError, OSError) as exc:
                         # 证据包在但解析不出流程（例如日志尾部没有 pipeline 步骤）：

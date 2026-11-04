@@ -132,7 +132,8 @@ python -m tools.sentry.cli flow --case temp/evidence/PYTHON-14/debug --task-id 2
 
 ```
 temp/evidence/PYTHON-14/
-  debug/maafw.log                        ← sentry trace logs 拼出来的那次运行日志（issue view 那个事件）
+  debug/maafw.log                        ← sentry trace logs 拼出来的那次运行日志（`issue view` 的最新事件；
+                                             `--event <id>` 时是指定的那个历史事件）
   debug/on_error/<run_id>/<时间>_<节点>.png  ← **按失败事件分目录**：一个 issue 常有多次失败，
                                             每次一份 `mfa-task-failure-<run_id>-<task_id>-screenshots.zip`，
                                             各存进自己的 `run_id/`，互不覆盖
@@ -150,6 +151,12 @@ temp/evidence/PYTHON-14/
 最近 `--max-events`（默认 10）个事件，再逐个查 `api …/events/<eid>/attachments/`，有图的下到
 `debug/on_error/<run_id>/`；已下过的 run 跳过（增量，不重下、也不覆盖别的事件）。
 只画某一次失败就 `--on-error temp/evidence/<issue>/debug/on_error/<run_id>`。
+
+**默认取最新事件；历史事件用 `--event <id>`（必须配 `--issue`）。** `sentry issue view` 只给
+最新事件，所以默认的 `debug/maafw.log` 就是最新那次的 trace；`--event` 走 `sentry event view <id>`
+拿该事件的 trace 与失败字段，且**只下这一次**的现场图。事件变了会**重下**日志——不再复用旧事件的
+`maafw.log`（否则 `evidence.json` 说最新事件、日志还是几周前的，ISSUES 第 1 条）。画图时顶部会注明
+用的是哪个 `event.id` 与运行时间。
 
 ```bash
 python -m tools.sentry.cli evidence [--period 7d] [--limit 20] [--issue PYTHON-14] [--event <event-id>]

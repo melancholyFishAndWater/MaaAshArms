@@ -193,6 +193,9 @@ class Issue:
     # 事件时间（`dateCreated`/`timestamp`）：复用旧包时要能说出"这是哪一次失败"
     received: str = ""
     evidence: dict[str, Any] = field(default_factory=dict)
+    # True = 按 `--event` 指定的**单个**事件建出来的：现场图只取该事件的附件，
+    # 不再枚举该 issue 的其它运行（否则历史事件包里会混进最近几次的图）。
+    event_only: bool = False
 
     @property
     def images(self) -> bool:
@@ -234,6 +237,42 @@ def survey_issue(sentry: str, short_id: str, *, verbose: bool, timeout: float) -
     )
 
 
+def event_issue(
+    sentry: str, short_id: str, event_id: str, *, verbose: bool, timeout: float
+) -> Issue:
+    """按**指定事件**建 Issue（历史事件走这条）：trace / release / context 都取自该事件。
+
+    `issue view` 只给**最新**事件，历史事件只能靠 `event view <id>`。同一份事件里
+    `contexts.trace.trace_id` 与扁平 `context`（`attachment.status` 等点号键）都在，
+    所以日志（按 trace 取）和失败字段都对得上这一次运行。
+    """
+    raw = report_common.run_sentry_json_value(
+        sentry,
+        ["event", "view", event_id, "--json"],
+        verbose=verbose,
+        timeout_seconds=timeout,
+    )
+    if not isinstance(raw, dict):
+        raise RuntimeError(f"sentry event view {event_id} 返回了非对象 JSON。")
+    meta = survey_issue(sentry, short_id, verbose=verbose, timeout=timeout)
+    trace = (raw.get("contexts") or {}).get("trace") or {}
+    trace_id = str(
+        trace.get("trace_id") or (raw.get("trace") or {}).get("trace_id") or ""
+    )
+    return Issue(
+        short_id=meta.short_id,
+        title=meta.title or str(raw.get("title") or raw.get("message") or ""),
+        count=meta.count,
+        last_seen=meta.last_seen,
+        event_id=str(raw.get("id") or raw.get("eventID") or event_id),
+        trace_id=trace_id,
+        release=release_version(raw),
+        received=str(raw.get("dateCreated") or raw.get("timestamp") or ""),
+        evidence=issue_context(raw),
+        event_only=True,
+    )
+
+
 def survey(
     sentry: str,
     target: str,
@@ -253,6 +292,22 @@ def survey(
     """
     if issues:
         wanted = [i.strip().upper() for i in issues if i.strip()]
+        event_ids = [e.strip() for e in (events or []) if e.strip()]
+        if event_ids:
+            # --event：按指定历史事件取（一个 issue × 一个事件 一条 Issue）。
+            # 原来这里提前 return，把 --event 整个丢了（ISSUES 第 2 条）。
+            if progress:
+                report_common.show_progress(
+                    f"检查 {len(wanted)} 个 issue × {len(event_ids)} 个指定事件…",
+                    quiet=False,
+                )
+            out: list[Issue] = []
+            for short in wanted:
+                for eid in event_ids:
+                    out.append(
+                        event_issue(sentry, short, eid, verbose=verbose, timeout=timeout)
+                    )
+            return out
         if progress:
             report_common.show_progress(
                 f"检查 {len(wanted)} 个指定 issue…", quiet=False
@@ -295,9 +350,8 @@ def survey(
         found.append(survey_issue(sentry, short, verbose=verbose, timeout=timeout))
 
     if events:
-        # --event 直接给事件 id（issue 的历史事件走这条），先按 issue list 的顺序找它的归属
-        wanted_ids = {e.strip().lower() for e in events if e.strip()}
-        found = [issue for issue in found if issue.event_id.lower() in wanted_ids]
+        # 没给 --issue 时无法把事件 id 映射到 short_id（历史事件只能按 issue + event 指定）
+        raise ValueError("--event 需要同时给 --issue（例：--issue PYTHON-2H --event <id>）。")
     return found
 
 
@@ -391,13 +445,18 @@ def collect_image_attachments(
     代表事件（`issue.event_id`）无论如何都查一次，这样 `issue events` 不可用时也能拿到它的图。
     """
     jobs: list[dict] = []
-    events = list_events(
-        sentry, issue.short_id, verbose=verbose, timeout=timeout, limit=max_events
-    )
-    ids = [str(e["id"]) for e in events]
-    received_of = {str(e["id"]): str(e.get("received") or "") for e in events}
-    if issue.event_id and issue.event_id not in ids:
-        ids.insert(0, issue.event_id)
+    if issue.event_only and issue.event_id:
+        # `--event` 指定了单个历史事件：只取这一次的现场图，别把最近几次的图也塞进来。
+        ids = [issue.event_id]
+        received_of = {issue.event_id: issue.received}
+    else:
+        events = list_events(
+            sentry, issue.short_id, verbose=verbose, timeout=timeout, limit=max_events
+        )
+        ids = [str(e["id"]) for e in events]
+        received_of = {str(e["id"]): str(e.get("received") or "") for e in events}
+        if issue.event_id and issue.event_id not in ids:
+            ids.insert(0, issue.event_id)
     for event_id in ids:
         try:
             attachments = list_attachments(
@@ -854,9 +913,12 @@ def collect(
             )
 
     got_log = False
-    # 日志仍取 `issue view` 那个事件的 trace（`issue events` 精简视图拿不到 trace id）。
-    # 已下过且没 --force 就不重下，由 reconcile 把磁盘上那份记进清单。
-    if do_log and issue.logs and issue.trace_id and (force or not existing_log):
+    # 日志取当前事件（`issue view` 的最新事件，或 `--event` 指定的那个）的 trace。
+    # 已下过、且**事件没变**（reused）才不重下；事件变了必须重下——否则 `evidence.json`
+    # 说最新事件、`debug/maafw.log` 还是旧事件的（ISSUES 第 1 条：拿两周前的日志画图）。
+    if do_log and issue.logs and issue.trace_id and (
+        force or not existing_log or not reused
+    ):
         lines, has_more = fetch_log_lines(
             sentry,
             CONFIG.target,
@@ -876,6 +938,7 @@ def collect(
         written["log"] = f"debug/{LOG_NAMES[0]}"
         written["log_bytes"] = len(text.encode("utf-8"))
         trace_meta = {
+            "event_id": issue.event_id,
             "id": issue.trace_id,
             "items_limit": log_limit,
             "sort": log_sort,
@@ -1148,16 +1211,20 @@ def main(argv: Sequence[str] | None = None, prog: str | None = None) -> int:
         raise ValueError("--no-images 与 --no-log 一起给就没有任何东西可拉。")
 
     sentry = report_common.resolve_sentry_command()
-    issues = survey(
-        sentry,
-        CONFIG.target,
-        period=arguments.period,
-        limit=arguments.limit,
-        issues=arguments.issue,
-        events=arguments.event,
-        verbose=arguments.verbose,
-        timeout=arguments.timeout,
-    )
+    try:
+        issues = survey(
+            sentry,
+            CONFIG.target,
+            period=arguments.period,
+            limit=arguments.limit,
+            issues=arguments.issue,
+            events=arguments.event,
+            verbose=arguments.verbose,
+            timeout=arguments.timeout,
+        )
+    except (RuntimeError, ValueError) as exc:
+        print(f"错误：{exc}", file=sys.stderr)
+        return 1
     if not issues:
         print("没有匹配的 issue。", file=sys.stderr)
         return 0

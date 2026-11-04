@@ -169,6 +169,9 @@ flowchart LR
   （Train → Escort → Battle → Training），整段画会把它们接成一条链。定位顺序是
   `failure_task_id`（在日志里才用）→ 失败节点所在的 task → 任务入口名；都定位不到、
   且日志里多于一个 task 时退概览卡，不混画。
+- **终端是 `BaseTaskStopError` 时按上游派发者分桶**：文件名带 `BaseErrorNext` 的派发者与 task，
+  例如 `PYTHON-2H_EscortEnterHome_task200000004.png`——同一个 issue 的不同运行/任务上游不同，
+  各成一张、互不覆盖。历史上不同运行用 `evidence --issue <ID> --event <id>` 分别取（见 sentry README）。
 - **连证据包都没有**才退化成**概览卡**（问题号 / 标题 / 失败节点 / 次数 / 最后出现 / 资源版本 / 链接，
   有 `on_error/` 时贴现场图），并在卡上写明用哪条命令补完整输出。
 - 产物：每个 issue 一张 `temp/flow/<SHORT>.png`（`--mermaid` 另出 `.mmd`），同样记进
