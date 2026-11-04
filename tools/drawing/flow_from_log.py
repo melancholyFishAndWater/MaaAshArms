@@ -20,7 +20,9 @@
   * 未命中的聚合框贴"最后一次尝试"那张；框架没存图的节点（Custom / DirectHit）退到同节点的
     `*_wait_freezes.jpg`、再退到同一时刻的邻近帧，角标写"邻近帧"；
   * --on-error 目录里的 `<时间>_<节点名>.png` 是失败现场图：优先按名字贴回**被记录的那个节点**，
-    同时贴到超时/失败事件框上，角标写"失败现场"；
+    同时贴到超时/失败事件框上；角标是**红底白字的"失败现场 HH:MM:SS.mmm"**（时刻取自文件名，
+    直接对上 `on_error/<文件>`），缩略图另加红框——同一次失败里十几张识别帧是同一个画面的截图，
+    只有这几张是失败那一刻。贴回同名节点限"时间上紧挨着"（默认 8 s），隔几分钟的另一次失败不贴；
   * 连 --vision 都不给也能出图（纯节点流程图）；只给 --on-error 时，那张/那几张现场图会贴到对应节点上；
   * --vision / --on-error 既能指目录本身，也能指它们的父目录（例如 `debug/`），子目录自动识别。
 
@@ -63,9 +65,9 @@ import subprocess
 import sys
 import zipfile
 import zlib
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -99,7 +101,13 @@ from typing import Any, ClassVar
 # 18：资源版本来源再加"遥测证据包"——从 `evidence.json` 的 `release`（Sentry 事件字段）取，
 #     比从 maafw.log 里抠更稳（原生 maafw.log 根本没有那行，同装 MFA 界面日志也不会被下载）。
 #     同时支持 `--version` 手动指定基线。
-RENDERER_VERSION = 18
+# 19：失败现场图（`on_error/`）限定"只贴回时间紧挨着的那一步"，且一格只留最近那张——原来没有
+#     时间上限、按列表顺序覆盖，同名节点一天失败多次时贴成了别的跑次的图；失败现场图改红框 +
+#     红底角标、框里写「现场图 HH:MM:SS」，并把本窗口的图名写进顶部注记。
+# 20：现场图的"本窗口"改按**选中任务的判定窗口**（`parsed.span`）夹，不再用全局 min/max——
+#     框架级失败事件没有 task 归属，同一份滚动日志里别的跑次会把窗口撑到跨天；左端不放宽，
+#     免得把首尾只差 51 ms 的**上一个** task 的图算进来。
+RENDERER_VERSION = 20
 
 # 框里最多列几个候选，多的折成"另 N 项"（`--list` 不受这个限制）。
 # 默认只列 2 个：父节点名字 + 本次真跑的那个候选是这一行最要紧的两件事，
@@ -176,6 +184,12 @@ AGENT_DESTROY_FUNC = "MaaAgentClientDestroy"
 AGENT_CONNECT_FUNC = "MaaAgentClientConnect"
 # 未注册的 ERR 与它影响的记录之间隔多久还算同一次：实测识别侧约 30 ms、动作侧约 200 ms
 CUSTOM_MISS_WINDOW_SECONDS = 2.0
+# `on_error/` 的现场图贴回"同名命中节点"时允许的时间差（秒）。现场图是**这一步**失败时抓的，
+# 隔了几分钟的是另一次失败，不是它的现场。实测同一个 issue 里同名的 `BaseTaskStopError` 一天
+# 失败好几次（08:50 / 08:52 / 09:02 / 09:03…），不设上限时按列表顺序覆盖，最后遍历到的那张
+# （45 分钟后）会赢，于是本次失败框贴着别的跑次的图——读图的人根本分不出哪张是真的。
+# 与 `OnErrorIndex.find` 的默认 `tol` 同一个量级。
+ON_ERROR_BACKFILL_SECONDS = 8.0
 
 # 这些行整条匹配才算完整；只对上"头部"说明导出按字节裁过（Explore CSV 的常见下场）
 TRUNCATION_HEADS: tuple[tuple[str, re.Pattern[str]], ...] = (
@@ -1536,6 +1550,102 @@ class OnErrorIndex:
         return best
 
 
+def member_clock(entry: MediaEntry) -> str:
+    """现场图文件名里的时刻：`2026.11.03-08.52.54.334_BaseTaskStopError.png` → `08:52:54.334`。
+
+    框里写它才能对上 `debug/on_error/<文件名>`；解析不出返回空串（不猜）。
+    """
+    match = re.match(
+        r"^\d{4}\.\d{2}\.\d{2}-(\d{2})\.(\d{2})\.(\d{2})\.(\d+)",
+        os.path.basename(entry.member),
+    )
+    if not match:
+        return ""
+    return f"{match.group(1)}:{match.group(2)}:{match.group(3)}.{match.group(4)[:3]}"
+
+
+def _pad_hi(hi: datetime, seconds: float) -> datetime:
+    """右端放宽 `seconds` 秒；`datetime.max` 不能再加（会 OverflowError）。"""
+    if hi == datetime.max:
+        return hi
+    return hi + timedelta(seconds=seconds)
+
+
+def backfill_failure_thumbs(
+    columns: list[list[Step]],
+    items: Sequence[tuple[datetime, str, MediaEntry]],
+    thumb_of: dict[tuple[int, int], tuple[MediaEntry, bool, str]],
+    limit_seconds: float = ON_ERROR_BACKFILL_SECONDS,
+    window: tuple[datetime, datetime] | None = None,
+) -> list[str]:
+    """把 `on_error/` 的失败现场图贴回**同名命中节点**；返回实际贴上去的文件名。
+
+    四条限定，缺一条就会把图贴错（实测踩过：本次跑次的 `BaseTaskStopError` 框贴着 45 分钟后
+    另一次失败的图，而同一批失败事件框贴着本次的图，读图的人分不出哪张是真的）：
+
+    - 只贴给**时间上紧挨着**的那一步（`limit_seconds`）：同名节点一天失败好几次时，
+      45 分钟后那张不该贴到这一步上；
+    - 一格只留**时间最近**的那张，不是"最后遍历到的"（原来按列表顺序覆盖，最后那张赢）；
+    - 该格已经有**自己的精确识别帧**时不覆盖：识别帧是"这个节点当时看到了什么"，比事后截图直接；
+    - 给了 `window`（选中任务的判定窗口）就只认落在里面的图：队列里两个 task 首尾只差 51 ms 时，
+      光靠 `±8 s` 会把**上一个** task 的失败现场图算进本 task（实测 `TaskEntrust` 08:52:54.333
+      失败、`TaskTraining` 08:52:54.384 起）。左端不放宽——现场图在失败那一刻，
+      早于本 task 起始的必然是别人的。
+
+    纯函数（不画图、不需要 Pillow），自检直接测它。
+    """
+    by_name: dict[str, list[tuple[int, int, Step]]] = {}
+    for ci, col in enumerate(columns):
+        for ri, st in enumerate(col):
+            if st.kind == "hit":
+                by_name.setdefault(st.name, []).append((ci, ri, st))
+    lo = hi = None
+    if window is not None:
+        lo, hi = window[0], _pad_hi(window[1], limit_seconds)
+    best: dict[tuple[int, int], tuple[float, MediaEntry]] = {}
+    for ts, name, entry in items:
+        if lo is not None and (ts < lo or (hi is not None and ts > hi)):
+            continue
+        cands = [x for x in by_name.get(name, []) if x[2].ts <= ts]
+        if not cands:
+            continue
+        ci, ri, st = max(cands, key=lambda x: x[2].ts)
+        gap = (ts - st.ts).total_seconds()
+        if gap > limit_seconds:
+            continue
+        current = best.get((ci, ri))
+        if current is None or gap < current[0]:
+            best[(ci, ri)] = (gap, entry)
+    used: list[str] = []
+    for (ci, ri), (_gap, entry) in best.items():
+        existing = thumb_of.get((ci, ri))
+        if existing and existing[1]:
+            continue
+        thumb_of[(ci, ri)] = (entry, False, "失败现场")
+        used.append(entry.member)
+    return used
+
+
+def window_failure_images(
+    items: Sequence[tuple[datetime, str, MediaEntry]],
+    lo: datetime | None,
+    hi: datetime | None,
+) -> list[str]:
+    """落在 `[lo, hi]` 里的现场图文件名（按时间排）。
+
+    图上标了「失败现场」还不够——同名节点一天失败好几次时，要能对上是**哪一个文件**。
+    这条注记直接把 `on_error/<文件名>.png` 写出来，读图的人不用猜。
+    """
+    out: list[str] = []
+    for ts, _name, entry in items:
+        if lo is not None and ts < lo:
+            continue
+        if hi is not None and ts > hi:
+            continue
+        out.append(os.path.basename(entry.member))
+    return out
+
+
 # --------------------------------------------------------------------------- #
 # 画图
 # --------------------------------------------------------------------------- #
@@ -1629,7 +1739,8 @@ MFA_LOG_NAME_RE = re.compile(r"^log-\d{8}\.log$", re.IGNORECASE)
 # 版本从哪来：日志自己写的 / 同装 MFA 界面日志里借的（后者要在图注里说明，读图的人才不疑惑）
 VERSION_SOURCE_LOG = "日志"
 VERSION_SOURCE_MFA_LOG = "MFA日志"
-# 遥测证据包：release 写在 evidence.json 里（Sentry 事件字段），不是从 maafw.log 抠的
+# 遥测来的版本：可以是 `evidence.json` 的 `event.release`，也可以是本地遥测库里那张卡片
+# （`--telemetry` 反查到的 issue）。两者都不是从 maafw.log 抠的。
 VERSION_SOURCE_TELEMETRY = "遥测"
 # 用 --version 手动指定基线
 VERSION_SOURCE_CLI = "手动指定"
@@ -2360,17 +2471,8 @@ def draw_flow(parsed: ParsedLog, options: FlowOptions, out_path: str) -> DrawRes
                     thumb_of[(ci, ri)] = (path, exact, note)
         # 只有 on_error 图时（没给 --vision 或该节点本来就没存图）：把现场图贴回"被记录的那个节点"
         if on_err and on_err.items:
-            by_name: dict[str, list[tuple[int, int, Step]]] = {}
-            for ci, col in enumerate(columns):
-                for ri, st in enumerate(col):
-                    if st.kind == "hit":
-                        by_name.setdefault(st.name, []).append((ci, ri, st))
-            for ts, name, entry in on_err.items:
-                cands = [x for x in by_name.get(name, []) if x[2].ts <= ts]
-                if not cands:
-                    continue
-                ci, ri, _st = max(cands, key=lambda x: x[2].ts)
-                thumb_of[(ci, ri)] = (entry, False, "失败现场")
+            # 只看选中任务自己的判定窗口：同一份滚动日志里，相邻 task 会首尾相接（实测差 51 ms）
+            backfill_failure_thumbs(columns, on_err.items, thumb_of, window=parsed.span)
 
     # ---- 重复且无图的轮次合并成一列（必须在 thumb_of 算完之后：判定要用真实贴图结果）----
     round_count = len(rounds)
@@ -2778,22 +2880,43 @@ def draw_flow(parsed: ParsedLog, options: FlowOptions, out_path: str) -> DrawRes
             crop = frame
         sx = x + w - pad - slot_w
         sy = y + (h - slot_h) // 2
+        # 失败现场图给红框：它和"识别帧/邻近帧"必须一眼分开——同一次失败里十几张识别帧
+        # 是同一个卡住画面的截图，只有失败那一刻的 on_error 图才是"最后怎么死的"。
+        is_failure = note == "失败现场"
         d.rectangle(
             [sx - 1, sy - 1, sx + slot_w + 1, sy + slot_h + 1],
             fill=(255, 255, 255),
-            outline=(198, 204, 216),
+            outline=(190, 40, 40) if is_failure else (198, 204, 216),
+            width=max(1, int(2 * options.scale)) if is_failure else 1,
         )
         thumb = ImageOps.contain(crop, (slot_w - 2, slot_h - 2))
         img.paste(
             thumb, (sx + (slot_w - thumb.width) // 2, sy + (slot_h - thumb.height) // 2)
         )
         if note:
-            d.text(
-                (sx + 2, sy + slot_h - int(13 * options.scale)),
-                note,
-                font=f_det,
-                fill=(168, 120, 40),
-            )
+            if is_failure:
+                # 实心红底白字角标压在右下角：不靠"小字颜色"区分，缩略图一样也能一眼认出。
+                # 角标里带**这张图自己的时刻**——同名节点一天失败好几次时，只有它能对上
+                # `debug/on_error/<文件名>`（框体那行会被 fit_text 截掉，装不下完整时间）。
+                clock = member_clock(entry)
+                badge = f"失败现场 {clock}" if clock else note
+                tw = int(d.textlength(badge, font=f_det)) + int(10 * options.scale)
+                th = int(16 * options.scale)
+                bx, by = sx + slot_w - tw, sy + slot_h - th
+                d.rectangle([bx, by, sx + slot_w, sy + slot_h], fill=(190, 40, 40))
+                d.text(
+                    (bx + int(5 * options.scale), by + int(1 * options.scale)),
+                    badge,
+                    font=f_det,
+                    fill=(255, 255, 255),
+                )
+            else:
+                d.text(
+                    (sx + 2, sy + slot_h - int(13 * options.scale)),
+                    note,
+                    font=f_det,
+                    fill=(168, 120, 40),
+                )
 
     for ci, col in enumerate(columns):
         for ri, (x, y, w, h) in enumerate(pos[ci]):
@@ -2958,7 +3081,7 @@ class Note:
     """
 
     text: str
-    kind: str = "info"  # info | version | stale | agent | derive | time
+    kind: str = "info"  # info | version | stale | agent | derive | time | fail
 
 
 # 注记按类型分色（只用作前景色，浅底上都够对比）。`info` 是默认灰。
@@ -2969,6 +3092,7 @@ NOTE_COLORS: dict[str, tuple[int, int, int]] = {
     "agent": (176, 48, 48),  # 红：agent 缺位
     "derive": (54, 96, 150),  # 蓝：由识别记录还原
     "time": (108, 74, 150),  # 紫：时间戳回跳已重排
+    "fail": (170, 34, 34),  # 深红：本窗口的失败现场图（点名文件名）
 }
 
 
@@ -3019,6 +3143,10 @@ class FlowOptions:
     # 遥测证据包 evidence.json 取；用 --version 或 flow_cases 从证据包带下来时一并带 version_source 标来源。
     version: str | None = None
     version_source: str = ""
+    # 遥测关联：命中的问题号（进产物文件名）与额外注记 `(文本, kind)`。
+    # 只由调用方填——渲染器不认识 Sentry，也不联网。
+    issue: str = ""
+    extra_notes: list[tuple[str, str]] = field(default_factory=list)
     # 版面
     thumbs: bool = True
     thumb_height: int = 132
@@ -3036,7 +3164,15 @@ class FlowOptions:
         # notes 由 render_flow 按输入填写，同一份 options 会在多个 case 之间复用，
         # 留在摘要里会把上一个 case 的注记带进下一个 case 的指纹。
         # stale 同理：它是这次跑出来的结论，不是参数。
-        skip = {"vision", "on_error", "t_from", "t_to", "notes", "stale"}
+        skip = {
+            "vision",
+            "on_error",
+            "t_from",
+            "t_to",
+            "notes",
+            "stale",
+            "extra_notes",
+        }
         return {
             k: (v.isoformat() if isinstance(v, datetime) else v)
             for k, v in self.__dict__.items()
@@ -3394,7 +3530,7 @@ def stale_notes(check: StaleCheck | None) -> list[Note]:
     src = (
         "（取自 MFA 日志 logs/log-*.log）"
         if check.source == VERSION_SOURCE_MFA_LOG
-        else "（取自遥测证据包 evidence.json 的 release）"
+        else "（取自遥测：evidence.json 或本地遥测库的 release）"
         if check.source == VERSION_SOURCE_TELEMETRY
         else "（手动指定）"
         if check.source == VERSION_SOURCE_CLI
@@ -3502,6 +3638,30 @@ def render_flow(
         _apply_stale(opts.stale)
 
     notes = build_notes(parsed, opts)
+    if opts.extra_notes:
+        # 遥测关联放在最前：读图的人第一眼就该知道"这张图对应哪个线上问题"
+        notes = [Note(text, kind) for text, kind in opts.extra_notes] + notes
+    # 本窗口内实际存在的失败现场图：把文件名点出来。同名节点一天失败好几次时，
+    # 只看框上的「失败现场」角标分不清是哪一张（实测 `BaseTaskStopError` 一小时里失败 4 次）。
+    if opts.thumbs and on_error is not None:
+        failure_index = OnErrorIndex(on_error)
+        if failure_index.items:
+            pad = timedelta(seconds=ON_ERROR_BACKFILL_SECONDS)
+            if parsed.span:
+                # 选中任务有自己的判定窗口。**不能**再用全局 min/max：框架级失败事件
+                # （`Task timeout` / `node not completed`）没有 task 归属，同一份滚动日志里
+                # 别的跑次会把窗口撑到跨天，于是把前一天另一个进程的图也列进来（踩过）。
+                lo, hi = parsed.span[0], _pad_hi(parsed.span[1], pad.total_seconds())
+            else:
+                stamps = [s.ts for s in raw]
+                lo, hi = min(stamps), _pad_hi(max(stamps), pad.total_seconds())
+            # 只向右放宽：现场图是在失败那一刻（最后一步之后）抓的；向左放宽会把相邻的
+            # **上一个** task 的图带进来（实测 `TaskEntrust` 与 `TaskTraining` 只差 51 ms）。
+            in_window = window_failure_images(failure_index.items, lo, hi)
+            if in_window:
+                shown = "、".join(in_window[:3])
+                more = f" 等 {len(in_window)} 张" if len(in_window) > 3 else ""
+                notes.append(Note(f"失败现场图：{shown}{more}", "fail"))
 
     truncated_start = False
     if opts.t_from is not None:
@@ -3648,6 +3808,118 @@ def render_flow(
     )
 
 
+def render_overview(
+    out: str,
+    *,
+    title: str,
+    subtitle: str = "",
+    fields: list[tuple[str, str]] | None = None,
+    images: list[str] | None = None,
+    notes: list[Note] | None = None,
+    mermaid: bool = False,
+) -> FlowResult:
+    """把一条遥测 issue 画成「概览卡」PNG——没有完整 maafw.log 时的降级产物。
+
+    与 `render_flow` 同用 PIL，落盘到 `out`；`--mermaid` 时再写一个 `.mmd`（把事实列成节点）。
+    issue 本体只存文本（`IssueCard`），没有 on_error 图：图只有在
+    `temp/evidence/<SHORT>/debug/on_error/` 被下载过时才贴，否则纯文字。
+    """
+
+    def _text(draw: Any, xy: tuple[int, int], s: str, font: Any, fill: Any) -> None:
+        # PIL 的 `text` 在老版本不支持 `fill` 为 RGB 元组以外的写法，这里统一成元组
+        draw.text(xy, s, font=font, fill=fill)
+
+    from PIL import Image, ImageDraw
+
+    fields = fields or []
+    images = images or []
+    notes = notes or []
+    font_title = load_font(int(24 * 1.0), bold=True)
+    font_field = load_font(16)
+    font_note = load_font(13)
+    pad = 24
+    line_h = 30
+    title_h = 44
+    sub_h = 26 if subtitle else 0
+    fields_h = len(fields) * line_h
+    thumb_w = 210
+    thumb_h = 200
+    img_area_h = (thumb_h + 24) if images else 0
+    notes_h = (len(notes) + 1) * (line_h - 8) if notes else 0
+    width = 920
+    height = pad * 2 + title_h + sub_h + 6 + fields_h + 6 + img_area_h + notes_h
+    img = Image.new("RGB", (width, height), (255, 255, 255))
+    draw = ImageDraw.Draw(img)
+    draw.rectangle([0, 0, width, 6], fill=(170, 34, 34))
+    y = pad
+    _text(draw, (pad, y), title, font_title, (20, 20, 20))
+    y += title_h
+    if subtitle:
+        _text(draw, (pad, y), subtitle, font_field, (90, 90, 90))
+        y += sub_h
+    y += 6
+    for label, value in fields:
+        _text(draw, (pad, y), label, font_field, (96, 104, 122))
+        _text(draw, (pad + 150, y), str(value), font_field, (20, 20, 20))
+        y += line_h
+    y += 6
+    if images:
+        _text(
+            draw,
+            (pad, y),
+            "失败现场图：",
+            font_field,
+            (170, 34, 34),
+        )
+        y += line_h
+        x = pad
+        for path in images[:4]:
+            try:
+                with Image.open(path) as im:
+                    im = im.convert("RGB")
+                    scale = thumb_w / im.width
+                    th = min(int(im.height * scale), thumb_h)
+                    im = im.resize((thumb_w, max(1, th)))
+                    img.paste(im, (x, y))
+            except (OSError, ValueError):
+                pass
+            x += thumb_w + 12
+        y += thumb_h + 24
+    if notes:
+        y += 4
+        for n in notes:
+            color = NOTE_COLORS.get(n.kind, NOTE_COLORS["info"])
+            _text(draw, (pad, y), n.text, font_note, color)
+            y += line_h - 8
+    os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
+    img.save(out)
+    mermaid_path: str | None = None
+    if mermaid:
+        mermaid_path = os.path.splitext(out)[0] + ".mmd"
+        with open(mermaid_path, "w", encoding="utf-8") as fh:
+            fh.write("flowchart TD\n")
+            fh.write(f'  title["{re.sub(r"[\"\[\]\\]", "", title)}"]\n')
+            for i, (label, value) in enumerate(fields):
+                safe = re.sub(r'["\[\]]', "", str(value))[:40]
+                fh.write(f'  f{i}["{label}: {safe}"]\n')
+    return FlowResult(
+        path=os.path.abspath(out),
+        mermaid=mermaid_path,
+        width=width,
+        height=height,
+        steps=0,
+        boxes=len(fields),
+        rounds=0,
+        columns=0,
+        overlay_groups=0,
+        truncated_start=False,
+        notes=list(notes),
+        derived_from="overview",
+        out_of_order=0,
+        stale=None,
+    )
+
+
 # --------------------------------------------------------------------------- #
 # CLI
 # --------------------------------------------------------------------------- #
@@ -3717,6 +3989,50 @@ def build_flow_options(args: argparse.Namespace) -> FlowOptions:
         scale=args.scale,
         title=args.title,
     )
+
+
+def _telemetry_module():
+    """延迟 import `tools.sentry.telemetry_index`。
+
+    `telemetry_index` 反过来要用 `tools.sentry.evidence`，而 `evidence` 在模块级 import
+    `tools.drawing.flow_cases`——所以只能在真正要用遥测时才把它拉进来，避免 import 环。
+    直接跑本文件（`python tools/drawing/flow_from_log.py`）时仓库根不在 `sys.path` 上，这里补一次。
+    """
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))
+    from tools.sentry import telemetry_index
+
+    return telemetry_index
+
+
+def apply_telemetry(args, options: FlowOptions) -> bool:
+    """按 CLI 开关把遥测关联灌进 `options`；返回 False = `--telemetry-only` 已处理完、不该再画图。
+
+    只在开关打开时联网（`--telemetry-offline` 除外）。刷新失败只打提示，不影响画图——
+    遥测是"加分项"，不是画图的前提。
+    """
+    module = _telemetry_module()
+    annotation = module.annotate(
+        args.log,
+        offline=args.telemetry_offline,
+        issue=args.telemetry_issue,
+        task_id=options.task_id,
+        days=args.telemetry_days,
+        gap=args.telemetry_gap,
+    )
+    if annotation.notes:
+        options.extra_notes = list(annotation.notes)
+    if annotation.chosen:
+        options.issue = annotation.chosen
+    if options.version is None and annotation.version:
+        options.version = annotation.version
+        options.version_source = VERSION_SOURCE_TELEMETRY
+    for warning in annotation.warnings:
+        print(f"提示：{warning}", file=sys.stderr)
+    if args.telemetry_only:
+        module.format_matches(annotation.matches, sys.stdout)
+        return False
+    return True
 
 
 def create_argument_parser(prog: str | None = None) -> argparse.ArgumentParser:
@@ -3855,6 +4171,33 @@ def create_argument_parser(prog: str | None = None) -> argparse.ArgumentParser:
         "「资源版本：vX.Y.Z」，再到同装 MFA 日志，再到遥测证据包 evidence.json 的 release",
     )
     ap.add_argument(
+        "--telemetry",
+        dest="telemetry",
+        action="store_true",
+        help="画本地包时关联遥测问题（默认开）：按日志里的失败节点在本地遥测库里反查，"
+        "把问题号/次数/release 写进注记，并用那个 release 当「疑似过时」基线",
+    )
+    ap.add_argument(
+        "--no-telemetry", dest="telemetry", action="store_false", help="不关联遥测（纯离线）"
+    )
+    ap.add_argument(
+        "--telemetry-offline",
+        action="store_true",
+        help="只读本地遥测库、不联网刷新（库不存在时就不反查）",
+    )
+    ap.add_argument(
+        "--telemetry-issue", default=None, help="指定问题号（如 PYTHON-2X），不再自动反查"
+    )
+    ap.add_argument(
+        "--telemetry-days", type=int, default=14, help="本地遥测库保留最近 N 天（默认 14）"
+    )
+    ap.add_argument(
+        "--telemetry-gap", type=int, default=3, help="反查的时间窗（天，默认 3）"
+    )
+    ap.add_argument(
+        "--telemetry-only", action="store_true", help="只打印反查到的遥测问题，不画图"
+    )
+    ap.add_argument(
         "--thumb-height", type=int, default=132, help="截图高度 px（默认 132）"
     )
     ap.add_argument("--box-width", type=int, default=470)
@@ -3882,13 +4225,23 @@ def create_argument_parser(prog: str | None = None) -> argparse.ArgumentParser:
     ap.add_argument(
         "--mermaid", action="store_true", help="额外输出同名 .mmd（Mermaid 文本流程图）"
     )
-    ap.set_defaults(thumbs=True, parents=True, overlay=True, stale_check=True)
+    ap.set_defaults(
+        thumbs=True, parents=True, overlay=True, stale_check=True, telemetry=True
+    )
     return ap
 
 
 def main(argv: list[str] | None = None) -> int:
     args = create_argument_parser().parse_args(argv)
     options = build_flow_options(args)
+
+    if args.telemetry_only and not args.telemetry:
+        print(
+            "错误：--telemetry-only 要开着遥测（别同时给 --no-telemetry）。", file=sys.stderr
+        )
+        return 1
+    if args.telemetry and not apply_telemetry(args, options):
+        return 0
 
     if args.list_tasks:
         tasks = scan_tasks(args.log, options.t_from, options.t_to)

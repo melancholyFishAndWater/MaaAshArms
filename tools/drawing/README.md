@@ -68,6 +68,10 @@ python tools/drawing/flow_cases.py --case D:/MaaAshArms/debug --list-cases
 #    `on_error/` 会递归扫子目录：遥测证据包把每次失败的现场图放在 on_error/<run_id>/，
 #    只画某一次就 --on-error <case>/on_error/<run_id>（不指定则按节点名+时间就近匹配）
 python tools/drawing/flow_cases.py --case D:/MaaAshArms/debug --vision D:/MaaAshArms/vision --task-id 200000118
+#    默认会关联遥测问题（在本地遥测库里反查，联网只补缺的 issue）：
+python tools/drawing/flow_cases.py --case D:/MaaAshArms/debug --telemetry-only   # 只反查、不画
+python tools/drawing/flow_cases.py --case D:/MaaAshArms/debug --telemetry-offline # 不联网
+python tools/drawing/flow_cases.py --case D:/MaaAshArms/debug --no-telemetry      # 纯离线
 
 # 3. 白板图片转 png 并改写引用
 python tools/drawing/whiteboard_images.py
@@ -76,6 +80,98 @@ python tools/drawing/whiteboard_images.py --dry-run   # 报告将要做什么，
 ```
 
 遥测侧的入口是 `python -m tools.sentry.cli flow`，它转发到 `flow_cases.py`，产出目录一致。
+
+### 输入输出工作流
+
+一个证据包进、一张图出。虚线是**可选**的遥测关联（`--telemetry`，默认开）：只影响文件名前缀、
+注记和「疑似过时」的版本基线，没有它照样出图。
+
+```mermaid
+flowchart LR
+    subgraph IN["输入：一个证据包"]
+        direction TB
+        I1["debug 目录<br/>maafw.log · maafw.bak.*.log<br/>vision/ · on_error/"]
+        I2["导出包 zip（可多卷 -partNN）<br/>debug/maafw.log + vision/ + on_error/"]
+        I3["单份日志文件"]
+        I4["遥测证据包<br/>temp/evidence/SHORT-ID/debug/"]
+    end
+
+    subgraph TEL["可选：遥测关联"]
+        direction TB
+        T1["本地遥测库<br/>temp/telemetry/issues/SHORT-ID.json"]
+        T2["联网增量刷新<br/>（没库 / 没登录 → 跳过）"]
+    end
+
+    subgraph GEN["生成"]
+        direction TB
+        G1["读日志 + 图片<br/>横向 = 轮次，纵向 = 轮内顺序"]
+        G2["遥测反查<br/>问题号 · release · 置信度"]
+    end
+
+    subgraph OUT["输出：按命名规则落一张图"]
+        direction TB
+        N1["NAME 规则<br/>问题号 或 任务名<br/>＋ _taskID ＋ _pxNNNN<br/>＋ 日志时间 ＋ 短指纹 ＋ _疑似过时<br/>（没有的项直接跳过）"]
+        O1["temp/flow/NAME.png<br/>PNG，主产物"]
+        O2["temp/flow/NAME.mmd<br/>Mermaid 文本图，--mermaid"]
+        O3["temp/flow/manifest.json<br/>追加一条：指纹 / 计数 / 注记"]
+    end
+
+    I1 --> G1
+    I2 --> G1
+    I3 --> G1
+    I4 --> G1
+    T2 -.-> T1
+    T1 -.-> G2
+    G2 -.->|问题号当前缀 · release 当版本基线| G1
+    G1 --> N1
+    N1 --> O1
+    N1 --> O2
+    G1 --> O3
+```
+
+`NAME` 的优先级（问题号 → 任务名 → 目录名）与附加项的出现条件，见下面「产物文件名（`flow_cases.py`）」一节。
+
+默认一个证据包出一张图；加 `--all-tasks` 时按任务各自反查遥测、各出一张（文件名 stem 换成各自的问题号），
+产物仍是 `temp/flow/NAME.png` + `.mmd` + 同一条 `manifest.json` 账目。
+
+### 批量出图（遥测库驱动）
+
+以**整个本地遥测库**（所有未解决 issue）为驱动，一次出一批图；传入的日志包只作补充，
+把命中的 issue 从「概览卡」升级成「完整流程」。
+
+```mermaid
+flowchart LR
+    subgraph IN["输入"]
+        T1["本地遥测库<br/>temp/telemetry/issues/SHORT-ID.json"]
+        T2["联网增量刷新<br/>（没库 / 没登录 → 跳过）"]
+        L1["可选：日志包<br/>debug 目录 / 导出包 zip"]
+    end
+    subgraph OUT["输出：每个 issue 一张图"]
+        O1["命中日志包：完整流程图<br/>temp/flow/SHORT.png"]
+        O2["没命中：概览卡<br/>temp/flow/SHORT.png"]
+    end
+    T2 -.-> T1
+    T1 --> O1
+    T1 --> O2
+    L1 -.->|"补充：反查命中"| O1
+```
+
+- **不给日志包**：每个 issue 一张**概览卡**。`IssueCard` 只有文本字段（问题号 / 标题 / 失败节点 /
+  任务入口 / 次数 / 状态 / 最后出现 / 首次收到 / 资源版本 / 链接），没有完整日志就画不出轮次流程。
+- **给了日志包**：先把日志里的失败在库里反查，**命中的 issue 按任务各出一张完整流程**
+  （与 `--all-tasks` 同一个画法，文件名用问题号），没命中的仍出概览卡。
+- 概览卡要贴失败现场图，得先 `python -m tools.sentry.cli evidence <SHORT>` 把
+  `temp/evidence/<SHORT>/debug/on_error/` 下下来；没下过就是纯文字卡。
+- 产物：每个 issue 一张 `temp/flow/<SHORT>.png`（`--mermaid` 另出 `.mmd`），同样记进
+  `manifest.json`（与单包出图同目录、同账目）。
+
+```bash
+# 只画遥测库里所有未解决 issue 的概览卡
+python tools/drawing/flow_cases.py --telemetry-bulk
+
+# 同一份日志包：命中的出完整流程，没命中的出概览卡
+python tools/drawing/flow_cases.py --telemetry-bulk --case <证据包>
+```
 
 ### 解析口径（读图前先看这里）
 
@@ -211,6 +307,28 @@ python tools/drawing/whiteboard_images.py --dry-run   # 报告将要做什么，
 - **开销**：一次 `git show` 每模块 + 带缓存的 `git log -1` 每模块，一份 42 节点 4 轮的日志多约 4 s
   （1.5 s → 5.7 s，其中大部分是画图本身）。嫌慢就 `--no-stale-check`。
 
+### 关联遥测问题（`--telemetry`，默认开）
+
+画本地包时顺手在**本地遥测库**里反查这个包对应哪个线上问题
+（库怎么建、怎么清理见 [`tools/sentry` 的「`telemetry`：本地遥测库与反查」](../sentry/README.md#telemetry本地遥测库与反查画图默认开)）。查到后：
+
+- 图上注记**最前面**加两行：`遥测问题 PYTHON-2X：12 次 · 最后 11-03 08:52 · v1.0.0-beta.61`、
+  `遥测失败：Maa task failed: Escort (BaseTaskStopError/action)`；
+- 产物文件名前缀用问题号（`PYTHON-2X_TaskEscort_task200001359_px33560.png`），比目录名可靠；
+- 拿它的 `release` 当「疑似过时」基线（省掉"日志里没有资源版本"那次跳过）。
+
+| 开关 | 作用 |
+| --- | --- |
+| 默认 | 联网刷新本地库（只补新增/`lastSeen` 变了的 issue），再在本地查 |
+| `--telemetry-offline` | 只读本地库，不联网 |
+| `--no-telemetry` | 完全不做这层关联 |
+| `--telemetry-issue PYTHON-2X` | 指定问题号，不自动反查 |
+| `--telemetry-only` | 只打印候选问题，不画图 |
+
+**反查给候选、不给唯一答案**：一次运行常有多个失败事件，同一个包可能对应好几个 issue。
+只有"恰好一个 `task_id` + `node_id` 全等"时才自动采用，否则取时间最近的并打提示。
+刷新失败（没装 `sentry` CLI / 没登录）只提示一次，照常画图。
+
 ### agent 缺位（自动标，没有开关）
 
 日志里出现下面任意一条 ERR，就说明框架引用了 Custom 回调名、但**没有任何进程注册它**：
@@ -265,6 +383,27 @@ python tools/drawing/whiteboard_images.py --dry-run   # 报告将要做什么，
 
 **`BaseTaskStopError` 的失败是设计如此**：`BaseTaskStopErrorAct` 恒返回 `false`（`agent/shared/generic.py:124`），
 用来让任务报错结束。所以它那个 `动作失败 Custom` 框是**正常收尾**，不是动作坏了。
+
+### 缩略图角标：哪张才是失败现场
+
+一次失败里大部分框贴的是**识别帧**（`debug/vision/`），同一次卡住的十几步往往是同一个画面的截图，
+看起来一模一样；只有 `debug/on_error/` 那几张才是**失败那一刻**的现场。两者必须能一眼分开：
+
+| 角标 | 图来自 | 画法 |
+| --- | --- | --- |
+| `失败现场 HH:MM:SS.mmm` | `on_error/<时间>_<节点>.png` | **红框 + 实心红底白字**角标；时刻就是文件名里那一段，直接对上 `debug/on_error/<文件>` |
+| `邻近帧` | `vision/` 里**别的节点**的帧（本节点没存图时的最近帧） | 淡琥珀小字，不抢眼 |
+| （无角标） | `vision/` 里本节点自己的识别帧（`reco_id` 精确命中） | 就是"这个节点当时看到了什么" |
+
+顶部注记还会点名本窗口内的现场图文件名（`提示：失败现场图：2026.11.03-08.52.54.334_BaseTaskStopError.png`），
+同名节点一天失败好几次时以它为准。
+
+失败现场图贴回同名命中节点有两条硬限制（`backfill_failure_thumbs()`）：
+
+- **时间上限 8 s**：`on_error/` 是"这一步失败时"抓的，隔几分钟的是另一次失败。实测同一个
+  `BaseTaskStopError` 一小时里失败 4 次（08:50 / 08:52 / 09:02 / 09:03），不设上限时按列表顺序
+  覆盖 → 最后遍历到的 09:03 那张赢，本次失败框就贴着别的跑次的图。
+- **一格只留最近那张，且不覆盖该节点自己的精确识别帧**。
 
 ### 画不出来时的报错
 
@@ -359,6 +498,11 @@ python tools/drawing/whiteboard_images.py --dry-run   # 报告将要做什么，
 1. **遥测问题名**：证据包目录名就是 issue 的 `short_id`（`temp/evidence/PYTHON-1Z/` → `PYTHON-1Z`）；
    `--case` 指到 `debug/` 那层时往上找一层，归档来源看文件名（`PYTHON-1Z-part01.zip` → `PYTHON-1Z`）。
    认不出的目录名（`20261019`、`debug`）不算问题名。
+
+   **问题一旦关联上遥测，就按遥测的命名规则走**：`--telemetry` 反查命中、或 `--telemetry-issue`
+   指定后，前缀直接是 issue 的 `short_id`，与 `temp/evidence/<SHORT-ID>/` 同一套，不再回落到
+   目录名/任务名。`--all-tasks` 时**每个任务各自反查**（只认该 task 自己的 `task_id`），
+   所以同一次运行里的两张图可能带不同的问题号——那是真事，不是名字串了。
 2. **任务名**：日志里 `Tasker.Task.*` 事件的 `entry`（`TaskTrain` 这种）。给了 `--task-id` 时只认那个
    task 的 `PipelineTask node done [...] [task_id_=N]` 行，取其中的入口型节点名（`Task*` 开头）。
 3. **证据包目录名**：前两者都没有时的兜底。
@@ -385,9 +529,9 @@ python tools/drawing/whiteboard_images.py --dry-run   # 报告将要做什么，
 
 ```powershell
 python tools/drawing/flow_cases.py --case D:/MaaAshArms/debug --all-tasks
-# temp/flow/TaskTrain_task200000030_px30992.png
-# temp/flow/TaskEscort_task200000001_px15316.png
-# temp/flow/TaskEscort_task200000001_px6448.png     ← 同号不同进程，各画各的
+# temp/flow/TaskTrain_task200000030_px30992.png          ← 遥测没匹配上时用任务名
+# temp/flow/PYTHON-1Z_task200000001_px15316.png           ← 匹配上就用问题号（遥测命名规则）
+# temp/flow/PYTHON-2H_task200000001_px6448.png            ← 同号不同进程，各画各的
 ```
 
 `task_id` 在每个进程里从同一个基数重新分配，所以文件名的进程号是**唯一性的一部分**，不是装饰。

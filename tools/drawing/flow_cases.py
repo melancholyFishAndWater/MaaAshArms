@@ -55,9 +55,11 @@ from flow_from_log import (
     FlowOptions,
     FlowResult,
     MediaResolver,
+    Note,
     _is_zip,
     parse_time,
     render_flow,
+    render_overview,
     scan_tasks,
     stale_summary,
 )
@@ -435,7 +437,8 @@ def base_filename(case: Case, options: FlowOptions) -> str:
     （实测 200000007 只留下 `BaseReturnHome`，它不是任务入口），而 `task<id>` 本身就唯一、
     也一定对——宁可少一个名字，不放一个可能错的名字。
     """
-    issue = issue_name_of(case)
+    # `options.issue` 优先：遥测反查 / `--telemetry-issue` 给的问题号比目录名可靠
+    issue = options.issue or issue_name_of(case)
     task = task_name_of(case, options)
     explicit_task = options.task_id is not None
     stem = issue or (None if explicit_task else task) or task or case.label or "case"
@@ -656,6 +659,163 @@ def run_case(
     return result
 
 
+def _fmt_local(text: str) -> str:
+    """Sentry 的时刻是 UTC（`...Z`），概览卡上显示**本地时间**。
+
+    复用遥测模块的解析/偏移 helper（模块级、稳定）；解析不出返回占位符。
+    """
+    telemetry = _telemetry_module()
+    ts = telemetry._parse_time(text)
+    if ts is None:
+        return "—"
+    return (ts + telemetry._utc_offset()).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _evidence_on_error(short_id: str) -> list[str]:
+    """这个 issue 的失败现场图：只有 `evidence` 命令把 `temp/evidence/<SHORT>/debug/on_error/`
+    下下来过才有；没下过返回空（概览卡就纯文字）。"""
+
+    d = os.path.join(REPO_ROOT, "temp", "evidence", short_id, "debug", "on_error")
+    if not os.path.isdir(d):
+        return []
+    pngs = sorted(f for f in os.listdir(d) if f.lower().endswith(".png"))
+    return [os.path.join(d, f) for f in pngs[:4]]
+
+
+def overview_filename(
+    short_id: str, outdir: str, manifest: dict, fingerprint: dict
+) -> str:
+    """概览卡文件名：`<SHORT>.png`；被别的指纹占用时追加指纹短哈希。"""
+
+    import hashlib
+    import json
+
+    base = f"{short_id}.png"
+
+    def taken(name: str) -> bool:
+        path = os.path.join(outdir, name)
+        if os.path.isfile(path):
+            return name not in manifest["cases"] or manifest["cases"][name].get(
+                "fingerprint"
+            ) != fingerprint
+        return (
+            name in manifest["cases"]
+            and manifest["cases"][name].get("fingerprint") != fingerprint
+        )
+
+    if not taken(base):
+        return base
+    digest = hashlib.sha256(
+        json.dumps(fingerprint, sort_keys=True).encode("utf-8")
+    ).hexdigest()[:12]
+    return f"{short_id}_{digest}.png"
+
+
+def run_overview(
+    card: Any,
+    *,
+    outdir: str,
+    mermaid: bool,
+    force: bool,
+    manifest: dict,
+) -> FlowResult | None:
+    """画一条遥测 issue 的概览卡（没有完整日志时的降级产物）。"""
+
+    rel = card.release or ""
+    fields = [
+        ("问题号", card.short_id),
+        ("标题", card.title or "—"),
+        ("失败节点", f"{card.node_name}/{card.stage}" if card.node_name else "—"),
+        ("任务入口", card.label or "—"),
+        ("次数", str(card.count if card.count is not None else "—")),
+        ("状态", card.status or "—"),
+        ("最后出现", _fmt_local(card.last_seen)),
+        ("首次收到", _fmt_local(card.received)),
+        ("资源版本", rel or "—"),
+        ("链接", card.permalink or "—"),
+    ]
+    images = _evidence_on_error(card.short_id)
+    notes = [Note(text, kind) for text, kind in _telemetry_module().card_notes(card, [])]
+    fingerprint = {
+        "short_id": card.short_id,
+        "last_seen": card.last_seen,
+        "release": rel,
+        "images": len(images),
+        "renderer": RENDERER_VERSION,
+    }
+    name = overview_filename(card.short_id, outdir, manifest, fingerprint)
+    target = os.path.join(outdir, name)
+    if not force:
+        rec = manifest["cases"].get(name)
+        if (
+            rec
+            and rec.get("fingerprint") == fingerprint
+            and os.path.isfile(target)
+        ):
+            print(f"跳过（已画过）: {target}")
+            return None
+    try:
+        result = render_overview(
+            target,
+            title=f"遥测问题 {card.short_id}",
+            subtitle=f"{card.count or 0} 次 · {card.status or '?'}",
+            fields=fields,
+            images=images,
+            notes=notes,
+            mermaid=mermaid,
+        )
+    except ModuleNotFoundError as exc:
+        print(f"错误：{card.short_id}: {exc}", file=sys.stderr)
+        return None
+    assert isinstance(result, FlowResult)
+    manifest["cases"][name] = {
+        "fingerprint": fingerprint,
+        "path": result.path,
+        "mermaid": result.mermaid,
+        "width": result.width,
+        "height": result.height,
+        "steps": result.steps,
+        "boxes": result.boxes,
+        "rounds": result.rounds,
+        "columns": result.columns,
+        "overlay_groups": result.overlay_groups,
+        "truncated_start": result.truncated_start,
+        "derived_from": result.derived_from,
+        "out_of_order": result.out_of_order,
+        "notes": [n.text for n in result.notes],
+        "rendered_at": datetime.now().isoformat(timespec="seconds"),
+        "stale": None,
+    }
+    print(f"概览 {card.short_id} → {result.path}  ({result.width}×{result.height})")
+    return result
+
+
+def _telemetry_module():
+    """延迟 import `tools.sentry.telemetry_index`。
+
+    它反过来要用 `tools.sentry.evidence`，而 `evidence` 在模块级 import 本模块——
+    所以只能在真正用遥测时才拉进来，避免 import 环。
+    """
+    from tools.sentry import telemetry_index
+
+    return telemetry_index
+
+
+def _with_telemetry(options: FlowOptions, annotation) -> FlowOptions:
+    """把遥测结论并进 options：产物名用问题号、注记带上、release 当版本基线。"""
+    version = options.version or annotation.version or None
+    source = options.version_source or (
+        VERSION_SOURCE_TELEMETRY if annotation.version else ""
+    )
+    return replace(
+        options,
+        extra_notes=list(annotation.notes) or options.extra_notes,
+        issue=annotation.chosen or options.issue,
+        version=version,
+        version_source=source,
+    )
+
+
 def create_argument_parser(prog: str | None = None) -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(
         prog=prog,
@@ -665,8 +825,9 @@ def create_argument_parser(prog: str | None = None) -> argparse.ArgumentParser:
     ap.add_argument(
         "--case",
         nargs="+",
-        required=True,
-        help="证据包：一个 debug 目录、一个/多个归档（多卷一起给）、或一份日志文件",
+        required=False,
+        help="证据包：一个 debug 目录、一个/多个归档（多卷一起给）、或一份日志文件；"
+        "配合 --telemetry-bulk 时是可选的（不带就只画遥测概览卡）",
     )
     ap.add_argument(
         "--vision",
@@ -724,7 +885,45 @@ def create_argument_parser(prog: str | None = None) -> argparse.ArgumentParser:
         help="手动指定资源版本（vX.Y.Z）作为「疑似过时」的基线；不传时遥测证据包会自己从 "
         "evidence.json 的 release 取，本地日志从「资源版本：vX.Y.Z」或同装 MFA 日志取",
     )
+    ap.add_argument(
+        "--telemetry",
+        dest="telemetry",
+        action="store_true",
+        help="关联遥测问题（默认开）：按日志里的失败节点在本地遥测库反查，把问题号/次数/release "
+        "写进注记与产物名，并用那个 release 当「疑似过时」基线",
+    )
+    ap.add_argument(
+        "--no-telemetry", dest="telemetry", action="store_false", help="不关联遥测（纯离线）"
+    )
+    ap.add_argument(
+        "--telemetry-offline",
+        action="store_true",
+        help="只读本地遥测库、不联网刷新（库不存在时就不反查）",
+    )
+    ap.add_argument(
+        "--telemetry-issue", default=None, help="指定问题号（如 PYTHON-2X），不再自动反查"
+    )
+    ap.add_argument(
+        "--telemetry-days", type=int, default=14, help="本地遥测库保留最近 N 天（默认 14）"
+    )
+    ap.add_argument(
+        "--telemetry-gap", type=int, default=3, help="反查的时间窗（天，默认 3）"
+    )
+    ap.add_argument(
+        "--telemetry-keep-resolved",
+        action="store_true",
+        help="本地遥测库保留已解决/已忽略的 issue（默认清掉）",
+    )
+    ap.add_argument(
+        "--telemetry-only", action="store_true", help="只打印反查到的遥测问题，不画图"
+    )
     ap.add_argument("--force", action="store_true", help="忽略 manifest，强制重画")
+    ap.add_argument(
+        "--telemetry-bulk",
+        action="store_true",
+        help="批量出图：遍历本地遥测库里所有未解决 issue，每个出一张图；"
+        "给了 --case 就用它给命中的 issue 出完整流程（作为补充），没命中的出概览卡",
+    )
     ap.add_argument(
         "--list-cases", action="store_true", help="只列出发现的证据包，不画"
     )
@@ -734,7 +933,7 @@ def create_argument_parser(prog: str | None = None) -> argparse.ArgumentParser:
         help="按任务逐个输出（一个 (进程, task_id) 一张图）。任务号在各进程内复用，"
         "不加这个参数时整份日志混画一张；加了之后文件名带 _task<id>_px<进程>",
     )
-    ap.set_defaults(thumbs=True)
+    ap.set_defaults(thumbs=True, telemetry=True)
     return ap
 
 
@@ -745,6 +944,23 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
             stream.reconfigure(errors="replace")
 
     args = create_argument_parser(prog).parse_args(argv)
+    if args.telemetry_only and not args.telemetry:
+        print(
+            "错误：--telemetry-only 要开着遥测（别同时给 --no-telemetry）。", file=sys.stderr
+        )
+        return 1
+    if not args.case and not args.telemetry_bulk:
+        print(
+            "错误：需要 --case <证据包> 或 --telemetry-bulk（两者都不给画不了）。",
+            file=sys.stderr,
+        )
+        return 1
+    if args.telemetry_only and not args.case:
+        print("错误：--telemetry-only 需要 --case <日志/证据包> 才能反查。", file=sys.stderr)
+        return 1
+    if args.telemetry_bulk:
+        # 批量出图以遥测库为驱动，遥测必须开（默认就开，这里只是兜底 --no-telemetry）
+        args.telemetry = True
     try:
         t_from, t_to = parse_time(args.t_from), parse_time(args.t_to)
     except SystemExit as exc:
@@ -767,17 +983,47 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
         version_source=VERSION_SOURCE_CLI if args.version else "",
     )
 
-    single = args.case[0]
-    whole_dir = len(args.case) == 1 and os.path.isdir(single) and not _pick_log(single)
-    try:
-        cases = discover_cases(single) if whole_dir else [load_case(args.case)]
-    except (FileNotFoundError, ValueError) as exc:
-        print(f"错误：{exc}", file=sys.stderr)
-        return 1
+    # 遥测（默认开）：先刷新一次本地库，之后每个包都只在本地查。
+    # 刷新失败只提示，不影响画图——遥测是加分项，不是画图的前提。
+    telemetry = _telemetry_module()
+    telemetry_data: dict | None = None
+    if args.telemetry:
+        if args.telemetry_offline:
+            telemetry_data = telemetry.load_index()
+        else:
+            try:
+                telemetry_data, changes = telemetry.refresh_default(
+                    days=args.telemetry_days,
+                    keep_resolved=args.telemetry_keep_resolved,
+                )
+                for change in changes:
+                    print(f"提示：{change}", file=sys.stderr)
+            except (RuntimeError, OSError, ImportError) as exc:
+                print(f"提示：遥测库没刷新成（{exc}），用本地已有数据", file=sys.stderr)
+                telemetry_data = telemetry.load_index()
+    cards = telemetry.load_cards(telemetry_data) if telemetry_data else []
 
-    if not cases:
-        print(f"错误：{single} 下没找到带日志的证据包。", file=sys.stderr)
-        return 1
+    single = args.case[0] if args.case else None
+    whole_dir = (
+        bool(single)
+        and len(args.case) == 1
+        and os.path.isdir(single)
+        and not _pick_log(single)
+    )
+    cases: list[Case] = []
+    if args.case:
+        try:
+            cases = (
+                discover_cases(single)
+                if whole_dir and single is not None
+                else [load_case(args.case)]
+            )
+        except (FileNotFoundError, ValueError) as exc:
+            print(f"错误：{exc}", file=sys.stderr)
+            return 1
+        if not cases:
+            print(f"错误：{single} 下没找到带日志的证据包。", file=sys.stderr)
+            return 1
 
     if args.list_cases:
         for case in cases:
@@ -789,26 +1035,47 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
     drawn = skipped = failed = 0
 
     # 每个证据包要画的任务。默认一个（`--task-id` 指定，或全部混画一张）；
-    # `--all-tasks` 时按 `(进程, task_id)` 逐个输出——task_id 在各进程内复用，
-    # 只按编号切会把两次不同运行的任务混进同一张图。
+    # `--all-tasks` / `--telemetry-bulk` 时按 `(进程, task_id)` 逐个输出——task_id 在各进程内复用，
+    # 只按编号切会把两次不同运行的任务混进同一张图。批量出图必须按任务切：
+    # 命中的 issue 才能各出一张完整流程、文件名用问题号。
+    drawn_issues: set[str] = set()
     jobs: list[tuple[Case, FlowOptions]] = []
     for case in cases:
-        if not args.all_tasks:
+        if args.all_tasks or args.telemetry_bulk:
+            try:
+                tasks = scan_tasks(case.log_source(), options.t_from, options.t_to)
+            except (OSError, TypeError) as exc:
+                failed += 1
+                print(f"错误：{case.label}: 列任务失败：{exc}", file=sys.stderr)
+                continue
+            if not tasks:
+                print(f"提示：{case.label} 里没有可画的任务，跳过", file=sys.stderr)
+                continue
+            for task in tasks:
+                jobs.append((case, replace(options, task_id=task.task_id, px=task.px)))
+        else:
             jobs.append((case, options))
-            continue
-        try:
-            tasks = scan_tasks(case.log_source(), options.t_from, options.t_to)
-        except (OSError, TypeError) as exc:
-            failed += 1
-            print(f"错误：{case.label}: 列任务失败：{exc}", file=sys.stderr)
-            continue
-        if not tasks:
-            print(f"提示：{case.label} 里没有可画的任务，跳过", file=sys.stderr)
-            continue
-        for task in tasks:
-            jobs.append((case, replace(options, task_id=task.task_id, px=task.px)))
 
+    telemetry_shown = 0
     for case, case_options in jobs:
+        if args.telemetry:
+            annotation = telemetry.annotate(
+                case.log_source(),
+                index=telemetry_data,
+                offline=args.telemetry_offline,
+                issue=args.telemetry_issue,
+                task_id=case_options.task_id,
+                days=args.telemetry_days,
+                gap=args.telemetry_gap,
+            )
+            for warning in annotation.warnings:
+                print(f"提示：{case.label}: {warning}", file=sys.stderr)
+            if args.telemetry_only:
+                print(f"\n== {case.label} ==", file=sys.stdout)
+                telemetry.format_matches(annotation.matches, sys.stdout)
+                telemetry_shown += 1
+                continue
+            case_options = _with_telemetry(case_options, annotation)
         try:
             result = run_case(
                 case,
@@ -826,10 +1093,44 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
             continue
         drawn += result is not None
         skipped += result is None
+        if result is not None and args.telemetry and annotation.chosen:
+            # 这个任务对应的问题号已经被日志包出成完整流程了，概览卡就跳过它
+            drawn_issues.add(annotation.chosen)
+    overview_drawn = 0
+    if args.telemetry_bulk:
+        if not cards:
+            print(
+                "提示：本地遥测库是空的，没东西可画；先跑 "
+                "`python -m tools.sentry.cli telemetry --refresh`（需联网）。",
+                file=sys.stderr,
+            )
+        for card in cards:
+            if card.short_id in drawn_issues:
+                continue  # 已经被日志包出成完整流程了
+            try:
+                res = run_overview(
+                    card,
+                    outdir=args.outdir,
+                    mermaid=args.mermaid,
+                    force=args.force,
+                    manifest=manifest,
+                )
+            except (OSError, ValueError) as exc:
+                failed += 1
+                print(f"错误：{card.short_id}: {exc}", file=sys.stderr)
+                continue
+            overview_drawn += res is not None
+
     save_manifest(args.outdir, manifest)
+    if args.telemetry_only:
+        print(f"\n共 {telemetry_shown} 个证据包（未画图）。")
+        return 0
     tail = f"，失败 {failed}" if failed else ""
+    parts = [f"绘制 {drawn} 个", f"跳过 {skipped} 个"]
+    if overview_drawn:
+        parts.append(f"概览 {overview_drawn} 个")
     print(
-        f"\n完成：绘制 {drawn} 个，跳过 {skipped} 个{tail}；"
+        f"\n完成：{('，'.join(parts))}{tail}；"
         f"manifest → {os.path.join(args.outdir, MANIFEST_NAME)}"
     )
     return 1 if failed and not drawn else 0
