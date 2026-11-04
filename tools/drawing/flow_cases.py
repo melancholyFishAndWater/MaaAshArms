@@ -751,16 +751,34 @@ def _evidence_case(short_id: str) -> Case | None:
         return None
 
 
+def _has_evidence(short_id: str) -> bool:
+    """本地有没有这个 issue 的**日志**（`temp/evidence/<SHORT>/debug/` 里能挑出一份）。
+
+    只看目录在不在不够：证据包可能只有 `on_error/` 没有 `maafw.log`，那种情况也算"本地没有
+    日志"，应该尝试拉取。
+    """
+    root = os.path.join(REPO_ROOT, "temp", "evidence", short_id, "debug")
+    if not os.path.isdir(root):
+        return False
+    try:
+        return _pick_log(root) is not None
+    except OSError:
+        return False
+
+
 def _fetch_evidence(short_id: str) -> None:
-    """调 `evidence` 补下这个 issue 的证据包（联网）；失败只提示，不影响后面画图。"""
+    """本地没有就调 `evidence` 拉取这个 issue 的证据包（联网）；失败只提示，不影响后面画图。"""
+    log.info("本地没有证据包，拉取 %s（evidence）…", short_id)
     try:
         from tools.sentry import evidence as evidence_mod
 
         code = evidence_mod.main(["--issue", short_id])
         if code != 0:
-            log.warning("补证据 %s 失败（exit %s）", short_id, code)
+            log.warning("拉取 %s 失败（exit %s），退概览卡", short_id, code)
+        else:
+            log.info("证据包已拉取：%s", short_id)
     except (ImportError, RuntimeError, OSError) as exc:
-        log.warning("补证据 %s 失败：%s", short_id, exc)
+        log.warning("拉取 %s 失败：%s，退概览卡", short_id, exc)
 
 
 def overview_filename(
@@ -824,7 +842,7 @@ def run_overview(
     if no_log_hint:
         notes.append(
             Note(
-                f"无本地日志：要完整流程图，先跑 "
+                f"无本地日志：批量默认会自动尝试拉取；也可手动跑 "
                 f"`python -m tools.sentry.cli evidence {card.short_id}`（需联网）",
                 "fail",
             )
@@ -1021,8 +1039,16 @@ def create_argument_parser(prog: str | None = None) -> argparse.ArgumentParser:
     )
     ap.add_argument(
         "--fetch-evidence",
+        dest="fetch_evidence",
         action="store_true",
-        help="批量出图时，对没有本地证据包的 issue 调 `evidence` 补下（需联网）；下了就用真实日志出流程",
+        default=True,
+        help="本地没有证据包时自动调 `evidence` 拉取（默认开，需联网）；拉到了就用真实日志出流程",
+    )
+    ap.add_argument(
+        "--no-fetch-evidence",
+        dest="fetch_evidence",
+        action="store_false",
+        help="不自动拉取缺失的证据包（离线或不想联网时用）",
     )
     ap.add_argument(
         "--log-level",
@@ -1228,12 +1254,16 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
         for card in cards:
             if card.short_id in drawn_issues:
                 continue  # 已经被日志包出成完整流程了
+            # 本地没有证据包就自动拉取（离线 / --no-fetch-evidence 时跳过）
+            if (
+                not _has_evidence(card.short_id)
+                and args.fetch_evidence
+                and not args.telemetry_offline
+            ):
+                _fetch_evidence(card.short_id)
             # 只有 pipeline 节点失败（标题里有 <节点>/<阶段>）才用证据包日志画流程；
             # SocketException 这类非节点失败，日志尾部画不出它，硬画反而是误导，走概览卡。
             ev_case = _evidence_case(card.short_id) if card.node_name else None
-            if ev_case is None and args.fetch_evidence and card.node_name:
-                _fetch_evidence(card.short_id)
-                ev_case = _evidence_case(card.short_id)
             if ev_case is not None:
                 ev_options = replace(
                     options,

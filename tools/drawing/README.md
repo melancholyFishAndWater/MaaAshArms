@@ -162,7 +162,8 @@ flowchart LR
   （与 `--all-tasks` 同一个画法，文件名用问题号）。
 - **没命中日志包的 issue**：用该 issue **自己的证据包**（`temp/evidence/<SHORT>/debug/` 里的
   `maafw.log` 尾部 + `on_error/`）画**完整流程图**——证据包就是那次运行的日志，不是"预览"。
-  没有证据包时加 `--fetch-evidence` 自动补下（需联网）。
+  **本地没有就自动调 `evidence` 拉取**（默认开，需联网）；`--no-fetch-evidence` 关掉，
+  `--telemetry-offline` 时也不拉。
 - **连证据包都没有**才退化成**概览卡**（问题号 / 标题 / 失败节点 / 次数 / 最后出现 / 资源版本 / 链接，
   有 `on_error/` 时贴现场图），并在卡上写明用哪条命令补完整输出。
 - 产物：每个 issue 一张 `temp/flow/<SHORT>.png`（`--mermaid` 另出 `.mmd`），同样记进
@@ -172,8 +173,11 @@ flowchart LR
 # 只画遥测库里所有未解决 issue：有证据包/日志包的出完整流程，没有的出概览卡
 python tools/drawing/flow_cases.py --telemetry-bulk
 
-# 同一份日志包 + 自动补下缺失的证据包（需联网）
-python tools/drawing/flow_cases.py --telemetry-bulk --case <证据包> --fetch-evidence
+# 同一份日志包；缺失的证据包会自动拉取（默认开，需联网）
+python tools/drawing/flow_cases.py --telemetry-bulk --case <证据包>
+
+# 离线：不拉证据包，缺失的只出概览卡
+python tools/drawing/flow_cases.py --telemetry-bulk --case <证据包> --telemetry-offline
 ```
 
 ### 日志（`--log-level` / `--log-file`）
