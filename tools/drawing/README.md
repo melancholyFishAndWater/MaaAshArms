@@ -136,8 +136,8 @@ flowchart LR
 
 ### 批量出图（遥测库驱动）
 
-以**整个本地遥测库**（所有未解决 issue）为驱动，一次出一批图；传入的日志包只作补充，
-把命中的 issue 从「概览卡」升级成「完整流程」。
+以**整个本地遥测库**（所有未解决 issue）为驱动，一次出一批图。每个 issue 尽量出**完整流程图**：
+日志包命中的按任务出；没命中的用该 issue 自己的证据包日志出；连证据包都没有才退概览卡。
 
 ```mermaid
 flowchart LR
@@ -145,32 +145,35 @@ flowchart LR
         T1["本地遥测库<br/>temp/telemetry/issues/SHORT-ID.json"]
         T2["联网增量刷新<br/>（没库 / 没登录 → 跳过）"]
         L1["可选：日志包<br/>debug 目录 / 导出包 zip"]
+        E1["可选：证据包<br/>temp/evidence/SHORT/debug"]
     end
     subgraph OUT["输出：每个 issue 一张图"]
-        O1["命中日志包：完整流程图<br/>temp/flow/SHORT.png"]
-        O2["没命中：概览卡<br/>temp/flow/SHORT.png"]
+        O1["有日志（日志包命中 / 有自己的证据包）：完整流程图<br/>temp/flow/SHORT.png"]
+        O2["连证据包都没有：概览卡<br/>temp/flow/SHORT.png"]
     end
     T2 -.-> T1
     T1 --> O1
+    L1 -.->|"日志包命中"| O1
+    E1 -.->|"自己的证据包"| O1
     T1 --> O2
-    L1 -.->|"补充：反查命中"| O1
 ```
 
-- **不给日志包**：每个 issue 一张**概览卡**。`IssueCard` 只有文本字段（问题号 / 标题 / 失败节点 /
-  任务入口 / 次数 / 状态 / 最后出现 / 首次收到 / 资源版本 / 链接），没有完整日志就画不出轮次流程。
 - **给了日志包**：先把日志里的失败在库里反查，**命中的 issue 按任务各出一张完整流程**
-  （与 `--all-tasks` 同一个画法，文件名用问题号），没命中的仍出概览卡。
-- 概览卡要贴失败现场图，得先 `python -m tools.sentry.cli evidence <SHORT>` 把
-  `temp/evidence/<SHORT>/debug/on_error/` 下下来；没下过就是纯文字卡。
+  （与 `--all-tasks` 同一个画法，文件名用问题号）。
+- **没命中日志包的 issue**：用该 issue **自己的证据包**（`temp/evidence/<SHORT>/debug/` 里的
+  `maafw.log` 尾部 + `on_error/`）画**完整流程图**——证据包就是那次运行的日志，不是"预览"。
+  没有证据包时加 `--fetch-evidence` 自动补下（需联网）。
+- **连证据包都没有**才退化成**概览卡**（问题号 / 标题 / 失败节点 / 次数 / 最后出现 / 资源版本 / 链接，
+  有 `on_error/` 时贴现场图），并在卡上写明用哪条命令补完整输出。
 - 产物：每个 issue 一张 `temp/flow/<SHORT>.png`（`--mermaid` 另出 `.mmd`），同样记进
   `manifest.json`（与单包出图同目录、同账目）。
 
 ```bash
-# 只画遥测库里所有未解决 issue 的概览卡
+# 只画遥测库里所有未解决 issue：有证据包/日志包的出完整流程，没有的出概览卡
 python tools/drawing/flow_cases.py --telemetry-bulk
 
-# 同一份日志包：命中的出完整流程，没命中的出概览卡
-python tools/drawing/flow_cases.py --telemetry-bulk --case <证据包>
+# 同一份日志包 + 自动补下缺失的证据包（需联网）
+python tools/drawing/flow_cases.py --telemetry-bulk --case <证据包> --fetch-evidence
 ```
 
 ### 日志（`--log-level` / `--log-file`）

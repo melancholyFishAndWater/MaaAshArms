@@ -121,23 +121,63 @@ def _version_from_evidence(case: Case) -> str | None:
     return None
 
 
+_WARNED_LOG_DIRS: set[str] = set()
+
+
+def _warn_extra_logs(directory: str, chosen: str) -> None:
+    """目录里有多份日志时，说清用了哪份、忽略了哪几份。
+
+    原来只取 `maafw.log`，同目录的 `maafw.bak.*` 静默丢掉——那些轮转日志里往往正是
+    更早几次失败的完整过程（实测 11-04 的三连败就在 `.bak` 里），不提示会让人以为
+    "只有这一天有记录"。同一个目录只提示一次。
+    """
+    if directory in _WARNED_LOG_DIRS:
+        return
+    try:
+        others = sorted(
+            name
+            for name in os.listdir(directory)
+            if name != os.path.basename(chosen)
+            and ROTATED_LOG_RE.match(name)
+            and os.path.isfile(os.path.join(directory, name))
+        )
+    except OSError:
+        return
+    _WARNED_LOG_DIRS.add(directory)
+    if others:
+        log.warning(
+            "目录 %s 有多份日志：只用 %s，忽略 %s（要画别的请把 --case 指到那一份）",
+            directory,
+            os.path.basename(chosen),
+            "、".join(others),
+        )
+
+
 def _pick_log(directory: str) -> str | None:
     """目录里的日志文件：先认确切名字（`LOG_NAMES` 顺序），没有再认轮转名（取 mtime 最新）。
 
     实测用户目录里只有轮转后的 `maafw.bak.2026.11.02-08.57.51.341.log`，按确切名字找会报
     "没找到带日志的证据包"——明明有日志。轮转名归一主多份时按 mtime 排序，最新的那份才是
-    当前这一次运行。
+    当前这一次运行；多份时用 `_warn_extra_logs` 把"忽略了哪几份"打出来。
     """
+    chosen: str | None = None
     for name in LOG_NAMES:
         cand = os.path.join(directory, name)
         if os.path.isfile(cand):
-            return cand
-    rotated = [
-        os.path.join(directory, name)
-        for name in os.listdir(directory)
-        if ROTATED_LOG_RE.match(name) and os.path.isfile(os.path.join(directory, name))
-    ]
-    return max(rotated, key=os.path.getmtime) if rotated else None
+            chosen = cand
+            break
+    if chosen is None:
+        rotated = [
+            os.path.join(directory, name)
+            for name in os.listdir(directory)
+            if ROTATED_LOG_RE.match(name)
+            and os.path.isfile(os.path.join(directory, name))
+        ]
+        if not rotated:
+            return None
+        chosen = max(rotated, key=os.path.getmtime)
+    _warn_extra_logs(directory, chosen)
+    return chosen
 
 
 @dataclass
@@ -433,7 +473,9 @@ def _safe_part(text: str) -> str:
     return "".join(c if c.isalnum() or c in "-_" else "-" for c in text)
 
 
-def base_filename(case: Case, options: FlowOptions) -> str:
+def base_filename(
+    case: Case, options: FlowOptions, *, issue_only: bool = False
+) -> str:
     """不含去重后缀的文件名主干：优先遥测问题名，其次任务名，最后证据包目录名。
 
     带 `--task-id` 时追加 `_task<id>`：一个 issue 里往往有多个任务失败（实测
@@ -442,6 +484,9 @@ def base_filename(case: Case, options: FlowOptions) -> str:
     指定了 `--task-id` 时**不把任务名放进主干**：那个 task 的入口行不一定在导出的那一段里
     （实测 200000007 只留下 `BaseReturnHome`，它不是任务入口），而 `task<id>` 本身就唯一、
     也一定对——宁可少一个名字，不放一个可能错的名字。
+
+    `issue_only=True`（批量出图按 issue 出一个）时不追加任务名：命名规则里 issue 就是身份，
+    任务名会拼成 `<问题号>_<任务名>` 这种不符合规则的长名字。
     """
     # `options.issue` 优先：遥测反查 / `--telemetry-issue` 给的问题号比目录名可靠
     issue = options.issue or issue_name_of(case)
@@ -451,7 +496,7 @@ def base_filename(case: Case, options: FlowOptions) -> str:
     parts = [_safe_part(stem)]
     if explicit_task:
         parts.append(f"task{options.task_id}")
-    elif issue and task:
+    elif issue and task and not issue_only:
         # 有 issue 名但没有 task_id：把任务名也带上，图才读得出画的是哪个任务
         parts.append(_safe_part(task))
     if options.px:
@@ -461,7 +506,12 @@ def base_filename(case: Case, options: FlowOptions) -> str:
 
 
 def out_filename(
-    case: Case, options: FlowOptions, outdir: str, manifest: dict | None = None
+    case: Case,
+    options: FlowOptions,
+    outdir: str,
+    manifest: dict | None = None,
+    *,
+    issue_only: bool = False,
 ) -> str:
     """产物文件名：`<问题名或任务名>[_task<id>][_<日志时间>][_<短指纹>].png`.
 
@@ -474,7 +524,7 @@ def out_filename(
     「疑似过时」的后缀不在这里加：那项检查要等渲染完才知道有没有命中，
     所以后缀由 `stale_name()` 在渲染后补上。
     """
-    base = base_filename(case, options)
+    base = base_filename(case, options, issue_only=issue_only)
     digest = log_digest(case)
     recorded = (manifest or {}).get("cases", {})
 
@@ -549,6 +599,7 @@ def run_case(
     manifest: dict,
     vision_override: Any = None,
     on_error_override: Any = None,
+    issue_only: bool = False,
 ) -> FlowResult | None:
     """渲染一个 case；命中 manifest 且产物还在就跳过（幂等）。
 
@@ -570,7 +621,7 @@ def run_case(
         else options
     )
 
-    name = out_filename(case, case_options, outdir, manifest)
+    name = out_filename(case, case_options, outdir, manifest, issue_only=issue_only)
     vision = vision_override if vision_override is not None else case.vision()
     on_error = on_error_override if on_error_override is not None else case.on_error()
     fingerprint = {
@@ -685,6 +736,33 @@ def _evidence_on_error(short_id: str) -> list[str]:
     return [os.path.join(d, f) for f in pngs[:4]]
 
 
+def _evidence_case(short_id: str) -> Case | None:
+    """这个 issue 有本地证据包（`temp/evidence/<SHORT>/debug/` 带日志）时，构造可画的 Case。
+
+    这是批量出图「未命中日志包」时的**完整**来源：证据包里就是那次运行的 `maafw.log` 尾部
+    + `on_error/` 现场图，足够画真实流程图——不该退化成只有文字/图片的概览卡。
+    """
+    root = os.path.join(REPO_ROOT, "temp", "evidence", short_id, "debug")
+    if not os.path.isdir(root):
+        return None
+    try:
+        return load_case([root])
+    except (FileNotFoundError, ValueError):
+        return None
+
+
+def _fetch_evidence(short_id: str) -> None:
+    """调 `evidence` 补下这个 issue 的证据包（联网）；失败只提示，不影响后面画图。"""
+    try:
+        from tools.sentry import evidence as evidence_mod
+
+        code = evidence_mod.main(["--issue", short_id])
+        if code != 0:
+            log.warning("补证据 %s 失败（exit %s）", short_id, code)
+    except (ImportError, RuntimeError, OSError) as exc:
+        log.warning("补证据 %s 失败：%s", short_id, exc)
+
+
 def overview_filename(
     short_id: str, outdir: str, manifest: dict, fingerprint: dict
 ) -> str:
@@ -721,8 +799,12 @@ def run_overview(
     mermaid: bool,
     force: bool,
     manifest: dict,
+    no_log_hint: bool = True,
 ) -> FlowResult | None:
-    """画一条遥测 issue 的概览卡（没有完整日志时的降级产物）。"""
+    """画一条遥测 issue 的概览卡（没有可画的完整日志时的降级产物）。
+
+    `no_log_hint=True` 时在卡上补一句"怎么补完整输出"；证据包在但解析不出流程时传 False。
+    """
 
     rel = card.release or ""
     fields = [
@@ -739,6 +821,14 @@ def run_overview(
     ]
     images = _evidence_on_error(card.short_id)
     notes = [Note(text, kind) for text, kind in _telemetry_module().card_notes(card, [])]
+    if no_log_hint:
+        notes.append(
+            Note(
+                f"无本地日志：要完整流程图，先跑 "
+                f"`python -m tools.sentry.cli evidence {card.short_id}`（需联网）",
+                "fail",
+            )
+        )
     fingerprint = {
         "short_id": card.short_id,
         "last_seen": card.last_seen,
@@ -925,7 +1015,14 @@ def create_argument_parser(prog: str | None = None) -> argparse.ArgumentParser:
         "--telemetry-bulk",
         action="store_true",
         help="批量出图：遍历本地遥测库里所有未解决 issue，每个出一张图；"
-        "给了 --case 就用它给命中的 issue 出完整流程（作为补充），没命中的出概览卡",
+        "给了 --case 就用它给命中的 issue 出完整流程（作为补充），"
+        "没命中的用该 issue 自己的证据包（temp/evidence/<SHORT>/debug）出完整流程；"
+        "连证据包都没有才出概览卡",
+    )
+    ap.add_argument(
+        "--fetch-evidence",
+        action="store_true",
+        help="批量出图时，对没有本地证据包的 issue 调 `evidence` 补下（需联网）；下了就用真实日志出流程",
     )
     ap.add_argument(
         "--log-level",
@@ -1018,7 +1115,11 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
                 for change in changes:
                     log.info("提示：%s", change)
             except (RuntimeError, OSError, ImportError) as exc:
-                log.warning("遥测库没刷新成（%s），用本地已有数据", exc)
+                log.warning(
+                    "遥测库没刷新成（%s），用本地已有数据；若报「unable to open database file」，"
+                    "把 SENTRY_CONFIG_DIR 指到含可写 cli.db 的目录",
+                    exc,
+                )
                 telemetry_data = telemetry.load_index()
     cards = telemetry.load_cards(telemetry_data) if telemetry_data else []
 
@@ -1116,15 +1217,53 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
             # 这个任务对应的问题号已经被日志包出成完整流程了，概览卡就跳过它
             drawn_issues.add(annotation.chosen)
     overview_drawn = 0
+    evidence_drawn = 0
     if args.telemetry_bulk:
         if not cards:
             log.warning(
-                "本地遥测库是空的，没东西可画；先跑 "
+                "本地遥测库是空的，没东西可画。若还没配 Sentry CLI，先把 SENTRY_CONFIG_DIR "
+                "指到含可写 cli.db 的目录，再跑 "
                 "`python -m tools.sentry.cli telemetry --refresh`（需联网）。"
             )
         for card in cards:
             if card.short_id in drawn_issues:
                 continue  # 已经被日志包出成完整流程了
+            # 只有 pipeline 节点失败（标题里有 <节点>/<阶段>）才用证据包日志画流程；
+            # SocketException 这类非节点失败，日志尾部画不出它，硬画反而是误导，走概览卡。
+            ev_case = _evidence_case(card.short_id) if card.node_name else None
+            if ev_case is None and args.fetch_evidence and card.node_name:
+                _fetch_evidence(card.short_id)
+                ev_case = _evidence_case(card.short_id)
+            if ev_case is not None:
+                ev_options = replace(
+                    options,
+                    issue=card.short_id,
+                    task_id=None,
+                    px=None,
+                    t_from=None,
+                    t_to=None,
+                )
+                try:
+                    res = run_case(
+                        ev_case,
+                        ev_options,
+                        outdir=args.outdir,
+                        mermaid=args.mermaid,
+                        force=args.force,
+                        manifest=manifest,
+                        vision_override=None,
+                        on_error_override=None,
+                        issue_only=True,
+                    )
+                except (FileNotFoundError, ValueError, OSError) as exc:
+                    # 证据包在但解析不出流程（例如日志尾部没有 pipeline 步骤）：
+                    # 退概览卡，而不是把这条 issue 整个丢掉
+                    log.warning(
+                        "证据包画不出流程（%s），退概览卡：%s", card.short_id, exc
+                    )
+                else:
+                    evidence_drawn += res is not None
+                    continue
             try:
                 res = run_overview(
                     card,
@@ -1132,6 +1271,7 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
                     mermaid=args.mermaid,
                     force=args.force,
                     manifest=manifest,
+                    no_log_hint=bool(card.node_name) and ev_case is None,
                 )
             except (OSError, ValueError) as exc:
                 failed += 1
@@ -1145,6 +1285,8 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
         return 0
     tail = f"，失败 {failed}" if failed else ""
     parts = [f"绘制 {drawn} 个", f"跳过 {skipped} 个"]
+    if evidence_drawn:
+        parts.append(f"证据包流程 {evidence_drawn} 个")
     if overview_drawn:
         parts.append(f"概览 {overview_drawn} 个")
     print(

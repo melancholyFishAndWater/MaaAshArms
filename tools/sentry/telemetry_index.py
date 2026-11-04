@@ -161,6 +161,9 @@ class FailureCandidate:
     node_id: int | None = None
     task_id: int | None = None
     kind: str = ""  # pipeline-node-failed | timeout | invalid-node | not-completed
+    # 失败任务的入口名（`TaskEscort` 这类）：通用兜底节点被多个任务共用，按节点名匹配时
+    # 还要拿它跟问题标题里的任务名对一遍，否则 A 任务的问题会匹配到 B 任务的同名失败。
+    entry: str = ""
 
 
 @dataclass(frozen=True)
@@ -516,6 +519,7 @@ def extract_candidates(log: Any) -> list[FailureCandidate]:
             except json.JSONDecodeError:
                 j = {}
             name = str(j.get("name") or "")
+            tid = _as_int(j.get("task_id"))
             key = (name, j.get("node_id"), j.get("task_id"))
             if name and key not in seen:
                 seen.add(key)
@@ -524,8 +528,9 @@ def extract_candidates(log: Any) -> list[FailureCandidate]:
                         name=name,
                         ts=ts,
                         node_id=_as_int(j.get("node_id")),
-                        task_id=_as_int(j.get("task_id")),
+                        task_id=tid,
                         kind="pipeline-node-failed",
+                        entry=entries.get(tid, "") if tid is not None else "",
                     )
                 )
             continue
@@ -606,6 +611,17 @@ def match(
                 # 同一级别里用时间差排序：同一次运行可能有多个失败都精确对上
                 gap = _gap_seconds(card, cand)
             elif card.node_name and cand.name == card.node_name:
+                # 通用兜底节点（BaseTaskStopError / BaseErrorNext / BaseProbeConfirm）被多个
+                # 任务共用：只有节点名对得上不够，失败任务的入口名也要跟标题里的任务名一致
+                # （`TaskEntrust` ↔ 标题 `Entrust`）。两边缺一头就不强判，保留原匹配。
+                if cand.entry and card.label:
+                    norm = (
+                        cand.entry[4:]
+                        if cand.entry.startswith("Task")
+                        else cand.entry
+                    )
+                    if norm != card.label:
+                        continue
                 gap = _gap_seconds(card, cand)
                 if gap is not None and gap <= limit:
                     tier = "mid"
@@ -793,7 +809,11 @@ def annotate(
 
     if picked is not None:
         out.card = picked.card
-        out.chosen = picked.card.short_id
+        # 只有「高」置信才用它命名产物；中/低置信只进注记（显式 --telemetry-issue 例外）。
+        # 通用兜底节点会让中置信的问题号挂到别的任务上，写进文件名就是把问题张冠李戴。
+        out.chosen = (
+            picked.card.short_id if (picked.tier == "high" or issue) else ""
+        )
         if picked.card.release:
             try:
                 out.version = report_common.version_label(picked.card.release) or ""
@@ -808,7 +828,7 @@ def annotate(
         elif picked.tier != "high":
             out.warnings.append(
                 f"{picked.card.short_id} 只是「{TIER_LABEL[picked.tier]}」置信（{picked.detail}），"
-                "别把它当唯一答案"
+                "别把它当唯一答案；不以它命名产物"
             )
     out.notes = card_notes(out.card, out.matches, chosen=out.chosen)
     return out
@@ -881,7 +901,11 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
             limit=args.limit,
         )
     except RuntimeError as exc:
-        log.error("刷新本地遥测库失败：%s", exc)
+        log.error(
+            "刷新本地遥测库失败：%s；若报「unable to open database file」，"
+            "把 SENTRY_CONFIG_DIR 指到含可写 cli.db 的目录",
+            exc,
+        )
         return 1
     for note in notes:
         log.info("提示：%s", note)

@@ -110,7 +110,12 @@ log = logging.getLogger("tools.flow_from_log")
 # 20：现场图的"本窗口"改按**选中任务的判定窗口**（`parsed.span`）夹，不再用全局 min/max——
 #     框架级失败事件没有 task 归属，同一份滚动日志里别的跑次会把窗口撑到跨天；左端不放宽，
 #     免得把首尾只差 51 ms 的**上一个** task 的图算进来。
-RENDERER_VERSION = 20
+# 21：`Node.PipelineNode.Failed` 只在"该 task 终止失败"时出失败框（取该 task 最后一条），
+#     可恢复的节点失败不再全画（一份证据日志 105–491 条，全画会满屏红）；`Tasker.Task.Failed`
+#     作为补充的终止信号（有些 task 没有 `task end: ... [ret=false]`）。
+# 22：仅事件模式（由识别记录还原）下 `--task-id` 改用带 task_id 的 NextList/事件推断区间夹 reco，
+#     导出日志没有 `task start` 时也不再混入别的 task（实测原来 26 轮 / 13048×8084）。
+RENDERER_VERSION = 22
 
 # 框里最多列几个候选，多的折成"另 N 项"（`--list` 不受这个限制）。
 # 默认只列 2 个：父节点名字 + 本次真跑的那个候选是这一行最要紧的两件事，
@@ -160,6 +165,26 @@ TIMEOUT_RE = re.compile(
 INVALID_RE = re.compile(r"invalid node id, handle error \[node\.name=([^\]]+)\]")
 NOT_COMPLETED_RE = re.compile(
     r"node not completed, handle error \[node\.name=([^\]]+)\]"
+)
+# 节点级失败事件：`[msg=Node.PipelineNode.Failed] [details={…}]`（或只有 `[name=…]`）。
+# 日志里很多——可恢复的失败也发（实测 PYTHON-2C 一份证据日志 105 条、PYTHON-2R 274 条），
+# **不能全画成失败框**，否则满屏红框。只在"该 task 终止失败"时取它最后一条出框，
+# 见 parse_log 末尾的终止失败归集。
+PIPE_FAILED_MARK_RE = re.compile(r"\[msg=Node\.PipelineNode\.Failed\]")
+PIPE_FAILED_DETAILS_RE = re.compile(
+    r"\[msg=Node\.PipelineNode\.Failed\]\s*\[details=(\{.*\})\]\s*$"
+)
+PIPE_FAILED_NAME_RE = re.compile(
+    r"\[msg=Node\.PipelineNode\.Failed\]\s*\[name=([^\]]+)\]"
+)
+# 导出按字节裁剪时 `[details={…}]` 可能没有收尾：直接抠第一个 `"name"` / `"task_id"`。
+PIPE_FAILED_NAME_FIELD_RE = re.compile(r'"name":"([^"\\]+)"')
+PIPE_FAILED_TASK_FIELD_RE = re.compile(r'"task_id":(\d+)')
+# 任务级失败事件（事件总线版）：`[msg=Tasker.Task.Failed] [details={entry,task_id,…}]`。
+# 有些 task 只有这一条、没有 `task end: … [ret=false]`（实测 PYTHON-2C 的 TaskMaintenance），
+# 所以它是判断"任务确实终止"的补充来源。
+TASKER_TASK_RE = re.compile(
+    r"\[msg=Tasker\.Task\.(Failed|Succeeded)\] \[details=(\{.*\})\]\s*$"
 )
 # 动作失败事件：`!!!OnEventNotify!!! [msg=Node.Action.Failed] [details={…}]`。
 # 它比框架随后补的 `node not completed` 早（实测 3.4 s / 0.2 s），且带节点名、动作名、
@@ -663,6 +688,11 @@ def parse_log(
     # `Node.Action.Failed` 同一事件会有两条通知（MFA 进程 + agent 进程，相差 1 ms），
     # 按 (节点, task, action_id, 动作名) 记最后一次的时间做去重，否则一张图会画出两个同样的失败框。
     seen_action_failed: dict[tuple[str, int | None, int | None, str], datetime] = {}
+    # 终止失败归集（见 parse_log 末尾）：
+    #   pipeline_failures = 全部 Node.PipelineNode.Failed，元素是 (ts, 节点名, task_id, 进程)；
+    #   task_failed = 任务确实终止失败的时刻，元素是 (ts, task_id)。
+    pipeline_failures: list[tuple[datetime, str, int | None, str]] = []
+    task_failed: list[tuple[datetime, int | None]] = []
 
     def attach_parent(step: Step, px: str, *, allow_walk: bool = True) -> Step:
         """给一步贴上父节点与候选表；三层退回，取不到就留空（图上写"未记录"）。
@@ -871,6 +901,20 @@ def parse_log(
                 active_task[line_px] = None
             out.task_ends.append((ts, entry, tid, ret))
             continue
+        # 事件总线版任务收尾：有些 task 只有这条、没有 `task end:`（实测 PYTHON-2C 的
+        # TaskMaintenance）。只用于判断"任务确实终止失败"，不额外造一条「任务结束」框。
+        mtf = TASKER_TASK_RE.search(msg)
+        if mtf:
+            try:
+                jf = json.loads(mtf.group(2))
+            except json.JSONDecodeError:
+                stats.truncated_skipped += 1
+                continue
+            if mtf.group(1) == "Failed":
+                tf_tid = jf.get("task_id")
+                if isinstance(tf_tid, int):
+                    task_failed.append((ts, tf_tid))
+            continue
 
         # 识别结果（命中或不命中都记）
         mr = RECO_RE.search(msg)
@@ -1007,6 +1051,42 @@ def parse_log(
             )
             continue
 
+        # 节点级失败事件：**只记录，不立即出框**——可恢复的失败也会发，全画会刷屏。
+        # 末尾按"任务确实终止"挑每个 task 的最后一条出框（见 parse_log 末尾）。
+        if PIPE_FAILED_MARK_RE.search(msg):
+            pf_name, pf_tid = "", None
+            mj = PIPE_FAILED_DETAILS_RE.search(msg)
+            if mj:
+                try:
+                    jpf = json.loads(mj.group(1))
+                except json.JSONDecodeError:
+                    jpf = {}
+                pf_name = str(jpf.get("name") or "")
+                raw_tid = jpf.get("task_id")
+                pf_tid = raw_tid if isinstance(raw_tid, int) else None
+            if not pf_name:
+                mn = PIPE_FAILED_NAME_RE.search(msg)
+                if mn:
+                    pf_name = mn.group(1)
+            if not pf_name:
+                # 被导出行尾裁断（没有收尾 `}]`）：依次尝试取**顶层** `"name"`：
+                # 1) `"focus":null,"name":"…"`；2) focus 是对象时 `},"name":"…"`；
+                # 3) 实在没有才退回第一个 `"name"`（可能拿到 focus 自己的名字）。
+                mrel = (
+                    re.search(r'"focus":\s*null\s*,\s*"name":"([^"\\]+)"', msg)
+                    or re.search(r'\},"name":"([^"\\]+)"', msg)
+                    or PIPE_FAILED_NAME_FIELD_RE.search(msg)
+                )
+                if mrel:
+                    pf_name = mrel.group(1)
+            if pf_tid is None:
+                mtid = PIPE_FAILED_TASK_FIELD_RE.search(msg)
+                if mtid:
+                    pf_tid = int(mtid.group(1))
+            if pf_name:
+                pipeline_failures.append((ts, pf_name, pf_tid, line_px))
+            continue
+
         # 异常
         mt = TIMEOUT_RE.search(msg)
         if mt:
@@ -1091,6 +1171,46 @@ def parse_log(
             stats.parent_fallback_entry += 1
         else:
             stats.parent_unknown += 1
+    # 终止失败框：只在「任务确实终止失败」时，取该 task 最后一条
+    # `Node.PipelineNode.Failed` 出框。可恢复的节点失败（占绝大多数）不出框，避免满屏红。
+    if task_failed and pipeline_failures:
+        seen_terminal: set[tuple[str, datetime]] = set()
+        for tf_ts, tf_tid in task_failed:
+            cands = [
+                pf
+                for pf in pipeline_failures
+                if (pf[2] is None or pf[2] == tf_tid)
+                and pf[0] <= tf_ts
+                and (tf_ts - pf[0]).total_seconds() <= 30.0
+                and (target_px is None or pf[3] == target_px)
+                and (task_id is None or pf[2] is None or pf[2] == task_id)
+            ]
+            if not cands:
+                continue
+            best = max(cands, key=lambda p: p[0])
+            key = (best[1], best[0])
+            if key in seen_terminal:
+                continue
+            seen_terminal.add(key)
+            # 同节点、同秒已经有失败事件（超时 / invalid / not completed / 动作失败）就不重复
+            if any(
+                e.name.endswith(best[1])
+                and abs((e.ts - best[0]).total_seconds()) <= 2.0
+                for e in out.events
+            ):
+                continue
+            out.events.append(
+                event_step(
+                    best[0],
+                    f"失败 {best[1]}",
+                    "PipelineNode.Failed",
+                    best[1],
+                    best[2],
+                    px=best[3],
+                )
+            )
+        out.events.sort(key=lambda s: s.ts)
+
     _mark_agent_missing(out)
     return out
 
@@ -1183,8 +1303,12 @@ def _synthesize_steps(out: ParsedLog, task_id: int | None) -> None:
         return
     attempts = out.attempts
     if task_id is not None:
-        # reco 行里没有 task_id，只能用该 task 自己的起始行夹住范围（取不到就不夹）。
+        # reco 行里没有 task_id，只能用带 task_id 的事件推断这个 task 的活动区间。
+        # 优先 `task start` / `task end`；导出日志往往一条都没有（Sentry 拉回的就是），
+        # 于是退回 `Node.NextList.*`（details 里带 task_id）与带 task_id 的事件。
         starts = [t for t, _entry, tid, _hash in out.tasks if tid == task_id]
+        lo: datetime | None = None
+        hi: datetime | None = None
         if starts:
             lo = max(starts)
             ends = [
@@ -1192,7 +1316,28 @@ def _synthesize_steps(out: ParsedLog, task_id: int | None) -> None:
                 for t, _entry, tid, _ret in out.task_ends
                 if tid == task_id and t >= lo
             ]
-            hi = min(ends) if ends else None
+            if ends:
+                hi = min(ends)
+        else:
+            lo_marks = [
+                stat.first_ts
+                for (tid, _name), stat in out.nextlist_stats.items()
+                if tid == task_id and stat.first_ts is not None
+            ]
+            hi_marks = [
+                stat.last_ts
+                for (tid, _name), stat in out.nextlist_stats.items()
+                if tid == task_id and stat.last_ts is not None
+            ]
+            for event in out.events:
+                if event.task_id == task_id:
+                    lo_marks.append(event.ts)
+                    hi_marks.append(event.ts)
+            if lo_marks:
+                lo = min(lo_marks)
+            if hi_marks:
+                hi = max(hi_marks)
+        if lo is not None:
             attempts = [
                 a for a in attempts if a.ts >= lo and (hi is None or a.ts <= hi)
             ]
@@ -3481,7 +3626,7 @@ def build_notes(parsed: ParsedLog, opts: FlowOptions) -> list[Note]:
     if parsed.derived_from:
         notes.append(Note("由识别记录还原（日志没有 PipelineTask node done）", "derive"))
         if parsed.derived_clamped:
-            notes.append(Note("识别范围已按该 task 的起始时间夹住", "derive"))
+            notes.append(Note("识别范围已按该 task 的活动区间夹住", "derive"))
         elif opts.task_id:
             notes.append(Note("识别记录里没有 task_id，同窗口其他任务可能混入", "derive"))
     # 卡在派发层：只在"图只涉及一个 task"时报（多任务混在一张图上点名某个 task 的候选表会误导）
