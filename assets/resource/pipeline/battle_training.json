@@ -122,7 +122,6 @@
         "all_of": [
             "TrainingProbeOne"
         ],
-        "inverse": true,
         "next": [
             "BaseClickBackButton"
         ]

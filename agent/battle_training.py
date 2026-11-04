@@ -39,7 +39,7 @@ class TrainingProbeOneReco(CustomRecognition):
         node_name = argv.node_name
 
         r = context.run_recognition_direct(
-            JRecognitionType.OCR, JOCR(_all, roi=(630, 481, 203, 149)), argv.image
+            JRecognitionType.OCR, JOCR(_all, roi=(26, 260, 222, 135)), argv.image
         )
         if r is None or not r.hit:
             log.debug(f"{node_name} 识别训练所名失败")
