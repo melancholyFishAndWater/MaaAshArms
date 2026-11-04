@@ -24,7 +24,7 @@ battle_targets: dict[str, str] = {}
 # 完成的关卡
 _done_targets: set[str] = set()
 # 当前关卡名
-_current_level_name: str = ""
+_selected_level_name: str = ""
 
 
 # ---------- Reco ----------
@@ -89,7 +89,7 @@ class TrainingGetStatusReco(CustomRecognition):
                 JOCR(
                     _all,
                     roi=toTuple(i.box),
-                    roi_offset=(-63, -243, 126, 42),
+                    roi_offset=(-63, -243, 172, 42),
                 ),
                 argv.image,
             )
@@ -163,7 +163,7 @@ class TrainingEnterOneReco(CustomRecognition):
         self, context: Context, argv: CustomRecognition.AnalyzeArg
     ) -> Rect | None:
         # 提取变量
-        global _current_level_name
+        global _selected_level_name
         node_name = argv.node_name
 
         # 识别关卡次数
@@ -182,12 +182,12 @@ class TrainingEnterOneReco(CustomRecognition):
 
         # 遍历识别关卡名
         expected = list(battle_targets.keys())
-        _current_level_name = ""
+        _selected_level_name = ""
         for i in r.filtered_results:
             assert type(i) == OCRResult
 
             # 条件识别关卡名字
-            if _current_level_name == "":
+            if _selected_level_name == "":
                 r2 = context.run_recognition_direct(
                     JRecognitionType.OCR,
                     JOCR(
@@ -208,14 +208,19 @@ class TrainingEnterOneReco(CustomRecognition):
                 if name is None:
                     log.debug(f"{node_name} 识别到的关卡名无法匹配: {b_r2.text}")
                     continue
+
+                # 已经进行过 跳过
+                if name in _done_targets:
+                    continue
+
                 level = battle_targets[name]
-                _current_level_name = name
+                _selected_level_name = name
 
             # 识别到关卡没有剩余次数
-            if i.text.isdigit() and int(i.text) == 0:
+            if "0" in i.text:
                 log.debug(f"{node_name} 识别到的关卡没有剩余次数: {i.text}")
-                _done_targets.add(_current_level_name)
-                return
+                _done_targets.add(_selected_level_name)
+                _selected_level_name = ""
 
         # 覆写
         ov_r = context.override_pipeline(
@@ -306,8 +311,8 @@ class TrainingBattleWinAct(CustomAction):
     def run(
         self, context: Context, argv: CustomAction.RunArg
     ) -> CustomAction.RunResult | bool:
-        if _current_level_name not in _all:
-            log.ferror(f"{argv.node_name} 非法的关卡名字: {_current_level_name}")
+        if _selected_level_name not in _all:
+            log.ferror(f"{argv.node_name} 非法的关卡名字: {_selected_level_name}")
             return False
-        _done_targets.add(_current_level_name)
+        _done_targets.add(_selected_level_name)
         return True
