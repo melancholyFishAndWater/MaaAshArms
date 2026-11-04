@@ -115,7 +115,9 @@ log = logging.getLogger("tools.flow_from_log")
 #     作为补充的终止信号（有些 task 没有 `task end: ... [ret=false]`）。
 # 22：仅事件模式（由识别记录还原）下 `--task-id` 改用带 task_id 的 NextList/事件推断区间夹 reco，
 #     导出日志没有 `task start` 时也不再混入别的 task（实测原来 26 轮 / 13048×8084）。
-RENDERER_VERSION = 22
+# 23：包里有 on_error 图、但都不在本窗口时，顶部注记点出文件名与时刻（"属于另一次失败"），
+#     不再只字不提（实测 PYTHON-2H 的图是 66 s 前另一次失败，被 ±8 s 窗口正确排除）。
+RENDERER_VERSION = 23
 
 # 框里最多列几个候选，多的折成"另 N 项"（`--list` 不受这个限制）。
 # 默认只列 2 个：父节点名字 + 本次真跑的那个候选是这一行最要紧的两件事，
@@ -3810,6 +3812,21 @@ def render_flow(
                 shown = "、".join(in_window[:3])
                 more = f" 等 {len(in_window)} 张" if len(in_window) > 3 else ""
                 notes.append(Note(f"失败现场图：{shown}{more}", "fail"))
+            else:
+                # 包里有图、但都不在本窗口（时刻对不上）：点出文件名与时刻，免得
+                # "明明有图却没画"。不硬贴——那是另一次失败的现场，贴到本次失败框上会误导。
+                outside = [
+                    f"{os.path.basename(entry.member)}（{member_clock(entry)}）"
+                    for _ts, _name, entry in failure_index.items
+                ]
+                shown = "、".join(outside[:3])
+                more = f" 等 {len(outside)} 张" if len(outside) > 3 else ""
+                notes.append(
+                    Note(
+                        f"本窗口没有现场图；包里的 {shown}{more} 属于另一次失败（时刻对不上）",
+                        "fail",
+                    )
+                )
 
     truncated_start = False
     if opts.t_from is not None:

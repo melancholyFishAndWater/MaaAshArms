@@ -66,7 +66,8 @@ python tools/drawing/flow_cases.py --case D:/MaaAshArms/debug --list-cases
 #    截图/现场图默认取 <case>/vision、<case>/on_error；传单份日志文件时取日志所在目录的那两个
 #    子目录，也可用 --vision / --on-error 指定别处；
 #    `on_error/` 会递归扫子目录：遥测证据包把每次失败的现场图放在 on_error/<run_id>/，
-#    只画某一次就 --on-error <case>/on_error/<run_id>（不指定则按节点名+时间就近匹配）
+#    只画某一次就 --on-error <case>/on_error/<run_id>（不指定则按节点名+时间就近匹配）；
+#    包里有图、但都不在本窗口（时刻对不上）时，顶部注记会点出文件名与时刻，不硬贴到本次失败上
 python tools/drawing/flow_cases.py --case D:/MaaAshArms/debug --vision D:/MaaAshArms/vision --task-id 200000118
 #    默认会关联遥测问题（在本地遥测库里反查，联网只补缺的 issue）：
 python tools/drawing/flow_cases.py --case D:/MaaAshArms/debug --telemetry-only   # 只反查、不画
