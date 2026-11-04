@@ -173,6 +173,21 @@ python tools/drawing/flow_cases.py --telemetry-bulk
 python tools/drawing/flow_cases.py --telemetry-bulk --case <证据包>
 ```
 
+### 日志（`--log-level` / `--log-file`）
+
+`flow_cases.py`、`flow_from_log.py`、`telemetry_index.py`（也就是 `tools.sentry.cli telemetry`）
+都支持：
+
+- 每次运行在 `temp/logs/` 下按运行时间戳建一个日志文件
+  （`<tool>_<YYYYMMDD-HHMMSS>_<pid>.log`），带时间戳与级别，**独立于**
+  `temp/flow/`（图）和 `temp/telemetry/`（遥测库）；
+- 控制台仍只走 **stderr**，stdout 留给机器可读的结果（清单 / 匹配列表 / 报告）；
+- `--log-level DEBUG|INFO|WARNING|ERROR` 过滤级别；`--log-file <路径>` 改路径，
+  传 `none` 只走控制台、不写文件。
+
+同一进程里多个模块（如 `flow_cases` 调 `flow_from_log`）的日志会进同一个文件，
+记录前缀是各自的 `[tools.<模块>]`。
+
 ### 解析口径（读图前先看这里）
 
 - **父节点 = 本轮的派发者，不是配置里的层级**（图上是一个**浅色分组框 + 左上角深色角标**）：

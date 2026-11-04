@@ -40,12 +40,18 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+import logging
+
 # 兄弟模块与本包都在同一目录：先把这里加进 sys.path，`from flow_from_log import ...` 才成立。
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 # 仓库根 = tools/drawing/ 上溯两级；`tools.sentry` 的 import 靠它。
 REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
+
+from tools._logging import configure_tool_logging
+
+log = logging.getLogger("tools.flow_cases")
 
 from flow_from_log import (
     DEFAULT_OUTDIR,
@@ -309,7 +315,7 @@ def discover_cases(root: str) -> list[Case]:
             try:
                 found.append(load_case([sub]))
             except (FileNotFoundError, ValueError) as exc:
-                print(f"跳过 {sub}：{exc}", file=sys.stderr)
+                log.warning("跳过 %s：%s", sub, exc)
     return found
 
 
@@ -513,7 +519,7 @@ def load_manifest(outdir: str) -> dict:
         with open(path, encoding="utf-8") as fh:
             data = json.load(fh)
     except (OSError, json.JSONDecodeError) as exc:
-        print(f"提示：{path} 读不了（{exc}），本次当作空 manifest。", file=sys.stderr)
+        log.warning("提示：%s 读不了（%s），本次当作空 manifest。", path, exc)
         return {"schema": 1, "cases": {}}
     if not isinstance(data, dict) or not isinstance(data.get("cases"), dict):
         return {"schema": 1, "cases": {}}
@@ -585,7 +591,7 @@ def run_case(
                 and recorded.get("fingerprint") == fingerprint
                 and os.path.isfile(path)
             ):
-                print(f"跳过（已画过）: {path}")
+                log.info("跳过（已画过）：%s", path)
                 return None
 
     target = os.path.join(outdir, name)
@@ -642,20 +648,17 @@ def run_case(
     # 疑似过时命中：画完图后显式打一行（notes 里也有，但那是 stderr 的注记）
     summary = stale_summary(result.stale)
     if summary:
-        print(summary)
+        log.info(summary)
     if result.mermaid:
         print(f"mermaid → {result.mermaid}")
     if result.truncated_start:
-        print(
-            "提示：日志第一行晚于 --from，这份日志只含窗口后半段（遥测附件只带 tail）",
-            file=sys.stderr,
+        log.info(
+            "提示：日志第一行晚于 --from，这份日志只含窗口后半段（遥测附件只带 tail）"
         )
     for note in result.notes:
-        print(f"提示：{note.text}", file=sys.stderr)
+        log.info("提示：%s", note.text)
     if case.bad_packages:
-        print(
-            f"警告：以下卷读不了，结果可能不完整：{case.bad_packages}", file=sys.stderr
-        )
+        log.warning("以下卷读不了，结果可能不完整：%s", case.bad_packages)
     return result
 
 
@@ -752,7 +755,7 @@ def run_overview(
             and rec.get("fingerprint") == fingerprint
             and os.path.isfile(target)
         ):
-            print(f"跳过（已画过）: {target}")
+            log.info("跳过（已画过）：%s", target)
             return None
     try:
         result = render_overview(
@@ -765,7 +768,7 @@ def run_overview(
             mermaid=mermaid,
         )
     except ModuleNotFoundError as exc:
-        print(f"错误：{card.short_id}: {exc}", file=sys.stderr)
+        log.error("错误：%s: %s", card.short_id, exc)
         return None
     assert isinstance(result, FlowResult)
     manifest["cases"][name] = {
@@ -925,6 +928,18 @@ def create_argument_parser(prog: str | None = None) -> argparse.ArgumentParser:
         "给了 --case 就用它给命中的 issue 出完整流程（作为补充），没命中的出概览卡",
     )
     ap.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        help="日志级别（默认 INFO）；DEBUG 会多打解析/匹配细节",
+    )
+    ap.add_argument(
+        "--log-file",
+        default=None,
+        help="日志文件路径（默认按运行时间戳建 temp/logs/flow_cases_<时间戳>_<pid>.log）；"
+        "传 none / 空 只走控制台不写文件",
+    )
+    ap.add_argument(
         "--list-cases", action="store_true", help="只列出发现的证据包，不画"
     )
     ap.add_argument(
@@ -944,19 +959,23 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
             stream.reconfigure(errors="replace")
 
     args = create_argument_parser(prog).parse_args(argv)
+    _, log_path = configure_tool_logging(
+        "flow_cases", log_file=args.log_file, level=args.log_level
+    )
+    if log_path:
+        log.info("日志 → %s", log_path)
     if args.telemetry_only and not args.telemetry:
-        print(
-            "错误：--telemetry-only 要开着遥测（别同时给 --no-telemetry）。", file=sys.stderr
+        log.error(
+            "--telemetry-only 要开着遥测（别同时给 --no-telemetry）。"
         )
         return 1
     if not args.case and not args.telemetry_bulk:
-        print(
-            "错误：需要 --case <证据包> 或 --telemetry-bulk（两者都不给画不了）。",
-            file=sys.stderr,
+        log.error(
+            "需要 --case <证据包> 或 --telemetry-bulk（两者都不给画不了）。"
         )
         return 1
     if args.telemetry_only and not args.case:
-        print("错误：--telemetry-only 需要 --case <日志/证据包> 才能反查。", file=sys.stderr)
+        log.error("--telemetry-only 需要 --case <日志/证据包> 才能反查。")
         return 1
     if args.telemetry_bulk:
         # 批量出图以遥测库为驱动，遥测必须开（默认就开，这里只是兜底 --no-telemetry）
@@ -964,7 +983,7 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
     try:
         t_from, t_to = parse_time(args.t_from), parse_time(args.t_to)
     except SystemExit as exc:
-        print(f"错误：{exc}", file=sys.stderr)
+        log.error("错误：%s", exc)
         return 1
 
     options = FlowOptions(
@@ -997,9 +1016,9 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
                     keep_resolved=args.telemetry_keep_resolved,
                 )
                 for change in changes:
-                    print(f"提示：{change}", file=sys.stderr)
+                    log.info("提示：%s", change)
             except (RuntimeError, OSError, ImportError) as exc:
-                print(f"提示：遥测库没刷新成（{exc}），用本地已有数据", file=sys.stderr)
+                log.warning("遥测库没刷新成（%s），用本地已有数据", exc)
                 telemetry_data = telemetry.load_index()
     cards = telemetry.load_cards(telemetry_data) if telemetry_data else []
 
@@ -1019,10 +1038,10 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
                 else [load_case(args.case)]
             )
         except (FileNotFoundError, ValueError) as exc:
-            print(f"错误：{exc}", file=sys.stderr)
+            log.error("错误：%s", exc)
             return 1
         if not cases:
-            print(f"错误：{single} 下没找到带日志的证据包。", file=sys.stderr)
+            log.error("错误：%s 下没找到带日志的证据包。", single)
             return 1
 
     if args.list_cases:
@@ -1046,10 +1065,10 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
                 tasks = scan_tasks(case.log_source(), options.t_from, options.t_to)
             except (OSError, TypeError) as exc:
                 failed += 1
-                print(f"错误：{case.label}: 列任务失败：{exc}", file=sys.stderr)
+                log.error("错误：%s: 列任务失败：%s", case.label, exc)
                 continue
             if not tasks:
-                print(f"提示：{case.label} 里没有可画的任务，跳过", file=sys.stderr)
+                log.info("提示：%s 里没有可画的任务，跳过", case.label)
                 continue
             for task in tasks:
                 jobs.append((case, replace(options, task_id=task.task_id, px=task.px)))
@@ -1069,7 +1088,7 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
                 gap=args.telemetry_gap,
             )
             for warning in annotation.warnings:
-                print(f"提示：{case.label}: {warning}", file=sys.stderr)
+                log.info("提示：%s: %s", case.label, warning)
             if args.telemetry_only:
                 print(f"\n== {case.label} ==", file=sys.stdout)
                 telemetry.format_matches(annotation.matches, sys.stdout)
@@ -1089,7 +1108,7 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
             )
         except (FileNotFoundError, ValueError, OSError) as exc:
             failed += 1
-            print(f"错误：{case.label}: {exc}", file=sys.stderr)
+            log.error("错误：%s: %s", case.label, exc)
             continue
         drawn += result is not None
         skipped += result is None
@@ -1099,10 +1118,9 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
     overview_drawn = 0
     if args.telemetry_bulk:
         if not cards:
-            print(
-                "提示：本地遥测库是空的，没东西可画；先跑 "
-                "`python -m tools.sentry.cli telemetry --refresh`（需联网）。",
-                file=sys.stderr,
+            log.warning(
+                "本地遥测库是空的，没东西可画；先跑 "
+                "`python -m tools.sentry.cli telemetry --refresh`（需联网）。"
             )
         for card in cards:
             if card.short_id in drawn_issues:
@@ -1117,7 +1135,7 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
                 )
             except (OSError, ValueError) as exc:
                 failed += 1
-                print(f"错误：{card.short_id}: {exc}", file=sys.stderr)
+                log.error("错误：%s: %s", card.short_id, exc)
                 continue
             overview_drawn += res is not None
 

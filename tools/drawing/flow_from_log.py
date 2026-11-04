@@ -59,6 +59,7 @@ from __future__ import annotations
 import argparse
 import io
 import json
+import logging
 import os
 import re
 import subprocess
@@ -70,6 +71,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, ClassVar
+
+log = logging.getLogger("tools.flow_from_log")
 
 # 渲染器版本：只要改动会影响产物内容（版面、注记、解析口径）就 +1。
 # flow_cases 把它写进 manifest 指纹——不 bump 的话同一个证据包会命中旧记录直接"跳过（已画过）"，
@@ -1414,7 +1417,7 @@ class MediaResolver:
                                 data=_ZipMember(locator, info.filename),
                             )
                 except (OSError, zipfile.BadZipFile) as exc:
-                    print(f"提示：跳过读不了的 zip {locator}：{exc}", file=sys.stderr)
+                    log.warning("提示：跳过读不了的 zip %s：%s", locator, exc)
 
     @staticmethod
     def open_image(entry: MediaEntry):
@@ -2992,13 +2995,13 @@ def draw_flow(parsed: ParsedLog, options: FlowOptions, out_path: str) -> DrawRes
                     # 有界——一次几百张图读不了时不能刷满屏幕。
                     thumb_errors.append(f"{got[0].member}: {type(exc).__name__}: {exc}")
                     if len(thumb_errors) <= WARN_THUMB_LIMIT:
-                        print(f"[警告] 贴图失败 {thumb_errors[-1]}", file=sys.stderr)
+                        log.warning("[警告] 贴图失败 %s", thumb_errors[-1])
 
     # ---- 图例 ----
     if len(thumb_errors) > WARN_THUMB_LIMIT:
-        print(
-            f"[警告] 另有 {len(thumb_errors) - WARN_THUMB_LIMIT} 张贴图失败（已省略）",
-            file=sys.stderr,
+        log.warning(
+            "[警告] 另有 %s 张贴图失败（已省略）",
+            len(thumb_errors) - WARN_THUMB_LIMIT,
         )
     lx = margin
     ly = height - int(46 * options.scale)
@@ -4028,7 +4031,7 @@ def apply_telemetry(args, options: FlowOptions) -> bool:
         options.version = annotation.version
         options.version_source = VERSION_SOURCE_TELEMETRY
     for warning in annotation.warnings:
-        print(f"提示：{warning}", file=sys.stderr)
+        log.info("提示：%s", warning)
     if args.telemetry_only:
         module.format_matches(annotation.matches, sys.stdout)
         return False
@@ -4225,6 +4228,18 @@ def create_argument_parser(prog: str | None = None) -> argparse.ArgumentParser:
     ap.add_argument(
         "--mermaid", action="store_true", help="额外输出同名 .mmd（Mermaid 文本流程图）"
     )
+    ap.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        help="日志级别（默认 INFO）",
+    )
+    ap.add_argument(
+        "--log-file",
+        default=None,
+        help="日志文件路径（默认按运行时间戳建 temp/logs/flow_from_log_<时间戳>_<pid>.log）；"
+        "传 none / 空 只走控制台",
+    )
     ap.set_defaults(
         thumbs=True, parents=True, overlay=True, stale_check=True, telemetry=True
     )
@@ -4233,12 +4248,19 @@ def create_argument_parser(prog: str | None = None) -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = create_argument_parser().parse_args(argv)
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))
+    from tools._logging import configure_tool_logging
+
+    _, log_path = configure_tool_logging(
+        "flow_from_log", log_file=args.log_file, level=args.log_level
+    )
+    if log_path:
+        log.info("日志 → %s", log_path)
     options = build_flow_options(args)
 
     if args.telemetry_only and not args.telemetry:
-        print(
-            "错误：--telemetry-only 要开着遥测（别同时给 --no-telemetry）。", file=sys.stderr
-        )
+        log.error("--telemetry-only 要开着遥测（别同时给 --no-telemetry）。")
         return 1
     if args.telemetry and not apply_telemetry(args, options):
         return 0
@@ -4246,9 +4268,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.list_tasks:
         tasks = scan_tasks(args.log, options.t_from, options.t_to)
         if not tasks:
-            print(
-                "错误：日志里没有任何任务（没有 PipelineTask node done，也没有 task start）。",
-                file=sys.stderr,
+            log.error(
+                "日志里没有任何任务（没有 PipelineTask node done，也没有 task start）。"
             )
             return 1
         head = (
@@ -4277,10 +4298,10 @@ def main(argv: list[str] | None = None) -> int:
             list_only=args.list,
         )
     except ValueError as exc:
-        print(f"错误：{exc}", file=sys.stderr)
+        log.error("错误：%s", exc)
         return 1
     except ModuleNotFoundError as exc:
-        print(f"错误：{exc}", file=sys.stderr)
+        log.error("错误：%s", exc)
         return 1
 
     if args.list:
@@ -4300,16 +4321,15 @@ def main(argv: list[str] | None = None) -> int:
     # 「疑似过时」命中：画完图后显式打一行（notes 里也有，但那是 stderr 的注记）
     summary = stale_summary(result.stale)
     if summary:
-        print(summary)
+        log.info(summary)
     if result.truncated_start:
-        print(
+        log.info(
             "提示：日志第一行晚于 --from，这份日志只包含了窗口的后半段（遥测附件只带 tail），"
-            "窗口开头的过程不在图里",
-            file=sys.stderr,
+            "窗口开头的过程不在图里"
         )
     for note in result.notes:
         # 与图上第二行同一批注记：终端里再打一遍，免得只看 stdout 的人漏掉读图前提
-        print(f"提示：{note.text}", file=sys.stderr)
+        log.info("提示：%s", note.text)
     if result.mermaid:
         print(f"mermaid → {result.mermaid}")
     return 0

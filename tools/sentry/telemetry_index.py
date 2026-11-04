@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import io
 import json
+import logging
 import os
 import re
 import sys
@@ -43,6 +44,10 @@ _ROOT = os.path.dirname(os.path.dirname(_HERE))
 for _path in (_HERE, _ROOT):
     if _path not in sys.path:
         sys.path.insert(0, _path)
+
+from tools._logging import configure_tool_logging
+
+log = logging.getLogger("tools.telemetry_index")
 
 try:
     from . import report_common
@@ -840,12 +845,29 @@ def create_argument_parser(prog: str | None = None):
     parser.add_argument("--limit", type=int, default=200, help="列表上限（默认 200）")
     parser.add_argument("--timeout", type=float, default=180.0, help="单次调用超时秒数")
     parser.add_argument("--verbose", action="store_true")
+    parser.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        help="日志级别（默认 INFO）",
+    )
+    parser.add_argument(
+        "--log-file",
+        default=None,
+        help="日志文件路径（默认按运行时间戳建 temp/logs/telemetry_<时间戳>_<pid>.log）；"
+        "传 none / 空 只走控制台",
+    )
     return parser
 
 
 def main(argv: list[str] | None = None, prog: str | None = None) -> int:
     # `cli.py` 统一按 `(argv, prog)` 调各子命令的 main，签名要对齐
     args = create_argument_parser(prog).parse_args(argv)
+    _, log_path = configure_tool_logging(
+        "telemetry", log_file=args.log_file, level=args.log_level
+    )
+    if log_path:
+        log.info("日志 → %s", log_path)
     sentry = report_common.resolve_sentry_command()
     try:
         index, notes = refresh(
@@ -859,10 +881,10 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
             limit=args.limit,
         )
     except RuntimeError as exc:
-        print(f"刷新本地遥测库失败：{exc}", file=sys.stderr)
+        log.error("刷新本地遥测库失败：%s", exc)
         return 1
     for note in notes:
-        print(f"提示：{note}", file=sys.stderr)
+        log.info("提示：%s", note)
 
     if args.refresh:
         print(f"本地遥测库：{len(index['issues'])} 个 issue")
@@ -871,14 +893,14 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
     if args.issue:
         card = read_card(args.issue)
         if card is None:
-            print(f"{args.issue} 不在本地遥测库里。", file=sys.stderr)
+            log.error("%s 不在本地遥测库里。", args.issue)
             return 1
         for text, kind in card_notes(card, []):
             print(text)
         return 0
 
     if not args.case:
-        print("要给 --case <日志/证据包> 才会反查。", file=sys.stderr)
+        log.error("要给 --case <日志/证据包> 才会反查。")
         return 1
 
     candidates = extract_candidates(args.case)

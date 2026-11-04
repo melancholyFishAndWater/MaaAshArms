@@ -290,7 +290,7 @@ python tools/drawing/flow_cases.py --case D:/MaaAshArms/debug --list-cases
 
 ```
 temp/telemetry/issues/<SHORT-ID>.json   ← 每个 issue 一份（title/count/lastSeen/release/failure.*）
-temp/telemetry/index.json               ← {schema, issues: {<SHORT>: {status, lastSeen, fetched_at}}}
+temp/telemetry/issues/index.json        ← {schema, issues: {<SHORT>: {status, lastSeen, fetched_at}}}
 ```
 
 ```bash
@@ -332,6 +332,15 @@ python -m tools.sentry.cli telemetry --case D:/MaaAshArms/debug
 
 刷新失败（没装 `sentry` CLI / 没登录 / 网络不通）只打一条提示，然后用本地已有数据；
 本地库为空时再补一条"先跑 `telemetry --refresh`"。**遥测是加分项，不是画图的前提**。
+
+## 日志（`--log-level` / `--log-file`）
+
+`telemetry`（以及 `flow` 转发的绘图入口）每次运行会在 `temp/logs/` 下按时间戳建一个日志文件
+（`<tool>_<YYYYMMDD-HHMMSS>_<pid>.log`），带时间戳与级别，**独立于** `temp/flow/` 与
+`temp/telemetry/`。控制台仍只走 stderr，stdout 留给机器可读的结果。
+
+`--log-level DEBUG|INFO|WARNING|ERROR` 过滤级别；`--log-file <路径>` 改路径，传 `none`
+只走控制台、不写文件。
 
 ## speed：跨版本耗时趋势
 
