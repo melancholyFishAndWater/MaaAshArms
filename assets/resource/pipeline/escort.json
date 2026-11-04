@@ -113,13 +113,31 @@
     /* -------------------- 工作-领取奖励 -------------------- */
     "EscortBranchDelivery": {
         "desc": "[jp] 点击一键交付",
-        "recognition": "TemplateMatch",
-        "template": "Escort/Rewardable.png",
+        "recognition": "OCR",
+        "expected": "00:00:00",
+        "replace": [
+            [
+                "O",
+                "0"
+            ],
+            [
+                "o",
+                "0"
+            ],
+            [
+                "D",
+                "0"
+            ],
+            [
+                "d",
+                "0"
+            ]
+        ],
         "roi": [
             48,
-            525,
-            813,
-            61
+            464,
+            836,
+            58
         ],
         "next": [
             "BaseErrorNext",
