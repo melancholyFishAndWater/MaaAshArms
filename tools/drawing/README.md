@@ -164,6 +164,10 @@ flowchart LR
   `maafw.log` 尾部 + `on_error/`）画**完整流程图**——证据包就是那次运行的日志，不是"预览"。
   **本地没有就自动调 `evidence` 拉取**（默认开，需联网）；`--no-fetch-evidence` 关掉，
   `--telemetry-offline` 时也不拉。
+- **只画失败的那个 task**：证据包尾部常连着同一次运行的多个 task
+  （Train → Escort → Battle → Training），整段画会把它们接成一条链。定位顺序是
+  `failure_task_id`（在日志里才用）→ 失败节点所在的 task → 任务入口名；都定位不到、
+  且日志里多于一个 task 时退概览卡，不混画。
 - **连证据包都没有**才退化成**概览卡**（问题号 / 标题 / 失败节点 / 次数 / 最后出现 / 资源版本 / 链接，
   有 `on_error/` 时贴现场图），并在卡上写明用哪条命令补完整输出。
 - 产物：每个 issue 一张 `temp/flow/<SHORT>.png`（`--mermaid` 另出 `.mmd`），同样记进

@@ -63,6 +63,7 @@ from flow_from_log import (
     MediaResolver,
     Note,
     _is_zip,
+    parse_log,
     parse_time,
     render_flow,
     render_overview,
@@ -494,7 +495,7 @@ def base_filename(
     explicit_task = options.task_id is not None
     stem = issue or (None if explicit_task else task) or task or case.label or "case"
     parts = [_safe_part(stem)]
-    if explicit_task:
+    if explicit_task and not issue_only:
         parts.append(f"task{options.task_id}")
     elif issue and task and not issue_only:
         # 有 issue 名但没有 task_id：把任务名也带上，图才读得出画的是哪个任务
@@ -764,6 +765,51 @@ def _has_evidence(short_id: str) -> bool:
         return _pick_log(root) is not None
     except OSError:
         return False
+
+
+def _evidence_task_id(case: Case, card: Any) -> tuple[int | None, int]:
+    """在证据日志里定位这个 issue 的失败 task，返回 `(task_id, 日志里的 task 数)`。
+
+    证据包的日志与 Sentry 卡片不一定来自同一次运行（实测 PYTHON-2S 的日志是 11-02、
+    卡片最新事件是 11-04，`failure_task_id` 在日志里根本不存在）。所以不能只看
+    `card.failure_task_id`，依次尝试：
+
+    1. `failure_task_id` 确实在日志的任务列表里 → 用它；
+    2. 失败节点名（`card.node_name`）出现在哪个 task 的步骤里 → 用那个 task；
+    3. 任务入口名（`card.label`，如 `Entrust`）对上某个 task 的 `entry`（`TaskEntrust`）。
+
+    都定位不到返回 `(None, 任务数)`；调用方在多于一个 task 时据此退概览卡，避免把
+    Train/Escort/Battle/Training 接成一条链。
+    """
+    log_source = case.log_source()
+    try:
+        tasks = scan_tasks(log_source, None, None)
+    except (OSError, TypeError):
+        tasks = []
+    ids = {t.task_id for t in tasks}
+    if card.failure_task_id is not None and card.failure_task_id in ids:
+        return card.failure_task_id, len(tasks)
+    if card.node_name:
+        try:
+            parsed = parse_log(log_source, None, None, None, False)
+        except (OSError, TypeError, ValueError):
+            parsed = None
+        if parsed is not None:
+            hits = [
+                s.task_id
+                for s in parsed.steps
+                if s.name == card.node_name and s.task_id is not None
+            ]
+            if hits:
+                return hits[-1], len(tasks)
+    if card.label:
+        want = card.label
+        for task in tasks:
+            entry = task.entry or ""
+            norm = entry[4:] if entry.startswith("Task") else entry
+            if norm == want:
+                return task.task_id, len(tasks)
+    return None, len(tasks)
 
 
 def _fetch_evidence(short_id: str) -> None:
@@ -1265,35 +1311,47 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
             # SocketException 这类非节点失败，日志尾部画不出它，硬画反而是误导，走概览卡。
             ev_case = _evidence_case(card.short_id) if card.node_name else None
             if ev_case is not None:
-                ev_options = replace(
-                    options,
-                    issue=card.short_id,
-                    task_id=None,
-                    px=None,
-                    t_from=None,
-                    t_to=None,
-                )
-                try:
-                    res = run_case(
-                        ev_case,
-                        ev_options,
-                        outdir=args.outdir,
-                        mermaid=args.mermaid,
-                        force=args.force,
-                        manifest=manifest,
-                        vision_override=None,
-                        on_error_override=None,
-                        issue_only=True,
-                    )
-                except (FileNotFoundError, ValueError, OSError) as exc:
-                    # 证据包在但解析不出流程（例如日志尾部没有 pipeline 步骤）：
-                    # 退概览卡，而不是把这条 issue 整个丢掉
+                task_id, task_count = _evidence_task_id(ev_case, card)
+                if task_id is None and task_count > 1:
                     log.warning(
-                        "证据包画不出流程（%s），退概览卡：%s", card.short_id, exc
+                        "证据包里有 %s 个 task，定位不到失败 task（%s），退概览卡",
+                        task_count,
+                        card.short_id,
                     )
                 else:
-                    evidence_drawn += res is not None
-                    continue
+                    ev_options = replace(
+                        options,
+                        issue=card.short_id,
+                        # 只画失败的那个 task：证据包尾部常连着同一次运行的多个 task
+                        # （Train → Escort → Battle → Training），整段画会接成一条链。
+                        task_id=task_id,
+                        px=None,
+                        t_from=None,
+                        t_to=None,
+                    )
+                    try:
+                        res = run_case(
+                            ev_case,
+                            ev_options,
+                            outdir=args.outdir,
+                            mermaid=args.mermaid,
+                            force=args.force,
+                            manifest=manifest,
+                            vision_override=None,
+                            on_error_override=None,
+                            issue_only=True,
+                        )
+                    except (FileNotFoundError, ValueError, OSError) as exc:
+                        # 证据包在但解析不出流程（例如日志尾部没有 pipeline 步骤）：
+                        # 退概览卡，而不是把这条 issue 整个丢掉
+                        log.warning(
+                            "证据包画不出流程（%s），退概览卡：%s",
+                            card.short_id,
+                            exc,
+                        )
+                    else:
+                        evidence_drawn += res is not None
+                        continue
             try:
                 res = run_overview(
                     card,
