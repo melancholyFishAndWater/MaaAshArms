@@ -112,6 +112,7 @@
         "recognition": "Custom",
         "custom_recognition": "TrainBranchRewardReco",
         "next": [
+            "BaseErrorNext",
             "TrainClickRewardInfo",
             "[JumpBack]TrainInfoMover",
             "[JumpBack]BaseBranchError"
@@ -176,10 +177,23 @@
         "post_wait_freezes": 1000,
         "next": [
             "BaseErrorNext",
-            "BaseClickRewardTap",
+            "TrainGetRewardSuccess",
             "[JumpBack]BaseClickTapBox",
             "[JumpBack]BaseBranchError",
             "TrainGetReward"
+        ]
+    },
+    // INFO 领取成功
+    "TrainGetRewardSuccess": {
+        "desc": "[end] 领取列车奖励成功",
+        "recognition": "And",
+        "all_of": [
+            "BaseProbeReward"
+        ],
+        "action": "Custom",
+        "custom_action": "TrainGetRewardSuccessAct",
+        "next": [
+            "BaseClickRewardTap"
         ]
     },
     /* -------------------- 分支-接取发车 -------------------- */
@@ -188,6 +202,7 @@
         "recognition": "Custom",
         "custom_recognition": "TrainBranchAcceptableReco",
         "next": [
+            "BaseErrorNext",
             "TrainClickAcceptInfo",
             "[JumpBack]TrainInfoMover",
             "[JumpBack]BaseBranchError"
