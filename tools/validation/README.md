@@ -96,7 +96,7 @@ python tools/drawing/flow_cases.py --help
 python tools/perf/bench.py --help
 python tools/perf/bench.py --selftest                     # 性能基准（合成）：18 项（不建资源）
 python tools/perf/rounds.py --help
-python tools/perf/rounds.py --selftest                    # 性能基准（真实日志）：24 项
+python tools/perf/rounds.py --selftest                    # 性能基准（真实日志）：25 项
 ```
 
 **通过判据**  
