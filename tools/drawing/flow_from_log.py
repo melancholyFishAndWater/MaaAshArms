@@ -62,7 +62,6 @@ import json
 import logging
 import os
 import re
-import subprocess
 import sys
 import zipfile
 import zlib
@@ -71,6 +70,20 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, ClassVar
+
+# 共享实现（git / JSONC / 节点定义）在 `tools/_pipeline_state.py`。直接跑本文件时
+# 仓库根不在 `sys.path` 上，这里先补一次（与 `tools/perf/rounds.py` 同一写法）。
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+from tools._pipeline_state import (
+    definition_changed as _definition_changed,
+    git as _git,
+    main_last_commit,
+    node_definitions as _node_definitions,
+    pipeline_modules,
+    strip_jsonc as _strip_jsonc,
+)
 
 log = logging.getLogger("tools.flow_from_log")
 
@@ -1927,24 +1940,6 @@ class StaleCheck:
         return not self.reason
 
 
-def _git(repo: Path, *args: str) -> tuple[int, str]:
-    """跑一条 git 命令，返回 (退出码, 输出)。失败不抛——仓库状态不对时只是查不了。"""
-    try:
-        proc = subprocess.run(
-            ["git", "-c", "core.fsmonitor=false", *args],
-            cwd=str(repo),
-            capture_output=True,
-            text=True,
-            check=False,
-            encoding="utf-8",
-            errors="replace",
-            timeout=120,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return 1, ""
-    return proc.returncode, proc.stdout
-
-
 def resource_version(text: str) -> str | None:
     """从一行日志里取**资源版本**（`资源版本：v1.0.0-beta.58`），取不到返回 None。
 
@@ -1969,126 +1964,6 @@ def _version_marks(lines) -> list[tuple[datetime, str]]:
         if m:
             out.append((parse_ts(m.group(1)), ver))
     return out
-
-
-def _strip_jsonc(text: str) -> str:
-    """去掉 JSONC 注释与行尾逗号，好让 pipeline 文件能用标准 json 解析。
-
-    照抄 `tools/validation/validate_refs.py` 的做法（那边是完整实现），这里只保留
-    解析顶层 key 所需的部分：块注释、行注释、行尾逗号。
-    """
-    out: list[str] = []
-    i, n = 0, len(text)
-    in_str = False
-    while i < n:
-        ch = text[i]
-        if in_str:
-            out.append(ch)
-            if ch == "\\" and i + 1 < n:
-                out.append(text[i + 1])
-                i += 2
-                continue
-            if ch == '"':
-                in_str = False
-            i += 1
-            continue
-        if ch == '"':
-            in_str = True
-            out.append(ch)
-            i += 1
-            continue
-        if ch == "/" and i + 1 < n and text[i + 1] == "*":
-            end = text.find("*/", i + 2)
-            i = n if end < 0 else end + 2
-            continue
-        if ch == "/" and i + 1 < n and text[i + 1] == "/":
-            end = text.find("\n", i)
-            i = n if end < 0 else end
-            continue
-        out.append(ch)
-        i += 1
-    body = "".join(out)
-    # 行尾逗号（`"a": 1,` 后面直接 `}`）会让标准 json 解析失败
-    body = re.sub(r",(\s*[}\]])", r"\1", body)
-    return body
-
-
-def pipeline_modules(repo: Path) -> dict[str, str]:
-    """当前 pipeline 的节点名 → 模块文件名。
-
-    读 `assets/resource/pipeline/*.json` 的顶层 key。**只取顶层**：pipeline 文件里
-    还有 `override` 之类的嵌套结构，那些不是节点名。
-    """
-    root = repo / "assets" / "resource" / "pipeline"
-    owner: dict[str, str] = {}
-    if not root.is_dir():
-        return owner
-    for p in sorted(root.glob("*.json")):
-        try:
-            data = json.loads(
-                _strip_jsonc(p.read_text(encoding="utf-8", errors="replace"))
-            )
-        except (OSError, ValueError):
-            continue
-        if isinstance(data, dict):
-            for name in data:
-                owner.setdefault(name, p.name)
-    return owner
-
-
-def _node_definitions(repo: Path, tag: str) -> dict[str, dict[str, Any]]:
-    """`<tag>` 那一刻各 pipeline 文件里的节点定义：节点名 → 定义。
-
-    用 `git show <tag>:<path>` 直接取那个版本的文件内容，不解析 diff——diff 里的名字
-    出现不等于定义变了（实测 `dec9686` 重写 `feidu_gift.json`，47 个名字全在增删行里，
-    但其中 4 个节点的定义一字未改）。取不到（文件在 tag 时还不存在、解析失败）就跳过。
-    """
-    out: dict[str, dict[str, Any]] = {}
-    root = repo / "assets" / "resource" / "pipeline"
-    if not root.is_dir():
-        return out
-    for p in sorted(root.glob("*.json")):
-        rel = p.relative_to(repo).as_posix()
-        code, text = _git(repo, "show", f"{tag}:{rel}")
-        if code != 0 or not text.strip():
-            continue
-        try:
-            data = json.loads(_strip_jsonc(text))
-        except ValueError:
-            continue
-        if isinstance(data, dict):
-            out[p.name] = {k: v for k, v in data.items() if isinstance(v, dict)}
-    return out
-
-
-def _definition_changed(old: Any, new: Any) -> bool:
-    """两份节点定义是否不同（按键排序后比，避免键顺序造成的假差异）。"""
-    return json.dumps(old, sort_keys=True, ensure_ascii=False) != json.dumps(
-        new, sort_keys=True, ensure_ascii=False
-    )
-
-
-def last_commit_touching(repo: Path, tag: str, path: str) -> str:
-    """`tag..HEAD` 里最后改动某个文件的提交（`hash 日期 标题`）。"""
-    _code, out = _git(
-        repo, "log", "-1", "--format=%h %cI %s", f"{tag}..HEAD", "--", path
-    )
-    return out.strip()
-
-
-# 模块 → 最新提交的缓存：一次画图里几十个节点往往落在同几个模块上，
-# 每个模块查一次 git 就够（实测 18 个节点从 5.6 s 降到 1.6 s）。
-_LAST_COMMIT_CACHE: dict[tuple[str, str, str], str] = {}
-
-
-def main_last_commit(repo: Path, tag: str, module: str) -> str:
-    """带缓存的 `last_commit_touching`：同一模块只查一次 git，几十个节点共用一条结果。"""
-    key = (str(repo), tag, module)
-    if key not in _LAST_COMMIT_CACHE:
-        _LAST_COMMIT_CACHE[key] = last_commit_touching(
-            repo, tag, f"assets/resource/pipeline/{module}"
-        )
-    return _LAST_COMMIT_CACHE[key]
 
 
 def check_stale_nodes(
