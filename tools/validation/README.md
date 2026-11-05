@@ -67,6 +67,11 @@ python -m pytest -q tests       # agent 纯逻辑打桩，不连设备
 - **域参数都带路径**：`--pipeline` / `--tasks` / `--agent` / `--image` / `--interface` 各收一个路径、可重复，
   漏写路径 argparse 直接报 `expected one argument`。`E` 类判据（文档版本、文件头注解）不分域，每次都会一起报。
 - **放宽或放行**：`--fail-on warn` 把 warn 也算失败（默认只算 error）；`--ignore <id>` 放行单条判据，可重复、逗号分隔。
+- **agent 里的 `JTemplateMatch(...)` 也查模板图片**：字面量（`["Train/ArrowDart.png"]` 或
+  `template=[...]`）必须在 `image/` 下存在，缺失报 `C6-agent-template-missing`（**error**，消息带
+  `类.方法` 与行号）；变量 / f-string 只报 `C7-agent-template-dynamic`（info），静态查不出它指向
+  哪张图。这些行不再走 `C1` 的字面量扫描，同一处不会报两遍；但它们仍然算"引用过"，
+  否则 `C2` 会把只被 agent 模板用到的图当成没被引用。
 - **快捷方式只覆盖 agent 域**：`npm run check:refs` / `check:refs:github` 就是 `--agent agent`
   （agent 域 + `E` 类注解），不是全量；要全量直接跑第 2 步第一条。
 

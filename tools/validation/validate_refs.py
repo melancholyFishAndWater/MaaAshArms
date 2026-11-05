@@ -21,6 +21,7 @@ tools/validation/validate_schema.py——那个要 jsonschema。
 from __future__ import annotations
 
 import argparse
+import ast
 import contextlib
 import json
 import os
@@ -2299,26 +2300,122 @@ def check_tasks(ctx: Ctx) -> None:
 # --------------------------------------------------------------------------
 
 
-def collect_template_refs(ctx: Ctx) -> list[tuple[Path, str, str, int | None]]:
-    """(文件, 说明, 模板值, 行号)"""
-    refs: list[tuple[Path, str, str, int | None]] = []
+def find_image(roots: list[Path], value: str) -> Path | None:
+    """模板值 → 命中的路径（目录模板以 `/` 结尾，返回目录本身）。"""
+    for root in roots:
+        target = root / value.rstrip("/")
+        if value.endswith("/"):
+            if target.is_dir():
+                return target
+        elif target.is_file():
+            return target
+    return None
+
+
+TEMPLATE_CALL = "JTemplateMatch"
+
+
+def _is_template_call(func: ast.expr) -> bool:
+    if isinstance(func, ast.Name):
+        return func.id == TEMPLATE_CALL
+    if isinstance(func, ast.Attribute):
+        return func.attr == TEMPLATE_CALL
+    return False
+
+
+def _template_values(call: ast.Call) -> list[str | None]:
+    """`JTemplateMatch(...)` 的模板实参：字面量原样给出，变量 / f-string 记 None。"""
+    arg = next((kw.value for kw in call.keywords if kw.arg == "template"), None)
+    if arg is None and call.args:
+        arg = call.args[0]
+    if arg is None:
+        return []
+    items = arg.elts if isinstance(arg, (ast.List, ast.Tuple, ast.Set)) else [arg]
+    return [
+        item.value
+        if isinstance(item, ast.Constant) and isinstance(item.value, str)
+        else None
+        for item in items
+    ]
+
+
+def template_calls_in_source(text: str) -> list[tuple[int, int, str, list[str | None]]]:
+    """一处 `JTemplateMatch(...)`：`(起始行, 结束行, 归属, 模板值)`。
+
+    `归属` 是最近的类/方法名（`类.方法`）；值里的 None = 变量 / f-string，
+    静态查不出它指向哪张图片——那是"查不了"，不是"不存在"。
+    """
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return []
+    scopes = [
+        (node.lineno, getattr(node, "end_lineno", node.lineno), node.name)
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+    ]
+    calls: list[tuple[int, int, str, list[str | None]]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or not _is_template_call(node.func):
+            continue
+        start = node.lineno
+        end = getattr(node, "end_lineno", start)
+        inside = sorted(
+            scope for scope in scopes if scope[0] <= start and end <= scope[1]
+        )
+        owner = ".".join(scope[2] for scope in inside[:2]) or "模块级"
+        values = _template_values(node)
+        if values:
+            calls.append((start, end, owner, values))
+    return calls
+
+
+def template_call_spans(files: list[Path]) -> dict[Path, list[tuple[int, int]]]:
+    """每个 agent 文件里 `JTemplateMatch(...)` 占的行区间：C1 的字面量扫描要排掉这些行。"""
+    spans: dict[Path, list[tuple[int, int]]] = {}
+    for path in files:
+        if path.suffix != ".py":
+            continue
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        spans[path] = [
+            (start, end) for start, end, _owner, _values in template_calls_in_source(text)
+        ]
+    return spans
+
+
+def collect_template_refs(
+    ctx: Ctx,
+) -> list[tuple[Path, str, str, int | None, bool]]:
+    """(文件, 说明, 模板值, 行号, 是否已被 C6 接管)"""
+    refs: list[tuple[Path, str, str, int | None, bool]] = []
     for node in ctx.nodes.values():
         for _path, value in walk_key(node.data, "template"):
             for v in to_list(value):
                 if isinstance(v, str):
                     refs.append(
-                        (node.file, node.name, v, find_line(node.file, node.name))
+                        (
+                            node.file,
+                            node.name,
+                            v,
+                            find_line(node.file, node.name),
+                            False,
+                        )
                     )
     lit_re = re.compile(
         r"[\"']([A-Za-z0-9_][A-Za-z0-9_\-. ]*(?:/[A-Za-z0-9_\-. ]+)*/?)[\"']"
     )
+    spans = template_call_spans(ctx.agent_files)
     for path in ctx.agent_files:
         lines = lines_of(path)
         for i, line in enumerate(lines, 1):
+            covered = any(a <= i <= b for a, b in spans.get(path, []))
             for m in lit_re.finditer(line):
                 s = m.group(1)
                 if IMAGE_EXT_RE.search(s) or s.endswith("/"):
-                    refs.append((path, "agent 字面量", s, i))
+                    refs.append((path, "agent 字面量", s, i, covered))
     return refs
 
 
@@ -2328,36 +2425,31 @@ def check_images(ctx: Ctx) -> None:
     refs = collect_template_refs(ctx)
     used: set[Path] = set()
     used_dirs: set[Path] = set()
-    for file, owner, value, line in refs:
-        hit = False
-        for root in ctx.image_roots:
-            target = root / value.rstrip("/")
-            if value.endswith("/"):
-                if target.is_dir():
-                    used.add(target)
-                    used_dirs.add(target)
-                    imgs = [p for p in target.iterdir() if p.is_file()]
-                    if not imgs:
-                        ctx.add(
-                            "C4-empty-folder-template",
-                            "error",
-                            file,
-                            line,
-                            f"{owner} 的目录模板 {value!r} 里没有图片",
-                        )
-                    hit = True
-                    break
-            elif target.is_file():
-                used.add(target)
-                hit = True
-                break
-        if not hit:
+    for file, owner, value, line, covered in refs:
+        target = find_image(ctx.image_roots, value)
+        if target is None:
+            # C6 已经在 `JTemplateMatch(...)` 那一行报过同样的缺失，这里不重复报；
+            # 但"用到了这张图"仍然要记，否则 C2 会把这些图当没被引用。
+            if not covered:
+                ctx.add(
+                    "C1-missing-template",
+                    "error",
+                    file,
+                    line,
+                    f"{owner} 引用的模板不存在：{value!r}",
+                )
+            continue
+        used.add(target)
+        if not value.endswith("/"):
+            continue
+        used_dirs.add(target)
+        if not any(p.is_file() for p in target.iterdir()):
             ctx.add(
-                "C1-missing-template",
+                "C4-empty-folder-template",
                 "error",
                 file,
                 line,
-                f"{owner} 引用的模板不存在：{value!r}",
+                f"{owner} 的目录模板 {value!r} 里没有图片",
             )
 
     def is_used(path: Path) -> bool:
@@ -2395,6 +2487,44 @@ def check_images(ctx: Ctx) -> None:
                 None,
                 f"模板元素名不是英文 CamelCase（node-naming.md §8）：{rel}",
             )
+
+
+def check_agent_templates(ctx: Ctx) -> None:
+    """agent 侧自定义 TemplateMatch 的模板图片（C6 error / C7 info）。
+
+    只解析 `JTemplateMatch(...)` 自己的实参：字面量要求图片存在；变量 / f-string 记一条
+    info，说明静态查不了。C1 的 agent 字面量扫描会跳过这些调用，同一处不会报两遍。
+    """
+    if not ctx.image_roots:
+        return
+    for path in ctx.agent_files:
+        if path.suffix != ".py":
+            continue
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        for line, _end, owner, values in template_calls_in_source(text):
+            if any(value is None for value in values):
+                ctx.add(
+                    "C7-agent-template-dynamic",
+                    "info",
+                    path,
+                    line,
+                    f"{owner} 的 JTemplateMatch 模板不是字面量（变量 / f-string）："
+                    f"静态查不了图片是否存在",
+                )
+            for value in values:
+                if value is None:
+                    continue
+                if find_image(ctx.image_roots, value) is None:
+                    ctx.add(
+                        "C6-agent-template-missing",
+                        "error",
+                        path,
+                        line,
+                        f"{owner} 的 JTemplateMatch 引用的图片不存在：{value!r}",
+                    )
 
 
 # --------------------------------------------------------------------------
@@ -3511,6 +3641,33 @@ def self_test() -> int:
         ),
     ]
 
+    # C6/C7：agent 里 JTemplateMatch 的模板实参（字面量才查图片；变量 / f-string 只提示）
+    agent_src = (
+        "class XReco(CustomRecognition):\n"
+        "    def analyze(self, context, argv):\n"
+        "        context.run_recognition_direct(\n"
+        "            JRecognitionType.TemplateMatch,\n"
+        '            JTemplateMatch(["Train/ArrowDart.png", "Train/ArrowLocked.png"]),\n'
+        "            argv.image,\n"
+        "        )\n"
+        "        probe = JTemplateMatch(template=[name], roi=(0, 0, 1, 1))\n"
+        '        ignored = JOCR(["Train/NotATemplate.png"])\n'
+    )
+    template_calls = template_calls_in_source(agent_src)
+    template_values_list = [values for _s, _e, _o, values in template_calls]
+    checks += [
+        ("agent 模板调用只认 JTemplateMatch", len(template_calls) == 2),
+        (
+            "agent 模板字面量逐个取出",
+            ["Train/ArrowDart.png", "Train/ArrowLocked.png"] in template_values_list,
+        ),
+        ("agent 模板变量记 None", [None] in template_values_list),
+        (
+            "agent 模板归属到方法",
+            any(owner == "XReco.analyze" for _s, _e, owner, _v in template_calls),
+        ),
+    ]
+
     bad = [name for ok, name in checks if not ok]
     if bad:
         for name in bad:
@@ -3827,6 +3984,8 @@ def main(argv: list[str] | None = None) -> int:
         check_agent(ctx)
     if domains["image"]:
         check_images(ctx)
+    if domains["image"] or domains["agent"]:
+        check_agent_templates(ctx)
 
     ignores = {
         i.strip() for group in args.ignore for i in group.split(",") if i.strip()
