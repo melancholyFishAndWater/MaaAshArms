@@ -22,8 +22,9 @@ class ReplaysStopTimesReco(CustomRecognition):
     def analyze(
         self, context: Context, argv: CustomRecognition.AnalyzeArg
     ) -> list[int] | None:
-        if _finish_count >= _max_count:
-            log.info(f"代理结束，已完成次数：{context.get_hit_count(argv.node_name)}")
+        if _max_count != 0 and _finish_count >= _max_count:
+            if _finish_count > 0:
+                log.info(f"代理结束，已完成次数：{_finish_count}")
             return DEFAULT_HIT_BOX
 
 
