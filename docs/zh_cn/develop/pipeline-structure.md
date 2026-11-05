@@ -1,6 +1,9 @@
 # 任务链结构
 
-版本号: v3.9
+版本号: v3.10
+
+**v3.10 变更**：非任务入口的 `next` 长度上限由 7 项下调到 5 项（`A28-next-list-cap` 仍 **warn**；计长度时照旧
+不计 `BaseBranchError` / `BaseErrorNext`）。见「十」节。
 
 **v3.9 变更**：收窄「单探针内联」——只有单探针包装（`all_of` 恰好一项）与纯路由才内联；多条件 `And` 的子识别
 保持独立 `Probe` 节点，新增 `A30-and-inline-sub`（warn）报内联对象。见「十」节。
@@ -311,7 +314,7 @@ v3.1 起末尾兜底写 `[JumpBack]BaseBranchError`，不再放 `Ensure`：`Ensu
 
 一次派发的成本 = **守卫识别**（本节点的 `recognition`）+ **候选识别**（`next` 里被依次评估的项）。失败也要付钱，所以 `next` 的顺序与长度就是预算。
 
-**长度上限（v3.8）**：`Task*` 入口**不判**（入口的候选表由人工把关）；其余节点一律 ≤ 7 项（`A28`），计长度时不计 `BaseBranchError` / `BaseErrorNext`——这两项是每张表都该留的框架兜底，算进去会把正常表逼到超限。超限通常说明"把好几件事塞进一个列表"，该拆 `Branch`。存量 `*Loop`（废弃）另有 `A18` 的 5 项档，随节点退役一起消失。
+**长度上限（v3.10）**：`Task*` 入口**不判**（入口的候选表由人工把关）；其余节点一律 ≤ 5 项（`A28`；v3.3–v3.9 为 7 项），计长度时不计 `BaseBranchError` / `BaseErrorNext`——这两项是每张表都该留的框架兜底，算进去会把正常表逼到超限。超限通常说明"把好几件事塞进一个列表"，该拆 `Branch`。存量 `*Loop`（废弃）另有 `A18` 的 5 项档，随节点退役一起消失。
 
 ### 一次派发付几次识别
 
@@ -395,7 +398,7 @@ v3.1 起末尾兜底写 `[JumpBack]BaseBranchError`，不再放 `Ensure`：`Ensu
 | `A26-single-consumer-probe` | info | 纯探针只被一处引用、且那处是**单探针包装**（`And all_of` 恰好一项）或纯路由：可内联进引用它的节点 `recognition` |
 | `A30-and-inline-sub` | warn | 多条件 `And` 的 `all_of` 里出现内联对象：改成独立 `Probe` 节点按名字引用（见「十」节「单探针内联」） |
 | `A27-click-ok-banned` | error | 节点名以 `Ok` 结尾：确认按钮统一 `*Confirm`，不许 `ClickOk`（见 [节点命名](./node-naming.md) §6） |
-| `A28-next-list-cap` | warn | 非任务入口的 `next` > 7 项（`BaseBranchError` / `BaseErrorNext` 不计入）；任务入口由 `A18` 管 |
+| `A28-next-list-cap` | warn | 非任务入口的 `next` > 5 项（`BaseBranchError` / `BaseErrorNext` 不计入）；任务入口由 `A18` 管 |
 | `A29-and-box-index` | warn | 带 `action` 的节点：`recognition: And` 且 `all_of` > 1 项却没写 `box_index`（取框默认 `all_of[0]`，见「十一」节） |
 
 判不了的：救回率、动画实际时长、哪个候选命中率最高——都要日志实测（`debug/maafw.log` 里的 `Node.NextList.*` / `Node.Recognition.*` / `Node.WaitFreezes.*` 事件流）。
