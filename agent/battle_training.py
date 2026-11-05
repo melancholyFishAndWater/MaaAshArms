@@ -124,7 +124,7 @@ class TrainingGetStatusReco(CustomRecognition):
             dic = {
                 argv.node_name: {"next": ["TrainingDailyUpdate"]},
                 "TrainingDailyUpdate": {
-                    "custom_action_param": {"name": _done_targets},
+                    "custom_action_param": {"name": list(_done_targets)},
                     "next": ["BaseTaskStop"] if times == 0 else [],
                 },
             }
@@ -183,7 +183,6 @@ class TrainingEnterOneReco(CustomRecognition):
         # 遍历识别出第一个可选的关卡名
         expected = list(battle_targets.keys())
         selected_level_name = ""
-        level = -1
         for i in r.filtered_results:
             assert type(i) == OCRResult
 
@@ -218,7 +217,6 @@ class TrainingEnterOneReco(CustomRecognition):
                 if name in _done_targets:
                     continue
 
-                level = battle_targets[name]
                 selected_level_name = name
 
             # 识别到关卡没有剩余次数
@@ -230,6 +228,7 @@ class TrainingEnterOneReco(CustomRecognition):
 
         # 条件返回和覆写
         if selected_level_name != "":
+            level = battle_targets[selected_level_name]
             ov_r = context.override_pipeline(
                 {
                     "TrainingEnterOne": {
