@@ -28,7 +28,6 @@
 
 from __future__ import annotations
 
-import io
 import json
 import logging
 import os
@@ -697,7 +696,7 @@ def card_notes(
         if card.release:
             try:
                 label = report_common.version_label(card.release)
-            except Exception:
+            except Exception:  # noqa: BLE001 - release 字段类型不定，解析失败就退回空标签
                 label = None
             rel = f" · {label}" if label else ""
         when = _fmt_seen(card.last_seen)
@@ -835,7 +834,7 @@ def annotate(
         if picked.card.release:
             try:
                 out.version = report_common.version_label(picked.card.release) or ""
-            except Exception:
+            except Exception:  # noqa: BLE001 - release 字段类型不定，解析失败就留空
                 out.version = ""
         if len(highs) > 1:
             out.warnings.append(

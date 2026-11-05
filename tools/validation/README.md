@@ -93,6 +93,10 @@ python -m tools.sentry.cli selftest                       # 遥测工具：19 �
 python tools/validation/check_sentry_offline.py
 python tools/drawing/flow_from_log.py --help
 python tools/drawing/flow_cases.py --help
+python tools/perf/bench.py --help
+python tools/perf/bench.py --selftest                     # 性能基准（合成）：18 项（不建资源）
+python tools/perf/rounds.py --help
+python tools/perf/rounds.py --selftest                    # 性能基准（真实日志）：24 项
 ```
 
 **通过判据**  
@@ -274,7 +278,7 @@ Pylance 是 VS Code 内的 LSP，没有命令行入口（`dist/server.bundle.js`
 
 | 规则 | 级别 | 判据 |
 | --- | --- | --- |
-| `A28-next-list-cap` | warn | 非任务入口的 `next` > 7 项；计长度时**不计** `BaseBranchError` / `BaseErrorNext`。`Task*` 入口完全不判（v3.8，也不归 `A18` 管了） |
+| `A28-next-list-cap` | warn | 非任务入口的 `next` > 5 项（v3.10 起；v3.3–v3.9 为 7 项）；计长度时**不计** `BaseBranchError` / `BaseErrorNext`。`Task*` 入口完全不判（v3.8，也不归 `A18` 管了） |
 
 `A29` 是 v3.5 新增的一条（`pipeline-structure.md` 第十一节），**warn**：
 

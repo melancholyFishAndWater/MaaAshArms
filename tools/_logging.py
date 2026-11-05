@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import sys
@@ -48,10 +49,8 @@ def configure_tool_logging(
     logger.propagate = False
     for handle in list(logger.handlers):
         logger.removeHandler(handle)
-        try:
+        with contextlib.suppress(Exception):
             handle.close()
-        except Exception:
-            pass
 
     console = logging.StreamHandler(sys.stderr)
     console.setFormatter(_FORMAT)

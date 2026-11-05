@@ -150,11 +150,11 @@ CONFIRM_WORDS = ("确认",)
 # pipeline-structure.md §10：识别预算上限。
 # 失败候选也要付识别，列表越长单轮成本越高；超限通常是"把好几件事塞进一个列表"。
 # v3.8 起 `Task*` 入口完全不判（作者裁定：入口的候选表由人工把关），A18 只剩 `Loop` 一档，
-# 保留到存量 `*Loop` 节点退役；非入口根节点的 7 项上限由 A28 管。
+# 保留到存量 `*Loop` 节点退役；非入口根节点的 5 项上限由 A28 管。
 MAX_NEXT_LOOP = 5
-# pipeline-structure.md §10（v3.3）：非任务入口的 `next` 一律 ≤ 7 项。
+# pipeline-structure.md §10（v3.10；v3.3 起为 7 项）：非任务入口的 `next` 一律 ≤ 5 项。
 # `Task*` 入口不判（v3.8）；框架兜底候选不计入长度——它们是每张表都该有的，不是"业务候选"。
-NEXT_LIST_CAP = 7
+NEXT_LIST_CAP = 5
 NEXT_CAP_EXCLUDED = frozenset({"BaseBranchError", "BaseErrorNext"})
 
 # --------------------------------------------------------------------------
@@ -181,9 +181,10 @@ NEXT_CAP_EXCLUDED = frozenset({"BaseBranchError", "BaseErrorNext"})
 # v3.8：A18 对 `Task*` 入口**完全不判**（作者裁定：入口候选表由人工把关），只留 `Loop` 档。
 # v3.9：A26 口径收窄为「单探针包装」（`all_of` 恰好一项）；新增 A30（多条件 `And` 里写内联
 #   子识别对象 → warn，改独立 `Probe` 节点）。命名规范同步 v3.3。
+# v3.10：A28 的列表长度上限由 7 项下调到 5 项（结构文档 §10，作者裁定；不计入项不变）。
 NAMING_SPEC_VERSION = "v3.3"
 NAMING_SPEC = Path("docs/zh_cn/develop/node-naming.md")
-STRUCT_SPEC_VERSION = "v3.9"
+STRUCT_SPEC_VERSION = "v3.10"
 STRUCT_SPEC = Path("docs/zh_cn/develop/pipeline-structure.md")
 
 
@@ -1410,7 +1411,7 @@ def check_a18_next_length(ctx: Ctx) -> None:
     失败候选也要付识别，列表越长单轮成本越高。上限按类别分：`Loop`（废弃）5 项。
 
     `Task*` 入口**完全不判**（v3.8）：入口的候选表由人工把关，规则只对非入口节点生效；
-    非入口的 7 项上限由 `A28` 管。`Ensure` 自 v3.1 停用，也不再按 `Ensure` 名判。
+    非入口的 5 项上限由 `A28` 管。`Ensure` 自 v3.1 停用，也不再按 `Ensure` 名判。
     超限通常是"把好几件事塞进一个列表"，该拆 `Branch` 或子 `Loop`。
     """
     for node in ctx.nodes.values():
@@ -1433,7 +1434,7 @@ def check_a18_next_length(ctx: Ctx) -> None:
 
 
 def check_a28_next_list_cap(ctx: Ctx) -> None:
-    """非任务入口的 `next` 不得超过 7 项（pipeline-structure.md §10，v3.3）。
+    """非任务入口的 `next` 不得超过 5 项（pipeline-structure.md §10，v3.10；v3.3 起为 7 项）。
 
     与 `A18` 分工：任务入口（`Task*`）由 `A18` 管（更严的 4 项），本规则跳过入口、管其余节点。
     计长度时**不计** `BaseBranchError` / `BaseErrorNext`——这两项是每张表都该留的框架兜底，
@@ -3056,18 +3057,18 @@ def self_test() -> int:
         ),
     ]
 
-    # A28：非任务入口 next ≤ 7 项、不计 BaseBranchError / BaseErrorNext（v3.3）
+    # A28：非任务入口 next ≤ 5 项、不计 BaseBranchError / BaseErrorNext（v3.3 设 7 项，v3.10 降到 5）
     cap_ctx = synth_ctx(
         {
-            "XSev": {
+            "XFive": {
                 "recognition": "OCR",
-                "next": ["P1", "P2", "P3", "P4", "P5", "P6", "P7"],
+                "next": ["P1", "P2", "P3", "P4", "P5"],
             },
-            "XEight": {
+            "XSix": {
                 "recognition": "OCR",
-                "next": ["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8"],
+                "next": ["P1", "P2", "P3", "P4", "P5", "P6"],
             },
-            "XSevFallback": {
+            "XFiveFallback": {
                 "recognition": "OCR",
                 "next": [
                     "P1",
@@ -3075,8 +3076,6 @@ def self_test() -> int:
                     "P3",
                     "P4",
                     "P5",
-                    "P6",
-                    "P7",
                     "BaseErrorNext",
                     "[JumpBack]BaseBranchError",
                 ],
@@ -3087,11 +3086,11 @@ def self_test() -> int:
     check_a28_next_list_cap(cap_ctx)
     cap_hit = {f.message.split(".")[0] for f in cap_ctx.findings}
     checks += [
-        ("XSev" not in cap_hit, "非入口 7 项 → 不报 A28"),
-        ("XEight" in cap_hit, "非入口 8 项 → 报 A28"),
+        ("XFive" not in cap_hit, "非入口 5 项 → 不报 A28"),
+        ("XSix" in cap_hit, "非入口 6 项 → 报 A28"),
         (
-            "XSevFallback" not in cap_hit,
-            "7 项 + BaseErrorNext + BaseBranchError → 不计入、不报 A28",
+            "XFiveFallback" not in cap_hit,
+            "5 项 + BaseErrorNext + BaseBranchError → 不计入、不报 A28",
         ),
         ("TaskNine" not in cap_hit, "任务入口不报 A28（由 A18 管）"),
     ]
