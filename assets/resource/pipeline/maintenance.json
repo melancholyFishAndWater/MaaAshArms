@@ -88,6 +88,25 @@
     },
     "MaintenanceProbeAllBusy": {
         "desc": "[end] 全部忙碌 任务结束标志 需要确保在Home",
+        "recognition": "And",
+        "all_of": [
+            "MaintenanceProbeAllBusy2",
+            "MaintenanceProbeBusy"
+        ]
+    },
+    "MaintenanceProbeBusy": {
+        "desc": "[end] 忙碌按钮",
+        "recognition": "TemplateMatch",
+        "template": "Maintenance/Busy.png",
+        "roi": [
+            1021,
+            162,
+            134,
+            311
+        ]
+    },
+    "MaintenanceProbeAllBusy2": {
+        "desc": "[end] 没有完成和接取按钮",
         "recognition": "Or",
         "any_of": [
             "MaintenanceProbeAble",
