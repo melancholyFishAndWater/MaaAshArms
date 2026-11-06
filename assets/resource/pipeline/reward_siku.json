@@ -18,7 +18,7 @@
         "next": [
             "[JumpBack]BaseBranchError",
             "SikuProbeUnrewardable", // INFO 无奖励不进
-            "[JumpBack]SikuEnterHome" // INFO 进入司库部
+            "SikuEnterHome" // INFO 进入司库部
         ]
     },
     // INFO 无奖励
@@ -35,7 +35,7 @@
         ],
         "inverse": true,
         "focus": {
-            "Node.Recognition.Succeeded": "司库部无奖励"
+            "Node.Recognition.Succeeded": "司库部无奖励 跳过领取"
         }
     },
     /* -------------------- 通用探测 -------------------- */
