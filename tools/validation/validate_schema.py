@@ -28,9 +28,29 @@ if HAS_REFERENCING:
     from referencing.jsonschema import DRAFT7, DRAFT202012
 
 
+def _next_significant(text, start):
+    """跳过空白与注释，返回下一个有意义的字符（判断逗号是不是末尾那个）。"""
+    i, n = start, len(text)
+    while i < n:
+        if text[i] in " \t\r\n":
+            i += 1
+        elif text.startswith("//", i):
+            end = text.find("\n", i)
+            i = n if end < 0 else end + 1
+        elif text.startswith("/*", i):
+            end = text.find("*/", i + 2)
+            i = n if end < 0 else end + 2
+        else:
+            return text[i]
+    return ""
+
+
 def strip_jsonc_comments(text):
     """
-    移除 JSONC 注释，保持 JSON 结构完整
+    移除 JSONC 注释与末尾逗号，保持 JSON 结构完整
+
+    末尾逗号（`"a": [1,]`）也要丢：MaaFW 的 meojson 接受它（实测 `post_bundle` 一个
+    `"next": ["B",]` 的 pipeline 仍加载出节点），只有真正的语法错误才会 `json::open failed`。
     """
     # 状态机：0=正常, 1=字符串中, 2=转义字符
     result = []
@@ -60,6 +80,8 @@ def strip_jsonc_comments(text):
                         result.append("\n")  # 保留换行以维持行号
                     i += 1
                 i += 2  # 跳过 */
+            elif char == "," and _next_significant(text, i + 1) in ("]", "}"):
+                i += 1  # 末尾逗号：运行时接受，解析前丢掉
             else:
                 result.append(char)
                 i += 1

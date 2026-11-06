@@ -37,8 +37,29 @@ from typing import TypeGuard
 # --------------------------------------------------------------------------
 
 
+def _next_significant(text: str, start: int) -> str:
+    """跳过空白与注释，返回下一个有意义的字符（判断逗号是不是末尾那个）。"""
+    i, n = start, len(text)
+    while i < n:
+        if text[i] in " \t\r\n":
+            i += 1
+        elif text.startswith("//", i):
+            end = text.find("\n", i)
+            i = n if end < 0 else end + 1
+        elif text.startswith("/*", i):
+            end = text.find("*/", i + 2)
+            i = n if end < 0 else end + 2
+        else:
+            return text[i]
+    return ""
+
+
 def strip_jsonc_comments(text: str) -> str:
-    """移除 JSONC 注释，保持结构（与 tools/validation/validate_schema.py:23-70 同源）。"""
+    """移除 JSONC 注释与末尾逗号，保持结构（与 tools/validation/validate_schema.py:31-* 同源）。
+
+    末尾逗号（`"a": [1,]`）要一起丢掉：MaaFW 用的 meojson 接受它——实测 `post_bundle` 一个
+    `"next": ["B",]` 的 pipeline 仍加载出 A / B 两个节点，只有真正的语法错误才 `json::open failed`。
+    """
     result: list[str] = []
     state = 0  # 0=正常, 1=字符串中, 2=转义
     i = 0
@@ -62,6 +83,8 @@ def strip_jsonc_comments(text: str) -> str:
                         result.append("\n")
                     i += 1
                 i += 2
+            elif char == "," and _next_significant(text, i + 1) in ("]", "}"):
+                i += 1  # 末尾逗号：运行时接受，解析前丢掉
             else:
                 result.append(char)
                 i += 1
@@ -729,6 +752,10 @@ def check_a2_custom(ctx: Ctx) -> None:
                     f"{node.name}.{key} = {name!r}，但它注册的是 {reg.kind}（{reg.file}:{reg.line}）",
                 )
     if ctx.regs:
+        if any(f.id == "A0-parse-error" for f in ctx.findings):
+            # 有 pipeline 文件解析不出来时，"引用集"是不完整的，不能下"没被引用"的结论
+            # （2026-11-06：factory_fast.json 的末尾逗号被当语法错误，两个注册名误报 unused）
+            return
         for name, reg in ctx.regs.items():
             if name not in used:
                 ctx.add(
@@ -2696,6 +2723,14 @@ def self_test() -> int:
             "strip_jsonc_comments",
         ),
         (
+            json.loads(strip_jsonc_comments('{"a": [1,], // x\n}')) == {"a": [1]},
+            "末尾逗号按运行时口径丢掉（meojson 接受）",
+        ),
+        (
+            json.loads(strip_jsonc_comments('{"a": [", ]"]}')) == {"a": [", ]"]},
+            "字符串里的 ,] 不算末尾逗号",
+        ),
+        (
             [v for _p, v in walk_key({"x": {"template": ["a.png"]}}, "template")]
             == [["a.png"]],
             "walk_key 嵌套",
@@ -3667,6 +3702,18 @@ def self_test() -> int:
             "agent 模板归属到方法",
             any(owner == "XReco.analyze" for _s, _e, owner, _v in template_calls),
         ),
+    ]
+
+    # A2：pipeline 解析失败时不下"没被引用"的结论（引用集不完整）
+    broken_ctx = Ctx(repo_root=Path("."))
+    broken_ctx.regs = {"XReco": Reg("XReco", "recognition", "XReco", Path("x.py"), 1)}
+    broken_ctx.add("A0-parse-error", "error", Path("p.json"), None, "坏文件")
+    check_a2_custom(broken_ctx)
+    checks += [
+        (
+            not any(f.id == "A2-unused-registration" for f in broken_ctx.findings),
+            "pipeline 解析失败时不报 A2-unused",
+        )
     ]
 
     bad = [name for ok, name in checks if not ok]
