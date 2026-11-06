@@ -1379,9 +1379,10 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
                 and not args.telemetry_offline
             ):
                 _fetch_evidence(card.short_id)
-            # 只有 pipeline 节点失败（标题里有 <节点>/<阶段>）才用证据包日志画流程；
-            # SocketException 这类非节点失败，日志尾部画不出它，硬画反而是误导，走概览卡。
-            ev_case = _evidence_case(card.short_id) if card.node_name else None
+            # 证据包里有日志就画完整流程，不再按标题里有没有 <节点>/<阶段> 挑：
+            # 缺后缀只是标题写法（PYTHON-V / PYTHON-11 实测，日志尾部能画出 17 节点流程）。
+            # 画不出时才退概览卡：没有日志、尾部解析不出流程、定位不到失败 task（下面两处）。
+            ev_case = _evidence_case(card.short_id)
             if ev_case is not None:
                 task_id, task_count = _evidence_task_id(ev_case, card)
                 if task_id is None and task_count > 1:
@@ -1437,7 +1438,7 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
                     mermaid=args.mermaid,
                     force=args.force,
                     manifest=manifest,
-                    no_log_hint=bool(card.node_name) and ev_case is None,
+                    no_log_hint=ev_case is None,
                 )
             except (OSError, ValueError) as exc:
                 failed += 1
