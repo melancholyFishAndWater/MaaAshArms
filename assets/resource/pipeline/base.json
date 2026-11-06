@@ -100,7 +100,7 @@
     /* -------------------- 分支 -------------------- */
     // INFO 错误弹窗
     "BaseBranchError": {
-        "desc": "捕获错误并尝试回正 然后重置 BaseErrorNext 计数器",
+        "desc": "[jp] 捕获错误并尝试回正 然后重置 BaseErrorNext 计数器",
         "recognition": "Or",
         "any_of": [
             "BaseClickErrorConfirm",
