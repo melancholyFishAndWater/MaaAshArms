@@ -2,9 +2,10 @@
     /*
     INFO 联络人
 
-    使用任务链结构 v3.1 校验年月日 26/10/31
-    使用节点命名与分类 v3.1 校验年月日 26/10/31
+    使用任务链结构 v3.10 校验年月日 26/11/06
+    使用节点命名与分类 v3.3 校验年月日 26/11/06
     */
+    // INFO 任务入口
     "TaskFriend": {
         "desc": "联络人任务",
         "next": [
@@ -14,6 +15,7 @@
         ]
     },
     /* -------------------- 动作-进入联络人 -------------------- */
+    // INFO 进入联络人
     "FriendEnterHome": {
         "desc": "进入联络人页面",
         "recognition": "OCR",
@@ -27,17 +29,22 @@
         "action": "Click",
         "next": [
             "BaseErrorNext",
-            "FriendEnterHome",
             "FriendClickButtonLight",
-            "FriendProbeButtonDart"
+            "[JumpBack]BaseBranchError",
+            "FriendProbeButtonDart",
+            "FriendEnterHome"
         ]
     },
+    /* -------------------- 动作-一键赠领 -------------------- */
+    // INFO 点一键赠领
     "FriendClickButtonLight": {
-        "desc": "按钮可按",
+        "desc": "[max] 点击一键赠领按钮",
+        "max_hit": 2,
         "method": 10001,
         "recognition": "TemplateMatch",
         "template": "Friend/LightButton.png",
         "action": "Click",
+        "post_wait_freezes": 1000,
         "roi": [
             921,
             582,
@@ -45,11 +52,15 @@
             138
         ],
         "next": [
+            "[JumpBack]BaseBranchError",
+            "FriendProbeButtonDart",
+            "FriendClickButtonLight",
             "BaseTaskStop"
         ]
     },
+    // INFO 赠领完成
     "FriendProbeButtonDart": {
-        "desc": "按钮不可按",
+        "desc": "[end] 一键赠领按钮不可按", // INFO 游戏问题 不一定会暗淡 所以只做备选
         "method": 10001,
         "recognition": "TemplateMatch",
         "template": "Friend/DartButton.png",
