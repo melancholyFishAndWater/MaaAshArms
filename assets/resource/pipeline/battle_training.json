@@ -1,21 +1,36 @@
 {
     /*
     INFO 训练所任务
-    
-    使用命名规范版本 v1.2 校验年月日 26/10/13
+
+    使用任务链结构 v4.0 校验年月日 26/11/06
+    使用节点命名与分类 v3.3 校验年月日 26/11/06
     */
+    // INFO 任务入口
     "TaskTraining": {
         "desc": "训练所任务",
-        "timeout": 60000,
         "next": [
+            "[JumpBack]TrainingProbeDaily",
             "[JumpBack]EntrustRewardableLate",
             "[JumpBack]TrainingInit",
-            "[JumpBack]TrainingProbeDaily",
-            "TrainingLoop", // INFO 在训练所
+            // INFO 遍历候选位置
+            "TrainingBranchHome",
+            "TrainingEnterHome",
+            "BattleEnterHome",
+            // INFO 错误捕获
             "[JumpBack]BaseBranchError",
-            "[JumpBack]TrainingEnsureHome"
+            "[JumpBack]BaseReturnHome"
         ]
     },
+    "TrainingProbeDaily": {
+        "desc": "[once][jp] 检测每日一次",
+        "max_hit": 1,
+        "recognition": "Custom",
+        "custom_recognition": "TaskTrainingReco",
+        "custom_recognition_param": {
+            "enable": true // 每日一次开关 覆写关闭
+        }
+    },
+    // INFO 读取关卡选项
     "TrainingInit": {
         "desc": "[once][jp] 训练所初始化",
         "max_hit": 1,
@@ -29,15 +44,7 @@
         "action": "Custom",
         "custom_action": "TrainingInitAct"
     },
-    /* -------------------- 探测 -------------------- */
-    "TrainingProbeHome": {
-        "desc": "[end] 在训练所主页面",
-        "recognition": "And",
-        "all_of": [
-            "TrainingProbeHomeName",
-            "BaseProbeHelpButton"
-        ]
-    },
+    /* -------------------- 通用探测 -------------------- */
     "TrainingProbeHomeName": {
         "desc": "[end] 有训练所文字",
         "recognition": "OCR",
@@ -49,37 +56,8 @@
             49
         ]
     },
-    "TrainingProbeDaily": {
-        "desc": "[once][jp] 检测每日一次",
-        "max_hit": 1,
-        "recognition": "Custom",
-        "custom_recognition": "TaskTrainingReco",
-        "custom_recognition_param": {
-            "enable": true // 每日一次开关 覆写关闭
-        }
-    },
-    "TrainingProbeOne": {
-        "desc": "[end] 在某个训练所关卡内",
-        "recognition": "Custom",
-        "custom_recognition": "TrainingProbeOneReco"
-    },
-    /* -------------------- 就位 -------------------- */
-    "TrainingEnsureHome": {
-        "desc": "[jp] 确保在训练所主页面",
-        "recognition": "And",
-        "all_of": [
-            "TrainingProbeHome"
-        ],
-        "inverse": true,
-        "timeout": 30000,
-        "next": [
-            "TrainingProbeHome",
-            "[JumpBack]BaseBranchError",
-            "[JumpBack]BaseProbeBlackPage",
-            "[JumpBack]TrainingEnterHome",
-            "[JumpBack]BattleEnsureHome"
-        ]
-    },
+    /* -------------------- 动作-进入训练所 -------------------- */
+    // INFO 进入训练所
     "TrainingEnterHome": {
         "desc": "进入训练所",
         "recognition": "OCR",
@@ -91,88 +69,70 @@
             37
         ],
         "action": "Click",
-        "pre_wait_freezes": 1000,
-        "rate_limit": 1500,
+        "post_wait_freezes": 1000,
         "next": [
-            "BaseErrorNext",
-            "TrainingLoop",
-            "[JumpBack]BaseBranchError",
-            "TrainingEnterHome"
+            "TrainingBranchHome",
+            "[JumpBack]BaseBranchError"
         ]
     },
-    /* -------------------- 工作 -------------------- */
-    "TrainingLoop": {
-        "desc": "[Loop] 训练所条件主循环",
+    /* -------------------- 分支-训练所主页 -------------------- */
+    // INFO 主页多个出口
+    "TrainingBranchHome": {
+        "desc": "在训练所主页",
         "recognition": "And",
         "all_of": [
-            "TrainingProbeHome"
+            "TrainingProbeHomeName",
+            "BaseProbeHelpButton",
+            "TrainingGetStatus" // INFO 读取完成状态
         ],
         "next": [
-            "[JumpBack]TrainingGetStatus",
-            "[JumpBack]TrainingEnterOne",
             "TrainingCheckEnd",
-            "[JumpBack]BaseBranchError",
-            "[JumpBack]TrainingBranchBack"
-            // TODO 自律战斗失败的逻辑、不可代理的逻辑
+            "[JumpBack]TrainingEnterOne", // INFO 选择关卡
+            "[JumpBack]BaseBranchError"
         ]
     },
-    "TrainingBranchBack": {
-        "desc": "[jp] 条件返回上一页",
-        "recognition": "And",
-        "all_of": [
-            "TrainingProbeOne"
-        ],
-        "next": [
-            "BaseClickBackButton"
-        ]
-    },
+    // INFO 读取完成状态
     "TrainingGetStatus": {
-        "desc": "[once][jp] 获取关卡完成状态",
+        "desc": "获取关卡完成状态",
         "recognition": "Custom",
-        "custom_recognition": "TrainingGetStatusReco",
-        "max_hit": 1
+        "custom_recognition": "TrainingGetStatusReco"
     },
     "TrainingCheckEnd": {
-        "desc": "[end] 检测是否无战斗次数",
-        "recognition": "And",
-        "all_of": [
-            "TrainingProbeHome",
-            {
-                "recognition": "Custom",
-                "custom_recognition": "TrainingCheckEndReco"
-            }
-        ]
+        "desc": "[end] 已无战斗次数",
+        "recognition": "Custom",
+        "custom_recognition": "TrainingCheckEndReco"
     },
-    // INFO 关卡选择页面
+    /* -------------------- 动作-进入关卡 -------------------- */
     "TrainingEnterOne": {
-        "desc": "[jp] 进入其中一个训练所关卡选择页面",
+        "desc": "进入其中一个训练所关卡选择页面",
         "recognition": "Custom",
         "custom_recognition": "TrainingEnterOneReco",
         "max_hit": 4,
         "action": "Click",
+        "post_wait_freezes": 2000,
         "next": [
             "TrainingEnterFormation",
+            "[JumpBack]BaseBranchError",
             "[JumpBack]BaseMoveUp"
-        ],
-        "post_wait_freezes": 2000
+        ]
     },
+    // INFO 进入编队
     "TrainingEnterFormation": {
-        "desc": "[max] 进入编队页面",
-        "max_hit": 10,
+        "desc": "进入编队页面",
         "recognition": "Custom",
         "custom_recognition": "TrainingEnterFormationReco",
         "custom_recognition_param": {
             "level": "六"
         },
         "action": "Click",
+        "post_wait_freezes": 2000,
         "next": [
-            "BattleLoopReplayFormation",
+            "BattleBranchReplayFormation",
             "[JumpBack]BaseBranchError",
-            "[JumpBack]BaseProbeBlackPage",
-            "TrainingEnterFormation"
-        ],
-        "post_wait_freezes": 2000
+            "[JumpBack]BaseProbeBlackPage"
+        ]
     },
+    /* -------------------- 动作-战斗胜利 -------------------- */
     "TrainingBattleWin": {
         "desc": "训练所战斗胜利",
         "action": "Custom",
@@ -188,6 +148,19 @@
         "custom_action": "TrainingDailyUpdateAct",
         "custom_action_param": {
             "name": [] // 覆写传递关卡名 list
-        }
+        },
+        "next": [
+            "TrainingBranchBack",
+            "[JumpBack]BaseBranchError"
+        ]
+    },
+    /* -------------------- 动作-返回 -------------------- */
+    "TrainingBranchBack": {
+        "desc": "从关卡内返回",
+        "recognition": "Custom",
+        "custom_recognition": "TrainingProbeOneReco",
+        "next": [
+            "BaseClickBackButton"
+        ]
     }
 }

@@ -2,17 +2,17 @@
     /*
     INFO 自动代理节点
 
-    使用任务链结构 v1.7 校验年月日 26/10/20
-    使用节点命名与分类 v1.8 校验年月日 26/10/20
+    使用任务链结构 v4.0 校验年月日 26/11/06
+    使用节点命名与分类 v3.3 校验年月日 26/11/06
     */
     "TaskReplays": {
         "desc": "自动代理任务",
         "next": [
             "[JumpBack]ReplaysInit",
-            "ReplaysLoopFormation",
-            "ReplaysLoopBattle",
-            "ReplaysLoopDefaultEnd",
-            "ReplaysLoopMetalFinish",
+            "ReplaysBranchFormation",
+            "ReplaysBranchBattle",
+            "ReplaysBranchDefaultEnd",
+            "ReplaysBranchMetalFinish",
             "[JumpBack]BaseBranchError"
         ],
         "focus": {
@@ -51,40 +51,53 @@
         }
     },
     /* -------------------- 工作 -------------------- */
-    "ReplaysLoopFormation": {
+    // INFO 见 BattleBranchReplayFormation
+    "ReplaysBranchFormation": {
         "desc": "[Loop] 多次代理编队 循环",
         "recognition": "And",
         "all_of": [
             "BattleProbeFormation"
         ],
-        "timeout": 30000,
         "next": [
             "[JumpBack]BattleBranchReplenish",
-            "ReplaysLoopLight",
             "BattleStopActionDart",
-            "[JumpBack]BattleClickReplay",
             "BattleStopReplayLocked",
+            "ReplaysStopReplayOff",
+            "ReplaysClickAttack",
             "[JumpBack]BaseBranchError"
         ]
     },
-    "ReplaysLoopLight": {
-        "desc": "[Loop] 多次代理准备就绪",
+    "ReplaysStopReplayOff": {
+        "desc": "未开启代理作战",
+        "recognition": "TemplateMatch",
+        "template": "Battle/ReplayBattleDart.png",
+        "action": "StopTask",
+        "focus": {
+            "Node.Recognition.Succeeded": "请开启代理作战 并指定次数"
+        }
+    },
+    /* -------------------- 动作-点击出击 -------------------- */
+    "ReplaysClickAttack": {
+        "desc": "自动代理-点击出击",
         "recognition": "And",
         "all_of": [
-            "BattleProbeActionLight",
-            "BattleProbeReplayLight"
+            "BattleProbeReplayLight",
+            "BattleProbeActionLight"
         ],
-        "timeout": 30000,
+        "box_index": 1,
+        "action": "Click",
+        "post_wait_freezes": 2000,
         "next": [
-            "BaseStopNoMetal",
-            "BattleStopNoProps",
-            "ReplaysLoopBattle",
-            "[JumpBack]BattleClickAttack",
+            "ReplaysBranchBattle",
             "[JumpBack]BaseBranchError"
-        ]
+        ],
+        "focus": {
+            "Node.PipelineNode.Failed": "自动代理出发失败"
+        }
     },
-    "ReplaysLoopBattle": {
-        "desc": "[Loop] 正在战斗",
+    /* -------------------- 战斗中 -------------------- */
+    "ReplaysBranchBattle": {
+        "desc": "正在战斗",
         "recognition": "Or",
         "any_of": [
             "BattleProbeLoading",
@@ -95,14 +108,14 @@
             "[JumpBack]BattleProbeNow",
             "[JumpBack]BattleProbeLoading",
             "[JumpBack]BattleProbeWin",
-            "ReplaysLoopDefaultEnd",
-            "ReplaysLoopMetalFinish",
+            "ReplaysBranchDefaultEnd",
+            "ReplaysBranchMetalFinish",
             "[JumpBack]BaseBranchError"
         ]
     },
-    // INFO 金属不足
-    "ReplaysLoopMetalFinish": {
-        "desc": "[Loop] 金属不足结束",
+    /* -------------------- 分支-金属不足 -------------------- */
+    "ReplaysBranchMetalFinish": {
+        "desc": "金属不足结束",
         "recognition": "OCR",
         "expected": "体力不足",
         "roi": [
@@ -130,8 +143,8 @@
             "Node.Action.Succeeded": "金属不足，任务结束"
         }
     },
-    // INFO 正常结束
-    "ReplaysLoopDefaultEnd": {
+    /* -------------------- 分支-正常结束 -------------------- */
+    "ReplaysBranchDefaultEnd": {
         "desc": "[Loop] 代理正常结束",
         "recognition": "OCR",
         "expected": "已完成\\d+次代理指挥",
@@ -142,8 +155,7 @@
             342
         ],
         "action": "Custom",
-        "custom_action": "ReplaysLoopDefaultEndAct",
-        "timeout": 30000,
+        "custom_action": "ReplaysBranchDefaultEndAct",
         "next": [
             "ReplaysBranchNextFormation",
             "[JumpBack]BaseClickConfirm",
@@ -165,6 +177,7 @@
         "action": "Click",
         "post_wait_freezes": 1000
     },
+    /* -------------------- 分支-结束还是继续 -------------------- */
     "ReplaysBranchNextFormation": {
         "desc": "战斗胜利 回到编队页面 判断是结束还是进行下一次战斗",
         "recognition": "And",
@@ -173,7 +186,7 @@
         ],
         "next": [
             "ReplaysStopTimes",
-            "ReplaysLoopFormation" // INFO 使用大循环 以避开无限时间小循环
+            "ReplaysBranchFormation" // INFO 大循环
         ]
     },
     "ReplaysStopTimes": {

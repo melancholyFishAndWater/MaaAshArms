@@ -54,8 +54,8 @@ class ReplaysInitAct(CustomAction):
 
 
 # 完成数自增
-@AgentServer.custom_action("ReplaysLoopDefaultEndAct")
-class ReplaysLoopDefaultEndAct(CustomAction):
+@AgentServer.custom_action("ReplaysBranchDefaultEndAct")
+class ReplaysBranchDefaultEndAct(CustomAction):
     def run(
         self, context: Context, argv: CustomAction.RunArg
     ) -> CustomAction.RunResult | bool:
