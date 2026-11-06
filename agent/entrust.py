@@ -338,7 +338,7 @@ class EntrustClickSwitchChapterReco(CustomRecognition):
 
         for i in CHAPTER_NAMES:
             # 目标大关字符串拆成子串列表
-            str_targets = [i[0], i[1]] + [i[-1]] if i[-1] in "上下" else []
+            str_targets: list[str] = [i[0], i[1]] + ([i[-1]] if i[-1] in "上下" else [])
 
             # 遍历识别结果
             for j in ocr_r.filtered_results:
@@ -362,8 +362,6 @@ class EntrustClickSwitchChapterReco(CustomRecognition):
 
         # 返回点击区域 不容易识别到下一章的文字 直接点击固定区域 识别是否完成此章节会容易点且方便
         if current_index < target_index:
-            return [1247, 280, 1, 1]  # 下一章
-        elif current_index > target_index:
             ocr_r2 = context.run_recognition_direct(
                 JRecognitionType.OCR,
                 JOCR([r"(\d)/\1"], roi=(45, 527, 125, 40)),
@@ -378,6 +376,8 @@ class EntrustClickSwitchChapterReco(CustomRecognition):
                 context.run_action_direct(JActionType.StopTask, JStopTask())
                 return
 
+            return [1247, 280, 1, 1]  # 下一章
+        elif current_index > target_index:
             return [37, 279, 1, 1]  # 上一章
 
 
