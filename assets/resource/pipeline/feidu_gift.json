@@ -1,18 +1,21 @@
 {
     /*
     INFO 赠礼
-    
-    使用节点命名与分类 v3.0 校验年月日 26/10/28
-    使用任务链结构 v3.0 校验年月日 26/10/28
+
+    使用任务链结构 v4.0 校验年月日 26/11/06
+    使用节点命名与分类 v3.3 校验年月日 26/11/06
     */
     "TaskGift": {
         "desc": "赠礼任务",
         "next": [
             "[JumpBack]GiftProbeDaily",
-            "GiftEnterTavern",
+            // INFO 候选
             "GiftBranchHome",
+            "FeiduEnterHome",
+            "GiftEnterTavern",
+            // INFO 错误
             "[JumpBack]BaseBranchError",
-            "[JumpBack]FeiduEnsureHome"
+            "[JumpBack]BaseReturnHome"
         ]
     },
     // INFO 每日一次
@@ -37,18 +40,7 @@
             40
         ]
     },
-    "GiftProbeCharacters": {
-        "desc": "[end] 在选择邀请页面",
-        "recognition": "OCR",
-        "expected": "请选择邀请的.+",
-        "roi": [
-            161,
-            97,
-            333,
-            51
-        ]
-    },
-    /* -------------------- 就位 -------------------- */
+    /* -------------------- 动作-进入 -------------------- */
     // INFO 进入酒馆
     "GiftEnterTavern": {
         "desc": "从废都进入酒馆",
@@ -63,9 +55,7 @@
         "action": "Click",
         "post_wait_freezes": 1000,
         "next": [
-            "BaseErrorNext",
             "GiftEnterHome",
-            "GiftEnterTavern",
             "[JumpBack]BaseBranchError"
         ]
     },
@@ -83,32 +73,29 @@
         "action": "Click",
         "post_wait_freezes": 1000,
         "next": [
-            "BaseErrorNext",
             "GiftBranchHome",
-            "GiftEnterHome",
+            "[JumpBack]GiftEnterRules",
             "[JumpBack]BaseBranchError"
         ]
     },
-    /* -------------------- 主页面分支 -------------------- */
+    /* -------------------- 分支-角色页面 -------------------- */
+    // INFO 角色页两个出口
     "GiftBranchHome": {
         "desc": "主页面分支",
-        "recognition": "Or",
-        "any_of": [
-            "GiftProbeCharacters",
+        "recognition": "And",
+        "all_of": [
             "GiftProbeHome"
         ],
         "next": [
-            "BaseErrorNext",
-            "GiftEnterGifts",
-            "[JumpBack]GiftEnterRules",
-            "[JumpBack]GiftEnterCharacters",
+            "GiftEnterGifts", // INFO 赠礼
+            "[JumpBack]GiftEnterCharacters", // INFO 换人
             "[JumpBack]BaseBranchError"
         ]
     },
-    /* -------------------- 工作-换人 -------------------- */
-    // INFO 好感满5时进切换角色页换人
+    /* -------------------- 动作-换人 -------------------- */
+    // INFO 切换角色
     "GiftEnterCharacters": {
-        "desc": "[jp] 进入角色选择页面",
+        "desc": "进入角色选择页面",
         "recognition": "And",
         "all_of": [
             "GiftProbeMaxFavorability",
@@ -119,9 +106,7 @@
         "action": "Click",
         "post_wait_freezes": 1000,
         "next": [
-            "BaseErrorNext",
             "GiftEnterRules",
-            "[JumpBack]GiftEnterCharactersButton",
             "[JumpBack]BaseBranchError"
         ]
     },
@@ -147,18 +132,9 @@
             29
         ]
     },
-    "GiftEnterCharactersButton": {
-        "desc": "[jp] 进入角色选择页面按钮",
-        "recognition": "And",
-        "all_of": [
-            "GiftProbeEnterCharacters"
-        ],
-        "action": "Click",
-        "post_wait_freezes": 1000
-    },
-    /* -------------------- 动作-进入排序 -------------------- */
+    /* -------------------- 动作-排序 -------------------- */
     "GiftEnterRules": {
-        "desc": "进入排序规则页面",
+        "desc": "进入排序规则选择页面",
         "recognition": "OCR",
         "expected": "排序",
         "roi": [
@@ -172,11 +148,11 @@
         "next": [
             "BaseErrorNext",
             "GiftChooseFavorability",
-            "GiftEnterRules",
-            "[JumpBack]BaseBranchError"
+            "[JumpBack]BaseBranchError",
+            "GiftEnterRules"
         ]
     },
-    /* -------------------- 动作链-逆序好感 -------------------- */
+    // INFO 点好感度
     "GiftChooseFavorability": {
         "desc": "点击好感度按钮",
         "recognition": "OCR",
@@ -190,12 +166,8 @@
         "action": "Click",
         "post_wait_freezes": 1000,
         "next": [
-            "BaseErrorNext",
             "GiftClickSortConfirm",
-            // INFO 下为保底
-            "[JumpBack]BaseBranchError",
-            "GiftProbeCharacters",
-            "GiftProbeHome"
+            "[JumpBack]BaseBranchError"
         ]
     },
     // INFO 点确认
@@ -210,15 +182,11 @@
             46
         ],
         "action": "Click",
+        "post_wait_freezes": 1000,
         "next": [
-            "BaseErrorNext",
-            "[JumpBack]BaseBranchError",
             "GiftChooseReverse",
-            // INFO 下为保底
-            "GiftProbeCharacters",
-            "GiftProbeHome"
-        ],
-        "post_wait_freezes": 1000
+            "[JumpBack]BaseBranchError"
+        ]
     },
     // INFO 点反转
     "GiftChooseReverse": {
@@ -236,19 +204,20 @@
         "action": "Click",
         "post_wait_freezes": 1000,
         "next": [
-            "BaseErrorNext",
             "GiftClickFirstcharacter",
-            // INFO 下为保底
-            "[JumpBack]BaseBranchError",
-            "GiftProbeHome"
+            "[JumpBack]BaseBranchError"
         ]
     },
-    // INFO 点第一个角色进角色页
+    // INFO 点第一个角色
     "GiftClickFirstcharacter": {
         "desc": "点击第一个角色位置",
-        "recognition": "And",
-        "all_of": [
-            "GiftProbeCharacters"
+        "recognition": "OCR",
+        "expected": "请选择邀请的.+",
+        "roi": [
+            161,
+            97,
+            333,
+            51
         ],
         "target": [
             235,
@@ -257,36 +226,20 @@
         "action": "Click",
         "post_wait_freezes": 1000,
         "next": [
-            "BaseErrorNext",
             "GiftProbeHome",
-            "[JumpBack]GiftClickFirstcharacterBox",
             "[JumpBack]BaseBranchError"
         ]
     },
-    "GiftClickFirstcharacterBox": {
-        "desc": "[jp] 点击第一个角色位置",
-        "recognition": "And",
-        "all_of": [
-            "GiftProbeCharacters"
-        ],
-        "target": [
-            235,
-            265
-        ],
-        "action": "Click",
-        "post_wait_freezes": 1000
-    },
-    /* -------------------- 工作-赠礼 -------------------- */
-    // INFO 低好感角色赠礼：点赠礼再选礼物送三次
+    /* -------------------- 动作-赠礼 -------------------- */
+    // INFO 点赠礼
     "GiftEnterGifts": {
         "desc": "进入选择礼物页面",
         "recognition": "And",
         "all_of": [
             "GiftProbeNoMaxFavorability",
-            "GiftProbeHome",
-            "GiftProbeGifts"
+            "GiftProbeHome"
         ],
-        "box_index": 2,
+        "box_index": 1,
         "target_offset": [
             18,
             -51,
@@ -298,8 +251,8 @@
         "next": [
             "BaseErrorNext",
             "GiftChooseFirstGift",
-            "[JumpBack]GiftEnterGiftsButton",
-            "[JumpBack]BaseBranchError"
+            "[JumpBack]BaseBranchError",
+            "GiftEnterGifts"
         ]
     },
     "GiftProbeNoMaxFavorability": {
@@ -313,29 +266,8 @@
             29
         ]
     },
-    "GiftProbeGifts": {
-        "desc": "[end] 有赠礼文字",
-        "recognition": "OCR",
-        "expected": "赠礼",
-        "roi": [
-            922,
-            659,
-            327,
-            40
-        ]
-    },
-    "GiftEnterGiftsButton": {
-        "desc": "点击赠礼按钮",
-        "recognition": "And",
-        "all_of": [
-            "GiftProbeGifts"
-        ],
-        "action": "Click",
-        "post_wait_freezes": 2000
-    },
-    /* -------------------- 动作链-赠送三次礼物 -------------------- */
+    // INFO 选第一个礼物
     // TODO 找到最喜欢的礼物
-    // INFO 选中当前页可送的礼物
     "GiftChooseFirstGift": {
         "desc": "点击当前页面可送的礼物",
         "recognition": "OCR",
@@ -357,10 +289,11 @@
         "next": [
             "BaseErrorNext",
             "GiftClickGiveThriceButton",
-            "GiftChooseFirstGift",
-            "[JumpBack]BaseBranchError"
+            "[JumpBack]BaseBranchError",
+            "GiftChooseFirstGift"
         ]
     },
+    // INFO 赠送三次
     // XXX 没有验证是否赠送成功/够
     "GiftClickGiveThriceButton": {
         "desc": "赠送三次礼物",
@@ -375,33 +308,15 @@
         "action": "Click",
         "repeat": 3,
         "repeat_delay": 2000,
+        "post_wait_freezes": 1000,
         "next": [
             "GiftDailyUpdate"
         ]
     },
+    // INFO 记录每日
     "GiftDailyUpdate": {
         "desc": "更新每日一次数据",
         "action": "Custom",
         "custom_action": "GiftDailyUpdateAct"
     }
-    // TODO
-    // "找非满好感角色": {
-    //     "enabled": false,
-    //     "recognition": "TemplateMatch",
-    //     "template": [
-    //         "haogan_0.png",
-    //         "haogan_1.png",
-    //         "haogan_2.png",
-    //         "haogan_3.png",
-    //         "haogan_4.png"
-    //     ],
-    //     "roi": [
-    //         161,
-    //         141,
-    //         952,
-    //         518
-    //     ],
-    //     "green_mask": true,
-    //     "action": "Click"
-    // }
 }
