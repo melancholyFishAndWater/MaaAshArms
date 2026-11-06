@@ -413,7 +413,7 @@
     "TrainGoSuccess": {
         "desc": "[end] 发车成功",
         "recognition": "TemplateMatch",
-        "template": "Train/CancelTrain.png",
+        "template": "Train/Locked.png",
         "roi": [
             886,
             105,
