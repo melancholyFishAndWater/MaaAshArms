@@ -2,11 +2,13 @@
     /*
     INFO 司库部
 
-    使用任务链结构 v1.7 校验年月日 26/10/19
-    使用节点命名与分类 v1.8 校验年月日 26/10/19
+    使用任务链结构 v3.10 校验年月日 26/11/06
+    使用节点命名与分类 v3.3 校验年月日 26/11/06
     */
+    /* -------------------- 分支-任务入口 -------------------- */
+    // INFO 任务分支
     "SikuBranchReward": {
-        "desc": "[jp][once] 司库部任务分支",
+        "desc": "[once] 司库部任务分支",
         "max_hit": 1,
         "enabled": false,
         "recognition": "And",
@@ -15,24 +17,13 @@
         ],
         "next": [
             "[JumpBack]BaseBranchError",
-            "SikuStopUnrewardable",
-            "SikuEnterHome"
+            "SikuProbeUnrewardable", // INFO 无奖励不进
+            "[JumpBack]SikuEnterHome" // INFO 进入司库部
         ]
     },
-    /* -------------------- 探测 -------------------- */
-    "SikuProbeHomeName": {
-        "desc": "[end] 在司库部主页面",
-        "recognition": "OCR",
-        "expected": "司库部",
-        "roi": [
-            133,
-            14,
-            106,
-            43
-        ]
-    },
-    "SikuProbeRewardable": {
-        "desc": "[end] 可以领取司库奖励",
+    // INFO 无奖励
+    "SikuProbeUnrewardable": {
+        "desc": "[end] 司库部无奖励",
         "recognition": "TemplateMatch",
         "template": "Base/BlueMarkGreen.png",
         "green_mask": true,
@@ -41,8 +32,14 @@
             609,
             48,
             45
-        ]
+        ],
+        "inverse": true,
+        "focus": {
+            "Node.Recognition.Succeeded": "司库部无奖励"
+        }
     },
+    /* -------------------- 通用探测 -------------------- */
+    // INFO 蓝标标签
     "SikuProbeBlueMark": {
         "desc": "[end] 在司库部主页面 有蓝色标记的标签",
         "recognition": "TemplateMatch",
@@ -57,31 +54,9 @@
         "order_by": "Vertical",
         "index": -1
     },
-    "SikuProbeNoBlueMark": {
-        "desc": "[end] 在司库部主页面 无蓝色标记的标签",
-        "recognition": "And",
-        "all_of": [
-            "SikuProbeBlueMark"
-        ],
-        "inverse": true
-    },
-    /* -------------------- 工作 -------------------- */
-    // INFO 无奖励
-    "SikuStopUnrewardable": {
-        "desc": "[end] 司库部无奖励",
-        "recognition": "And",
-        "all_of": [
-            "SikuProbeRewardable"
-        ],
-        "inverse": true,
-        "focus": {
-            "Node.Recognition.Succeeded": "司库部无奖励"
-        }
-    },
-    // INFO 有奖励
+    /* -------------------- 动作-进入司库部 -------------------- */
     "SikuEnterHome": {
-        "desc": "[max] 进入司库部主页",
-        "max_hit": 10,
+        "desc": "进入司库部主页",
         "recognition": "OCR",
         "expected": "司库部",
         "roi": [
@@ -93,28 +68,45 @@
         "action": "Click",
         "post_wait_freezes": 1000,
         "next": [
-            "SikuLoopHome",
+            "BaseErrorNext",
+            "[JumpBack]BaseProbeBlackPage",
+            "SikuBranchHome", // INFO 主页分支
             "[JumpBack]BaseBranchError",
             "SikuEnterHome"
         ]
     },
-    "SikuLoopHome": {
-        "desc": "[Loop] 司库部领取奖励",
-        "recognition": "And",
-        "all_of": [
-            "SikuProbeHomeName"
+    /* -------------------- 分支-司库部主页 -------------------- */
+    // INFO 主页两个出口
+    "SikuBranchHome": {
+        "desc": "在司库部主页",
+        "recognition": "OCR",
+        "expected": "司库部",
+        "roi": [
+            133,
+            14,
+            106,
+            43
         ],
-        "timeout": 30000,
         "next": [
-            "[JumpBack]BaseProbeBlackPage",
-            "SikuProbeNoBlueMark",
-            "[JumpBack]BaseClickRewardTap",
-            "[JumpBack]SikuClickBlueMark",
-            "[JumpBack]BaseBranchError"
+            "[JumpBack]BaseClickRewardTap", // INFO 关获得一览
+            "[JumpBack]SikuClickBlueMark", // INFO 点蓝标标签
+            "[JumpBack]BaseBranchError",
+            "SikuProbeNoBlueMark" // INFO 无蓝标收尾
         ]
     },
+    // INFO 无蓝标标签
+    "SikuProbeNoBlueMark": {
+        "desc": "[end] 在司库部主页面 无蓝色标记的标签",
+        "recognition": "And",
+        "all_of": [
+            "SikuProbeBlueMark"
+        ],
+        "inverse": true
+    },
+    /* -------------------- 动作-领取 -------------------- */
+    // INFO 点蓝标标签
     "SikuClickBlueMark": {
-        "desc": "[jp] 点击有蓝色标记的标签",
+        "desc": "点击有蓝色标记的标签",
         "recognition": "And",
         "all_of": [
             "SikuProbeBlueMark"
@@ -128,11 +120,34 @@
         ],
         "post_wait_freezes": 1000,
         "next": [
-            "SikuClickRewardButton"
+            "BaseErrorNext",
+            "SikuClickRewardButton", // INFO 点领取
+            "[JumpBack]BaseBranchError",
+            "SikuClickBlueMark"
         ]
     },
+    // INFO 点领取按钮
     "SikuClickRewardButton": {
-        "desc": "[end] 无条件点击领取按钮区域",
+        "desc": "[end] 点击领取按钮区域",
+        "recognition": "ColorMatch", // INFO 颜色匹配是否切换页面成功
+        "lower": [
+            129,
+            38,
+            0
+        ],
+        "upper": [
+            243,
+            128,
+            76
+        ],
+        "count": 2000,
+        "roi": "SikuProbeBlueMark",
+        "roi_offset": [
+            -87,
+            0,
+            87,
+            118
+        ],
         "action": "Click",
         "target": [
             1036,
