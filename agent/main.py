@@ -31,6 +31,7 @@ import entrust
 import factory_fast
 import factory
 import generic
+import maintenance
 import parent_tracker
 import startup
 import store

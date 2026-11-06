@@ -2,20 +2,20 @@
     /*
     INFO 维修会任务
 
-    使用任务链结构 v1.7 校验年月日 26/10/18
-    使用节点命名与分类 v1.8 校验年月日 26/10/18
+    使用任务链结构 v3.10 校验年月日 26/11/06
+    使用节点命名与分类 v3.3 校验年月日 26/11/06
     */
+    // INFO 任务入口
     "TaskMaintenance": {
         "desc": "维修会任务",
         "next": [
-            "[JumpBack]MaintenanceBranchAble",
-            "[JumpBack]MaintenanceLoopFinish",
+            "MaintenanceBranchHome",
+            "MaintenanceEnterHome",
             "[JumpBack]BaseBranchError",
-            "[JumpBack]MaintenanceEnsureHome",
-            "MaintenanceProbeAllBusy" // INFO 为了优化识别
+            "[JumpBack]BaseReturnHome"
         ]
     },
-    /* -------------------- 探测 -------------------- */
+    /* -------------------- 通用探测 -------------------- */
     "MaintenanceProbeHome": {
         "desc": "[end] 在维修会主页",
         "recognition": "OCR",
@@ -27,113 +27,9 @@
             62
         ]
     },
-    "MaintenanceProbeRange": {
-        "desc": "[end] 在选择范围页面",
-        "recognition": "OCR",
-        "expected": "本次行动范围",
-        "roi": [
-            31,
-            100,
-            182,
-            44
-        ]
-    },
-    "MaintenanceProbeAble": {
-        "desc": "[end] 有可接取按钮",
-        "recognition": "TemplateMatch",
-        "template": "Maintenance/Able.png",
-        "roi": [
-            1021,
-            162,
-            134,
-            311
-        ]
-    },
-    "MaintenanceProbeDone": {
-        "desc": "[end] 有完成按钮",
-        "recognition": "TemplateMatch",
-        "template": "Maintenance/Done.png",
-        "roi": [
-            1021,
-            162,
-            134,
-            311
-        ]
-    },
-    // TODO 加速功能
-    // "MaintenanceProbeBusy": {
-    //     "desc": "[end] 有忙碌按钮",
-    //     "recognition": "TemplateMatch",
-    //     "template": "Maintenance/Busy.png",
-    //     "roi": [
-    //         1021,
-    //         162,
-    //         134,
-    //         311
-    //     ]
-    // },
-    "MaintenanceProbeActionDart": {
-        "desc": "[end] 开始行动按钮暗淡",
-        "recognition": "TemplateMatch",
-        "template": "Maintenance/ActionDart.png",
-        "roi": [
-            900,
-            554,
-            320,
-            166
-        ],
-        "focus": {
-            "Node.Action.Succeeded": "合金不足，任务结束"
-        }
-    },
-    "MaintenanceProbeAllBusy": {
-        "desc": "[end] 全部忙碌 任务结束标志 需要确保在Home",
-        "recognition": "And",
-        "all_of": [
-            "MaintenanceProbeAllBusy2",
-            "MaintenanceProbeBusy"
-        ]
-    },
-    "MaintenanceProbeBusy": {
-        "desc": "[end] 忙碌按钮",
-        "recognition": "TemplateMatch",
-        "template": "Maintenance/Busy.png",
-        "roi": [
-            1021,
-            162,
-            134,
-            311
-        ]
-    },
-    "MaintenanceProbeAllBusy2": {
-        "desc": "[end] 没有完成和接取按钮",
-        "recognition": "Or",
-        "any_of": [
-            "MaintenanceProbeAble",
-            "MaintenanceProbeDone"
-        ],
-        "inverse": true
-    },
-    /* -------------------- 就位 -------------------- */
-    // INFO 主页面
-    "MaintenanceEnsureHome": {
-        "desc": "[jp] 确保在维修会主页",
-        "recognition": "And",
-        "all_of": [
-            "MaintenanceProbeHome"
-        ],
-        "inverse": true,
-        "rate_limit": 2000,
-        "timeout": 30000,
-        "next": [
-            "MaintenanceProbeHome",
-            "[JumpBack]BaseBranchError",
-            "[JumpBack]MaintenanceEnterHome",
-            "[JumpBack]BaseReturnHome"
-        ]
-    },
+    /* -------------------- 动作-进入维修会 -------------------- */
     "MaintenanceEnterHome": {
-        "desc": "[jp] 进入维修会",
+        "desc": "进入维修会",
         "recognition": "OCR",
         "expected": "维修会",
         "roi": [
@@ -143,89 +39,57 @@
             53
         ],
         "action": "Click",
-        "post_wait_freezes": 1000
-    },
-    /* -------------------- 工作 -------------------- */
-    // INFO 开始行动
-    "MaintenanceBranchAble": {
-        "desc": "[jp] 可以开始行动",
-        "recognition": "And",
-        "all_of": [
-            "MaintenanceProbeHome",
-            "MaintenanceProbeAble"
-        ],
+        "post_wait_freezes": 1000,
         "next": [
-            "MaintenanceBranchRange",
+            "BaseErrorNext",
+            "MaintenanceBranchHome",
             "[JumpBack]BaseBranchError",
-            "[JumpBack]MaintenanceEnterRange"
+            "MaintenanceEnterHome"
         ]
     },
-    "MaintenanceEnterRange": {
-        "desc": "[jp] 进入范围页面",
+    /* -------------------- 分支-维修会主页 -------------------- */
+    "MaintenanceBranchHome": {
+        "desc": "在维修会主页",
         "recognition": "And",
         "all_of": [
-            "MaintenanceProbeAble"
-        ],
-        "action": "Click",
-        "post_wait_freezes": 1000
-    },
-    "MaintenanceBranchRange": {
-        "desc": "选择范围页面分支",
-        "recognition": "And",
-        "all_of": [
-            "MaintenanceProbeRange"
+            "MaintenanceProbeHome"
         ],
         "next": [
-            "MaintenanceClickStart",
-            "[JumpBack]BaseBranchError",
-            "MaintenanceProbeActionDart"
-        ]
-    },
-    "MaintenanceClickStart": {
-        "desc": "[end] 点击开始行动",
-        "recognition": "TemplateMatch",
-        "template": "Maintenance/ActionLight.png",
-        "action": "Click",
-        "roi": [
-            939,
-            591,
-            242,
-            93
-        ],
-        "post_delay": 1000
-    },
-    // INFO 完成
-    "MaintenanceLoopFinish": {
-        "desc": "[Loop][jp] 回收完成",
-        "recognition": "And",
-        "all_of": [
-            "MaintenanceProbeHome",
-            "MaintenanceProbeDone"
-        ],
-        "timeout": 30000,
-        "next": [
-            "MaintenanceProbeAble", // INFO 前提: 先接后领
-            "[JumpBack]MaintenanceClickCharacterConfirm",
-            "[JumpBack]MaintenanceClickCharacterType",
             "[JumpBack]MaintenanceClickFinish",
+            "[JumpBack]MaintenanceEnterRange",
+            "MaintenanceProbeAllBusy",
             "[JumpBack]BaseBranchError"
         ]
     },
-    "MaintenanceClickCharacterConfirm": {
-        "desc": "[jp] 点击确认转换为零件",
-        "recognition": "OCR",
-        "expected": "确认",
+    "MaintenanceProbeAllBusy": {
+        "desc": "[end] 全部忙碌（有忙碌按钮 且 无接取 且 无完成）",
+        "recognition": "Custom",
+        "custom_recognition": "MaintenanceProbeAllBusyReco"
+    },
+    /* -------------------- 动作-领取 -------------------- */
+    // INFO 点完成
+    "MaintenanceClickFinish": {
+        "desc": "点完成按钮进领取页面",
+        "recognition": "TemplateMatch",
+        "template": "Maintenance/Done.png",
         "roi": [
-            657,
-            486,
-            235,
-            105
+            1021,
+            162,
+            134,
+            311
         ],
         "action": "Click",
-        "post_delay": 1000
+        "post_wait_freezes": 1000,
+        "next": [
+            "BaseErrorNext",
+            "MaintenanceClickCharacterType",
+            "[JumpBack]BaseBranchError",
+            "MaintenanceClickFinish"
+        ]
     },
+    // INFO 角色类型
     "MaintenanceClickCharacterType": {
-        "desc": "[jp] 点击角色类型处",
+        "desc": "点击角色类型处 弹信息确认",
         "recognition": "OCR",
         "expected": [
             "ARMS",
@@ -242,15 +106,90 @@
             63
         ],
         "action": "Click",
-        "post_delay": 1000
+        "post_wait_freezes": 1000,
+        "next": [
+            "BaseErrorNext",
+            "MaintenanceClickCharacterConfirm",
+            "[JumpBack]BaseBranchError",
+            "MaintenanceClickCharacterType"
+        ]
     },
-    "MaintenanceClickFinish": {
-        "desc": "[jp] 点击完成按钮",
-        "recognition": "And",
-        "all_of": [
-            "MaintenanceProbeDone"
+    // INFO 确认转零件
+    "MaintenanceClickCharacterConfirm": {
+        "desc": "点击确认转换为零件",
+        "recognition": "OCR",
+        "expected": "确认",
+        "roi": [
+            657,
+            486,
+            235,
+            105
         ],
         "action": "Click",
-        "post_wait_freezes": 1000
+        "post_wait_freezes": 1000,
+        "next": [
+            "BaseErrorNext",
+            "MaintenanceProbeHome",
+            "MaintenanceClickCharacterConfirm",
+            "[JumpBack]BaseBranchError"
+        ]
+    },
+    /* -------------------- 动作-接取 -------------------- */
+    // INFO 进入范围
+    "MaintenanceEnterRange": {
+        "desc": "点可接取进范围页面",
+        "recognition": "TemplateMatch",
+        "template": "Maintenance/Able.png",
+        "roi": [
+            1021,
+            162,
+            134,
+            311
+        ],
+        "action": "Click",
+        "post_wait_freezes": 1000,
+        "next": [
+            "BaseErrorNext",
+            "MaintenanceClickStart",
+            "[JumpBack]BaseBranchError",
+            "MaintenanceStopNoMetal",
+            "MaintenanceEnterRange"
+        ]
+    },
+    // INFO 开始行动
+    "MaintenanceClickStart": {
+        "desc": "点击开始行动",
+        "recognition": "TemplateMatch",
+        "template": "Maintenance/ActionLight.png",
+        "action": "Click",
+        "roi": [
+            939,
+            591,
+            242,
+            93
+        ],
+        "post_wait_freezes": 1000,
+        "next": [
+            "BaseErrorNext",
+            "MaintenanceProbeHome",
+            "[JumpBack]BaseBranchError",
+            "MaintenanceClickStart"
+        ]
+    },
+    // INFO 合金不足
+    "MaintenanceStopNoMetal": {
+        "desc": "[end] 开始行动按钮暗淡 合金不足 任务结束",
+        "recognition": "TemplateMatch",
+        "template": "Maintenance/ActionDart.png",
+        "roi": [
+            900,
+            554,
+            320,
+            166
+        ],
+        "action": "StopTask",
+        "focus": {
+            "Node.Action.Succeeded": "合金不足，任务结束"
+        }
     }
 }
