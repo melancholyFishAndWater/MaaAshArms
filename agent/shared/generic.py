@@ -88,8 +88,8 @@ class BaseProbeFreezesReco(CustomRecognition):
             return (x, y, w, h)
 
 
-@AgentServer.custom_recognition("BaseClickErrorConfirmReco")
-class BaseClickErrorConfirmReco(CustomRecognition):
+@AgentServer.custom_recognition("BaseProbeErrorConfirmReco")
+class BaseProbeErrorConfirmReco(CustomRecognition):
     def analyze(
         self, context: Context, argv: CustomRecognition.AnalyzeArg
     ) -> list[int] | None:
@@ -195,7 +195,7 @@ def reset_error_next_father(task_id: int, task_name: str, func: Callable[[str], 
 
 # 若同一个父节点的 next列表识别次数过多 则覆写此节点next使其直接失败
 @AgentServer.custom_recognition("BaseErrorNextReco")
-class BaseNextTimeOutErrorReco(CustomRecognition):
+class BaseErrorNextReco(CustomRecognition):
     def analyze(self, context: Context, argv: CustomRecognition.AnalyzeArg) -> None:
         # 1) 提取变量
         task_id = argv.task_detail.task_id

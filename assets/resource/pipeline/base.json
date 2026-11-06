@@ -127,7 +127,7 @@
     "BaseProbeErrorConfirm": {
         "desc": "[end] 输出弹窗日志",
         "recognition": "Custom",
-        "custom_recognition": "BaseClickErrorConfirmReco"
+        "custom_recognition": "BaseProbeErrorConfirmReco"
     },
     /* -------------------- 动作-移动 -------------------- */
     // INFO 移动系列 起点是物品的话无法滑动，详见 TrainMoveToBottom

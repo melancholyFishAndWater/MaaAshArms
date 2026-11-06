@@ -53,7 +53,7 @@
     /* -------------------- 工作 -------------------- */
     // INFO 见 BattleBranchReplayFormation
     "ReplaysBranchFormation": {
-        "desc": "[Loop] 多次代理编队 循环",
+        "desc": "多次代理编队 循环",
         "recognition": "And",
         "all_of": [
             "BattleProbeFormation"
@@ -145,7 +145,7 @@
     },
     /* -------------------- 分支-正常结束 -------------------- */
     "ReplaysBranchDefaultEnd": {
-        "desc": "[Loop] 代理正常结束",
+        "desc": "代理正常结束",
         "recognition": "OCR",
         "expected": "已完成\\d+次代理指挥",
         "roi": [

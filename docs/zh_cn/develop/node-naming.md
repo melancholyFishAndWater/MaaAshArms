@@ -45,7 +45,7 @@
 | 任务入口 | `Task<任务名>` | `TaskEntrust`、`TaskFactory`、`TaskReplays` |
 | 动作节点 | `<任务前缀><动词><宾语>` | `EscortClickConfirm`、`FactoryChooseNumber` |
 | 探测节点 | `<任务前缀>Probe<页面/状态/元素>` | `EscortProbeHome`、`TrainProbeAcceptable`、`TrainingProbeHomeName` |
-| 分支节点 | `<任务前缀>Branch<状态/对象>` | `GiftBranchSortPage`、`BattleBranchClickTap` |
+| 分支节点 | `<任务前缀>Branch<状态/对象>` | `GiftBranchSortPage` |
 | 工作循环（废弃） | `<任务前缀>Loop` | `TrainingLoop`、`MaintenanceLoop`；新代码用 `Branch` 平铺 |
 | 子过程入口 | `<任务前缀>Init` | `TrainingInit`、`EntrustInit` |
 | 出口节点 | `<任务前缀><动词>…Success/Failed` | `TrainGetRewardSuccess`、`FactoryGetRewardFailed` |

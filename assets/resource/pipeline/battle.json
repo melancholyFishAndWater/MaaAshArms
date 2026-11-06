@@ -297,6 +297,7 @@
             "Node.PipelineNode.Failed": "代理作战编队失败"
         }
     },
+    // 点击代理
     "BattleClickReplay": {
         "desc": "点击代理作战",
         "recognition": "TemplateMatch",
@@ -390,7 +391,7 @@
         "post_wait_freezes": 500,
         "next": [
             "[JumpBack]BattleClickFinish", // INFO 训练所无完成按钮 因此使用jp使其通用
-            "[JumpBack]BattleBranchClickTap",
+            "[JumpBack]BattleClickTap",
             "BattleProbeWinEnd",
             // INFO 单次战斗不需要点击确认
             "[JumpBack]BaseBranchError"
@@ -422,7 +423,7 @@
         "post_wait_freezes": 1000
     },
     // 胜利/获得一览弹出时点 tap
-    "BattleBranchClickTap": {
+    "BattleClickTap": {
         "desc": "条件点击tap区域",
         "recognition": "Or",
         "any_of": [
