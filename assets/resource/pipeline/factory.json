@@ -1,12 +1,18 @@
 {
-    // INFO 工厂任务入口
+    /*
+    INFO 工厂任务
+
+    使用任务链结构 v4.0 校验年月日 26/11/06
+    使用节点命名与分类 v3.3 校验年月日 26/11/06
+    */
     "TaskFactory": {
         "desc": "订单工厂任务",
         "next": [
             "[JumpBack]FactoryProbeDaily",
-            "TaskFactoryInHome",
+            "FactoryBranchHome",
+            "FactoryEnterHome",
             "[JumpBack]BaseBranchError",
-            "[JumpBack]ReturnFactory"
+            "[JumpBack]BaseReturnHome"
         ]
     },
     "FactoryProbeDaily": {
@@ -18,16 +24,19 @@
             "enable": true // 每日一次开关 覆写关闭
         }
     },
-    // 返回工厂页面
-    "ReturnFactory": {
-        "desc": "返回订单工厂页面",
-        "max_hit": 2,
-        "timeout": 600000,
-        "next": [
-            "FactoryEnterHome",
-            "[JumpBack]BaseReturnHome"
+    /* -------------------- 通用探测 -------------------- */
+    "FactoryProbeHome": {
+        "desc": "在订单工厂页面",
+        "recognition": "OCR",
+        "expected": "订单工厂",
+        "roi": [
+            112,
+            8,
+            198,
+            51
         ]
     },
+    /* -------------------- 动作-进入主页 -------------------- */
     "FactoryEnterHome": {
         "desc": "从主页进入订单工厂",
         "recognition": "OCR",
@@ -45,25 +54,13 @@
         ],
         "action": "Click",
         "next": [
-            "FactoryInHome",
-            "FactoryEnterHome",
-            "[JumpBack]BaseReturnHome"
+            "FactoryBranchHome",
+            "BaseBranchError"
         ],
         "post_wait_freezes": 3000
     },
-    "FactoryInHome": {
-        "desc": "在订单工厂页面",
-        "recognition": "OCR",
-        "expected": "订单工厂",
-        "roi": [
-            112,
-            8,
-            198,
-            51
-        ]
-    },
-    // INFO 工厂任务
-    "TaskFactoryInHome": {
+    /* -------------------- 主页 -------------------- */
+    "FactoryBranchHome": {
         "desc": "订单厂任务",
         "recognition": "OCR",
         "expected": "订单工厂",
@@ -74,28 +71,31 @@
             51
         ],
         "action": "Custom",
-        "custom_action": "TaskFactoryNextAct",
+        "custom_action": "TaskFactoryNextAct", // 初始化
+        "custom_action_param": {
+            "build_times": 1 // 建造数
+        },
         "next": [
             "FactoryCheckTaskEnd",
-            "[JumpBack]FactorySkip",
+            "[JumpBack]FactoryClickSkip",
             "[JumpBack]FactoryGetReward",
             "[JumpBack]FactoryCreateOrder",
             // TODO 子节点卡住
             "[JumpBack]BaseBranchError",
-            "[JumpBack]BaseMoveUpDown",
-            "BaseTaskStop"
+            "[JumpBack]BaseMoveUpDown"
         ]
     },
-    // 特殊节点
+    // INFO 是否结束
     "FactoryCheckTaskEnd": {
         "desc": "检测任务是否满足结束条件",
         "recognition": "Custom",
-        "custom_recognition": "FactoryCheckTaskEndRepo",
-        "custom_recognition_param": 3, // 建造次数 超过3最好开启skip,
+        "custom_recognition": "FactoryCheckTaskEndReco",
+        "custom_recognition_param": 3, // 建造次数,
         "next": [
             "FactoryDailyUpdate"
         ]
     },
+    // INFO 更新每日一次
     "FactoryDailyUpdate": {
         "desc": "更新每日一次",
         "action": "Custom",
@@ -104,8 +104,8 @@
             "BaseTaskStop"
         ]
     },
-    // 跳过系列
-    "FactorySkip": {
+    /* -------------------- 分支-跳过 -------------------- */
+    "FactoryClickSkip": {
         "desc": "跳过建造等待 默认关闭",
         "recognition": "OCR",
         "expected": "加速建造",
@@ -119,7 +119,8 @@
         "action": "Click",
         "post_wait_freezes": 500,
         "next": [
-            "FactoryClickSkipConfirm"
+            "FactoryClickSkipConfirm",
+            "[JumpBack]BaseBranchError"
         ]
     },
     // TODO 验证是否有多余生产许可
@@ -134,7 +135,7 @@
             66
         ]
     },
-    // INFO 分节点-领取奖励
+    /* -------------------- 分支-领取奖励 -------------------- */
     "FactoryGetReward": {
         "desc": "领取奖励",
         "recognition": "Custom",
@@ -146,13 +147,29 @@
             -31,
             -31
         ],
+        "post_wait_freezes": 500,
         "next": [
+            "BaseErrorNext",
             "FactoryGetRewardSuccess",
             "FactoryGetRewardFailed",
-            "FactoryGetReward"
-        ],
-        "post_wait_freezes": 3000 // 太短容易导致点到创建订单
+            "[JumpBack]BaseBranchError",
+            "FactoryGetRewardBox"
+        ]
     },
+    // 点击领取区域
+    "FactoryGetRewardBox": {
+        "desc": "[jp] 点击领取区域",
+        "target": "FactoryGetReward",
+        "action": "Click",
+        "target_offset": [
+            -892,
+            154,
+            -31,
+            -31
+        ],
+        "post_wait_freezes": 1000
+    },
+    // 领取成功
     "FactoryGetRewardSuccess": {
         "desc": "领取奖励成功",
         "recognition": "TemplateMatch",
@@ -169,6 +186,7 @@
         "action": "Custom",
         "custom_action": "FactoryGetRewardNextAct"
     },
+    /* -------------------- 分支-领取失败 -------------------- */
     "FactoryGetRewardFailed": {
         "desc": "领取奖励失败 库存满",
         "roi": [
@@ -187,6 +205,7 @@
             "Node.Recognition.Succeeded": "库存满，删除订单"
         }
     },
+    // 点击取消
     "FactoryClickCancel": {
         "desc": "点击取消建造按钮",
         "target": "FactoryGetReward",
@@ -196,6 +215,7 @@
             "FactoryClickCancelEnd"
         ]
     },
+    // 点击成功
     "FactoryClickCancelEnd": {
         "desc": "确认取消订单完毕",
         "recognition": "OCR",
@@ -210,8 +230,7 @@
         "action": "Custom",
         "custom_action": "FactoryGetRewardNextAct"
     },
-    // max_hit 限制创建次数
-    // INFO 分节点-创建新订单
+    /* -------------------- 分支-创建订单 -------------------- */
     "FactoryCreateOrder": {
         "desc": "创建新订单",
         "recognition": "OCR",
@@ -223,32 +242,42 @@
             419
         ],
         "action": "Click",
+        "post_wait_freezes": 1000,
         "next": [
             "FactoryChooseCharacter",
-            "FactoryChooseNumber", // 还是点到那就这样吧
-            "FactoryCreateOrder"
-        ],
-        "post_wait_freezes": 4000 // 太短容易点到中间角色
+            "[JumpBack]BaseBranchError"
+        ]
     },
+    // 点击角色
     "FactoryChooseCharacter": {
         "desc": "选择角色",
         "recognition": "Custom",
-        "custom_recognition": "FactoryChooseCharacterRepo",
+        "custom_recognition": "FactoryChooseCharacterReco",
         "action": "Click",
+        "post_wait_freezes": 1000,
         "next": [
             "FactoryChooseNumber",
-            "FactoryChooseCharacter"
-        ],
-        "post_wait_freezes": 1000
+            "[JumpBack]BaseBranchError"
+        ]
     },
+    // 点击建造数
     "FactoryChooseNumber": {
         "desc": "选择建造数",
-        "recognition": "Custom",
-        "custom_recognition": "FactoryChooseNumberRepo",
-        "custom_recognition_param": 1, // 建造数
+        "recognition": "OCR",
+        "expected": "^建造$",
+        "roi": [
+            102,
+            162,
+            1114,
+            485
+        ],
+        "order_by": "Horizontal",
+        "index": 0, // 建造数 agent 侧覆写
         "action": "Click",
         "next": [
+            "BaseErrorNext",
             "FactoryClickStart",
+            "[JumpBack]BaseBranchError",
             "FactoryChooseNumber"
         ],
         "post_wait_freezes": 1000
@@ -266,10 +295,11 @@
         "action": "Click",
         "post_wait_freezes": 1000,
         "next": [
-            "FactoryClickStart",
-            "FactoryIsNoMetal",
-            "FactorySkip",
-            "FactoryChooseStartSuccess"
+            "BaseErrorNext",
+            "FactoryStopNoMetal",
+            "FactoryClickSkip",
+            "FactoryChooseStartSuccess",
+            "FactoryClickStart"
         ]
     },
     "FactoryChooseStartSuccess": {
@@ -282,7 +312,8 @@
         "action": "Custom",
         "custom_action": "FactoryChooseStartSuccessAct"
     },
-    "FactoryIsNoMetal": {
+    /* -------------------- 分支-资源不足 -------------------- */
+    "FactoryStopNoMetal": {
         "desc": "建造失败 资源不足",
         "recognition": "OCR",
         "expected": "资源不足",

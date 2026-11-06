@@ -15,8 +15,10 @@
                 }
             ],
             "pipeline_override": {
-                "FactoryChooseNumber": {
-                    "custom_recognition_param": "{build_amrs_number}"
+                "FactoryBranchHome": {
+                    "custom_action_param": {
+                        "build_times": "{build_amrs_number}"
+                    }
                 }
             }
         },
@@ -50,7 +52,7 @@
                 {
                     "name": "Yes",
                     "pipeline_override": {
-                        "FactorySkip": {
+                        "FactoryClickSkip": {
                             "enabled": true
                         }
                     }

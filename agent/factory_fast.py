@@ -26,7 +26,7 @@ class FastFactoryStopOnMaxCountReco(CustomRecognition):
         | None
     ):
         max_ = int(argv.custom_recognition_param)
-        if factory.build_times >= max_:
+        if factory.build_times_now >= max_:
             return DEFAULT_HIT_BOX
 
 
@@ -39,5 +39,5 @@ class FastFactoryInitAct(CustomAction):
     def run(
         self, context: Context, argv: CustomAction.RunArg
     ) -> CustomAction.RunResult | bool:
-        factory.build_times = 0
-        return context.override_pipeline({"FactorySkip": {"enabled": True}})
+        factory.build_times_now = 0
+        return context.override_pipeline({"FactoryClickSkip": {"enabled": True}})

@@ -253,7 +253,7 @@ class FactoryDailyUpdateAct(CustomAction):
         self, context: Context, argv: CustomAction.RunArg
     ) -> CustomAction.RunResult | bool:
         return _factory.act(
-            argv, _factory.get(argv.task_detail.entry) + factory.build_times
+            argv, _factory.get(argv.task_detail.entry) + factory.build_times_now
         )
 
 

@@ -16,10 +16,11 @@ from maa.context import (
 from maa.pipeline import JTemplateMatch, JOCR
 
 from agentlog import log
+from params import parse_params
 from rect import DEFAULT_HIT_BOX, toTuple
 
 # 建造次数
-build_times: int = 0
+build_times_now: int = 0
 # 角色名: 结束时间戳
 _timestamp_by_build_end_names: dict[str, float] = {}
 # 尝试领取的角色名
@@ -125,8 +126,8 @@ class FactoryGetRewardReco(CustomRecognition):
 
 
 # 返回None或第一个可建造角色的选择区域
-@AgentServer.custom_recognition("FactoryChooseCharacterRepo")
-class FactoryChooseCharacterRepo(CustomRecognition):
+@AgentServer.custom_recognition("FactoryChooseCharacterReco")
+class FactoryChooseCharacterReco(CustomRecognition):
     def analyze(
         self, context: Context, argv: CustomRecognition.AnalyzeArg
     ) -> tuple[int, int, int, int] | None:
@@ -162,65 +163,9 @@ class FactoryChooseCharacterRepo(CustomRecognition):
                     return roi
 
 
-# 根据建造数返回选择位置
-@AgentServer.custom_recognition("FactoryChooseNumberRepo")
-class FactoryChooseNumberRepo(CustomRecognition):
-    def analyze(
-        self, context: Context, argv: CustomRecognition.AnalyzeArg
-    ) -> (
-        CustomRecognition.AnalyzeResult
-        | Rect
-        | list[int]
-        | ndarray[tuple[Any, ...], dtype[Any]]
-        | tuple[int, int, int, int]
-        | None
-    ):
-        # 提取变量
-        n_name = argv.node_name
-
-        # 获得红叉位置
-        boxes = _get_cancel_buttons(context, argv.image)
-        if not boxes:
-            log.debug(f"{n_name} 获取红叉位置失败，可能画面暂未恢复")
-            return
-
-        for i in boxes:
-            # 判断是否是选择建造
-            result = context.run_recognition_direct(
-                JRecognitionType.OCR,
-                JOCR(["请添加订单数"], roi=toTuple(i), roi_offset=(-125, 160, 60, 0)),
-                argv.image,
-            )
-            if not result or not result.hit:
-                continue
-
-            # 获得建造按钮位置
-            build_result = context.run_recognition_direct(
-                JRecognitionType.OCR,
-                JOCR(
-                    ["建造"], roi=(i[0], i[1], 772, 102), roi_offset=(-920, 102, 0, 0)
-                ),
-                argv.image,
-            )
-            if not build_result or not build_result.hit:
-                log.debug(f"{n_name} 获取建造按钮位置失败")
-                continue
-
-            # 提取变量
-            f_result = build_result.filtered_results
-            number = int(argv.custom_recognition_param)
-            final_number = number if len(f_result) >= number else len(f_result)
-            final = f_result[final_number - 1]
-            assert type(final) == OCRResult
-
-            # 返回选择位置
-            log.debug(f"建造{final_number}个")
-            return final.box
-
-
 # 检测任务是否满足结束条件 目前 满足建造次数则结束 全忙碌则结束
-@AgentServer.custom_recognition("FactoryCheckTaskEndRepo")
-class FactoryCheckTaskEndRepo(CustomRecognition):
+@AgentServer.custom_recognition("FactoryCheckTaskEndReco")
+class FactoryCheckTaskEndReco(CustomRecognition):
 
     def analyze(
         self, context: Context, argv: CustomRecognition.AnalyzeArg
@@ -237,7 +182,7 @@ class FactoryCheckTaskEndRepo(CustomRecognition):
 
         # 满足建造次数则结束
         max_ = int(argv.custom_recognition_param)
-        if build_times >= max_:
+        if build_times_now >= max_:
             log.info("达到建造次数，任务结束")
             return DEFAULT_HIT_BOX
 
@@ -297,22 +242,31 @@ class TaskFactoryNextAct(CustomAction):
     def run(
         self, context: Context, argv: CustomAction.RunArg
     ) -> CustomAction.RunResult | bool:
-        global build_times
-        build_times = 0
-        _timestamp_by_build_end_names.clear()
+        global build_times_now
         log.debug(f"{argv.node_name} 执行初始化")
+        try:
+            d = parse_params(argv.custom_action_param, "build_times")
+            r = context.override_pipeline(
+                {"FactoryChooseNumber": {"index": d["build_times"] - 1}}
+            )
+            if not r:
+                log.warn(f"{argv.node_name} 覆写失败 可能影响建造数")
+        except Exception as e:
+            log.warn(f"{argv.node_name} 初始化失败: {e!r}")
+        build_times_now = 0
+        _timestamp_by_build_end_names.clear()
         return True
 
 
 # 建造成功 建造数自增
 @AgentServer.custom_action("FactoryChooseStartSuccessAct")
-class FactoryChooseStartSuccess(CustomAction):
+class FactoryChooseStartSuccessAct(CustomAction):
     def run(
         self, context: Context, argv: CustomAction.RunArg
     ) -> CustomAction.RunResult | bool:
-        global build_times
-        build_times += 1
-        log.debug(f"{argv.node_name} 建造成功，建造数加一，当前数量: {build_times}")
+        global build_times_now
+        build_times_now += 1
+        log.debug(f"{argv.node_name} 建造成功，建造数加一，当前数量: {build_times_now}")
         return True
 
 
