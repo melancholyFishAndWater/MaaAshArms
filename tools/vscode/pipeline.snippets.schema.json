@@ -1,7 +1,7 @@
 {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "type": "object",
-    "$comment": "使用命名规范 v3.3; 使用任务链结构 v3.9",
+    "$comment": "使用命名规范 v3.3; 使用任务链结构 v4.0",
     "patternProperties": {
         "^(?!\\$).*": {
             "defaultSnippets": [
@@ -36,6 +36,7 @@
                 },
                 {
                     "label": "<动作> 动作节点",
+                    "$comment": "默认不自环、不带 BaseErrorNext（结构文档 v4.0 §0）：默认动作成功率极高，多挂这两个只是白付识别和计数。要自环用下面「自环动作」那条，且只给成功率不高的动作",
                     "body": {
                         "desc": "$1",
                         "action": "$0",
@@ -43,8 +44,8 @@
                     }
                 },
                 {
-                    "label": "<自环动作> 动作节点（反复做，带 BaseErrorNext）",
-                    "$comment": "next 含自己 = 自环动作。必须排 BaseErrorNext：timeout 只限制「候选一直不命中」，候选反复命中（含 [JumpBack] 弹回的 jp 节点）时永远不触发（结构文档 §0）。next 里还要有一条离开本动作的判据",
+                    "label": "<自环动作> 动作节点（反复做，带 BaseErrorNext；只给成功率不高的动作）",
+                    "$comment": "next 含自己 = 自环动作，是例外（v4.0）：只对成功率不高的动作（点击可能没生效、要反复点）才写。必须排 BaseErrorNext：timeout 只限制「候选一直不命中」，候选反复命中（含 [JumpBack] 弹回的 jp 节点）时永远不触发（结构文档 §0）。next 里还要有一条离开本动作的判据",
                     "body": {
                         "desc": "$1",
                         "recognition": "And",
