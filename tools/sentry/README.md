@@ -64,7 +64,7 @@ Python 侧零第三方依赖——只用标准库和 `sentry` 命令行。
 
 ## 命令一览
 
-统一入口 `python -m tools.sentry.cli <子命令>`，或直接 `python tools/sentry/<文件>.py`。
+唯一入口是 `python -m tools.sentry.cli <子命令>`（实现模块都在 `lib/` 下，不单独跑）。
 
 | 子命令 | 作用 | 默认窗口 |
 | --- | --- | --- |
@@ -104,7 +104,7 @@ python -m tools.sentry.cli flow --case D:/MaaAshArms/debug --task-id 200000118
 
 # 7. 只有浏览器导出的 Explore CSV 时：先还原成日志正文，再画
 python -m tools.sentry.cli explore-csv D:/Downloads/Explore_2026-October-15_190806.csv
-python tools/drawing/flow_from_log.py temp/flow/Explore_2026-October-15_190806.log --task-id 200000039
+python tools/drawing/cli.py flow temp/flow/Explore_2026-October-15_190806.log --task-id 200000039
 
 # 8. 某个失败要现场图：联网把证据拉下来（图 + 那次运行的日志），再照它打印的命令画
 python -m tools.sentry.cli evidence --list                  # 先看哪些 issue 真有证据
@@ -266,11 +266,11 @@ python -m tools.sentry.cli flow --case D:/MaaAshArms/debug --task-id 200000118 \
 python -m tools.sentry.cli flow --case log_20261014-part01.zip log_20261014-part02.zip --task-id 200000118
 
 # 独立入口（等价），以及只列证据包
-python tools/drawing/flow_cases.py --case D:/MaaAshArms/debug --list-cases
+python tools/drawing/cli.py cases --case D:/MaaAshArms/debug --list-cases
 ```
 
 同一个证据包 + 同一套参数重复跑会**跳过**（记在 `temp/flow/manifest.json`），`--force` 才重画。
-渲染器是 [`tools/drawing/flow_from_log.py`](../flow_from_log.py)（也可 `import` 调用：`render_flow()`）。
+渲染器是 [`tools/drawing/lib/flow_from_log.py`](../flow_from_log.py)（也可 `import` 调用：`render_flow()`）。
 
 ### 遥测侧的图片边界（重要）
 
@@ -574,7 +574,7 @@ gitignore，技能文件无法入库；等价内容就是本文档。
 
 ```bash
 python -m tools.sentry.cli selftest
-python tools/validation/check_sentry_offline.py    # 同一套断言 + 渲染一份合成报告方便人眼看
+python tools/validation/cli.py check-sentry-offline    # 同一套断言 + 渲染一份合成报告方便人眼看
 ```
 
 自检覆盖 release 解析、任务表与失败标记分流、Δpp 方向、工件往返、三种渲染，以及

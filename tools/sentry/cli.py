@@ -34,7 +34,7 @@ for _path in (_HERE, _ROOT):
         sys.path.insert(0, _path)
 
 try:
-    from . import (
+    from .lib import (
         evidence,
         explore_csv,
         fetch,
@@ -45,14 +45,16 @@ try:
         telemetry_index,
     )
 except ImportError:
-    import evidence  # type: ignore[no-redef]
-    import explore_csv  # type: ignore[no-redef]
-    import fetch  # type: ignore[no-redef]
-    import report_common  # type: ignore[no-redef]
-    import speed_report  # type: ignore[no-redef]
-    import task_failure_report  # type: ignore[no-redef]
-    import task_trend_report  # type: ignore[no-redef]
-    import telemetry_index  # type: ignore[no-redef]
+    # 直接 `python tools/sentry/cli.py` 时没有包上下文：`tools/sentry` 已在 sys.path 上，
+    # 按顶层 `lib` 包导入（`lib/` 下模块之间的相对 import 不受影响）。
+    from lib import evidence  # type: ignore[no-redef]
+    from lib import explore_csv  # type: ignore[no-redef]
+    from lib import fetch  # type: ignore[no-redef]
+    from lib import report_common  # type: ignore[no-redef]
+    from lib import speed_report  # type: ignore[no-redef]
+    from lib import task_failure_report  # type: ignore[no-redef]
+    from lib import task_trend_report  # type: ignore[no-redef]
+    from lib import telemetry_index  # type: ignore[no-redef]
 
 try:
     from tools.drawing import flow_cases
@@ -106,9 +108,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     command = arguments[0]
     if command == "selftest":
         try:
-            from .selftest import run_selftest
+            from .lib.selftest import run_selftest
         except ImportError:
-            from selftest import run_selftest  # type: ignore[no-redef]
+            from lib.selftest import run_selftest  # type: ignore[no-redef]
         return run_selftest()
 
     report = REPORTS.get(command)

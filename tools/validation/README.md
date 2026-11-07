@@ -28,21 +28,21 @@
 
 ```bash
 # 1. 静态检查（零依赖、秒级）—— CI 里跑的就是它
-python tools/validation/check_python.py                     # 不传 --root 时扫 tools / agent / scripts / tests
-python tools/validation/check_python.py --format github     # CI 注解格式
-python tools/validation/check_python.py --root agent        # 只查某个根（可重复）
+python tools/validation/cli.py check-python                     # 不传 --root 时扫 tools / agent / scripts / tests
+python tools/validation/cli.py check-python --format github     # CI 注解格式
+python tools/validation/cli.py check-python --root agent        # 只查某个根（可重复）
 
 # 2. 跨文件名字与约定（纯标准库）—— 不传域参数就是全量
-python tools/validation/validate_refs.py
-python tools/validation/validate_refs.py --format github
-python tools/validation/validate_refs.py --pipeline assets/resource/pipeline   # 只查某一域，路径可重复
-python tools/validation/validate_refs.py --tasks assets/resource/tasks         # 另有 --agent / --image / --interface
-python tools/validation/validate_refs.py --self-test        # 只跑内置断言（纯函数），不读资源
-python tools/validation/validate_refs.py --ignore A17-guard-in-next   # 放行指定 id（逗号分隔，可重复）
-python tools/validation/validate_refs.py --fail-on warn     # 把 warn 也算失败（默认只算 error；当前仓库 warn 非零，这条会 exit 1）
+python tools/validation/cli.py validate-refs
+python tools/validation/cli.py validate-refs --format github
+python tools/validation/cli.py validate-refs --pipeline assets/resource/pipeline   # 只查某一域，路径可重复
+python tools/validation/cli.py validate-refs --tasks assets/resource/tasks         # 另有 --agent / --image / --interface
+python tools/validation/cli.py validate-refs --self-test        # 只跑内置断言（纯函数），不读资源
+python tools/validation/cli.py validate-refs --ignore A17-guard-in-next   # 放行指定 id（逗号分隔，可重复）
+python tools/validation/cli.py validate-refs --fail-on warn     # 把 warn 也算失败（默认只算 error；当前仓库 warn 非零，这条会 exit 1）
 
 # 3. JSON Schema 校验（要 jsonschema + referencing；本机已装，见「依赖与前置」）
-python tools/validation/validate_schema.py \
+python tools/validation/cli.py validate-schema \
     --schema-dir deps/tools --resource-dirs assets/resource \
     --exclude-dirs assets/resource/announcement assets/resource/tasks \
     --interface-files assets/interface.json --task-dirs assets/resource/tasks
@@ -52,7 +52,7 @@ python tools/validation/validate_schema.py \
 # 控制台编码不用先设：脚本自己把输出固定成 UTF-8，回显乱码见「已知坑」。
 
 # 4. Sentry 遥测工具的离线自检（零网络、零凭证；没有参数，跑起来就是自检）
-python tools/validation/check_sentry_offline.py
+python tools/validation/cli.py check-sentry-offline
 
 # 5. 类型检查（需网络首次拉取 pyright）
 node tools/validation/check_pyright.mjs
@@ -87,21 +87,21 @@ python -m pytest -q tests       # agent 纯逻辑打桩，不连设备
 按这个顺序跑，全部 exit 0 才算完；有报错就修，修完从头再跑一遍。
 
 ```bash
-python tools/validation/check_python.py --root tools      # 1. 语法 / 悬空工具路径 / __doc__ 直取 / 仓库根级数
-python tools/validation/validate_refs.py --self-test      # 2. 跨文件引用与规范版本（纯函数断言）
-python tools/validation/validate_refs.py                  #    全量：必须是 error 0
+python tools/validation/cli.py check-python --root tools      # 1. 语法 / 悬空工具路径 / __doc__ 直取 / 仓库根级数
+python tools/validation/cli.py validate-refs --self-test      # 2. 跨文件引用与规范版本（纯函数断言）
+python tools/validation/cli.py validate-refs                  #    全量：必须是 error 0
 uvx ruff check tools --select F401,F841,E722,FURB162,S110,PLW1510,BLE001,RUF100   # 3. 真实缺陷类 lint
 node tools/validation/check_pyright.mjs                   # 4. 类型检查（需 npx，首次要网络）
 
 # 5. 改到哪个脚本，就跑它自己的 CLI 与自检
 python -m tools.sentry.cli selftest                       # 遥测工具：19 项
-python tools/validation/check_sentry_offline.py
-python tools/drawing/flow_from_log.py --help
-python tools/drawing/flow_cases.py --help
-python tools/perf/bench.py --help
-python tools/perf/bench.py --selftest                     # 性能基准（合成）：18 项（不建资源）
-python tools/perf/rounds.py --help
-python tools/perf/rounds.py --selftest                    # 性能基准（真实日志）：25 项
+python tools/validation/cli.py check-sentry-offline
+python tools/drawing/cli.py flow --help
+python tools/drawing/cli.py cases --help
+python tools/perf/cli.py bench --help
+python tools/perf/cli.py bench --selftest                     # 性能基准（合成）：18 项（不建资源）
+python tools/perf/cli.py rounds --help
+python tools/perf/cli.py rounds --selftest                    # 性能基准（真实日志）：25 项
 ```
 
 **通过判据**  
@@ -113,7 +113,7 @@ python tools/perf/rounds.py --selftest                    # 性能基准（真�
 - 某个校验**跑不了**（需要网络、缺包、缺设备）时，在结论里写明"没跑 + 为什么"，不能默认通过。
 - 改的是 CI 会调的入口（本目录三个 `.py`），再跑一遍 CI 实际用的命令（见上「怎么跑」第 1–3 步）；
   同时改了 `agent/` 或 pipeline 数据的，第 6 步那两条也要跑。
-- 改了渲染口径的（`tools/drawing/flow_from_log.py`）还要按 [`tools/drawing`](../drawing/README.md) 的
+- 改了渲染口径的（`tools/drawing/lib/flow_from_log.py`）还要按 [`tools/drawing`](../drawing/README.md) 的
   「已知坑」bump `RENDERER_VERSION` 并重画一张核对。
 
 **两处会制造"假红"的坑**（2026-10-20 实测）

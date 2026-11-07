@@ -31,15 +31,15 @@
 ## 真实日志：rounds.py
 
 ```bash
-python tools/perf/rounds.py debug/maafw.log
-python tools/perf/rounds.py debug/                          # 目录里所有 maafw*.log（含 .bak）
-python tools/perf/rounds.py temp/evidence/PYTHON-2H/debug/maafw.log --x 2
-python tools/perf/rounds.py debug/ --top 0                   # 派发者表列出全部
-python tools/perf/rounds.py debug/ --module escort           # 只看 escort.json 这个模块
-python tools/perf/rounds.py debug/maafw.log --mfa-log D:/MaaAshArms/logs   # 单独拷出来的日志
-python tools/perf/rounds.py debug/maafw.log --no-pipeline    # 不读 pipeline，不核对也不补平均
-python tools/perf/rounds.py debug/ --json temp/perf/rounds.json
-python tools/perf/rounds.py --selftest
+python tools/perf/cli.py rounds debug/maafw.log
+python tools/perf/cli.py rounds debug/                          # 目录里所有 maafw*.log（含 .bak）
+python tools/perf/cli.py rounds temp/evidence/PYTHON-2H/debug/maafw.log --x 2
+python tools/perf/cli.py rounds debug/ --top 0                   # 派发者表列出全部
+python tools/perf/cli.py rounds debug/ --module escort           # 只看 escort.json 这个模块
+python tools/perf/cli.py rounds debug/maafw.log --mfa-log D:/MaaAshArms/logs   # 单独拷出来的日志
+python tools/perf/cli.py rounds debug/maafw.log --no-pipeline    # 不读 pipeline，不核对也不补平均
+python tools/perf/cli.py rounds debug/ --json temp/perf/rounds.json
+python tools/perf/cli.py rounds --selftest
 ```
 
 一次实测（`debug/maafw.log`）：
@@ -142,7 +142,7 @@ python tools/perf/rounds.py --selftest
 
 ```mermaid
 flowchart TD
-    A["python tools/perf/rounds.py 日志 / 目录"] --> D0["展开 maafw*.log<br/>按内容起点排序、去重"]
+    A["python tools/perf/cli.py rounds 日志 / 目录"] --> D0["展开 maafw*.log<br/>按内容起点排序、去重"]
     D0 --> D1["每份日志定基线<br/>资源版本（会话起点）→ 时间点 git 修订"]
     D1 --> B["筛 OnEventNotify + EventDispatcher 行"]
     B --> C["NextList.Starting：记 parent / list / task_id / 时间"]
@@ -185,11 +185,11 @@ flowchart TD
 | 3 next 空转 x 轮 | x | 空白 ×(x+1) → 命中 | x+2 |
 
 ```bash
-python tools/perf/bench.py 0                    # 三种都跑，出完整时间
-python tools/perf/bench.py 1                    # 只测「瞬间命中」
-python tools/perf/bench.py 2 3 --x 4            # 只测空转；模式 3 空转 4 轮
-python tools/perf/bench.py 0 --rate-limit 1000  # 带上真实的 1s 等待
-python tools/perf/bench.py --selftest
+python tools/perf/cli.py bench 0                    # 三种都跑，出完整时间
+python tools/perf/cli.py bench 1                    # 只测「瞬间命中」
+python tools/perf/cli.py bench 2 3 --x 4            # 只测空转；模式 3 空转 4 轮
+python tools/perf/cli.py bench 0 --rate-limit 1000  # 带上真实的 1s 等待
+python tools/perf/cli.py bench --selftest
 ```
 
 一次实测：
@@ -211,7 +211,7 @@ MaaFW v5.12.2 · 720×1280 · rate_limit=0 pre_delay=0 post_delay=0 · x=2 · �
 
 ```mermaid
 flowchart TD
-    A["python tools/perf/bench.py 0"] --> B["解析位置参数<br/>0 = 1、2、3；1/2/3 可多选"]
+    A["python tools/perf/cli.py bench 0"] --> B["解析位置参数<br/>0 = 1、2、3；1/2/3 可多选"]
     B --> C["建工作目录<br/>temp/perf/时间戳-pid/"]
     C --> D["写合成资源<br/>BenchStart = DirectHit，next = BenchHit<br/>BenchHit = TemplateMatch，ROI 200×200，阈值 0.8"]
     D --> E["override_image 注入 40×40 模板<br/>Resource.post_bundle，Tasker.bind"]

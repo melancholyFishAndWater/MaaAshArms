@@ -2,7 +2,7 @@
 
 ## Loop 类别退役后，4 条按名字判据会变死规则
 
-- 命令：`python tools/validation/validate_refs.py`
+- 命令：`python tools/validation/cli.py validate-refs`
 - 现象：`feidu_gift.json` 已无 `Loop` 节点；全库仍有 **13 个 `*Loop*` 节点、分布在 6 个文件**（`battle.json` ×4、`battle_replays.json` ×5、`battle_training.json`、`maintenance.json`、`reward.json`、`reward_siku.json`）。规范方向是 Loop 让位给 Branch，但以下判据仍按 `endswith("Loop")` / `"Loop" in name` 识别目标类别，节点改名或删除后它们常年 0 命中、与文档脱节（行号按 2026-11-01 的工作区）：
   - `A8-loop-guard`（`check_a8_loop_guard`，:958）
   - `A10-maxhit-in-loop`（`check_a10_maxhit_in_loop`，:970）
@@ -13,7 +13,7 @@
 
 ## `Ensure` 类别停用（脚本侧已改，存量节点还在）
 
-- 命令：`python tools/validation/validate_refs.py`
+- 命令：`python tools/validation/cli.py validate-refs`
 - 处理：2026-10-30 与作者定 `Ensure` 不允许再用。规范与脚本升到 v3.1：
   - 删掉按名字识别 `Ensure` 的判据：`A9-ensure-order`、`A16-ensure-depth`、`A13-ensure-jumpback`、`A13-ensure-loop-next`、`check_a13_naming` 的 `Ensure` 跳过、`A18` 的 `Task/Ensure` 档与 `ENSURE_RE` / `MAX_ENSURE_DEPTH` / `MAX_NEXT_TASK_ENSURE`；
   - `check_a7_jumpback` 本来就没有按 `Ensure` 判的分支，只有"指向自己"与"指向 `Loop`"两支，无需改动；

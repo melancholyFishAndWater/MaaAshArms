@@ -41,43 +41,43 @@
 
 ```bash
 # 1. 一段日志 → 执行流程图（本机安装根）
-python tools/drawing/flow_from_log.py <安装根>/debug/maafw.log \
+python tools/drawing/cli.py flow <安装根>/debug/maafw.log \
     --vision <安装根>/debug/vision \
     --from "2026-10-11 21:39:56" --to "2026-10-11 21:43:29"
 
 # 只解析、不画图（父节点那一行也给全，不折叠候选；末尾附"父节点评估"账）
-python tools/drawing/flow_from_log.py <安装根>/debug/maafw.log --task-id 200000013 --list
+python tools/drawing/cli.py flow <安装根>/debug/maafw.log --task-id 200000013 --list
 
 # 重复轮次：默认把连续同形、整轮无截图且无失败框的轮次并成一列；
 # 要逐轮时间就 --no-overlay，要 3 轮起才合就 --overlay-min 3
-python tools/drawing/flow_from_log.py <安装根>/debug/maafw.log --no-overlay
-python tools/drawing/flow_from_log.py <安装根>/debug/maafw.log --overlay-min 3
+python tools/drawing/cli.py flow <安装根>/debug/maafw.log --no-overlay
+python tools/drawing/cli.py flow <安装根>/debug/maafw.log --overlay-min 3
 
 # 节点"疑似过时"默认会查（要本地有对应的 git tag，缺就 git fetch --tags）；
 # 不想查、或仓库不是 git（只拷了 debug 目录）时用 --no-stale-check
-python tools/drawing/flow_from_log.py <安装根>/debug/maafw.log --no-stale-check
+python tools/drawing/cli.py flow <安装根>/debug/maafw.log --no-stale-check
 
 # 2. 证据包（debug 目录 / MFA 导出 zip / 多卷 / 单份日志）→ 流程图，带 manifest 幂等
 #    产物名优先用遥测问题名（temp/evidence/<SHORT-ID>/ → <SHORT-ID>），其次任务名，见「产物文件名」
-python tools/drawing/flow_cases.py --case D:/MaaAshArms/debug --task-id 200000118
-python tools/drawing/flow_cases.py --case log_20261014-part01.zip log_20261014-part02.zip --task-id 200000118
-python tools/drawing/flow_cases.py --case D:/MaaAshArms/debug --list-cases
+python tools/drawing/cli.py cases --case D:/MaaAshArms/debug --task-id 200000118
+python tools/drawing/cli.py cases --case log_20261014-part01.zip log_20261014-part02.zip --task-id 200000118
+python tools/drawing/cli.py cases --case D:/MaaAshArms/debug --list-cases
 #    目录里只有轮转后的 maafw.bak.*.log 也认（取 mtime 最新）；
 #    截图/现场图默认取 <case>/vision、<case>/on_error；传单份日志文件时取日志所在目录的那两个
 #    子目录，也可用 --vision / --on-error 指定别处；
 #    `on_error/` 会递归扫子目录：遥测证据包把每次失败的现场图放在 on_error/<run_id>/，
 #    只画某一次就 --on-error <case>/on_error/<run_id>（不指定则按节点名+时间就近匹配）；
 #    包里有图、但都不在本窗口（时刻对不上）时，顶部注记会点出文件名与时刻，不硬贴到本次失败上
-python tools/drawing/flow_cases.py --case D:/MaaAshArms/debug --vision D:/MaaAshArms/vision --task-id 200000118
+python tools/drawing/cli.py cases --case D:/MaaAshArms/debug --vision D:/MaaAshArms/vision --task-id 200000118
 #    默认会关联遥测问题（在本地遥测库里反查，联网只补缺的 issue）：
-python tools/drawing/flow_cases.py --case D:/MaaAshArms/debug --telemetry-only   # 只反查、不画
-python tools/drawing/flow_cases.py --case D:/MaaAshArms/debug --telemetry-offline # 不联网
-python tools/drawing/flow_cases.py --case D:/MaaAshArms/debug --no-telemetry      # 纯离线
+python tools/drawing/cli.py cases --case D:/MaaAshArms/debug --telemetry-only   # 只反查、不画
+python tools/drawing/cli.py cases --case D:/MaaAshArms/debug --telemetry-offline # 不联网
+python tools/drawing/cli.py cases --case D:/MaaAshArms/debug --no-telemetry      # 纯离线
 
 # 3. 白板图片转 png 并改写引用
-python tools/drawing/whiteboard_images.py
-python tools/drawing/whiteboard_images.py --check     # 只报告，发现非目标格式即 exit 1
-python tools/drawing/whiteboard_images.py --dry-run   # 报告将要做什么，不改动
+python tools/drawing/cli.py whiteboard
+python tools/drawing/cli.py whiteboard --check     # 只报告，发现非目标格式即 exit 1
+python tools/drawing/cli.py whiteboard --dry-run   # 报告将要做什么，不改动
 ```
 
 遥测侧的入口是 `python -m tools.sentry.cli flow`，它转发到 `flow_cases.py`，产出目录一致。
@@ -165,6 +165,10 @@ flowchart LR
   `maafw.log` 尾部 + `on_error/`）画**完整流程图**——证据包就是那次运行的日志，不是"预览"。
   **本地没有就自动调 `evidence` 拉取**（默认开，需联网）；`--no-fetch-evidence` 关掉，
   `--telemetry-offline` 时也不拉。
+- **证据包从哪找**：默认 `temp/evidence/<问题号>/debug`。`--evidence-dir DIR` 可重复，按给的
+  顺序往后找，最后才回到默认目录；每个根下依次认 `<DIR>/<问题号>/debug`、`<DIR>/<问题号>/`
+  直接放日志、根目录名本身就是问题号，以及 `<DIR>` 下文件名带问题号的归档（多卷一起给，
+  目录优先于归档）。
 - **只画失败的那个 task**：证据包尾部常连着同一次运行的多个 task
   （Train → Escort → Battle → Training），整段画会把它们接成一条链。定位顺序是
   `failure_task_id`（在日志里才用）→ 失败节点所在的 task → 任务入口名；都定位不到、
@@ -179,13 +183,17 @@ flowchart LR
 
 ```bash
 # 只画遥测库里所有未解决 issue：有证据包/日志包的出完整流程，没有的出概览卡
-python tools/drawing/flow_cases.py --telemetry-bulk
+python tools/drawing/cli.py cases --telemetry-bulk
 
 # 同一份日志包；缺失的证据包会自动拉取（默认开，需联网）
-python tools/drawing/flow_cases.py --telemetry-bulk --case <证据包>
+python tools/drawing/cli.py cases --telemetry-bulk --case <证据包>
 
 # 离线：不拉证据包，缺失的只出概览卡
-python tools/drawing/flow_cases.py --telemetry-bulk --case <证据包> --telemetry-offline
+python tools/drawing/cli.py cases --telemetry-bulk --case <证据包> --telemetry-offline
+
+# 证据包散在几个目录：都能找到（先给的先找，temp/evidence 永远兜底）
+python tools/drawing/cli.py cases --telemetry-bulk \
+    --evidence-dir D:/Downloads/evidence --evidence-dir D:/MaaAshArms/evidence
 ```
 
 ### 日志（`--log-level` / `--log-file`）
@@ -272,7 +280,7 @@ python tools/drawing/flow_cases.py --telemetry-bulk --case <证据包> --telemet
   只给 `--task-id` 会把这几次混成一张图——**步骤数对不上就是它**。先 `--list-tasks` 看清单：
 
   ```powershell
-  python tools/drawing/flow_from_log.py <安装根>/debug/maafw.log --list-tasks
+  python tools/drawing/cli.py flow <安装根>/debug/maafw.log --list-tasks
   # 进程      task_id  步数  开始                    结束                    入口
   # Px15316  200000001     1  2026-10-27 18:01:14.527 2026-10-27 18:01:15.337 @mse/action
   # Px6448   200000001     5  2026-10-27 20:40:35.535 2026-10-27 20:40:56.080 TaskEscort
@@ -558,7 +566,7 @@ python tools/drawing/flow_cases.py --telemetry-bulk --case <证据包> --telemet
 文件名带 `_task<id>_px<进程>`：
 
 ```powershell
-python tools/drawing/flow_cases.py --case D:/MaaAshArms/debug --all-tasks
+python tools/drawing/cli.py cases --case D:/MaaAshArms/debug --all-tasks
 # temp/flow/TaskTrain_task200000030_px30992.png          ← 遥测没匹配上时用任务名
 # temp/flow/PYTHON-1Z_task200000001_px15316.png           ← 匹配上就用问题号（遥测命名规则）
 # temp/flow/PYTHON-2H_task200000001_px6448.png            ← 同号不同进程，各画各的

@@ -1,0 +1,488 @@
+"""命令行：参数解析、`main`、遥测注解接线与批量出图循环。
+
+行为与拆分前的单文件版本一致；参数含义见 `tools/drawing/README.md`。
+"""
+
+from __future__ import annotations
+
+import argparse
+import io
+import logging
+import os
+import sys
+from dataclasses import replace
+
+from tools._logging import configure_tool_logging
+from tools.drawing.lib.flow_from_log import (
+    DEFAULT_OUTDIR,
+    VERSION_SOURCE_CLI,
+    VERSION_SOURCE_TELEMETRY,
+    FlowOptions,
+    parse_time,
+    scan_tasks,
+)
+
+from .evidence import (
+    _evidence_case,
+    _evidence_task_id,
+    _fetch_evidence,
+    _has_evidence,
+    _terminal_dispatcher,
+    set_evidence_dirs,
+)
+from .output import MANIFEST_NAME, load_manifest, save_manifest
+from .overview import run_overview
+from .pack import (
+    EVIDENCE_ROOT,
+    Case,
+    _pick_log,
+    _telemetry_module,
+    discover_cases,
+    load_case,
+)
+from .runner import run_case
+
+log = logging.getLogger("tools.flow_cases")
+
+def _with_telemetry(options: FlowOptions, annotation) -> FlowOptions:
+    """把遥测结论并进 options：产物名用问题号、注记带上、release 当版本基线。"""
+    version = options.version or annotation.version or None
+    source = options.version_source or (
+        VERSION_SOURCE_TELEMETRY if annotation.version else ""
+    )
+    return replace(
+        options,
+        extra_notes=list(annotation.notes) or options.extra_notes,
+        issue=annotation.chosen or options.issue,
+        version=version,
+        version_source=source,
+    )
+
+
+def create_argument_parser(prog: str | None = None) -> argparse.ArgumentParser:
+    ap = argparse.ArgumentParser(
+        prog=prog,
+        description="把一个证据包（debug 目录 / MFA 导出 zip / 多卷）渲染成流程图，产出落到 temp/flow/",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    ap.add_argument(
+        "--case",
+        nargs="+",
+        required=False,
+        help="证据包：一个 debug 目录、一个/多个归档（多卷一起给）、或一份日志文件；"
+        "配合 --telemetry-bulk 时是可选的（不带就只画遥测概览卡）",
+    )
+    ap.add_argument(
+        "--vision",
+        default=None,
+        help="截图目录（默认取 `<case>/vision`；传单个日志文件时取日志所在目录的 `vision/`）",
+    )
+    ap.add_argument(
+        "--on-error",
+        dest="on_error",
+        default=None,
+        help="on_error 现场图目录（默认取 `<case>/on_error`，单日志文件同理取日志所在目录）",
+    )
+    ap.add_argument(
+        "--outdir", default=DEFAULT_OUTDIR, help=f"输出目录（默认 {DEFAULT_OUTDIR}）"
+    )
+    ap.add_argument("--from", dest="t_from", default=None, help="起始时间")
+    ap.add_argument("--to", dest="t_to", default=None, help="结束时间")
+    ap.add_argument("--task-id", type=int, default=None, help="只看某个 task_id")
+    ap.add_argument(
+        "--pid",
+        default=None,
+        help="只看某个进程（Px<进程号>）。一份 maafw.log 里常有两个进程复用同一 task_id，"
+        "只给 --task-id 会把两趟混进同一张图，步骤数对不上就是它",
+    )
+    ap.add_argument("--cut-on", default=None, help="手动指定分轮节点（逗号分隔）")
+    ap.add_argument(
+        "--max-rounds", type=int, default=40, help="最多画多少轮（默认 40）"
+    )
+    ap.add_argument(
+        "--collapse", type=int, default=3, help="连续同名节点折叠阈值（默认 3）"
+    )
+    ap.add_argument("--no-thumbs", dest="thumbs", action="store_false", help="不贴截图")
+    ap.add_argument(
+        "--no-parents",
+        dest="parents",
+        action="store_false",
+        help="框里不写父节点那一行（父节点 = 本轮的派发者，来自 Node.NextList 事件）",
+    )
+    ap.add_argument(
+        "--no-overlay",
+        dest="overlay",
+        action="store_false",
+        help="不合并重复轮次（默认把连续、同形、整轮无截图且无失败框的轮次并成一列）",
+    )
+    ap.add_argument(
+        "--overlay-min",
+        type=int,
+        default=2,
+        help="连续几轮同形才合并（默认 2；0 或 1 等于关闭）",
+    )
+    ap.add_argument("--mermaid", action="store_true", help="额外输出 .mmd")
+    ap.add_argument(
+        "--version",
+        default=None,
+        help="手动指定资源版本（vX.Y.Z）作为「疑似过时」的基线；不传时遥测证据包会自己从 "
+        "evidence.json 的 release 取，本地日志从「资源版本：vX.Y.Z」或同装 MFA 日志取",
+    )
+    ap.add_argument(
+        "--telemetry",
+        dest="telemetry",
+        action="store_true",
+        help="关联遥测问题（默认开）：按日志里的失败节点在本地遥测库反查，把问题号/次数/release "
+        "写进注记与产物名，并用那个 release 当「疑似过时」基线",
+    )
+    ap.add_argument(
+        "--no-telemetry", dest="telemetry", action="store_false", help="不关联遥测（纯离线）"
+    )
+    ap.add_argument(
+        "--telemetry-offline",
+        action="store_true",
+        help="只读本地遥测库、不联网刷新（库不存在时就不反查）",
+    )
+    ap.add_argument(
+        "--telemetry-issue", default=None, help="指定问题号（如 PYTHON-2X），不再自动反查"
+    )
+    ap.add_argument(
+        "--telemetry-days", type=int, default=14, help="本地遥测库保留最近 N 天（默认 14）"
+    )
+    ap.add_argument(
+        "--telemetry-gap", type=int, default=3, help="反查的时间窗（天，默认 3）"
+    )
+    ap.add_argument(
+        "--telemetry-keep-resolved",
+        action="store_true",
+        help="本地遥测库保留已解决/已忽略的 issue（默认清掉）",
+    )
+    ap.add_argument(
+        "--telemetry-only", action="store_true", help="只打印反查到的遥测问题，不画图"
+    )
+    ap.add_argument("--force", action="store_true", help="忽略 manifest，强制重画")
+    ap.add_argument(
+        "--evidence-dir",
+        dest="evidence_dir",
+        action="append",
+        metavar="DIR",
+        help="批量遥测模式下找证据包的根目录（可重复，先给的先找）：认 `<DIR>/<问题号>/debug`、"
+        "`<DIR>/<问题号>/` 直接放日志、根目录名就是问题号三种布局，也认 `<DIR>` 下文件名带"
+        f"问题号的归档（多卷一起给）。默认 {EVIDENCE_ROOT}（`evidence` 命令的产出位置，总会兜底）",
+    )
+    ap.add_argument(
+        "--telemetry-bulk",
+        action="store_true",
+        help="批量出图：遍历本地遥测库里所有未解决 issue，每个出一张图；"
+        "给了 --case 就用它给命中的 issue 出完整流程（作为补充），"
+        "没命中的用该 issue 自己的证据包出完整流程（搜索根见 --evidence-dir）；"
+        "连证据包都没有才出概览卡",
+    )
+    ap.add_argument(
+        "--fetch-evidence",
+        dest="fetch_evidence",
+        action="store_true",
+        default=True,
+        help="本地没有证据包时自动调 `evidence` 拉取（默认开，需联网）；拉到了就用真实日志出流程",
+    )
+    ap.add_argument(
+        "--no-fetch-evidence",
+        dest="fetch_evidence",
+        action="store_false",
+        help="不自动拉取缺失的证据包（离线或不想联网时用）",
+    )
+    ap.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        help="日志级别（默认 INFO）；DEBUG 会多打解析/匹配细节",
+    )
+    ap.add_argument(
+        "--log-file",
+        default=None,
+        help="日志文件路径（默认按运行时间戳建 temp/logs/flow_cases_<时间戳>_<pid>.log）；"
+        "传 none / 空 只走控制台不写文件",
+    )
+    ap.add_argument(
+        "--list-cases", action="store_true", help="只列出发现的证据包，不画"
+    )
+    ap.add_argument(
+        "--all-tasks",
+        action="store_true",
+        help="按任务逐个输出（一个 (进程, task_id) 一张图）。任务号在各进程内复用，"
+        "不加这个参数时整份日志混画一张；加了之后文件名带 _task<id>_px<进程>",
+    )
+    ap.set_defaults(thumbs=True, telemetry=True)
+    return ap
+
+
+def main(argv: list[str] | None = None, prog: str | None = None) -> int:
+    for stream in (sys.stdout, sys.stderr):
+        # reconfigure() 定义在 io.TextIOWrapper 上，而 sys.stdout 的静态类型是 typing.TextIO
+        if isinstance(stream, io.TextIOWrapper):
+            stream.reconfigure(errors="replace")
+
+    args = create_argument_parser(prog).parse_args(argv)
+    set_evidence_dirs(args.evidence_dir)
+    _, log_path = configure_tool_logging(
+        "flow_cases", log_file=args.log_file, level=args.log_level
+    )
+    if log_path:
+        log.info("日志 → %s", log_path)
+    if args.telemetry_only and not args.telemetry:
+        log.error(
+            "--telemetry-only 要开着遥测（别同时给 --no-telemetry）。"
+        )
+        return 1
+    if not args.case and not args.telemetry_bulk:
+        log.error(
+            "需要 --case <证据包> 或 --telemetry-bulk（两者都不给画不了）。"
+        )
+        return 1
+    if args.telemetry_only and not args.case:
+        log.error("--telemetry-only 需要 --case <日志/证据包> 才能反查。")
+        return 1
+    if args.telemetry_bulk:
+        # 批量出图以遥测库为驱动，遥测必须开（默认就开，这里只是兜底 --no-telemetry）
+        args.telemetry = True
+    try:
+        t_from, t_to = parse_time(args.t_from), parse_time(args.t_to)
+    except SystemExit as exc:
+        log.error("错误：%s", exc)
+        return 1
+
+    options = FlowOptions(
+        t_from=t_from,
+        t_to=t_to,
+        task_id=args.task_id,
+        px=args.pid,
+        cut_on=args.cut_on,
+        max_rounds=args.max_rounds,
+        collapse=args.collapse,
+        thumbs=args.thumbs,
+        parents=args.parents,
+        overlay=args.overlay,
+        overlay_min=args.overlay_min,
+        version=args.version,
+        version_source=VERSION_SOURCE_CLI if args.version else "",
+    )
+
+    # 遥测（默认开）：先刷新一次本地库，之后每个包都只在本地查。
+    # 刷新失败只提示，不影响画图——遥测是加分项，不是画图的前提。
+    telemetry = _telemetry_module()
+    telemetry_data: dict | None = None
+    if args.telemetry:
+        if args.telemetry_offline:
+            telemetry_data = telemetry.load_index()
+        else:
+            try:
+                telemetry_data, changes = telemetry.refresh_default(
+                    days=args.telemetry_days,
+                    keep_resolved=args.telemetry_keep_resolved,
+                )
+                for change in changes:
+                    log.info("提示：%s", change)
+            except (RuntimeError, OSError, ImportError) as exc:
+                log.warning(
+                    "遥测库没刷新成（%s），用本地已有数据；若报「unable to open database file」，"
+                    "把 SENTRY_CONFIG_DIR 指到含可写 cli.db 的目录",
+                    exc,
+                )
+                telemetry_data = telemetry.load_index()
+    cards = telemetry.load_cards(telemetry_data) if telemetry_data else []
+
+    single = args.case[0] if args.case else None
+    whole_dir = (
+        bool(single)
+        and len(args.case) == 1
+        and os.path.isdir(single)
+        and not _pick_log(single)
+    )
+    cases: list[Case] = []
+    if args.case:
+        try:
+            cases = (
+                discover_cases(single)
+                if whole_dir and single is not None
+                else [load_case(args.case)]
+            )
+        except (FileNotFoundError, ValueError) as exc:
+            log.error("错误：%s", exc)
+            return 1
+        if not cases:
+            log.error("错误：%s 下没找到带日志的证据包。", single)
+            return 1
+
+    if args.list_cases:
+        for case in cases:
+            print(f"{case.label}\t{case.describe()}")
+        return 0
+
+    os.makedirs(args.outdir, exist_ok=True)
+    manifest = load_manifest(args.outdir)
+    drawn = skipped = failed = 0
+
+    # 每个证据包要画的任务。默认一个（`--task-id` 指定，或全部混画一张）；
+    # `--all-tasks` / `--telemetry-bulk` 时按 `(进程, task_id)` 逐个输出——task_id 在各进程内复用，
+    # 只按编号切会把两次不同运行的任务混进同一张图。批量出图必须按任务切：
+    # 命中的 issue 才能各出一张完整流程、文件名用问题号。
+    drawn_issues: set[str] = set()
+    jobs: list[tuple[Case, FlowOptions]] = []
+    for case in cases:
+        if args.all_tasks or args.telemetry_bulk:
+            try:
+                tasks = scan_tasks(case.log_source(), options.t_from, options.t_to)
+            except (OSError, TypeError) as exc:
+                failed += 1
+                log.error("错误：%s: 列任务失败：%s", case.label, exc)
+                continue
+            if not tasks:
+                log.info("提示：%s 里没有可画的任务，跳过", case.label)
+                continue
+            for task in tasks:
+                jobs.append((case, replace(options, task_id=task.task_id, px=task.px)))
+        else:
+            jobs.append((case, options))
+
+    telemetry_shown = 0
+    for case, case_options in jobs:
+        if args.telemetry:
+            annotation = telemetry.annotate(
+                case.log_source(),
+                index=telemetry_data,
+                offline=args.telemetry_offline,
+                issue=args.telemetry_issue,
+                task_id=case_options.task_id,
+                days=args.telemetry_days,
+                gap=args.telemetry_gap,
+            )
+            for warning in annotation.warnings:
+                log.info("提示：%s: %s", case.label, warning)
+            if args.telemetry_only:
+                print(f"\n== {case.label} ==", file=sys.stdout)
+                telemetry.format_matches(annotation.matches, sys.stdout)
+                telemetry_shown += 1
+                continue
+            case_options = _with_telemetry(case_options, annotation)
+        try:
+            result = run_case(
+                case,
+                case_options,
+                outdir=args.outdir,
+                mermaid=args.mermaid,
+                force=args.force,
+                manifest=manifest,
+                vision_override=args.vision,
+                on_error_override=args.on_error,
+            )
+        except (FileNotFoundError, ValueError, OSError) as exc:
+            failed += 1
+            log.error("错误：%s: %s", case.label, exc)
+            continue
+        drawn += result is not None
+        skipped += result is None
+        if result is not None and args.telemetry and annotation.chosen:
+            # 这个任务对应的问题号已经被日志包出成完整流程了，概览卡就跳过它
+            drawn_issues.add(annotation.chosen)
+    overview_drawn = 0
+    evidence_drawn = 0
+    if args.telemetry_bulk:
+        if not cards:
+            log.warning(
+                "本地遥测库是空的，没东西可画。若还没配 Sentry CLI，先把 SENTRY_CONFIG_DIR "
+                "指到含可写 cli.db 的目录，再跑 "
+                "`python -m tools.sentry.cli telemetry --refresh`（需联网）。"
+            )
+        for card in cards:
+            if card.short_id in drawn_issues:
+                continue  # 已经被日志包出成完整流程了
+            # 本地没有证据包就自动拉取（离线 / --no-fetch-evidence 时跳过）
+            if (
+                not _has_evidence(card.short_id)
+                and args.fetch_evidence
+                and not args.telemetry_offline
+            ):
+                _fetch_evidence(card.short_id)
+            # 证据包里有日志就画完整流程，不再按标题里有没有 <节点>/<阶段> 挑：
+            # 缺后缀只是标题写法（PYTHON-V / PYTHON-11 实测，日志尾部能画出 17 节点流程）。
+            # 画不出时才退概览卡：没有日志、尾部解析不出流程、定位不到失败 task（下面两处）。
+            ev_case = _evidence_case(card.short_id)
+            if ev_case is not None:
+                task_id, task_count = _evidence_task_id(ev_case, card)
+                if task_id is None and task_count > 1:
+                    log.warning(
+                        "证据包里有 %s 个 task，定位不到失败 task（%s），退概览卡",
+                        task_count,
+                        card.short_id,
+                    )
+                else:
+                    ev_options = replace(
+                        options,
+                        issue=card.short_id,
+                        # 只画失败的那个 task：证据包尾部常连着同一次运行的多个 task
+                        # （Train → Escort → Battle → Training），整段画会接成一条链。
+                        task_id=task_id,
+                        px=None,
+                        t_from=None,
+                        t_to=None,
+                    )
+                    dispatcher = _terminal_dispatcher(ev_case, card, task_id)
+                    if dispatcher and task_id is not None:
+                        stem_extra = f"{dispatcher}_task{task_id}"
+                    else:
+                        stem_extra = dispatcher
+                    try:
+                        res = run_case(
+                            ev_case,
+                            ev_options,
+                            outdir=args.outdir,
+                            mermaid=args.mermaid,
+                            force=args.force,
+                            manifest=manifest,
+                            vision_override=None,
+                            on_error_override=None,
+                            issue_only=True,
+                            stem_extra=stem_extra,
+                        )
+                    except (FileNotFoundError, ValueError, OSError) as exc:
+                        # 证据包在但解析不出流程（例如日志尾部没有 pipeline 步骤）：
+                        # 退概览卡，而不是把这条 issue 整个丢掉
+                        log.warning(
+                            "证据包画不出流程（%s），退概览卡：%s",
+                            card.short_id,
+                            exc,
+                        )
+                    else:
+                        evidence_drawn += res is not None
+                        continue
+            try:
+                res = run_overview(
+                    card,
+                    outdir=args.outdir,
+                    mermaid=args.mermaid,
+                    force=args.force,
+                    manifest=manifest,
+                    no_log_hint=ev_case is None,
+                )
+            except (OSError, ValueError) as exc:
+                failed += 1
+                log.error("错误：%s: %s", card.short_id, exc)
+                continue
+            overview_drawn += res is not None
+
+    save_manifest(args.outdir, manifest)
+    if args.telemetry_only:
+        print(f"\n共 {telemetry_shown} 个证据包（未画图）。")
+        return 0
+    tail = f"，失败 {failed}" if failed else ""
+    parts = [f"绘制 {drawn} 个", f"跳过 {skipped} 个"]
+    if evidence_drawn:
+        parts.append(f"证据包流程 {evidence_drawn} 个")
+    if overview_drawn:
+        parts.append(f"概览 {overview_drawn} 个")
+    print(
+        f"\n完成：{('，'.join(parts))}{tail}；"
+        f"manifest → {os.path.join(args.outdir, MANIFEST_NAME)}"
+    )
+    return 1 if failed and not drawn else 0
+
