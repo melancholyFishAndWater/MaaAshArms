@@ -407,7 +407,8 @@
             "[JumpBack]BaseClickConfirm",
             "TrainGoSuccess",
             "[JumpBack]BaseBranchError",
-            "TrainClickGoButtonLight"
+            "TrainClickGoButtonLight",
+            "[JumpBack]BaseClick"
         ]
     },
     "TrainGoSuccess": {
