@@ -141,8 +141,9 @@
     },
     /* -------------------- 动作-进入出击页 -------------------- */
     // INFO 进入出击
+    // PERF
     "BattleEnterHome": {
-        "desc": "进入出击页面",
+        "desc": "[jp] 进入出击页面",
         "recognition": "OCR",
         "expected": "出击作战",
         "roi": [
@@ -152,8 +153,7 @@
             111
         ],
         "action": "Click",
-        "post_wait_freezes": 1000,
-        "next": [] // 自行在 interface 里覆写
+        "post_wait_freezes": 1000
     },
     /* -------------------- 收尾 -------------------- */
     // INFO 无法出击

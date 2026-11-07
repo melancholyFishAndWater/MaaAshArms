@@ -15,7 +15,7 @@
             // INFO 遍历候选位置
             "TrainingBranchHome",
             "TrainingEnterHome",
-            "BattleEnterHome",
+            "TrainingEnterBattleHome",
             // INFO 错误捕获
             "[JumpBack]BaseBranchError",
             "[JumpBack]BaseReturnHome"
@@ -54,6 +54,24 @@
             13,
             208,
             49
+        ]
+    },
+    /* -------------------- 动作-进入出击主页 -------------------- */
+    "TrainingEnterBattleHome": {
+        "desc": "进入出击页面",
+        "recognition": "OCR",
+        "expected": "出击作战",
+        "roi": [
+            805,
+            288,
+            460,
+            111
+        ],
+        "action": "Click",
+        "post_wait_freezes": 1000,
+        "next": [
+            "TrainingEnterHome",
+            "[JumpBack]BaseBranchError"
         ]
     },
     /* -------------------- 动作-进入训练所 -------------------- */
