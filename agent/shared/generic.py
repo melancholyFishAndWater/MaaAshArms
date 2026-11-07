@@ -184,8 +184,6 @@ def reset_error_next_father(task_id: int, task_name: str, func: Callable[[str], 
     if father is None:
         log.debug(f"{task_name} 获取父节点失败")
         return
-    elif father == task_name:  # 自环
-        return
 
     # 2) 条件清空
     if func(father):
@@ -233,7 +231,7 @@ class BaseErrorNextReco(CustomRecognition):
                 log.error(f"覆写 {name} 的 next 失败。无法自主停止异常任务")
 
 
-# 命中时 若非自环且节点候选列表不为空 清空累积次数
+# 命中时 若非自环、或不为jp节点 清空累积次数
 @AgentServer.context_sink()
 class _BaseErrorNextSink(ContextEventSink):
     def on_node_recognition(self, context, noti_type, detail) -> None:
@@ -241,9 +239,19 @@ class _BaseErrorNextSink(ContextEventSink):
         if noti_type != NotificationType.Succeeded:
             return
 
-        def func(t) -> bool:
-            data = context.get_node_data(detail.name)
-            return data is not None and len(data.get("next", [])) > 0
+        def func(father: str) -> bool:
+            # 自环 则不清空
+            if father == detail.name:
+                return False
+
+            # jp节点 则不清空
+            items = candidates(detail.task_id)
+            attr = (
+                None
+                if items is None
+                else next((i for i in items if i.name == detail.name), None)
+            )
+            return not (attr is not None and attr.jump_back)
 
         # 2) 条件重置
         reset_error_next_father(detail.task_id, detail.name, func)

@@ -201,7 +201,7 @@
             35
         ],
         "action": "Click",
-        "pre_wait_freezes": 1000,
+        "pre_wait_freezes": 2500,
         "next": [
             "BaseErrorNext",
             "EscortClickConfirm",
@@ -224,7 +224,9 @@
             73
         ],
         "action": "Click",
-        "post_wait_freezes": 1000,
+        "post_wait_freezes": 2000,
+        "timeout": 30000, // 低配机适应
+        "rate_limit": 3000,
         "next": [
             "BaseErrorNext",
             "EscortClickConfirm",
