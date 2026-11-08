@@ -212,6 +212,7 @@ class BaseErrorNextReco(CustomRecognition):
 
         # 4) 修改变量
         _times_by_name[name] = _times_by_name.get(name, 0) + 1
+        log.debug(f"{name} {_times_by_name[name]} 轮未命中")
 
         # 5) 条件覆写
         times = 10  # 连续次数
