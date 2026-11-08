@@ -53,11 +53,13 @@
             70
         ],
         "action": "Click",
+        "post_wait_freezes": 1000,
         "next": [
+            "BaseErrorNext",
             "FactoryBranchHome",
-            "BaseBranchError"
-        ],
-        "post_wait_freezes": 3000
+            "FactoryEnterHome",
+            "[JumpBack]BaseBranchError"
+        ]
     },
     /* -------------------- 主页 -------------------- */
     "FactoryBranchHome": {
