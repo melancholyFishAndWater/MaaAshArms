@@ -299,6 +299,9 @@ class ParseStats:
     parent_fallback_walk: int = 0
     parent_fallback_entry: int = 0
     parent_unknown: int = 0
+    # 由派发顺序推出来的父节点（`derived_from="nextlist"` 时才有）：不是 NextList 里记着的那条，
+    # 单列一项，不算进"父节点没找到"的账。
+    parent_derived: int = 0
     # 被 task 过滤掉的步骤时间：判定窗口要用"下一个别的任务的第一步"当右界，而 steps 里只剩本任务的
     other_task_ts: list[datetime] = field(default_factory=list)
     first_ts: datetime | None = None

@@ -328,6 +328,10 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
             len(no_version),
             len(out_of_range),
         )
+        if cards:
+            # 命中的名字要列出来：同一命令两次跑的张数会随库刷新变化（有人 resolve / 来了新问题），
+            # 只报个数看不出是"库被清了"还是"新问题进来了"
+            log.info("命中的 issue：%s", "、".join(card.short_id for card in cards))
 
     single = args.case[0] if args.case else None
     whole_dir = (

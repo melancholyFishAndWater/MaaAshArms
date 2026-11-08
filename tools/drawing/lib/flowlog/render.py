@@ -417,7 +417,15 @@ def build_notes(parsed: ParsedLog, opts: FlowOptions) -> list[Note]:
     """
     st = parsed.stats
     notes: list[Note] = []
-    if parsed.derived_from:
+    if parsed.derived_from == "nextlist":
+        notes.append(
+            Note(
+                "由 NextList 派发记录还原（这段日志里没有该 task 的识别记录）："
+                "节点顺序 = 派发顺序",
+                "derive",
+            )
+        )
+    elif parsed.derived_from:
         notes.append(Note("由识别记录还原（日志没有 PipelineTask node done）", "derive"))
         if parsed.derived_clamped:
             notes.append(Note("识别范围已按该 task 的活动区间夹住", "derive"))
