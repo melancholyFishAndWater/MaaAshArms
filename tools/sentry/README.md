@@ -80,6 +80,9 @@ python tools/drawing/cli.py flow temp/flow/Explore_2026-October-15_190806.log --
 python -m tools.sentry.cli evidence --list                  # 先看哪些 issue 真有证据
 python -m tools.sentry.cli evidence --issue PYTHON-14
 python -m tools.sentry.cli flow --case temp/evidence/PYTHON-14/debug --task-id 200000062
+
+# 9. 按版本批量出图：只画 beta.55 及之后的 issue（条件可重复，多条按「且」叠加）
+python -m tools.sentry.cli flow --telemetry-bulk --telemetry-version ">=v1.0.0-beta.55"
 ```
 
 ## 常用参数
@@ -93,7 +96,7 @@ python -m tools.sentry.cli flow --case temp/evidence/PYTHON-14/debug --task-id 2
 | `speed` | `--input`（必需，读 `fetch` 工件）、`--last N`、`--task A,B`、`--compare A..B`、`--min-count`、`--compare-min-count`、`--noise-factor`、`--chart <png>`、`--format` |
 | `evidence` | `--list` 只报告不下载、`--issue`、`--event`（历史事件，需配 `--issue`）、`--period`、`--limit`、`--max-events`、`--no-images` / `--no-log`、`--force`、`--outdir`、`--sort <newest\|oldest>`、`--keep-duplicates`、`--log-limit` |
 | `explore-csv` | `--log-out`、`--json-out`、`--no-write` |
-| `flow` | `--case`（目录 / 多卷 zip / 日志文件）、`--task-id`、`--pid`、`--from` / `--to`、`--outdir`、`--all-tasks`、`--list-cases`、`--mermaid`、`--force`、`--telemetry-offline` / `--telemetry-issue`、`--evidence-dir`、`--telemetry-bulk`、`--fetch-evidence` / `--no-fetch-evidence`、`--log-level` / `--log-file` |
+| `flow` | `--case`（目录 / 多卷 zip / 日志文件）、`--task-id`、`--pid`、`--from` / `--to`、`--outdir`、`--all-tasks`、`--list-cases`、`--mermaid`、`--force`、`--telemetry-offline` / `--telemetry-issue`、`--telemetry-version`（`>=` / `<=` / `==` 筛 issue 的版本，可重复）、`--evidence-dir`、`--telemetry-bulk`、`--fetch-evidence` / `--no-fetch-evidence`、`--log-level` / `--log-file` |
 | `telemetry` | `--refresh`、`--case`、`--issue`、`--days`、`--gap`、`--keep-resolved`、`--period`、`--limit` |
 | `selftest` | 无参数 |
 

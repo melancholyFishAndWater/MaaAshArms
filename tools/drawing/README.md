@@ -102,6 +102,11 @@ python tools/drawing/cli.py cases --telemetry-bulk
 python tools/drawing/cli.py cases --telemetry-bulk --telemetry-offline --no-fetch-evidence
 python tools/drawing/cli.py cases --telemetry-bulk \
     --evidence-dir D:/Downloads/evidence --evidence-dir D:/MaaAshArms/evidence
+
+# 只画某一段版本的 issue（条件可重复，按「且」叠加）
+python tools/drawing/cli.py cases --telemetry-bulk \
+    --telemetry-version ">=v1.0.0-beta.55" --telemetry-version "<=v1.0.0-beta.60"
+python tools/drawing/cli.py cases --telemetry-bulk --telemetry-version "==v1.0.0-beta.52"
 ```
 
 ### 参数
@@ -116,6 +121,7 @@ python tools/drawing/cli.py cases --telemetry-bulk \
 | `--no-thumbs` / `--no-parents` / `--no-overlay` / `--overlay-min` / `--mermaid` | 同 `flow` |
 | `--version` | 手动给「疑似过时」的基线版本 |
 | 遥测组（`--telemetry` … `--telemetry-only`） | 同 `flow` |
+| `--telemetry-version SPEC` | 只画版本满足条件的 issue，`>=` / `<=` / `==`（运算符可省，默认 `==`），版本写 `v1.0.0-beta.61` 或整串 release；可重复，多条按「且」叠加。口径与边界见 [docs/telemetry.md](./docs/telemetry.md) |
 | `--force` | 忽略 manifest，强制重画 |
 | `--evidence-dir DIR` | 批量模式找证据包的根目录（可重复，先给的先找；`temp/evidence` 永远兜底） |
 | `--telemetry-bulk` | 批量出图：遍历本地遥测库所有未解决 issue，每个尽量出一张 |

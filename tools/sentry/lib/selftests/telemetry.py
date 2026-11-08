@@ -1,4 +1,4 @@
-"""遥测报表用例：release 解析与排序、Wilson 区间、任务/版本/环境表、趋势与工件往返、渲染器输出、遥测索引。
+"""遥测报表用例：release 解析与排序、`--telemetry-version` 的筛选、Wilson 区间、任务/版本/环境表、趋势与工件往返、渲染器输出、遥测索引。
 
 只放用例：断言助手在 `asserts.py`，固定输入在 `fixtures.py`，入口在 `cli.py`。
 """
@@ -47,6 +47,79 @@ def check_ordering() -> list[str]:
             f"版本排序不对（应满足 beta37 < beta38 < stable）：beta37={beta37} beta38={beta38} stable={stable}"
         )
     return ["  beta37 < beta38 < stable 成立（预发布排在对应正式版之前）"]
+
+
+def check_version_filter() -> list[str]:
+    """`cases --telemetry-version` 的条件解析与版本比较（实现画图侧，输入是遥测卡片）。
+
+    比较口径必须与报表一致：沿用 `release_version_key` 的排序键，双 `@` release 里取**资源版本**
+    （不能取到 `MFA@v2.16.1`），预发布按 alpha < beta < rc < 正式版排。
+    """
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[4]
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    from tools.drawing.lib.cases.version_filter import VersionFilter, parse_version
+    from tools.sentry.lib.telemetry_index import IssueCard
+
+    lines: list[str] = []
+    # 1) 版本解析：裸版本号与整串 release 归一到同一套键与标签
+    _eq(parse_version("v1.0.0-beta.61"), ((1, 0, 0, 0, 61), "v1.0.0-beta.61"), "裸版本号的键与标签")
+    _eq(parse_version("1.0.0"), ((1, 0, 0, 2, 0), "v1.0.0"), "正式版的键与标签")
+    _eq(
+        parse_version("MFA@v2.16.1+MaaAshArms@v1.0.0-beta.61"),
+        ((1, 0, 0, 0, 61), "v1.0.0-beta.61"),
+        "整串 release 取资源版本，不能取到 MFA 版本",
+    )
+    _eq(parse_version("MFA@v2.16.1"), None, "只有客户端版本时解析失败")
+    _eq(parse_version("beta.61"), None, "缺数字段的预发布不是版本号")
+
+    # 2) 条件解析：运算符缺省 ==，`describe()` 归一成 vX.Y.Z[-pre.N]
+    _eq(VersionFilter.parse(["v1.0.0-beta.61"]).describe(), "==v1.0.0-beta.61", "缺省运算符")
+    _eq(VersionFilter.parse([">= 1.0.0"]).describe(), ">=v1.0.0", "运算符与版本之间的空格")
+    _eq(
+        VersionFilter.parse([">=v1.0.0-beta.55", "<=v1.0.0-beta.60"]).describe(),
+        ">=v1.0.0-beta.55 且 <=v1.0.0-beta.60",
+        "多个条件按且叠加",
+    )
+
+    # 3) 比较：beta < rc < 正式版；版本未知不算命中
+    at_least = VersionFilter.parse([">=v1.0.0-beta.61"])
+    hit = [
+        version
+        for version in ("v1.0.0-beta.61", "v1.0.0-beta.62", "v1.0.0-rc.1", "v1.0.0")
+        if at_least.matches(version)
+    ]
+    _eq(hit, ["v1.0.0-beta.61", "v1.0.0-beta.62", "v1.0.0-rc.1", "v1.0.0"], ">= 含 rc 与正式版")
+    _eq(at_least.matches("v1.0.0-beta.60"), False, ">= 不含更早的 beta")
+    _eq(VersionFilter.parse(["<=v1.0.0-beta.55"]).matches("v1.0.0-beta.54"), True, "<= 含更早的 beta")
+    _eq(at_least.matches(""), False, "没有 release 不算命中")
+    _eq(at_least.matches("MFA@v2.16.1"), False, "解析不出资源版本不算命中")
+
+    # 4) 分堆：命中 / release 缺失 / 版本不在范围内，三种处置不同
+    cards = [
+        IssueCard("PYTHON-A", release="MFA@v2.16.1+MaaAshArms@v1.0.0-beta.55"),
+        IssueCard("PYTHON-B", release="MFA@v2.16.1+MaaAshArms@v1.0.0-beta.61"),
+        IssueCard("PYTHON-C", release=""),
+    ]
+    kept, unknown, outside = at_least.partition(cards)
+    _eq([card.short_id for card in kept], ["PYTHON-B"], "命中的卡片")
+    _eq(unknown, ["PYTHON-C"], "release 缺失的卡片")
+    _eq(outside, ["PYTHON-A"], "版本不在范围内的卡片")
+
+    # 5) 看不懂的条件要报错并给写法，不能静默当成空筛选
+    try:
+        VersionFilter.parse([">=v1"])
+    except ValueError as error:
+        _contains(str(error), "看不懂", "版本条件看不懂时的报错")
+        _contains(str(error), ">=v1.0.0-beta.61", "报错里带写法示例")
+    else:
+        raise CheckFailure("看不懂的版本条件没有报错")
+
+    lines.append("  >=/<=/== 比较、双 @ release 取资源版本、版本未知不算命中、条件报错 各有断言")
+    return lines
 
 
 def check_wilson() -> list[str]:

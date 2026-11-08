@@ -1,7 +1,7 @@
 """`flow_cases` 的实现：证据包编排（找证据、跑批量、记 manifest、保证幂等）。
 
 入口仍是 `tools/drawing/lib/flow_cases.py`（命令行与口径见 `tools/drawing/README.md`）；
-这里按职责拆成 pack / output / runner / evidence / overview / cli，避免单文件过长。
+这里按职责拆成 pack / output / runner / evidence / overview / version_filter / cli，避免单文件过长。
 
 对外沿用拆分前 `flow_cases` 模块顶层的全部名字（`tools/sentry/` 有从原路径
 `from tools.drawing.lib.flow_cases import <名字>` 的调用，一个都不能少）。

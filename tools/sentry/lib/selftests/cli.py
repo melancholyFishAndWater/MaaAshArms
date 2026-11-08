@@ -29,6 +29,7 @@ from .telemetry import (
     check_task_rows,
     check_telemetry_index,
     check_trend,
+    check_version_filter,
     check_version_filter_messages,
     check_wilson,
 )
@@ -36,6 +37,7 @@ from .telemetry import (
 CHECKS: tuple[tuple[str, Callable[[], list[str]]], ...] = (
     ("release 解析", check_release_parsing),
     ("版本排序", check_ordering),
+    ("遥测版本筛选（--telemetry-version）", check_version_filter),
     ("Wilson 区间", check_wilson),
     ("任务表与失败标记分流", check_task_rows),
     ("运行失败率", check_release_rows),

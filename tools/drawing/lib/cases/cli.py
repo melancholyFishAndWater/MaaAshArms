@@ -41,6 +41,7 @@ from .pack import (
     load_case,
 )
 from .runner import run_case
+from .version_filter import VersionFilter, label_of
 
 log = logging.getLogger("tools.flow_cases")
 
@@ -147,6 +148,16 @@ def create_argument_parser(prog: str | None = None) -> argparse.ArgumentParser:
         "--telemetry-issue", default=None, help="指定问题号（如 PYTHON-2X），不再自动反查"
     )
     ap.add_argument(
+        "--telemetry-version",
+        dest="telemetry_version",
+        action="append",
+        metavar="SPEC",
+        help="只画版本满足条件的遥测 issue：`>=v1.0.0-beta.61` / `<=v1.0.0-beta.55` / "
+        "`==v1.0.0-beta.60`（运算符可省，默认 ==）；可重复，多条按「且」叠加（给上下界就是范围）。"
+        "排序口径 alpha < beta < rc < 正式版，所以 `>=v1.0.0-beta.61` 也命中 rc 与 v1.0.0。"
+        "release 解析不出本项目版本的 issue 不算命中；命中的 issue 版本不在范围的包（--case）跳过",
+    )
+    ap.add_argument(
         "--telemetry-days", type=int, default=14, help="本地遥测库保留最近 N 天（默认 14）"
     )
     ap.add_argument(
@@ -245,6 +256,18 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
     if args.telemetry_bulk:
         # 批量出图以遥测库为驱动，遥测必须开（默认就开，这里只是兜底 --no-telemetry）
         args.telemetry = True
+    # 版本筛选（--telemetry-version）：先解析成条件，后面统一用 `version_filter` 判定。
+    # 放在 bulk 开遥测之后，这样 `--telemetry-bulk --no-telemetry --telemetry-version …` 不算冲突。
+    version_filter: VersionFilter | None = None
+    if args.telemetry_version:
+        if not args.telemetry:
+            log.error("--telemetry-version 要开着遥测（别同时给 --no-telemetry）。")
+            return 1
+        try:
+            version_filter = VersionFilter.parse(args.telemetry_version)
+        except ValueError as exc:
+            log.error("错误：%s", exc)
+            return 1
     try:
         t_from, t_to = parse_time(args.t_from), parse_time(args.t_to)
     except SystemExit as exc:
@@ -290,6 +313,20 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
                 )
                 telemetry_data = telemetry.load_index()
     cards = telemetry.load_cards(telemetry_data) if telemetry_data else []
+    if version_filter is not None:
+        # 筛一次库，后面（批量出图 / --telemetry-only）都用筛过的这批。
+        # 两处排除分开说：`release` 缺失是数据不全，不是被条件筛掉的。
+        total = len(cards)
+        cards, no_version, out_of_range = version_filter.partition(cards)
+        log.info(
+            "版本筛选 %s：库内 %d 个 issue → 命中 %d 个"
+            "（%d 个没有可解析 release、%d 个版本不在范围内）",
+            version_filter.describe(),
+            total,
+            len(cards),
+            len(no_version),
+            len(out_of_range),
+        )
 
     single = args.case[0] if args.case else None
     whole_dir = (
@@ -345,6 +382,7 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
             jobs.append((case, options))
 
     telemetry_shown = 0
+    version_skipped = 0
     for case, case_options in jobs:
         if args.telemetry:
             annotation = telemetry.annotate(
@@ -359,9 +397,32 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
             for warning in annotation.warnings:
                 log.info("提示：%s: %s", case.label, warning)
             if args.telemetry_only:
+                # 预览也只列合条件的：否则 --telemetry-only 与真跑出来的那批对不上
+                matches = (
+                    [m for m in annotation.matches if version_filter.matches(m.card.release)]
+                    if version_filter is not None
+                    else annotation.matches
+                )
                 print(f"\n== {case.label} ==", file=sys.stdout)
-                telemetry.format_matches(annotation.matches, sys.stdout)
+                telemetry.format_matches(matches, sys.stdout)
                 telemetry_shown += 1
+                continue
+            if (
+                version_filter is not None
+                and annotation.chosen
+                and annotation.card is not None
+                and not version_filter.matches(annotation.card.release)
+            ):
+                # 只认「已经确定身份」的包（高置信命中或显式 --telemetry-issue，`chosen` 才非空）：
+                # 中/低置信的节点名匹配只进注记，不能凭它把用户点名要画的包丢掉
+                log.info(
+                    "版本筛选 %s：%s 命中的 %s 是 %s，不在范围内，跳过",
+                    version_filter.describe(),
+                    case.label,
+                    annotation.chosen,
+                    label_of(annotation.card.release),
+                )
+                version_skipped += 1
                 continue
             case_options = _with_telemetry(case_options, annotation)
         try:
@@ -388,11 +449,17 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
     evidence_drawn = 0
     if args.telemetry_bulk:
         if not cards:
-            log.warning(
-                "本地遥测库是空的，没东西可画。若还没配 Sentry CLI，先把 SENTRY_CONFIG_DIR "
-                "指到含可写 cli.db 的目录，再跑 "
-                "`python -m tools.sentry.cli telemetry --refresh`（需联网）。"
-            )
+            if version_filter is not None:
+                log.warning(
+                    "版本筛选后没有可画的 issue（%s）：放宽 --telemetry-version 或去掉它再跑。",
+                    version_filter.describe(),
+                )
+            else:
+                log.warning(
+                    "本地遥测库是空的，没东西可画。若还没配 Sentry CLI，先把 SENTRY_CONFIG_DIR "
+                    "指到含可写 cli.db 的目录，再跑 "
+                    "`python -m tools.sentry.cli telemetry --refresh`（需联网）。"
+                )
         for card in cards:
             if card.short_id in drawn_issues:
                 continue  # 已经被日志包出成完整流程了
@@ -476,6 +543,8 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
         return 0
     tail = f"，失败 {failed}" if failed else ""
     parts = [f"绘制 {drawn} 个", f"跳过 {skipped} 个"]
+    if version_skipped:
+        parts.append(f"版本筛选排除 {version_skipped} 个")
     if evidence_drawn:
         parts.append(f"证据包流程 {evidence_drawn} 个")
     if overview_drawn:
