@@ -17,6 +17,7 @@ def check_flow_diagnostics() -> list[str]:
     导出按字节裁剪会把行尾切掉一半、路径写错与"窗口内没有记录"原来报同一句话。
     只解析不画图，不依赖 Pillow。
     """
+    import json as json_module
     import sys
     from pathlib import Path as _Path
 
@@ -193,9 +194,42 @@ def check_flow_diagnostics() -> list[str]:
     )
     _eq(parsed.stats.events_dropped, 1, "task end 之外被排掉的事件数")
 
+    # 11) 连 reco 行都没有、只剩事件总线时：按该 task 的 Node.NextList 派发记录还原成一条链
+    #     （实测 PYTHON-31 的包在失败的那 95 秒里只有 `Node.*` 事件）
+    def nextlist(ts: str, kind: str, name: str, candidates: list[str], tid: int = 100) -> str:
+        details = {
+            "focus": {"name": name},
+            "list": [{"name": c, "jump_back": False} for c in candidates],
+            "name": name,
+            "task_id": tid,
+        }
+        return raw(f"{ts}", f"[msg=Node.NextList.{kind}] [details={json_module.dumps(details)}]")
+
+    chain_log = "\n".join(
+        [
+            nextlist("00:41:00.000", "Starting", "TaskMine", ["TaskMine"]),
+            nextlist("00:41:00.100", "Succeeded", "TaskMine", ["TaskMine"]),
+            nextlist("00:41:01.000", "Starting", "MineLoop", ["MineStep", "BaseBranchError"]),
+            nextlist("00:41:01.100", "Failed", "MineLoop", ["MineStep", "BaseBranchError"]),
+        ]
+    )
+    parsed = parse_log(chain_log, None, None, 100, False)
+    _eq(parsed.derived_from, "nextlist", "派发链模式的来源")
+    _eq([s.name for s in parsed.steps], ["TaskMine", "MineLoop"], "一个派发者一步")
+    _eq(parsed.steps[1].dispatcher, "TaskMine", "父节点按链上前一步")
+    _eq(parsed.steps[1].parent_source, "chain", "父节点来源 = chain")
+    _eq(parsed.stats.parent_derived, 1, "chain 来源单独记账")
+    _eq(parsed.steps[1].completed, False, "候选表一次都没成功 → 未完成")
+    _eq(parsed.steps[1].kind, "miss", "未完成的派发者画成未命中框")
+    _contains(
+        _note_text(build_notes(parsed, FlowOptions(task_id=100))),
+        "由 NextList 派发记录还原",
+        "派发链模式的注记",
+    )
+
     out.append(
-        "  回跳重排 / 仅事件模式（4 条识别合成步骤）/ 截断行 / 三类空窗口 / 严格 task 过滤 / "
-        "任务区间 各自有说法"
+        "  回跳重排 / 仅事件模式（4 条识别合成步骤）/ 派发链模式（只剩 Node.NextList）/ 截断行 / "
+        "三类空窗口 / 严格 task 过滤 / 任务区间 各自有说法"
     )
     return out
 

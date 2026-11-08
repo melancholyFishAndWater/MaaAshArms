@@ -255,22 +255,36 @@ def read_card(short_id: str) -> IssueCard | None:
     return IssueCard(**{k: v for k, v in data.items() if k in IssueCard.__dataclass_fields__})
 
 
-def _drop(short_id: str, notes: list[str], index: dict | None = None) -> None:
+def _drop(
+    short_id: str, notes: list[str], index: dict | None = None, reason: str = ""
+) -> None:
     """把一个 issue 从本地库清掉：卡片文件 + `index["issues"]` 里的条目。
 
     只删卡片文件不够——索引项还在的话，"库里有几个 issue"（索引）和"实际能画几个"
     （卡片）会对不上，`load_cards` 也会静默跳过（实测 13 vs 11）。
+
+    只在**确实清掉了东西**时才记一条：服务端列表里有、但本来就没入库的 issue（例如超过
+    `--telemetry-days`、每轮都会被扫到）不该每轮刷一条"清掉"（实测 PYTHON-Q 每跑一次刷新
+    就报一次，看着像库在反复增删）。`reason` 说明为什么清，跟着这一条一起打出来。
     """
     path = card_path(short_id)
+    removed = False
     if path.is_file():
         try:
             path.unlink()
+            removed = True
         except OSError as exc:
             notes.append(f"{short_id} 的卡片删不掉（{exc}）")
             return
     if index is not None:
-        index.get("issues", {}).pop(short_id, None)
-    notes.append(f"{short_id} 从本地遥测库清掉")
+        dropped = index.get("issues", {}).pop(short_id, None) is not None
+        removed = removed or dropped
+    if removed:
+        notes.append(
+            f"{short_id} 从本地遥测库清掉（{reason}）"
+            if reason
+            else f"{short_id} 从本地遥测库清掉"
+        )
 
 
 def write_card(card: IssueCard) -> None:
@@ -376,7 +390,7 @@ def refresh(
     if index.get("schema") != SCHEMA:
         notes.append(f"本地遥测库 schema {index.get('schema')} ≠ {SCHEMA}，整库重建")
         for old in list(index.get("issues", {})):
-            _drop(old, notes, index)
+            _drop(old, notes, index, reason="schema 变了，整库重建")
         index = {"schema": SCHEMA, "issues": {}}
 
     # 先让服务端只回未解决的（本地 `status` 字段不一定有）；老 CLI 不认 `--query` 就退回全量
@@ -416,20 +430,38 @@ def refresh(
         last_seen = _parse_time(last_seen_raw)
         # 已解决/已忽略：默认清掉（它不再代表"当前问题"，留着会让匹配误命中）
         if status in ISSUE_CLOSED_STATUSES and not keep_resolved:
-            _drop(short, notes, index)
+            _drop(short, notes, index, reason=f"status={status}")
             continue
         # 过时：最后事件早于保留期
         if last_seen is not None and last_seen < cutoff:
-            _drop(short, notes, index)
+            age = (now - last_seen).days
+            _drop(
+                short,
+                notes,
+                index,
+                reason=f"lastSeen {age} 天前，超过 --telemetry-days {days}",
+            )
             continue
         live[short] = {"status": status, "lastSeen": last_seen_raw}
 
-    # 服务器上已经没了 → 清掉
+    # 服务器上已经没了 → 清掉；但列表到了 --limit 时可能只是被截断，没出现在里面的先留着
+    truncated = len(rows) >= limit
+    kept_truncated = 0
     for short in list(index.get("issues", {})):
-        if short not in live:
-            _drop(short, notes, index)
+        if short in live:
+            continue
+        if truncated:
+            kept_truncated += 1
+            continue
+        _drop(short, notes, index, reason=f"服务端 {period} 的列表里已经没有它")
+    if kept_truncated:
+        notes.append(
+            f"服务端列表到了 --limit {limit}（可能被截断），{kept_truncated} 个不在列表里的 "
+            "issue 先留着"
+        )
 
     fetched = 0
+    fetched_ids: list[str] = []
     for short, meta in live.items():
         cached = index["issues"].get(short) or {}
         if (
@@ -446,8 +478,12 @@ def refresh(
             "fetched_at": now.isoformat(),
         }
         fetched += 1
+        fetched_ids.append(short)
     if fetched:
-        notes.append(f"本地遥测库新增/更新 {fetched} 个 issue")
+        # 名字要列出来：批量出图的张数会随之变化，只报个数字没法判断是"新问题"还是"库被清了"
+        shown = "、".join(sorted(fetched_ids)[:10])
+        more = f" 等 {fetched} 个" if len(fetched_ids) > 10 else ""
+        notes.append(f"本地遥测库新增/更新 {fetched} 个 issue：{shown}{more}")
     save_index(index)
     return index, notes
 

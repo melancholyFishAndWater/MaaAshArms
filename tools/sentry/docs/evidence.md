@@ -132,8 +132,12 @@ temp/telemetry/issues/index.json        ← {schema, issues: {<SHORT>: {status, 
 
 - `status` 是 resolved / ignored / archived → **删**（`--telemetry-keep-resolved` 才留）；
 - `lastSeen` 早于 `--telemetry-days`（默认 14 天）→ 删；
-- 不在最近一次 `issue list` 里 → 删；
+- 不在最近一次 `issue list` 里 → 删；但列表条数到了 `--limit`（可能被截断）时**先留着**，不按缺席删；
 - `index.json` 的 `schema` 变了 → 整库重建，不做迁移。
+
+每一条清除都会在提示里带**原因**（`status=resolved` / `lastSeen 27 天前，超过 --telemetry-days 14` /
+`服务端 30d 的列表里已经没有它`），新增/更新的那一批会列出问题号——批量出图的张数变了要能一眼看出
+是"库被清了"还是"新问题进来了"。清单里本来就没有的问题（例如一直在保留期外被扫到的）不再每轮刷一条"清掉"。
 
 不清理的后果很直接：一个已解决的旧 issue 留在库里，就会凭节点名抢走本该属于新 issue 的匹配。
 
