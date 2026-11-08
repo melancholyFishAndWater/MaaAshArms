@@ -4,7 +4,8 @@
     "sync:schema": "node tools/sync-schema.mjs",
     "optimize:images": "node tools/optimize-images.mjs",
     "check:refs": "python tools/validation/cli.py validate-refs --agent agent",
-    "check:refs:github": "python tools/validation/cli.py validate-refs --agent agent --format github"
+    "check:refs:github": "python tools/validation/cli.py validate-refs --agent agent --format github",
+    "lint:md": "npx markdownlint-cli2 \"docs/**/*.md\""
   },
   "devDependencies": {
     "@nekosu/maa-tools": "1.1.3",
