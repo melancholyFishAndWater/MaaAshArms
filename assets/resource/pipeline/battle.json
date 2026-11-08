@@ -286,7 +286,6 @@
             "BattleProbeFormation"
         ],
         "next": [
-            "[JumpBack]BattleBranchReplenish",
             "BattleStopActionDart",
             "BattleStopReplayLocked",
             "BattleClickReplay",
@@ -311,6 +310,7 @@
         ],
         "post_wait_freezes": 2000,
         "next": [
+            "[JumpBack]BattleBranchReplenish",
             "BattleClickReplayAttack",
             "[JumpBack]BaseBranchError"
         ]
