@@ -28,6 +28,7 @@ from .evidence import (
     _fetch_evidence,
     _has_evidence,
     _terminal_dispatcher,
+    _usable_evidence_case,
     set_evidence_dirs,
 )
 from .output import MANIFEST_NAME, load_manifest, save_manifest
@@ -474,6 +475,17 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
             # 缺后缀只是标题写法（PYTHON-V / PYTHON-11 实测，日志尾部能画出 17 节点流程）。
             # 画不出时才退概览卡：没有日志、尾部解析不出流程、定位不到失败 task（下面两处）。
             ev_case = _evidence_case(card.short_id)
+            # 版本筛选下，本地包可能是这个 issue 早先那次运行的（issue 跨多个版本）：
+            # 包内 release 不符就重拉最新事件，重拉不到才退概览卡（见 `_usable_evidence_case`）
+            stale_pack = False
+            if ev_case is not None and version_filter is not None:
+                ev_case = _usable_evidence_case(
+                    card,
+                    ev_case,
+                    version_filter,
+                    allow_fetch=args.fetch_evidence and not args.telemetry_offline,
+                )
+                stale_pack = ev_case is None
             if ev_case is not None:
                 task_id, task_count = _evidence_task_id(ev_case, card)
                 if task_id is None and task_count > 1:
@@ -529,7 +541,7 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
                     mermaid=args.mermaid,
                     force=args.force,
                     manifest=manifest,
-                    no_log_hint=ev_case is None,
+                    no_log_hint=ev_case is None and not stale_pack,
                 )
             except (OSError, ValueError) as exc:
                 failed += 1

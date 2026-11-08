@@ -1,4 +1,4 @@
-"""流程图渲染用例：没有节点记录时的诊断、概览卡（概览卡只给文字/现场图）版面。
+"""流程图渲染用例：没有节点记录时的诊断、概览卡（概览卡只给文字/现场图）版面、证据包的版本门控与失败 task 定位。
 
 只放用例：断言助手在 `asserts.py`，固定输入在 `fixtures.py`，入口在 `cli.py`。
 """
@@ -285,3 +285,114 @@ def check_overview_render() -> list[str]:
         _shutil.rmtree(tmp, ignore_errors=True)
 
     return ["概览卡渲染（PNG + .mmd）/ 文件名碰撞 / 来源标记 各自有断言"]
+
+
+def check_evidence_pack_gate() -> list[str]:
+    """证据包的版本门控与失败 task 定位（`--telemetry-version` 下老证据包怎么处理）。
+
+    两条都来自实测：
+    - 老包的 `evidence.json` 没有 `event.release`，版本只能从日志的「资源版本：」行取
+      （PYTHON-2P 的包是 beta.61，筛的是 >=beta.68，不能拿它画流程）；
+    - Sentry 只留日志尾部时，失败 task 的 `node done` 行会被截掉，`scan_tasks()` 列不出它，
+      但清单里的 `failure_task_id` 仍要用来 `--task-id` 定范围（PYTHON-2P 的包只剩 5 个
+      task、清单写的是 200000058）。
+    """
+    import json as _json
+    import shutil as _shutil
+    from pathlib import Path as _Path
+
+    root = _Path(__file__).resolve().parents[4]
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    from tools.drawing.lib.cases.version_filter import VersionFilter
+    from tools.drawing.lib.flow_cases import (
+        _evidence_task_id,
+        _pack_version,
+        _usable_evidence_case,
+        load_case,
+    )
+    from tools.sentry.lib.telemetry_index import IssueCard
+
+    tmp = root / "temp" / "flow" / "_selftest_pack"
+    _shutil.rmtree(tmp, ignore_errors=True)
+    pack = tmp / "PYTHON-ZZ"
+    (pack / "debug").mkdir(parents=True)
+
+    def raw(ts: str, msg: str) -> str:
+        return f"[2026-11-08 {ts}][INF][Px1][Tx1][PipelineTask.cpp][L1][MaaNS::T] {msg}"
+
+    def done(ts: str, name: str, tid: int) -> str:
+        return raw(
+            ts,
+            f'PipelineTask node done [result={{"name":"{name}","node_id":1,'
+            f'"reco_id":1,"completed":true}}] [task_id_={tid}]',
+        )
+
+    log_lines = [
+        raw("08:00:00.000", "资源版本：v1.0.0-beta.60"),
+        done("08:00:01.000", "TaskMine", 200000001),
+        done("08:00:02.000", "TaskOther", 200000002),
+    ]
+    (pack / "debug" / "maafw.log").write_text(
+        "\n".join(log_lines) + "\n", encoding="utf-8"
+    )
+    manifest = {
+        "schema": 1,
+        "kind": "sentry-evidence",
+        "event": {
+            "id": "evt-selftest",
+            # 老包没有 release：版本要从日志的「资源版本」行取
+            "release": "",
+            # 这个 task 不在日志的任务列表里（尾部被截断），仍要用来 --task-id 定范围
+            "failure_task_id": 200000099,
+        },
+    }
+    (pack / "evidence.json").write_text(
+        _json.dumps(manifest, ensure_ascii=False), encoding="utf-8"
+    )
+    try:
+        case = load_case([str(pack / "debug")])
+        card = IssueCard("PYTHON-ZZ")
+        _eq(
+            _pack_version(case),
+            "v1.0.0-beta.60",
+            "清单没 release 时取日志的「资源版本」行",
+        )
+        _eq(
+            _evidence_task_id(case, card),
+            (200000099, 2),
+            "清单的 failure_task_id 不在任务列表里也要用来定范围",
+        )
+        _eq(
+            _usable_evidence_case(
+                card, case, VersionFilter.parse([">=v1.0.0-beta.68"]), allow_fetch=False
+            ),
+            None,
+            "版本不符且不许重拉时不用这个包",
+        )
+        _eq(
+            _usable_evidence_case(
+                card, case, VersionFilter.parse(["<=v1.0.0-beta.61"]), allow_fetch=False
+            ),
+            case,
+            "版本相符时照用",
+        )
+        # 清单里有 release 时优先用它（比日志的「资源版本」更贴那次事件）
+        manifest["event"]["release"] = "MFA@v2.16.1+MaaAshArms@v1.0.0-beta.70"
+        (pack / "evidence.json").write_text(
+            _json.dumps(manifest, ensure_ascii=False), encoding="utf-8"
+        )
+        _eq(_pack_version(case), "v1.0.0-beta.70", "清单的 event.release 优先")
+        _eq(
+            _usable_evidence_case(
+                card, case, VersionFilter.parse([">=v1.0.0-beta.68"]), allow_fetch=False
+            ),
+            case,
+            "清单 release 落入范围时照用",
+        )
+    finally:
+        _shutil.rmtree(tmp, ignore_errors=True)
+
+    return [
+        "老包版本取日志「资源版本」/ 清单 release 优先 / 版本不符退包 / 截断包的失败 task 靠清单定位 各有断言"
+    ]

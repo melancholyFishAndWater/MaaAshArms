@@ -100,13 +100,19 @@ flowchart LR
   `maafw.log` 尾部 + `on_error/`）画**完整流程图**——证据包就是那次运行的日志，不是"预览"。
   **本地没有就自动调 `evidence` 拉取**（默认开，需联网）；`--no-fetch-evidence` 关掉，
   `--telemetry-offline` 时也不拉。
+- **筛选版本时先核对证据包的版本**：issue 跨多个版本，本地包可能是它早先那次运行的。包内版本
+  （清单 `event.release` → 日志「资源版本：」行）不在筛选范围内就**按最新事件重拉**；重拉不了
+  （离线 / `--no-fetch-evidence` / 包不在 `temp/evidence` 下）或重拉后仍不符 → 这个包不用来画流程，
+  退概览卡并在终端说明（判据：`cases/evidence.py` 的 `_usable_evidence_case`）。
 - **证据包从哪找**：默认 `temp/evidence/<问题号>/debug`。`--evidence-dir DIR` 可重复，按给的
   顺序往后找，最后才回到默认目录；每个根下依次认 `<DIR>/<问题号>/debug`、`<DIR>/<问题号>/`
   直接放日志、根目录名本身就是问题号，以及 `<DIR>` 下文件名带问题号的归档（多卷一起给，
   目录优先于归档）。
 - **只画失败的那个 task**：证据包尾部常连着同一次运行的多个 task
-  （Train → Escort → Battle → Training），整段画会把它们接成一条链。定位顺序是
-  `failure_task_id`（在日志里才用）→ 失败节点所在的 task → 任务入口名；都定位不到、
+  （Train → Escort → Battle → Training），整段画会把它们接成一条链。定位顺序是卡片或包清单里的
+  `failure_task_id`（在日志的任务列表里时）→ 失败节点所在的 task → 任务入口名 → **包清单里的
+  `failure_task_id` 即便不在任务列表里也用它**（Sentry 只留日志尾部，`node done` 被截掉的那个 task
+  仍能靠失败事件的活动区间夹住，实测 PYTHON-2P 按 200000058 画出 45 步）；都定位不到、
   且日志里多于一个 task 时退概览卡，不混画。
 - **终端是 `BaseTaskStopError` 时按上游派发者分桶**：文件名带 `BaseErrorNext` 的派发者与 task，
   例如 `PYTHON-2H_EscortEnterHome_task200000004.png`——同一个 issue 的不同运行/任务上游不同，

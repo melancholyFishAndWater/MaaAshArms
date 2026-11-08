@@ -63,6 +63,7 @@ from .render import (
 from .stale import (
     VERSION_SOURCE_CLI,
     VERSION_SOURCE_TELEMETRY,
+    resource_version,
 )
 
 __all__ = [
@@ -81,6 +82,7 @@ __all__ = [
     "render_overview",
     "scan_tasks",
     "stale_summary",
+    "resource_version",
     "_first_log_ts",
     "_open_log_lines",
     "build_notes",

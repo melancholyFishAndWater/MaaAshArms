@@ -16,7 +16,6 @@ from .pack import (
     PART_RE,
     RELEASE_VERSION_RE,
     EVIDENCE_ROOT,
-    _EVIDENCE_DIRS,
     resource_version_from_release,
     _version_from_evidence,
     _WARNED_LOG_DIRS,
@@ -35,6 +34,7 @@ from .pack import (
     log_stamp,
     _fmt_local,
     _telemetry_module,
+    _pack_version,
 )
 
 from .output import (
@@ -53,7 +53,9 @@ from .runner import (
 )
 
 from .evidence import (
+    _EVIDENCE_DIRS,
     _evidence_on_error,
+    _usable_evidence_case,
     set_evidence_dirs,
     _candidates_in,
     _zips_in,
@@ -101,11 +103,13 @@ __all__ = [
     "_fmt_local",
     "_has_evidence",
     "_pick_log",
+    "_pack_version",
     "_read_log_from_zips",
     "_safe_part",
     "_stale_record",
     "_telemetry_module",
     "_terminal_dispatcher",
+    "_usable_evidence_case",
     "_version_from_evidence",
     "_warn_extra_logs",
     "_with_telemetry",

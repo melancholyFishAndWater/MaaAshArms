@@ -14,11 +14,14 @@ import re
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from tools.drawing.lib.flow_from_log import (
     FlowOptions,
     MediaResolver,
     _is_zip,
+    _open_log_lines,
+    resource_version,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
@@ -37,7 +40,6 @@ RELEASE_VERSION_RE = re.compile(r"v[0-9][0-9A-Za-z.\-]*")
 # 证据包根目录：默认 `temp/evidence`（`evidence` 命令落到这里）；`--evidence-dir` 可再加几个，
 # 搜索顺序是用户给的在前、默认在最后。
 EVIDENCE_ROOT = str(REPO_ROOT / "temp" / "evidence")
-_EVIDENCE_DIRS: list[str] = [EVIDENCE_ROOT]
 
 
 def resource_version_from_release(release: str) -> str | None:
@@ -52,15 +54,15 @@ def resource_version_from_release(release: str) -> str | None:
     return matches[-1] if matches else None
 
 
-def _version_from_evidence(case: Case) -> str | None:
-    """遥测证据包（Sentry 拉下来的）里记着那次运行的 release：`evidence.json` 的 `event.release`。
+def _evidence_manifest(case: Case) -> dict[str, Any]:
+    """遥测证据包的清单（`evidence.json`）读成 dict；不是遥测证据包或读不出时返回 `{}`。
 
-    比从 maafw.log 抠「资源版本」可靠——原生 maafw.log 根本没有那行，同装 MFA 界面日志
-    也不会被 `evidence` 下载进来。证据包目录按 issue 短号建（`temp/evidence/<SHORT-ID>/`），
-    所以 `debug/` 的上一级就是 evidence.json 所在目录。
+    证据包目录按 issue 短号建（`temp/evidence/<SHORT-ID>/`），`debug/` 的上一级就是它。
+    清单里的 `event` 段记着这包属于哪次运行（`event.id` / `event.release` /
+    `failure_task_id`），版本基线与失败 task 定位都从这里取。
     """
     if not case.root:
-        return None
+        return {}
     parent = os.path.dirname(case.root)
     cands: list[str] = []
     if ISSUE_RE.match(os.path.basename(parent) or ""):
@@ -74,9 +76,45 @@ def _version_from_evidence(case: Case) -> str | None:
             data = json.loads(Path(path).read_text(encoding="utf-8", errors="replace"))
         except (OSError, json.JSONDecodeError):
             continue
-        rel = ((data.get("event") or {}).get("release")) or ""
-        return resource_version_from_release(rel)
-    return None
+        if isinstance(data, dict):
+            return data
+    return {}
+
+
+def _version_from_evidence(case: Case) -> str | None:
+    """遥测证据包（Sentry 拉下来的）里记着那次运行的 release：`evidence.json` 的 `event.release`。
+
+    比从 maafw.log 抠「资源版本」可靠——原生 maafw.log 平时没有那行。
+    """
+    event = _evidence_manifest(case).get("event") or {}
+    return resource_version_from_release(str(event.get("release") or ""))
+
+
+def _version_from_log(case: Case) -> str | None:
+    """日志自己报的「资源版本：vX.Y.Z」：老证据包的清单里没有 `release` 字段时的兜底。
+
+    一份日志里可能有多条（运行中更新过资源），取**最后一条**——与「疑似过时」的基线口径一致
+    （`flowlog/stale.py:_log_version_of`）。原生 maafw.log 平时没有这行，MFA 更新资源时才打，
+    所以拿不到就返回 None，不要猜。
+    """
+    found: str | None = None
+    try:
+        for line in _open_log_lines(case.log_source()):
+            version = resource_version(line)
+            if version:
+                found = version
+    except (OSError, TypeError):
+        return None
+    return found
+
+
+def _pack_version(case: Case) -> str | None:
+    """这个证据包属于哪次运行的哪个资源版本：清单的 `event.release` → 日志的「资源版本」行。
+
+    按版本筛 issue 时用它判断这个包还能不能用来画流程
+    （见 `cases/evidence.py` 的 `_usable_evidence_case`）。
+    """
+    return _version_from_evidence(case) or _version_from_log(case)
 
 
 _WARNED_LOG_DIRS: set[str] = set()
