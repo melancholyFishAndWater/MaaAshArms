@@ -232,7 +232,7 @@ class BaseErrorNextReco(CustomRecognition):
                 log.error(f"覆写 {name} 的 next 失败。无法自主停止异常任务")
 
 
-# 命中时 若非自环、或不为jp节点 清空累积次数
+# 命中时 若非自环、或不为jp节点、或(是jp且next不为空) 清空累积次数
 @AgentServer.context_sink()
 class _BaseErrorNextSink(ContextEventSink):
     def on_node_recognition(self, context, noti_type, detail) -> None:
@@ -245,14 +245,22 @@ class _BaseErrorNextSink(ContextEventSink):
             if father == detail.name:
                 return False
 
-            # jp节点 则不清空
+            # 提取命中节点
             items = candidates(detail.task_id)
             attr = (
                 None
                 if items is None
                 else next((i for i in items if i.name == detail.name), None)
             )
-            return not (attr is not None and attr.jump_back)
+
+            # 是jp
+            if attr is not None and attr.jump_back:
+                # next为空 则不清空
+                data = context.get_node_data(detail.name)
+                return data is not None and len(data.get("next", [])) > 0
+
+            # 不是jp
+            return True
 
         # 2) 条件重置
         reset_error_next_father(detail.task_id, detail.name, func)
