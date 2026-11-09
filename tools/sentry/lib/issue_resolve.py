@@ -1,6 +1,7 @@
 """按提交正文关闭 Sentry issue：`pre-push` 钩子。
 
-    python -m tools.sentry.cli issue-resolve            # 读 stdin 的 pre-push 行，只列清单
+    python -m tools.sentry.cli issue-resolve            # 手动：按最新的本地 v* tag 列清单
+    python -m tools.sentry.cli issue-resolve --tag v1.0.0-beta.71   # 指定 tag
     python -m tools.sentry.cli issue-resolve --apply    # 真的把 issue 置 resolved
     python -m tools.sentry.cli issue-resolve --install  # 写 .git/hooks/pre-push（默认 list-only）
     python -m tools.sentry.cli issue-resolve --check    # 看配置 / hook 模式 / token 来源
@@ -10,6 +11,10 @@
 用 local oid（不是 tag 名，annotated tag 的 oid 是 tag object）算
 `<上一个 v* tag>..<新 tag>` 的提交正文，只认行首 `Fixes` / `Closes` / `Resolves` 后面跟的
 `PYTHON-<ID>`，再逐个把 issue 置 resolved。
+
+**手动运行**（stdin 一个 ref 行都没有，`pre-push` 不会这样）默认按**最新的本地 `v*` tag**
+处理：人刚建的 tag 就是最新那个，先跑一遍看清单，确认了再加 `--apply`；想指定别的 tag 用
+`--tag NAME`。`--ref` / `--stdin-file` 仍然只模拟 pre-push 输入。
 
 ## 为什么是本地 hook 而不是 CI
 
@@ -145,6 +150,18 @@ def choose_previous_tag(sorted_tags: list[str], current: str) -> str | None:
     return None
 
 
+def pick_latest_tag(names: Sequence[str]) -> str | None:
+    """`git tag --sort=-creatordate --list v*` 的输出里第一个 `v*` tag（就是最新的）。
+
+    只认 `v` 开头：`--list v*` 理论上不会回别的名字，多一层判断免得把
+    `git tag` 的回显/颜色码当 tag。
+    """
+    for name in names:
+        if name.startswith("v") and len(name) > 1:
+            return name
+    return None
+
+
 def describe_args(oid: str) -> list[str]:
     return ["describe", "--tags", "--match", "v*", "--abbrev=0", f"{oid}^"]
 
@@ -221,17 +238,30 @@ def config_target() -> tuple[str, str] | None:
 
 def previous_v_tag(tag: str, oid: str) -> str | None:
     # annotated tag 的 oid 是 tag object，先剥到 commit；lightweight tag 原样返回
-    peeled = run_git(["rev-parse", f"{oid}^{{commit}}"])
-    commit = (
-        peeled.stdout.strip().splitlines()[0]
-        if peeled.returncode == 0 and peeled.stdout.strip()
-        else oid
-    )
+    commit = tag_oid(oid) or oid
     result = run_git(describe_args(commit))
     if result.returncode == 0 and result.stdout.strip():
         return result.stdout.strip().splitlines()[0]
     listed = run_git(["tag", "--sort=-creatordate", "--list", "v*"])
     return choose_previous_tag(listed.stdout.split(), tag)
+
+
+def tag_oid(name: str) -> str | None:
+    """tag 名（或任意对象名）→ commit oid；annotated tag 剥到 commit，读不到返回 None。"""
+    result = run_git(["rev-parse", f"{name}^{{commit}}"])
+    text = result.stdout.strip()
+    if result.returncode != 0 or not text:
+        warn(f"读不到 {name} 这个对象（tag 不在本地？先 git fetch --tags）")
+        return None
+    return text.splitlines()[0]
+
+
+def latest_local_tag() -> str | None:
+    """本地最新的 `v*` tag（`--sort=-creatordate`）；一个都没有返回 None。"""
+    listed = run_git(["tag", "--sort=-creatordate", "--list", "v*"])
+    if listed.returncode != 0:
+        return None
+    return pick_latest_tag(listed.stdout.split())
 
 
 def collect_issue_ids(tags: list[tuple[str, str]], prefix: str) -> list[str]:
@@ -365,8 +395,39 @@ def read_ref_lines(args: argparse.Namespace) -> list[str]:
 
 
 def hook_mode(args: argparse.Namespace) -> int:
-    """`pre-push` 调用时的主路径；**恒返回 0**，不阻断 push。"""
-    tags = parse_ref_lines(read_ref_lines(args))
+    """`pre-push` 调用时的主路径；**恒返回 0**，不阻断 push。
+
+    三条取 tag 的路，按优先级：
+
+    1. `--tag NAME`：直接处理这个本地 tag（不读 stdin）；
+    2. stdin 的 pre-push 行：只认 remote oid 全零的**新建** `v*` tag；
+    3. stdin 一个 ref 行都没有（`pre-push` 不会这样，只会是人手动跑）→ 处理**最新的本地
+       `v*` tag**。先出清单，确认了再加 `--apply`。
+
+    第 3 条只在"完全没有输入"时触发：stdin 里**有行但没有新建 tag**时仍是原来的跳过——
+    推送分支、更新已有 tag 都不该把本地最新 tag 的 issue 再关一遍。
+    """
+    if args.tag:
+        tags: list[tuple[str, str]] = []
+        for name in args.tag:
+            oid = tag_oid(name)
+            if oid is not None:
+                tags.append((name, oid))
+        if not tags:
+            return 0
+    else:
+        lines = read_ref_lines(args)
+        tags = parse_ref_lines(lines)
+        if not tags and not lines:
+            latest = latest_local_tag()
+            if latest is None:
+                say("本地没有 v* tag，跳过")
+                return 0
+            oid = tag_oid(latest)
+            if oid is None:
+                return 0
+            say(f"没有 pre-push 输入（手动运行）：按最新的本地 tag {latest} 处理")
+            tags = [(latest, oid)]
     if not tags:
         say("没有新建的 v* tag，跳过")
         return 0
@@ -489,6 +550,14 @@ def create_argument_parser(prog: str | None = None) -> argparse.ArgumentParser:
         default=[],
         metavar="LINE",
         help="模拟一条 pre-push stdin 行，可重复",
+    )
+    parser.add_argument(
+        "--tag",
+        action="append",
+        default=[],
+        metavar="NAME",
+        help="直接处理这个本地 v* tag（可重复），不读 pre-push stdin；"
+        "不传且 stdin 一个 ref 行都没有时，按最新的本地 v* tag 处理",
     )
     parser.add_argument("--stdin-file", metavar="PATH", help="从文件读 ref 行（测试用）")
     parser.add_argument(

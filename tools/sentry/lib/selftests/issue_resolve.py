@@ -29,6 +29,7 @@ def check_issue_resolve() -> list[str]:
         log_args,
         merge_ids,
         parse_ref_lines,
+        pick_latest_tag,
         shortids_url,
     )
 
@@ -86,6 +87,16 @@ def check_issue_resolve() -> list[str]:
     )
     _eq(choose_previous_tag(tags, "v1.0.0-beta.69"), None, "最早的 tag 没有上一个")
     _eq(choose_previous_tag(tags, "v9.9.9"), None, "不在列表里的 tag")
+
+    # 手动运行按"最新本地 tag"走：`git tag --sort=-creatordate` 的输出第一个就是它
+    _eq(
+        pick_latest_tag(["v1.0.0-beta.71", "v1.0.0-beta.70", "v1.0.0-beta.69"]),
+        "v1.0.0-beta.71",
+        "最新 tag 取列表第一个",
+    )
+    _eq(pick_latest_tag(["v1.0.0"]), "v1.0.0", "只有一个 tag")
+    _eq(pick_latest_tag([]), None, "没有 tag")
+    _eq(pick_latest_tag(["beta.1", "v1.0.0"]), "v1.0.0", "忽略非 v 开头的名字")
 
     _eq(describe_args(sha)[-1], f"{sha}^", "describe 从父提交往回找 tag")
     _eq(log_args("v1", sha), ["log", f"v1..{sha}", "--format=%B"], "提交范围与格式")
