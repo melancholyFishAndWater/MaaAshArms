@@ -13,6 +13,7 @@ import os
 import re
 import zipfile
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -149,31 +150,61 @@ def _warn_extra_logs(directory: str, chosen: str) -> None:
         )
 
 
-def _pick_log(directory: str) -> str | None:
-    """目录里的日志文件：先认确切名字（`LOG_NAMES` 顺序），没有再认轮转名（取 mtime 最新）。
+def _pick_log(directory: str, *, task_id: int | None = None) -> str | None:
+    """目录里的日志文件：先认确切名字（`LOG_NAMES` 顺序），没有再认轮转名。
 
     实测用户目录里只有轮转后的 `maafw.bak.2026.11.02-08.57.51.341.log`，按确切名字找会报
     "没找到带日志的证据包"——明明有日志。轮转名归一主多份时按 mtime 排序，最新的那份才是
     当前这一次运行；多份时用 `_warn_extra_logs` 把"忽略了哪几份"打出来。
+
+    **给了 `task_id` 且目录里有多份日志时按内容选**：挑日志里真有这个 task
+    （`task_id_=<id>` / `"task_id":<id>`）的那一份。不按文件名/mtime 挑：本地 release 的
+    轮转日志名是**轮转时刻**、不是内容区间（实测 `maafw.bak.2026.11.08-13.22.36.708.log`
+    装的是 11-07 20:59 → 11-08 13:22），同一小时里可能好几份。
     """
-    chosen: str | None = None
-    for name in LOG_NAMES:
-        cand = os.path.join(directory, name)
-        if os.path.isfile(cand):
-            chosen = cand
-            break
-    if chosen is None:
-        rotated = [
-            os.path.join(directory, name)
-            for name in os.listdir(directory)
-            if ROTATED_LOG_RE.match(name)
-            and os.path.isfile(os.path.join(directory, name))
-        ]
-        if not rotated:
-            return None
-        chosen = max(rotated, key=os.path.getmtime)
+    exact = [os.path.join(directory, name) for name in LOG_NAMES]
+    exact = [path for path in exact if os.path.isfile(path)]
+    try:
+        names = sorted(os.listdir(directory))
+    except OSError:
+        names = []
+    rotated = [
+        os.path.join(directory, name)
+        for name in names
+        if ROTATED_LOG_RE.match(name) and os.path.isfile(os.path.join(directory, name))
+    ]
+    rotated = [path for path in rotated if path not in exact]
+    if not exact and not rotated:
+        return None
+    chosen: str | None = exact[0] if exact else max(rotated, key=os.path.getmtime)
+    if task_id is not None and len(exact) + len(rotated) > 1:
+        hit = _log_with_task(exact + rotated, task_id)
+        if hit is not None:
+            chosen = hit
+            log.info(
+                "提示：目录 %s 有 %d 份日志，按 task %s 选了 %s",
+                directory,
+                len(exact) + len(rotated),
+                task_id,
+                os.path.basename(chosen),
+            )
     _warn_extra_logs(directory, chosen)
     return chosen
+
+
+def _log_with_task(paths: list[str], task_id: int) -> str | None:
+    """这些日志里，哪一份含这个 task 的归属记录；不止一份时返回 None（不猜）。"""
+    marks = (f"task_id_={task_id}", f'"task_id":{task_id}', f"task_id={task_id}")
+    hits: list[str] = []
+    for path in paths:
+        try:
+            with open(path, encoding="utf-8", errors="replace") as fh:
+                text = fh.read()
+        except OSError:
+            continue
+        if any(mark in text for mark in marks):
+            hits.append(path)
+    return hits[0] if len(hits) == 1 else None
 
 
 @dataclass
@@ -235,6 +266,8 @@ class Case:
     def describe(self) -> str:
         if self.root:
             return self.root
+        if self.log_path:
+            return self.log_path
         return f"归档 {len(self.packages)} 卷"
 
 
@@ -280,8 +313,11 @@ def _read_log_from_zips(packages: list[str]) -> tuple[str | None, list[str]]:
         return None, bad
 
 
-def load_case(case_arg: list[str]) -> Case:
-    """把 --case 的入参变成 Case：目录、一个/多个归档、或单份日志文件。"""
+def load_case(case_arg: list[str], *, task_id: int | None = None) -> Case:
+    """把 --case 的入参变成 Case：目录、一个/多个归档、或单份日志文件。
+
+    `task_id` 只用于"目录里有多份日志"时按内容挑文件（`_pick_log`）；归档与单文件不受影响。
+    """
     items = [str(p) for p in case_arg]
     dirs = [p for p in items if os.path.isdir(p)]
     zips = [p for p in items if os.path.isfile(p) and _is_zip(p)]
@@ -294,11 +330,11 @@ def load_case(case_arg: list[str]) -> Case:
 
     if dirs:
         root = dirs[0]
-        log = _pick_log(root)
-        if log:
+        log_file = _pick_log(root, task_id=task_id)
+        if log_file:
             return Case(
                 label=os.path.basename(os.path.normpath(root)) or "case",
-                log_path=log,
+                log_path=log_file,
                 root=root,
             )
         raise FileNotFoundError(
@@ -462,16 +498,27 @@ def log_stamp(case: Case, options: FlowOptions) -> str | None:
         return None
     m = re.search(r"\[(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})", text)
     return "".join(m.groups()) if m else None
+def _local_time(text: str) -> datetime | None:
+    """Sentry 的 UTC 时刻（`...Z`）→ 本地时区的 naive datetime；解析不出返回 None。
+
+    画图侧用它把"失败发生在本地几点"算出来（日志里的时间戳是本地时间）。
+    """
+    if not text:
+        return None
+    telemetry = _telemetry_module()
+    ts = telemetry._parse_time(str(text))
+    if ts is None:
+        return None
+    return (ts + telemetry._utc_offset()).replace(tzinfo=None)
+
+
 def _fmt_local(text: str) -> str:
     """Sentry 的时刻是 UTC（`...Z`），概览卡上显示**本地时间**。
 
     复用遥测模块的解析/偏移 helper（模块级、稳定）；解析不出返回占位符。
     """
-    telemetry = _telemetry_module()
-    ts = telemetry._parse_time(text)
-    if ts is None:
-        return "—"
-    return (ts + telemetry._utc_offset()).strftime("%Y-%m-%d %H:%M:%S")
+    local = _local_time(text)
+    return local.strftime("%Y-%m-%d %H:%M:%S") if local is not None else "—"
 
 
 def _telemetry_module():

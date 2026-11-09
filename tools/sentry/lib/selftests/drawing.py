@@ -8,7 +8,7 @@ from __future__ import annotations
 import sys
 
 
-from .asserts import _eq, _contains, _note_text
+from .asserts import CheckFailure, _eq, _contains, _note_text
 def check_flow_diagnostics() -> list[str]:
     """流程图解析的诊断行为：每种"画不出来/画得不全"的输入都要有自己的说法。
 
@@ -376,6 +376,22 @@ def check_evidence_pack_gate() -> list[str]:
             f'"reco_id":1,"completed":true}}] [task_id_={tid}]',
         )
 
+    def nextlist(ts: str, name: str, tid: int) -> str:
+        details = {
+            "focus": {"name": name},
+            "list": [{"name": name}],
+            "name": name,
+            "task_id": tid,
+        }
+        return raw(ts, f"[msg=Node.NextList.Starting] [details={_json.dumps(details)}]")
+
+    def reco(ts: str, name: str) -> str:
+        return raw(
+            ts,
+            f'reco [result={{"name":"{name}","algorithm":"OCR","box":null,'
+            f'"reco_id":1,"detail":{{}}}}]',
+        )
+
     log_lines = [
         raw("08:00:00.000", "资源版本：v1.0.0-beta.60"),
         done("08:00:01.000", "TaskMine", 200000001),
@@ -438,9 +454,200 @@ def check_evidence_pack_gate() -> list[str]:
             case,
             "清单 release 落入范围时照用",
         )
+
+        # 任务级失败（标题没有 `(节点/阶段)`，如 `Maa task failed: Replays`）：靠 `Task<label>`
+        # 认任务；同一入口在日志里跑过多遍时，要挑清单里那次失败时刻附近的那一遍
+        from datetime import timedelta
+
+        from tools.drawing.lib.cases.pack import _local_time
+
+        plain = IssueCard("PYTHON-ZY", "Maa task failed: Replays")
+        _eq(plain.label, "Replays", "任务级失败的 label")
+        _eq(plain.node_name, "", "任务级失败没有节点名")
+
+        base = _local_time("2026-11-08T00:00:05Z")
+        assert base is not None
+
+        def stamp(offset_seconds: int) -> str:
+            return (base + timedelta(seconds=offset_seconds)).strftime("%H:%M:%S.%f")[:-3]
+
+        zy = tmp / "PYTHON-ZY"
+        (zy / "debug").mkdir(parents=True)
+        (zy / "debug" / "maafw.log").write_text(
+            "\n".join(
+                [
+                    nextlist(stamp(-15), "TaskReplays", 200000098),
+                    reco(stamp(-5), "ReplaysBranchFormation"),
+                    nextlist(stamp(2), "ReplaysBranchFormation", 200000098),
+                    # 同一入口 10 分钟后又跑了一遍（重开一局）：不该被当成这次失败
+                    nextlist(stamp(600), "TaskReplays", 200000097),
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (zy / "evidence.json").write_text(
+            _json.dumps(
+                {
+                    "schema": 1,
+                    "kind": "sentry-evidence",
+                    "event": {"id": "evt-zy", "received": "2026-11-08T00:00:05Z"},
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        _eq(
+            _evidence_task_id(load_case([str(zy / "debug")]), plain),
+            (200000098, 2),
+            "任务级失败按 Task<label> 认任务，且挑失败时刻附近那次",
+        )
     finally:
         _shutil.rmtree(tmp, ignore_errors=True)
 
     return [
-        "老包版本取日志「资源版本」/ 清单 release 优先 / 版本不符退包 / 截断包的失败 task 靠清单定位 各有断言"
+        "老包版本取日志「资源版本」/ 清单 release 优先 / 版本不符退包 / 截断包的失败 task 靠清单定位 / "
+        "任务级失败按 Task<label> 与失败时刻认任务 各有断言"
+    ]
+
+
+def check_local_release_assist() -> list[str]:
+    """本地 release 辅助只按**内容**认同一次运行（不按时间、不按文件名）。
+
+    实测的坑：本地轮转日志的文件名是"轮转时刻"不是内容区间，同一小时里两份日志都可能盖住
+    同一个时刻——按时间挑就会挑错。这里把"同一时刻、同 task 号、不同内容"的两份日志摆在一起，
+    断言只会挑内容逐字对得上的那份；两份都对得上时认不出就不猜（返回 None）。
+    """
+    import os as _os
+    import shutil as _shutil
+    from pathlib import Path as _Path
+
+    root = _Path(__file__).resolve().parents[4]
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    from tools.drawing.lib.cases.local_release import LocalRelease
+    from tools.drawing.lib.cases.pack import load_case
+
+    tmp = root / "temp" / "flow" / "_selftest_local"
+    _shutil.rmtree(tmp, ignore_errors=True)
+    pack_dir = tmp / "pack" / "PYTHON-ZZ" / "debug"
+    release_debug = tmp / "release" / "debug"
+    pack_dir.mkdir(parents=True)
+    release_debug.mkdir(parents=True)
+    (release_debug / "vision").mkdir()
+    (release_debug / "on_error").mkdir()
+
+    def raw(ts: str, msg: str, px: str = "Px1") -> str:
+        return f"[2026-11-09 {ts}][INF][{px}][Tx1][PipelineTask.cpp][L1][MaaNS::T] {msg}"
+
+    def done(ts: str, name: str, tid: int, px: str = "Px1") -> str:
+        return raw(
+            ts,
+            f'PipelineTask node done [result={{"name":"{name}","node_id":1,'
+            f'"reco_id":1,"completed":true}}] [task_id_={tid}]',
+            px=px,
+        )
+
+    def timeout(ts: str, node: str) -> str:
+        return raw(ts, f"Task timeout [pretask.name={node}] [duration_since(start_clock)=21140ms]")
+
+    pack_lines = [
+        done("10:00:10.000", "TaskMine", 200000001),
+        done("10:00:20.000", "MineStep", 200000001),
+        timeout("10:00:30.000", "NodeX"),
+    ]
+    (pack_dir / "maafw.log").write_text("\n".join(pack_lines) + "\n", encoding="utf-8")
+    # 同一时刻、同 task 号，但内容不是这次运行：名字/内容都不同
+    (release_debug / "maafw.log").write_text(
+        "\n".join(
+            [
+                done("10:00:10.000", "TaskOther", 200000001),
+                done("10:00:20.000", "OtherStep", 200000001),
+                timeout("10:00:30.000", "NodeY"),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    # 内容逐字相同的那份：文件名看起来更旧，也必须是它
+    true_log = release_debug / "maafw.bak.2026.11.09-11.00.00.000.log"
+    true_log.write_text(
+        "\n".join(pack_lines + [done("10:00:40.000", "MineEnd", 200000001)]) + "\n",
+        encoding="utf-8",
+    )
+    # 本机面板日志：只有产生这个事件的那台机器会打这一行
+    event_id = "0123456789abcdef0123456789abcdef"
+    panel = tmp / "release" / "logs"
+    panel.mkdir()
+    (panel / "log-20261109.log").write_text(
+        "[2026-11-09 10:00:30.000][INF] [cfg=Default][inst=配置 1/default][src=Worker]"
+        f" [op=ExecuteTaskQueue] [Telemetry] 失败事件已加入发送队列：event_id={event_id}\n",
+        encoding="utf-8",
+    )
+    try:
+        local = LocalRelease.discover(str(tmp / "release"))
+        _eq(local is not None, True, "本地 release 可发现")
+        if local is None:
+            raise CheckFailure("本地 release 没被发现")
+        _eq(
+            local.panel_event(event_id) is not None,
+            True,
+            "面板日志能按 event_id 查到这条失败",
+        )
+        pack = load_case([str(pack_dir)])
+        run = local.find(pack, 200000001)
+        _eq(run is not None, True, "内容对得上就认出来")
+        if run is not None:
+            _eq(
+                _os.path.basename(run.log_path),
+                true_log.name,
+                "挑内容逐字相同的那份，不按文件名/时间",
+            )
+            _eq(bool(run.vision_dir), True, "同目录的 vision 一并带上")
+
+        # 给了本机事件号也照样按内容认：不因为事件号就跳过对账
+        with_event = local.find(pack, 200000001, event_id=event_id)
+        _eq(
+            with_event is not None and _os.path.basename(with_event.log_path) == true_log.name,
+            True,
+            "事件号 + 内容都对上 → 认同一份",
+        )
+
+        # 只有时间与 task 号相同、内容不同的包：不许认（另一个用户同一时刻的运行）
+        other_pack = tmp / "pack2" / "PYTHON-YY" / "debug"
+        other_pack.mkdir(parents=True)
+        (other_pack / "maafw.log").write_text(
+            "\n".join(
+                [
+                    done("10:00:11.000", "TaskNope", 200000001),
+                    done("10:00:21.000", "NopeStep", 200000001),
+                    timeout("10:00:31.000", "NodeNope"),
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        _eq(
+            local.find(load_case([str(other_pack)]), 200000001),
+            None,
+            "时间和 task 号相同、行对不上 → 不参与",
+        )
+        _eq(
+            local.find(load_case([str(other_pack)]), 200000001, event_id=event_id),
+            None,
+            "事件号在本机但行对不上 → 也不参与",
+        )
+
+        # 两份本地日志都与包里逐字相同 → 认不出是哪一次，返回 None（不猜）
+        (release_debug / "maafw.bak.2026.11.09-12.00.00.000.log").write_text(
+            "\n".join(pack_lines) + "\n", encoding="utf-8"
+        )
+        ambiguous = LocalRelease.discover(str(tmp / "release"))
+        assert ambiguous is not None
+        _eq(ambiguous.find(pack, 200000001), None, "两份都对得上时不猜")
+    finally:
+        _shutil.rmtree(tmp, ignore_errors=True)
+
+    return [
+        "本地 release 按内容认运行 / 同时间同 task 不同内容不算 / 两份都对得上不猜 各有断言"
     ]

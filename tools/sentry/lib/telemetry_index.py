@@ -68,6 +68,9 @@ TIER_LABEL = {"high": "高", "mid": "中", "low": "低"}
 
 # issue title：`Maa task failed: Entrust (EntrustBranchChapter/recognition)`
 TITLE_RE = re.compile(r"^Maa task failed:\s*(.*?)\s*\(([^/]+)/([^/)]+)\)\s*$")
+# 任务级失败没有 `(节点/阶段)` 后缀：`Maa task failed: Replays`——整段就是任务名，
+# 不能当成"没有任务名"（画图要靠它找 `TaskReplays` 那个 task）
+TITLE_PLAIN_RE = re.compile(r"^Maa task failed:\s*(.+?)\s*$")
 # 日志里的行首时间（与 maafw 的 LINE_RE 同格式，本地自带一份避免反向依赖绘图模块）
 LINE_TS_RE = re.compile(r"^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3,6})\]")
 # `Node.PipelineNode.Failed` 两种写法：带 details 的（有 node_id/task_id），和只有 [name=] 的
@@ -118,9 +121,16 @@ class IssueCard:
 
     @property
     def label(self) -> str:
-        """title 里的任务名（`Maa task failed: Entrust (…)` → `Entrust`）。"""
+        """title 里的任务名（`Maa task failed: Entrust (…)` → `Entrust`）。
+
+        任务级失败没有 `(节点/阶段)` 后缀（`Maa task failed: Replays`），整段就是任务名：
+        画图要靠它找 `TaskReplays` 那个 task，返回空就等于"不知道在画哪个任务"。
+        """
         match = TITLE_RE.match(self.title)
-        return match.group(1).strip() if match else ""
+        if match:
+            return match.group(1).strip()
+        plain = TITLE_PLAIN_RE.match(self.title)
+        return plain.group(1).strip() if plain else ""
 
     @property
     def node_name(self) -> str:

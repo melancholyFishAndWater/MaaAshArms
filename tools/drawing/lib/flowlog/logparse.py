@@ -759,6 +759,10 @@ def _synthesize_steps(out: ParsedLog, task_id: int | None) -> None:
     只有 `Node.*` 事件、一条 reco 都没有），退回该 task 的 `Node.NextList.*` 派发记录，
     按派发顺序排成一条链（`derived_from="nextlist"`）。这时能还原的只是"依次派发了哪些节点"，
     不是完整执行顺序，所以图上要写清来源。
+
+    反过来，日志里能看出**别的** task（`Node.NextList` 或任务事件带 task_id）、却没有这个 task
+    的任何记录时，**不给步骤**：那段识别记录全属于别的任务，硬画出来就是同一份"全任务混在一起"
+    的日志（实测 PYTHON-33/35/36 的包只留了 MFA 面板行，三张图除了标题一模一样）。
     """
     if out.steps:
         return
@@ -803,6 +807,15 @@ def _synthesize_steps(out: ParsedLog, task_id: int | None) -> None:
                 a for a in attempts if a.ts >= lo and (hi is None or a.ts <= hi)
             ]
             out.derived_clamped = True
+    if task_id is not None and lo is None:
+        # 日志里有别的 task 的归属记录、却没有一条属于这个 task：说明这个 task 没跑在这段日志里
+        # （实测 PYTHON-33/35/36 的包只留了 MFA 面板行，框架记录从 4 分钟后那次运行才有）。
+        # 这时不能把整段识别记录当成它的步骤——那会画出同一份"全任务混在一起"的日志
+        # （三张图除了标题几乎一模一样），比退概览卡更没有信息量。
+        other_ids = {tid for (tid, _name) in out.nextlist_stats if tid is not None}
+        other_ids |= {e.task_id for e in out.events if e.task_id is not None}
+        if other_ids:
+            return
     if attempts:
         out.steps = [Step(**a.__dict__) for a in attempts]
         out.derived_from = "attempts"

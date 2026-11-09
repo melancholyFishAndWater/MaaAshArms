@@ -10,7 +10,12 @@ from collections.abc import Callable
 
 from .asserts import CheckFailure
 from .core import check_flow_parser
-from .drawing import check_evidence_pack_gate, check_flow_diagnostics, check_overview_render
+from .drawing import (
+    check_evidence_pack_gate,
+    check_flow_diagnostics,
+    check_local_release_assist,
+    check_overview_render,
+)
 from .evidence import (
     check_evidence,
     check_evidence_disk_agreement,
@@ -59,6 +64,7 @@ CHECKS: tuple[tuple[str, Callable[[], list[str]]], ...] = (
     ("本地遥测库（候选/分级/注记）", check_telemetry_index),
     ("遥测概览卡（渲染/命名）", check_overview_render),
     ("证据包版本门控与失败 task 定位", check_evidence_pack_gate),
+    ("本地 release 辅助（按内容认运行）", check_local_release_assist),
     ("跨版本耗时报告", check_speed_report),
 )
 

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import logging
 import os
+from datetime import datetime, timedelta
 from typing import Any
 
 from tools.drawing.lib.flow_from_log import _is_zip, parse_log, scan_tasks
@@ -16,6 +17,7 @@ from .pack import (
     Case,
     _evidence_manifest,
     _fmt_local,
+    _local_time,
     _pack_version,
     _pick_log,
     load_case,
@@ -144,6 +146,49 @@ def _has_evidence(short_id: str) -> bool:
     return False
 
 
+# 候选 task 的活动区间与失败时刻比对时的余量：失败前 2 分钟、失败后 30 分钟之内都算"这次运行"
+TASK_TIME_SLACK_BEFORE = timedelta(minutes=2)
+TASK_TIME_SLACK_AFTER = timedelta(minutes=30)
+
+
+def _task_window(parsed: Any, task_id: int) -> tuple[datetime, datetime] | None:
+    """这个 task 在日志里的活动区间：`Node.NextList` 记录的首末，没有就退回步骤时间。"""
+    lo = [
+        stat.first_ts
+        for (tid, _name), stat in parsed.nextlist_stats.items()
+        if tid == task_id and stat.first_ts is not None
+    ]
+    hi = [
+        stat.last_ts
+        for (tid, _name), stat in parsed.nextlist_stats.items()
+        if tid == task_id and stat.last_ts is not None
+    ]
+    if not lo or not hi:
+        lo = [s.ts for s in parsed.steps if s.task_id == task_id]
+        hi = list(lo)
+    if not lo or not hi:
+        return None
+    return min(lo), max(hi)
+
+
+def _matches_failure_time(
+    parsed: Any, task_id: int, fail_ts: datetime | None
+) -> bool:
+    """候选 task 的活动区间对不对得上证据包那次失败的时刻。
+
+    一条 trace 里同一个任务常跑多次（重开一局、或者后面又来一遍），只按入口名认会挑到
+    **之后**那次（实测 PYTHON-33 的日志里 14:05 又跑了一次 `TaskFeiduReward`，而失败发生在
+    14:00）。拿不到失败时刻或窗口时放行，不猜。
+    """
+    if fail_ts is None:
+        return True
+    window = _task_window(parsed, task_id)
+    if window is None:
+        return True
+    lo, hi = window
+    return lo - TASK_TIME_SLACK_BEFORE <= fail_ts <= hi + TASK_TIME_SLACK_AFTER
+
+
 def _evidence_task_id(case: Case, card: Any) -> tuple[int | None, int]:
     """在证据日志里定位这个 issue 的失败 task，返回 `(task_id, 日志里的 task 数)`。
 
@@ -153,15 +198,21 @@ def _evidence_task_id(case: Case, card: Any) -> tuple[int | None, int]:
 
     1. 卡片、证据包清单里的 `failure_task_id` 确实在日志的任务列表里 → 用它；
     2. 失败节点名（`card.node_name`）出现在哪个 task 的步骤里 → 用那个 task；
-    3. 任务入口名（`card.label`，如 `Entrust`）对上某个 task 的 `entry`（`TaskEntrust`）；
+    3. 任务入口名（`card.label` → `Task<label>`）出现在步骤或 `Node.NextList` 派发者里 →
+       用那个 task。**任务级失败**（标题只有任务名，如 `Maa task failed: Replays`）只能靠它：
+       这类失败既没有 `failure_task_id` 也没有节点名，而一条 trace 里常挂着好几个 issue
+       （实测 PYTHON-V 与 Escort/Entrust/Training 共用一条 trace，不按入口名认就把整段日志
+       画成了同一个运行里第一个失败的 Escort）。同一入口跑过多次时，还要对得上清单里那次
+       失败的时刻（见 `_matches_failure_time`）；
     4. 清单里的 `failure_task_id` 不在任务列表里（Sentry 只留日志尾部，那个 task 的
        `node done` 行被截掉了）→ 仍然用它。判据是 `scan_tasks()` 只认 `node done`，
        而 `--task-id` 还能靠失败事件的活动区间定位（实测 PYTHON-2P 的包只剩 5 个 task、
        失败那个不在里面，按清单里的 200000058 仍画出 45 步 9 轮）。卡片的 id 不做这一步：
        它属于卡片最新那次事件，不是这个包里的运行。
 
-    都定位不到返回 `(None, 任务数)`；调用方在多于一个 task 时据此退概览卡，避免把
-    Train/Escort/Battle/Training 接成一条链。
+    都定位不到返回 `(None, 任务数)`，调用方在多于一个 task 时据此退概览卡。**任务数取日志里
+    出现过的全部 task id**（node done、`Node.NextList`、task end 三处的并集）：只看 node done
+    会把"一条 trace 跑了 8 个任务"误判成"只有一个任务"，于是把整段日志当成它（实测 PYTHON-V）。
     """
     log_source = case.log_source()
     try:
@@ -174,31 +225,72 @@ def _evidence_task_id(case: Case, card: Any) -> tuple[int | None, int]:
     if not isinstance(pack_task, int):
         pack_task = None
     for wanted in (card.failure_task_id, pack_task):
+        # 快路径：node done 的任务列表里就有它，不用再解析整份日志
         if wanted is not None and wanted in ids:
-            return wanted, len(tasks)
-    if card.node_name:
-        try:
-            parsed = parse_log(log_source, None, None, None, False)
-        except (OSError, TypeError, ValueError):
-            parsed = None
-        if parsed is not None:
+            return wanted, len(ids)
+
+    try:
+        parsed = parse_log(log_source, None, None, None, False)
+    except (OSError, TypeError, ValueError):
+        parsed = None
+    known: set[int] = set(ids)
+    if parsed is not None:
+        known |= {tid for (tid, _name) in parsed.nextlist_stats if tid is not None}
+        known |= {e.task_id for e in parsed.events if e.task_id is not None}
+        known |= {tid for _ts, _entry, tid, _ret in parsed.task_ends if tid is not None}
+    task_count = len(known) or len(ids)
+    fail_ts = _local_time(str(getattr(card, "received", "") or "")) or _local_time(
+        str(event.get("received") or "")
+    )
+
+    if parsed is not None:
+        if card.node_name:
             hits = [
                 s.task_id
                 for s in parsed.steps
                 if s.name == card.node_name and s.task_id is not None
             ]
+            hits = [tid for tid in hits if _matches_failure_time(parsed, tid, fail_ts)]
             if hits:
-                return hits[-1], len(tasks)
+                return hits[-1], task_count
+        if card.label:
+            entry = f"Task{card.label}"
+            step_hits = [
+                s.task_id
+                for s in parsed.steps
+                if s.name == entry and s.task_id is not None
+            ]
+            step_hits = [
+                tid for tid in step_hits if _matches_failure_time(parsed, tid, fail_ts)
+            ]
+            if step_hits:
+                return step_hits[-1], task_count
+            nl_hits = [
+                tid
+                for (tid, name) in parsed.nextlist_stats
+                if name == entry and tid is not None
+            ]
+            nl_hits = [
+                tid for tid in nl_hits if _matches_failure_time(parsed, tid, fail_ts)
+            ]
+            if nl_hits:
+                # 同一入口可能跑过多次（重开一局），失败是最后那次
+                best = max(
+                    nl_hits,
+                    key=lambda tid: parsed.nextlist_stats[(tid, entry)].first_ts
+                    or datetime.min,
+                )
+                return best, task_count
     if card.label:
         want = card.label
         for task in tasks:
             entry = task.entry or ""
             norm = entry[4:] if entry.startswith("Task") else entry
             if norm == want:
-                return task.task_id, len(tasks)
+                return task.task_id, task_count
     if pack_task is not None:
-        return pack_task, len(tasks)
-    return None, len(tasks)
+        return pack_task, task_count
+    return None, task_count
 
 
 def _evidence_event_note(case: Case) -> tuple[str, str] | None:

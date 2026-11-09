@@ -24,6 +24,7 @@ from tools.drawing.lib.flow_from_log import (
 
 from .evidence import (
     _evidence_case,
+    _evidence_event_note,
     _evidence_task_id,
     _fetch_evidence,
     _has_evidence,
@@ -31,11 +32,13 @@ from .evidence import (
     _usable_evidence_case,
     set_evidence_dirs,
 )
+from .local_release import LocalRelease, default_root
 from .output import MANIFEST_NAME, load_manifest, save_manifest
 from .overview import run_overview
 from .pack import (
     EVIDENCE_ROOT,
     Case,
+    _pack_version,
     _pick_log,
     _telemetry_module,
     discover_cases,
@@ -58,6 +61,44 @@ def _with_telemetry(options: FlowOptions, annotation) -> FlowOptions:
         issue=annotation.chosen or options.issue,
         version=version,
         version_source=source,
+    )
+
+
+def _assist_pack(
+    case: Case,
+    options: FlowOptions,
+    task_id: int | None,
+    local: LocalRelease | None,
+    label: str = "",
+    event_id: str = "",
+) -> tuple[Case, FlowOptions] | None:
+    """本地 release 里认得出同一次运行：换成本地完整日志 + 本地图片，并加一条注记。
+
+    只用**内容对账**（`local_release.find`：日志行逐字相同 + 同 task）。对不上就返回 None
+    ——不按时间挑运行：本地日志的文件名是轮转时刻、不是内容区间，同一小时里可能有好几份。
+    认出来之后，`Case` 只带那份日志（`root` 留空）：`vision()` / `on_error()` 按"日志所在
+    目录"解析，正好是本地 `<debug>/vision`、`<debug>/on_error`。
+    """
+    if local is None:
+        return None
+    run = local.find(case, task_id, label=label or case.label, event_id=event_id)
+    if run is None:
+        return None
+    version = options.version or _pack_version(case)
+    notes = list(options.extra_notes)
+    event_note = _evidence_event_note(case)
+    if event_note is not None:
+        notes.append(event_note)
+    notes.extend((line, "local") for line in run.note_lines())
+    return (
+        Case(label=case.label, log_path=run.log_path),
+        replace(
+            options,
+            version=version,
+            version_source=options.version_source
+            or (VERSION_SOURCE_TELEMETRY if version else ""),
+            extra_notes=notes,
+        ),
     )
 
 
@@ -204,6 +245,23 @@ def create_argument_parser(prog: str | None = None) -> argparse.ArgumentParser:
         help="不自动拉取缺失的证据包（离线或不想联网时用）",
     )
     ap.add_argument(
+        "--local-release",
+        dest="local_release",
+        default=default_root(),
+        metavar="DIR",
+        help="本地 release 安装目录（默认 D:/MaaAshArms，环境变量 MAA_DRAWING_LOCAL_ROOT 可改）："
+        "画证据包时按**内容**对账（证据包日志里的行在本地日志里逐字相同 + 同 task），认得出"
+        "同一次运行就用它在本地的完整日志、vision/ 与 on_error/ 辅助绘图；认不出就不用"
+        "（不按时间猜——本地日志名是轮转时刻，不是内容区间）",
+    )
+    ap.add_argument(
+        "--no-local-release",
+        dest="local_release",
+        action="store_const",
+        const="",
+        help="不让本地 release 参与绘图：只用证据包自己的日志与图片",
+    )
+    ap.add_argument(
         "--log-level",
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
@@ -333,6 +391,22 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
             # 只报个数看不出是"库被清了"还是"新问题进来了"
             log.info("命中的 issue：%s", "、".join(card.short_id for card in cards))
 
+    # 本地 release 辅助（默认开）：只按内容对账，认不出就不用；目录不在就当没开
+    local: LocalRelease | None = None
+    if args.local_release:
+        local = LocalRelease.discover(args.local_release)
+        if local is None:
+            log.info(
+                "提示：本地 release 不可用（%s 的 debug/ 下没有日志），本次只用证据包自己的文件",
+                args.local_release,
+            )
+        else:
+            log.info(
+                "本地 release 辅助：%s（%d 份日志，按内容对账）",
+                local.root,
+                len(local.logs()),
+            )
+
     single = args.case[0] if args.case else None
     whole_dir = (
         bool(single)
@@ -346,7 +420,7 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
             cases = (
                 discover_cases(single)
                 if whole_dir and single is not None
-                else [load_case(args.case)]
+                else [load_case(args.case, task_id=options.task_id)]
             )
         except (FileNotFoundError, ValueError) as exc:
             log.error("错误：%s", exc)
@@ -389,6 +463,7 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
     telemetry_shown = 0
     version_skipped = 0
     for case, case_options in jobs:
+        annotation = None
         if args.telemetry:
             annotation = telemetry.annotate(
                 case.log_source(),
@@ -430,24 +505,62 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
                 version_skipped += 1
                 continue
             case_options = _with_telemetry(case_options, annotation)
-        try:
-            result = run_case(
+        # 本地 release 辅助：证据包认得出来就换成本地完整日志 + 本地图片（认不出不动）
+        assisted = None
+        if local is not None:
+            task_hint = case_options.task_id
+            if task_hint is None and annotation is not None and annotation.card is not None:
+                task_hint = _evidence_task_id(case, annotation.card)[0]
+            assisted = _assist_pack(
                 case,
                 case_options,
-                outdir=args.outdir,
-                mermaid=args.mermaid,
-                force=args.force,
-                manifest=manifest,
-                vision_override=args.vision,
-                on_error_override=args.on_error,
+                task_hint,
+                local,
+                label=(
+                    annotation.card.short_id
+                    if annotation is not None and annotation.card is not None
+                    else case.label
+                ),
+                event_id=(
+                    annotation.card.event_id
+                    if annotation is not None and annotation.card is not None
+                    else ""
+                ),
             )
-        except (FileNotFoundError, ValueError, OSError) as exc:
+        rendered_ok = False
+        last_error: Exception | None = None
+        for render_case, render_options in (
+            [assisted, (case, case_options)] if assisted else [(case, case_options)]
+        ):
+            try:
+                result = run_case(
+                    render_case,
+                    render_options,
+                    outdir=args.outdir,
+                    mermaid=args.mermaid,
+                    force=args.force,
+                    manifest=manifest,
+                    vision_override=args.vision,
+                    on_error_override=args.on_error,
+                )
+            except (FileNotFoundError, ValueError, OSError) as exc:
+                last_error = exc
+                if render_case is not case:
+                    log.warning(
+                        "本地 release 日志画不出流程（%s），改回证据包：%s",
+                        case.label,
+                        exc,
+                    )
+                continue
+            rendered_ok = True
+            break
+        if not rendered_ok:
             failed += 1
-            log.error("错误：%s: %s", case.label, exc)
+            log.error("错误：%s: %s", case.label, last_error)
             continue
         drawn += result is not None
         skipped += result is None
-        if result is not None and args.telemetry and annotation.chosen:
+        if result is not None and annotation is not None and annotation.chosen:
             # 这个任务对应的问题号已经被日志包出成完整流程了，概览卡就跳过它
             drawn_issues.add(annotation.chosen)
     overview_drawn = 0
@@ -514,30 +627,57 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
                         stem_extra = f"{dispatcher}_task{task_id}"
                     else:
                         stem_extra = dispatcher
-                    try:
-                        res = run_case(
-                            ev_case,
-                            ev_options,
-                            outdir=args.outdir,
-                            mermaid=args.mermaid,
-                            force=args.force,
-                            manifest=manifest,
-                            vision_override=None,
-                            on_error_override=None,
-                            issue_only=True,
-                            stem_extra=stem_extra,
-                        )
-                    except (FileNotFoundError, ValueError, OSError) as exc:
-                        # 证据包在但解析不出流程（例如日志尾部没有 pipeline 步骤）：
-                        # 退概览卡，而不是把这条 issue 整个丢掉
-                        log.warning(
-                            "证据包画不出流程（%s），退概览卡：%s",
-                            card.short_id,
-                            exc,
-                        )
-                    else:
+                    # 本地 release 里认得出同一次运行就换成本地完整日志 + 本地图片；
+                    # 本地日志画不出就退回证据包（两条路都失败才退概览卡）
+                    assisted = _assist_pack(
+                        ev_case,
+                        ev_options,
+                        task_id,
+                        local,
+                        label=card.short_id,
+                        event_id=getattr(card, "event_id", ""),
+                    )
+                    rendered_ok = False
+                    last_error: Exception | None = None
+                    for render_case, render_options in (
+                        [assisted, (ev_case, ev_options)]
+                        if assisted
+                        else [(ev_case, ev_options)]
+                    ):
+                        try:
+                            res = run_case(
+                                render_case,
+                                render_options,
+                                outdir=args.outdir,
+                                mermaid=args.mermaid,
+                                force=args.force,
+                                manifest=manifest,
+                                vision_override=None,
+                                on_error_override=None,
+                                issue_only=True,
+                                stem_extra=stem_extra,
+                            )
+                        except (FileNotFoundError, ValueError, OSError) as exc:
+                            last_error = exc
+                            if render_case is not ev_case:
+                                log.warning(
+                                    "本地 release 日志画不出流程（%s），改回证据包：%s",
+                                    card.short_id,
+                                    exc,
+                                )
+                            continue
+                        rendered_ok = True
                         evidence_drawn += res is not None
+                        break
+                    if rendered_ok:
                         continue
+                    # 证据包在但解析不出流程（例如日志尾部没有 pipeline 步骤）：
+                    # 退概览卡，而不是把这条 issue 整个丢掉
+                    log.warning(
+                        "证据包画不出流程（%s），退概览卡：%s",
+                        card.short_id,
+                        last_error,
+                    )
             try:
                 res = run_overview(
                     card,
