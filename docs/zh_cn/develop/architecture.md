@@ -94,11 +94,10 @@ assets/resource/pipeline/*.json + image/ + model/
 | 位置 | 入口 | 职责 |
 | --- | --- | --- |
 | `tools/` 根 | `install.py` / `configure.py` | 按 tag 打包发布包、配置 OCR 资源 |
-| `tools/` 根 | `sentry_issue_resolve.py` | 本地 `pre-push` 触发，按提交正文关闭 Sentry issue |
 | `tools/` 根 | `sync-schema.mjs` / `optimize-images.mjs` / `check-png-lossless.mjs` | schema 快照同步、图片优化与无损检查 |
 | `tools/ci/` | `setup_python_runtime.py` / `smoke_packaged_agent.py` | 给发布包准备随身解释器、包内冒烟 |
 | `tools/validation/` | `cli.py` | `check-python` / `validate-refs` / `validate-schema` / `check-sentry-offline`；另有 `check_pyright.mjs` |
-| `tools/sentry/` | `cli.py` | 遥测只读分析（`fetch` / `task-failure` / `flow` / `selftest` 等） |
+| `tools/sentry/` | `cli.py` | 遥测分析与出图（`fetch` / `task-failure` / `flow` / `selftest` 等），另有 `issue-resolve`（本地 `pre-push` 按提交正文关闭 issue） |
 | `tools/drawing/` | `cli.py` | 由日志与证据包生成流程图、白板图 |
 | `tools/perf/` | `cli.py` | 合成性能基准与真实日志轮次统计 |
 | `tools/cleanup/` | `cli.py` | 清理 pytest / temp 产物 |

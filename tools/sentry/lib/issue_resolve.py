@@ -1,19 +1,38 @@
-"""pre-push 触发的 Sentry issue 自动关闭。
+"""按提交正文关闭 Sentry issue：`pre-push` 钩子。
 
-放 tools/ 根：与 install.py / configure.py 同属发布链路（见 validation 的 README 开头）。
-由 .git/hooks/pre-push 调用，stdin 是 git 给的
-    <local ref> <local oid> <remote ref> <remote oid>
-只处理**新建**的 refs/tags/v*（remote oid 全零），取 <上一个 v* tag>..<新 tag>
-的提交正文，找 Fixes/Closes/Resolves + <短 ID>，再逐个把 Sentry issue 置 resolved。
+    python -m tools.sentry.cli issue-resolve            # 读 stdin 的 pre-push 行，只列清单
+    python -m tools.sentry.cli issue-resolve --apply    # 真的把 issue 置 resolved
+    python -m tools.sentry.cli issue-resolve --install  # 写 .git/hooks/pre-push（默认 list-only）
+    python -m tools.sentry.cli issue-resolve --check    # 看配置 / hook 模式 / token 来源
 
-边界（githooks(5) / git-push(1)）：pre-push 在推送**之前**执行，推送失败也会跑完；
---no-verify 可绕过；只在本机生效。因此本脚本在 hook 模式**恒 exit 0**，
-任何异常只告警、绝不阻断 push，且所有写操作幂等（重复 resolve 仍返回 200）。
+只处理**新建**的 `refs/tags/v*`：`pre-push` 的 stdin 每行是
+`<local ref> <local oid> <remote ref> <remote oid>`，remote oid 全零才算新建 tag。
+用 local oid（不是 tag 名，annotated tag 的 oid 是 tag object）算
+`<上一个 v* tag>..<新 tag>` 的提交正文，只认行首 `Fixes` / `Closes` / `Resolves` 后面跟的
+`PYTHON-<ID>`，再逐个把 issue 置 resolved。
 
-凭据只从本机取，不进仓库 Secrets：SENTRY_AUTH_TOKEN 环境变量 > `sentry auth token`
-> 本机 cli.db 的 auth 表。REST 用标准库 urllib，不装第三方包。
+## 为什么是本地 hook 而不是 CI
 
-用法见 --help；--selftest 是纯函数自检，零网络、零凭据。
+CI 侧（`install.yml` 的 tag 触发）改 Sentry 状态必须把 token 放进仓库 Secrets；本地
+`pre-push` 让凭据完全留在本机（`SENTRY_AUTH_TOKEN` > `SENTRY_CONFIG_DIR/cli.db` >
+`sentry auth token`），零 Secret。代价是只在本机、只在手动 push 时生效、`--no-verify`
+可绕过，而且 `pre-push` 在**推送之前**执行——推送失败时脚本已经跑过了。所以：
+
+- `--install` 默认写 **list-only** 的 hook（只列清单，不写远端），加 `--apply` 才真的 PUT；
+- hook 里**恒 exit 0**：任何异常都只告警、绝不阻断 push；
+- 写操作幂等（重复 resolve 仍返回 200），推送是否成功当作未知。
+
+## 两步 REST
+
+`GET /api/0/organizations/<org>/shortids/<SHORT-ID>/` 取 `groupId`，再
+`PUT /api/0/issues/<groupId>/` 带 `{"status": "resolved"}`。直接把 short ID 塞
+`/api/0/issues/<ID>/` 会 404。用标准库 `urllib`，不装第三方包。
+
+## 验证
+
+`--check` 打印仓库 / 配置 / org / hook 模式 / token 来源；`--only --issue <ID>` 只用给定 ID、
+不扫提交范围（验证 REST 分支时别把扫到的真实 issue 一起关掉）；纯函数自检在
+`python -m tools.sentry.cli selftest`（`lib/selftests/issue_resolve.py`）。
 """
 
 from __future__ import annotations
@@ -29,11 +48,13 @@ import subprocess
 import sys
 import urllib.error
 import urllib.request
+from collections.abc import Sequence
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-SCRIPT_NAME = Path(__file__).name
-CONFIG_FILE = REPO_ROOT / "tools" / "sentry" / "config.json"
+from .config import CONFIG
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+COMMAND = "python -m tools.sentry.cli issue-resolve"
 HOOK_MARKER = "# managed-by: sentry_issue_resolve"
 DEFAULT_BASE_URL = "https://sentry.io"
 DEFAULT_ISSUE_PREFIX = "PYTHON-"
@@ -44,24 +65,23 @@ KEYWORD_LINE_RE = re.compile(
     r"^\s*(?:fix(?:es)?|closes?|resolves?)\b\s*:?\s*(.*)$", re.IGNORECASE
 )
 
-for _stream in (sys.stdout, sys.stderr):
-    if isinstance(_stream, io.TextIOWrapper):
-        try:
-            _stream.reconfigure(errors="replace")
-        except (OSError, ValueError):
-            continue
+
+# --------------------------------------------------------------------------- #
+# 输出：hook 的 stdout 会被 git-send-pack 转发到对端，消息一律走 stderr
+# --------------------------------------------------------------------------- #
 
 
-def warn(message: str) -> None:
-    """hook 的 stdout 会被 git-send-pack 转发到对端，用户未必看得到；消息一律走 stderr。"""
+def say(message: str) -> None:
     print(f"[sentry-issues] {message}", file=sys.stderr)
 
 
-def note(message: str) -> None:
-    warn(message)
+def warn(message: str) -> None:
+    say(f"警告：{message}")
 
 
-# ---------------------------------------------------------------- 纯函数（可自检）
+# --------------------------------------------------------------------------- #
+# 纯函数（自检用，零网络零凭据）
+# --------------------------------------------------------------------------- #
 
 
 def parse_ref_lines(lines: list[str]) -> list[tuple[str, str]]:
@@ -108,7 +128,7 @@ def extract_issue_ids(bodies: str, prefix: str = DEFAULT_ISSUE_PREFIX) -> list[s
 
 
 def merge_ids(scanned: list[str], extra: list[str]) -> list[str]:
-    """扫描结果 + --issue 追加，去重且保持顺序。"""
+    """扫描结果 + `--issue` 追加，去重且保持顺序。"""
     out = list(scanned)
     for item in extra:
         short_id = item.upper()
@@ -118,7 +138,7 @@ def merge_ids(scanned: list[str], extra: list[str]) -> list[str]:
 
 
 def choose_previous_tag(sorted_tags: list[str], current: str) -> str | None:
-    """git tag --sort=-creatordate 的回退路径：取列表里 current 之后那个（更旧的）。"""
+    """`git tag --sort=-creatordate` 的回退路径：取列表里 current 之后那个（更旧的）。"""
     for index, tag in enumerate(sorted_tags):
         if tag == current and index + 1 < len(sorted_tags):
             return sorted_tags[index + 1]
@@ -142,25 +162,34 @@ def issue_url(base: str, group_id: str) -> str:
 
 
 def build_hook_script(apply: bool) -> str:
-    script = Path(__file__).resolve().as_posix()
+    """`--install` 写进 `.git/hooks/pre-push` 的内容。
+
+    先 `cd` 到仓库根再 `python -m tools.sentry.cli issue-resolve`：包导入要求 cwd 在仓库根，
+    而 git 只保证 hook 的 cwd 是工作树根（`core.hooksPath` / `GIT_DIR` 另指时不一定）。
+    解释器用装这个脚本的那个（`sys.executable`），找不到时退回 PATH 上的 `python`。
+    """
     python = Path(sys.executable).resolve().as_posix()
+    root = REPO_ROOT.as_posix()
     flag = " --apply" if apply else ""
     return "\n".join(
         [
             "#!/bin/sh",
             HOOK_MARKER,
-            "# 由 " + SCRIPT_NAME + " --install 生成；本 hook 恒 exit 0，不阻断 push。",
-            "# 删掉本文件即停用；去掉命令行的 apply 开关就只列清单、不写远端。",
-            "py='" + python + "'",
+            f"# 由 {COMMAND} --install 生成；本 hook 恒 exit 0，不阻断 push。",
+            "# 删掉本文件即停用；脚本换位置后要重跑 --install（旧 hook 指向旧路径）。",
+            f"py='{python}'",
             'if [ ! -x "$py" ]; then py=python; fi',
-            '"$py" \'' + script + "'" + flag + ' "$@"',
+            f"cd '{root}' || exit 0",
+            f'"$py" -m tools.sentry.cli issue-resolve{flag} "$@"',
             "exit 0",
             "",
         ]
     )
 
 
-# ---------------------------------------------------------------- git / 配置
+# --------------------------------------------------------------------------- #
+# git / 配置
+# --------------------------------------------------------------------------- #
 
 
 def run_git(args: list[str]) -> subprocess.CompletedProcess[str]:
@@ -181,19 +210,23 @@ def run_git(args: list[str]) -> subprocess.CompletedProcess[str]:
 
 
 def config_target() -> tuple[str, str] | None:
+    """`tools/sentry/config.json` 的 `target`（`<org>/<project>`）。"""
     try:
-        data = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
-        org, project = str(data["target"]).split("/", 1)
-        return org, project
-    except (OSError, ValueError, KeyError) as exc:
-        warn(f"读不到 {CONFIG_FILE.name} 的 target：{exc}")
+        org, project = CONFIG.target.split("/", 1)
+    except ValueError:
+        warn(f"config.json 的 target 不是 <org>/<project>：{CONFIG.target!r}")
         return None
+    return org, project
 
 
 def previous_v_tag(tag: str, oid: str) -> str | None:
     # annotated tag 的 oid 是 tag object，先剥到 commit；lightweight tag 原样返回
     peeled = run_git(["rev-parse", f"{oid}^{{commit}}"])
-    commit = peeled.stdout.strip().splitlines()[0] if peeled.returncode == 0 and peeled.stdout.strip() else oid
+    commit = (
+        peeled.stdout.strip().splitlines()[0]
+        if peeled.returncode == 0 and peeled.stdout.strip()
+        else oid
+    )
     result = run_git(describe_args(commit))
     if result.returncode == 0 and result.stdout.strip():
         return result.stdout.strip().splitlines()[0]
@@ -213,7 +246,7 @@ def collect_issue_ids(tags: list[tuple[str, str]], prefix: str) -> list[str]:
             warn(f"git log {previous}..{oid} 失败：{result.stderr.strip()}")
             continue
         found = extract_issue_ids(result.stdout, prefix)
-        note(f"{previous}..{tag}: {', '.join(found) or '（无）'}")
+        say(f"{previous}..{tag}: {', '.join(found) or '（无）'}")
         for short_id in found:
             if short_id not in ids:
                 ids.append(short_id)
@@ -229,10 +262,13 @@ def git_hook_path() -> Path | None:
     return path if path.is_absolute() else (REPO_ROOT / path).resolve()
 
 
-# ---------------------------------------------------------------- Sentry REST
+# --------------------------------------------------------------------------- #
+# Sentry REST
+# --------------------------------------------------------------------------- #
 
 
 def resolve_token() -> tuple[str, str]:
+    """凭据只从本机取：环境变量 > cli.db 的 auth 表 > 已装的 sentry CLI。"""
     from_env = os.environ.get("SENTRY_AUTH_TOKEN", "").strip()
     if from_env:
         return from_env, "SENTRY_AUTH_TOKEN"
@@ -246,7 +282,9 @@ def resolve_token() -> tuple[str, str]:
     )
     try:
         connection = sqlite3.connect(f"file:{db.as_posix()}?mode=ro", uri=True)
-        row = connection.execute("SELECT token FROM auth ORDER BY id DESC LIMIT 1").fetchone()
+        row = connection.execute(
+            "SELECT token FROM auth ORDER BY id DESC LIMIT 1"
+        ).fetchone()
         connection.close()
         if row and row[0]:
             return str(row[0]), str(db)
@@ -273,7 +311,9 @@ def resolve_token() -> tuple[str, str]:
     return "", ""
 
 
-def api_request(method: str, url: str, token: str, payload: dict[str, str] | None = None) -> dict[str, object]:
+def api_request(
+    method: str, url: str, token: str, payload: dict[str, str] | None = None
+) -> dict[str, object]:
     data = None if payload is None else json.dumps(payload).encode("utf-8")
     request = urllib.request.Request(
         url,
@@ -292,6 +332,7 @@ def api_request(method: str, url: str, token: str, payload: dict[str, str] | Non
 
 
 def resolve_issues(ids: list[str], org: str, base: str, token: str) -> int:
+    """逐个把 short ID 置 resolved；单个失败只告警，不中断后面的。"""
     done = 0
     for short_id in ids:
         try:
@@ -301,14 +342,16 @@ def resolve_issues(ids: list[str], org: str, base: str, token: str) -> int:
                 warn(f"{short_id} 没解析到 groupId，跳过")
                 continue
             api_request("PUT", issue_url(base, group_id), token, {"status": "resolved"})
-            note(f"resolved {short_id} (group {group_id})")
+            say(f"resolved {short_id} (group {group_id})")
             done += 1
         except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
             warn(f"{short_id} 处理失败，跳过：{exc}")
     return done
 
 
-# ---------------------------------------------------------------- 动作
+# --------------------------------------------------------------------------- #
+# 动作
+# --------------------------------------------------------------------------- #
 
 
 def read_ref_lines(args: argparse.Namespace) -> list[str]:
@@ -322,17 +365,18 @@ def read_ref_lines(args: argparse.Namespace) -> list[str]:
 
 
 def hook_mode(args: argparse.Namespace) -> int:
+    """`pre-push` 调用时的主路径；**恒返回 0**，不阻断 push。"""
     tags = parse_ref_lines(read_ref_lines(args))
     if not tags:
-        note("没有新建的 v* tag，跳过")
+        say("没有新建的 v* tag，跳过")
         return 0
-    note(f"新 tag: {', '.join(name for name, _oid in tags)}")
+    say(f"新 tag: {', '.join(name for name, _oid in tags)}")
     # --only：只用 --issue 给出的 ID，不扫提交范围。用于验证 REST 分支而不碰真实 issue。
     scanned = [] if args.only else collect_issue_ids(tags, args.issue_prefix)
     ids = merge_ids(scanned, args.issue)
-    note(f"待关闭: {', '.join(ids) or '（无）'}")
+    say(f"待关闭: {', '.join(ids) or '（无）'}")
     if not args.apply:
-        note("list-only（未写远端）；hook 加 --apply 才实际关闭")
+        say("list-only（未写远端）；hook 加 --apply 才实际关闭")
         return 0
     if not ids:
         return 0
@@ -345,9 +389,9 @@ def hook_mode(args: argparse.Namespace) -> int:
     if not token:
         warn("拿不到 Sentry token（env / sentry auth token / cli.db 都没有），跳过写远端")
         return 0
-    note(f"token 来源: {source}; org={org}; base={args.base_url}")
+    say(f"token 来源: {source}; org={org}; base={args.base_url}")
     count = resolve_issues(ids, org, args.base_url.rstrip("/"), token)
-    note(f"本次处理 {count}/{len(ids)}")
+    say(f"本次处理 {count}/{len(ids)}")
     return 0
 
 
@@ -363,20 +407,27 @@ def install_hook(apply: bool, force: bool) -> int:
             warn(f"读不了现有 hook：{exc}")
             return 1
         if HOOK_MARKER not in existing and not force:
-            warn(f"{path} 已存在且不是本脚本生成的，未覆盖；确认后加 --force")
+            warn(f"{path} 已存在且不是本工具生成的，未覆盖；确认后加 --force")
             return 1
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(build_hook_script(apply).encode("utf-8"))
-    print(f"[sentry-issues] 已写入 {path}")
-    print(f"[sentry-issues] 模式: {'apply（会写 Sentry）' if apply else 'list-only（只列清单）'}")
-    print("[sentry-issues] 卸载：删除该文件，或跑 " + SCRIPT_NAME + " --uninstall")
+    try:
+        path.chmod(0o755)  # Unix 上 pre-push 必须可执行；Windows 上是空操作
+    except OSError:
+        pass
+    print(f"[sentry-issues] 已写入 {path}", file=sys.stderr)
+    print(
+        f"[sentry-issues] 模式: {'apply（会写 Sentry）' if apply else 'list-only（只列清单）'}",
+        file=sys.stderr,
+    )
+    print(f"[sentry-issues] 卸载：删除该文件，或跑 {COMMAND} --uninstall", file=sys.stderr)
     return 0
 
 
 def uninstall_hook() -> int:
     path = git_hook_path()
     if path is None or not path.exists():
-        print("[sentry-issues] 没有已安装的 hook")
+        print("[sentry-issues] 没有已安装的 hook", file=sys.stderr)
         return 0
     try:
         content = path.read_text(encoding="utf-8", errors="replace")
@@ -384,14 +435,15 @@ def uninstall_hook() -> int:
         warn(f"读不了 hook：{exc}")
         return 1
     if HOOK_MARKER not in content:
-        warn(f"{path} 不是本脚本生成的，未删除")
+        warn(f"{path} 不是本工具生成的，未删除")
         return 1
     path.unlink()
-    print(f"[sentry-issues] 已删除 {path}")
+    print(f"[sentry-issues] 已删除 {path}", file=sys.stderr)
     return 0
 
 
 def print_check(args: argparse.Namespace) -> int:
+    """打印配置、hook 模式与 token 来源；不写任何东西。"""
     target = config_target()
     path = git_hook_path()
     mode = "未安装"
@@ -400,7 +452,7 @@ def print_check(args: argparse.Namespace) -> int:
             text = path.read_text(encoding="utf-8", errors="replace")
             mode = "apply" if "--apply" in text else "list-only"
             if HOOK_MARKER not in text:
-                mode = "外部 hook（不是本脚本生成）"
+                mode = "外部 hook（不是本工具生成的）"
         except OSError:
             mode = "不可读"
     token, source = resolve_token()
@@ -415,112 +467,59 @@ def print_check(args: argparse.Namespace) -> int:
     return 0
 
 
-def run_selftest() -> int:
-    checks = 0
-
-    def expect(condition: bool, name: str) -> None:
-        nonlocal checks
-        if not condition:
-            raise AssertionError(name)
-        checks += 1
-
-    zero40 = "0" * 40
-    zero64 = "0" * 64
-    sha = "a" * 40
-    lines = [
-        f"refs/tags/v1.0.0-beta.71 {sha} refs/tags/v1.0.0-beta.71 {zero40}",
-        f"refs/tags/v2.0.0 {'b' * 64} refs/tags/v2.0.0 {zero64}",
-        f"refs/heads/main {sha} refs/heads/main {'c' * 40}",
-        f"refs/tags/beta.1 {sha} refs/tags/beta.1 {zero40}",
-        f"refs/tags/v1.0.0-beta.70 {zero40} refs/tags/v1.0.0-beta.70 {sha}",
-        f"refs/tags/v1.0.0-beta.70 {sha} refs/tags/v1.0.0-beta.70 {sha}",
-        "坏行",
-    ]
-    expect(
-        parse_ref_lines(lines)
-        == [("v1.0.0-beta.71", sha), ("v2.0.0", "b" * 64)],
-        "parse_ref_lines",
-    )
-    expect(parse_ref_lines([]) == [], "parse_ref_lines empty")
-
-    body = "\n".join(
-        [
-            "fix: 某修复",
-            "",
-            "Fixes PYTHON-32",
-            "fixes: python-34, PYTHON-35",
-            "Closes #123",
-            "Resolves PYTHON-2",
-            "这里提了一句 PYTHON-999 不算",
-            "fixes PYTHON-32",
-        ]
-    )
-    expect(
-        extract_issue_ids(body) == ["PYTHON-32", "PYTHON-34", "PYTHON-35", "PYTHON-2"],
-        "extract_issue_ids",
-    )
-    expect(extract_issue_ids("Fixes MAA-1", "MAA-") == ["MAA-1"], "extract prefix override")
-    expect(extract_issue_ids("Fixes #123") == [], "extract ignores GitHub issue")
-    expect(merge_ids(["PYTHON-32"], ["PYTHON-34", "python-32"]) == ["PYTHON-32", "PYTHON-34"], "merge_ids")
-    expect(merge_ids([], []) == [], "merge_ids empty")
-    expect(merge_ids([], ["python-34"]) == ["PYTHON-34"], "merge_ids only extra")
-
-    tags = ["v1.0.0-beta.71", "v1.0.0-beta.70", "v1.0.0-beta.69"]
-    expect(choose_previous_tag(tags, "v1.0.0-beta.71") == "v1.0.0-beta.70", "choose_previous_tag")
-    expect(choose_previous_tag(tags, "v1.0.0-beta.69") is None, "choose_previous_tag oldest")
-    expect(choose_previous_tag(tags, "v9.9.9") is None, "choose_previous_tag absent")
-    expect(describe_args(sha)[-1] == f"{sha}^", "describe_args")
-    expect(log_args("v1", sha) == ["log", f"v1..{sha}", "--format=%B"], "log_args")
-    expect(
-        shortids_url("https://sentry.io", "org", "PYTHON-32")
-        == "https://sentry.io/api/0/organizations/org/shortids/PYTHON-32/",
-        "shortids_url",
-    )
-    expect(issue_url("https://sentry.io", "42") == "https://sentry.io/api/0/issues/42/", "issue_url")
-    expect("--apply" in build_hook_script(True), "hook script apply")
-    expect("--apply" not in build_hook_script(False), "hook script list-only")
-    expect(build_hook_script(True).splitlines()[-2].endswith(' "$@"'), "hook script forwards args")
-    expect(build_hook_script(False).splitlines()[-1] == "exit 0", "hook script never blocks push")
-    expect(HOOK_MARKER in build_hook_script(False), "hook script marker")
-    print(f"selftest: {checks} checks passed")
-    return 0
+# --------------------------------------------------------------------------- #
+# CLI
+# --------------------------------------------------------------------------- #
 
 
-# ---------------------------------------------------------------- 入口
-
-
-def build_parser() -> argparse.ArgumentParser:
+def create_argument_parser(prog: str | None = None) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog=SCRIPT_NAME,
+        prog=prog or COMMAND,
         description="pre-push 触发：按提交正文的 Fixes/Closes/Resolves 关闭 Sentry issue",
     )
     action = parser.add_mutually_exclusive_group()
-    action.add_argument("--selftest", action="store_true", help="纯函数自检，零网络零凭据")
     action.add_argument("--install", action="store_true", help="写入 .git/hooks/pre-push")
-    action.add_argument("--uninstall", action="store_true", help="删除本脚本生成的 hook")
+    action.add_argument("--uninstall", action="store_true", help="删除本工具生成的 hook")
     action.add_argument("--check", action="store_true", help="打印配置、hook 模式与 token 来源")
     parser.add_argument("--apply", action="store_true", help="真正写 Sentry（默认只列清单）")
     parser.add_argument("--force", action="store_true", help="--install 时覆盖已有 hook")
-    parser.add_argument("--ref", action="append", default=[], metavar="LINE", help="模拟一条 pre-push stdin 行，可重复")
+    parser.add_argument(
+        "--ref",
+        action="append",
+        default=[],
+        metavar="LINE",
+        help="模拟一条 pre-push stdin 行，可重复",
+    )
     parser.add_argument("--stdin-file", metavar="PATH", help="从文件读 ref 行（测试用）")
-    parser.add_argument("--issue", action="append", default=[], metavar="SHORT-ID", help="额外要处理的 issue，可重复")
-    parser.add_argument("--only", action="store_true", help="只用 --issue 给出的 ID，不扫提交范围（验证 REST 用）")
+    parser.add_argument(
+        "--issue",
+        action="append",
+        default=[],
+        metavar="SHORT-ID",
+        help="额外要处理的 issue，可重复（追加到扫描结果）",
+    )
+    parser.add_argument(
+        "--only", action="store_true", help="只用 --issue 给出的 ID，不扫提交范围（验证 REST 用）"
+    )
     parser.add_argument("--org", help="organization slug（默认 env / config.json target）")
     parser.add_argument("--base-url", default=os.environ.get("SENTRY_URL", DEFAULT_BASE_URL))
-    parser.add_argument("--issue-prefix", default=os.environ.get("SENTRY_ISSUE_PREFIX", DEFAULT_ISSUE_PREFIX))
+    parser.add_argument(
+        "--issue-prefix", default=os.environ.get("SENTRY_ISSUE_PREFIX", DEFAULT_ISSUE_PREFIX)
+    )
     parser.add_argument("remote", nargs="?", help="git 给的远端名（hook 调用时自动传入）")
     parser.add_argument("url", nargs="?", help="git 给的远端 URL（hook 调用时自动传入）")
     return parser
 
 
-def main() -> int:
-    args = build_parser().parse_args()
-    if args.selftest:
-        try:
-            return run_selftest()
-        except AssertionError as exc:
-            warn(f"selftest FAILED: {exc}")
-            return 1
+def main(argv: Sequence[str] | None = None, prog: str | None = None) -> int:
+    for stream in (sys.stdout, sys.stderr):
+        if isinstance(stream, io.TextIOWrapper):
+            try:
+                stream.reconfigure(errors="replace")
+            except (OSError, ValueError):
+                continue
+
+    args = create_argument_parser(prog).parse_args(argv)
     if args.install:
         return install_hook(args.apply, args.force)
     if args.uninstall:
@@ -533,7 +532,3 @@ def main() -> int:
     except Exception as exc:  # noqa: BLE001
         warn(f"hook 内部异常，已忽略：{exc}")
         return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())

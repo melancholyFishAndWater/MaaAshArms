@@ -10,6 +10,7 @@
 - ``context``       只看运行环境（os / environment）分布
 - ``evidence``      把失败现场图与那次运行的日志拉到本地（不画图，只打印命令）
 - ``explore-csv``   把浏览器导出的 Explore CSV 还原成日志正文 + 清单
+- ``issue-resolve`` 按提交正文的 Fixes/Closes/Resolves 关闭 Sentry issue（`pre-push` 钩子）
 - ``flow``          把本地日志证据包渲染成流程图（产出落到 temp/flow/）
 - ``selftest``      零网络的纯逻辑自检（校验 release 解析与统计口径）
 
@@ -38,6 +39,7 @@ try:
         evidence,
         explore_csv,
         fetch,
+        issue_resolve,
         report_common,
         speed_report,
         task_failure_report,
@@ -50,6 +52,7 @@ except ImportError:
     from lib import evidence  # type: ignore[no-redef]
     from lib import explore_csv  # type: ignore[no-redef]
     from lib import fetch  # type: ignore[no-redef]
+    from lib import issue_resolve  # type: ignore[no-redef]
     from lib import report_common  # type: ignore[no-redef]
     from lib import speed_report  # type: ignore[no-redef]
     from lib import task_failure_report  # type: ignore[no-redef]
@@ -71,6 +74,10 @@ REPORTS: dict[str, tuple[str, ReportMain]] = {
     "context": ("只看运行环境分布（os / environment）", task_failure_report.main),
     "evidence": ("把失败现场图与那次运行的日志拉到本地", evidence.main),
     "explore-csv": ("把 Explore 导出的 CSV 还原成日志正文 + 清单", explore_csv.main),
+    "issue-resolve": (
+        "按提交正文的 Fixes/Closes/Resolves 关闭 Sentry issue（pre-push 钩子）",
+        issue_resolve.main,
+    ),
     "flow": ("把本地证据包（日志 + 图片）渲染成流程图", flow_cases.main),
     "telemetry": (
         "本地遥测库：增量下载 issue 详情，按本地日志反查对应的问题",

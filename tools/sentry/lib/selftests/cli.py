@@ -18,6 +18,7 @@ from .evidence import (
 )
 from .fixtures import Emit
 from .flow import check_flow_overlay, check_flow_parents
+from .issue_resolve import check_issue_resolve
 from .reports import check_explore_csv, check_speed_report
 from .telemetry import (
     check_artifact_roundtrip,
@@ -49,6 +50,7 @@ CHECKS: tuple[tuple[str, Callable[[], list[str]]], ...] = (
     ("流程图解析（文本入参）", check_flow_parser),
     ("流程图诊断（回跳/仅事件/截断/空窗口）", check_flow_diagnostics),
     ("Explore CSV 提取", check_explore_csv),
+    ("issue 自动关闭（refs/提交/URL/hook）", check_issue_resolve),
     ("失败证据的纯逻辑", check_evidence),
     ("证据清单与磁盘一致", check_evidence_disk_agreement),
     ("并发锁的持有者判据", check_report_lock),

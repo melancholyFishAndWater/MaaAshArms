@@ -227,9 +227,23 @@ def check_flow_diagnostics() -> list[str]:
         "派发链模式的注记",
     )
 
+    # 12) 日志里只有别的 task 的记录（`Node.NextList` 带 task_id 却不是它）：
+    #     不能把整段识别记录当成这个 task 的步骤，否则同一次运行的每个 issue 都画出同一张混合图
+    #     （实测 PYTHON-33/35/36 的包只留了 MFA 面板行）
+    foreign_log = "\n".join(
+        [
+            nextlist("00:42:00.000", "Succeeded", "TaskOther", ["TaskOther"], tid=200),
+            reco("00:42:01.000", "SomeNode"),
+            reco("00:42:02.000", "SomeNode"),
+        ]
+    )
+    parsed = parse_log(foreign_log, None, None, 100, False)
+    _eq(parsed.steps, [], "只有别的 task 时不合成步骤")
+    _eq(parsed.derived_from, "", "不标成仅事件模式")
+
     out.append(
-        "  回跳重排 / 仅事件模式（4 条识别合成步骤）/ 派发链模式（只剩 Node.NextList）/ 截断行 / "
-        "三类空窗口 / 严格 task 过滤 / 任务区间 各自有说法"
+        "  回跳重排 / 仅事件模式（4 条识别合成步骤）/ 派发链模式（只剩 Node.NextList）/ "
+        "别的 task 的日志不硬画 / 截断行 / 三类空窗口 / 严格 task 过滤 / 任务区间 各自有说法"
     )
     return out
 

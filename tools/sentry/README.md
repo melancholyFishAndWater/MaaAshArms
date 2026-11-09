@@ -45,6 +45,7 @@ Python 侧零第三方依赖——只用标准库和 `sentry` 命令行。只有
 | `context` | 只看运行环境（os / environment）分布 | `7d` |
 | `evidence` | 把失败现场图与**那次运行**的日志拉到本地（联网；不画图，只打印命令） | `7d` |
 | `explore-csv` | 把浏览器导出的 Explore CSV 还原成日志正文 + 清单（不联网） | — |
+| `issue-resolve` | 按提交正文的 `Fixes/Closes/Resolves PYTHON-XX` 关闭 Sentry issue（`--install` 装 `pre-push` 钩子） | — |
 | `flow` | 把本地日志证据包渲染成流程图（默认按本地遥测库反查问题） | — |
 | `telemetry` | 本地遥测库：增量下载 issue 详情，并按本地日志反查对应的问题 | — |
 | `selftest` | 零网络的纯逻辑自检 | — |
@@ -83,6 +84,10 @@ python -m tools.sentry.cli flow --case temp/evidence/PYTHON-14/debug --task-id 2
 
 # 9. 按版本批量出图：只画 beta.55 及之后的 issue（条件可重复，多条按「且」叠加）
 python -m tools.sentry.cli flow --telemetry-bulk --telemetry-version ">=v1.0.0-beta.55"
+
+# 10. 推送 tag 时自动关闭 issue：装 pre-push 钩子（默认只列清单；写完 Sentry 才用 --apply）
+python -m tools.sentry.cli issue-resolve --install
+python -m tools.sentry.cli issue-resolve --check
 ```
 
 ## 常用参数
@@ -96,12 +101,14 @@ python -m tools.sentry.cli flow --telemetry-bulk --telemetry-version ">=v1.0.0-b
 | `speed` | `--input`（必需，读 `fetch` 工件）、`--last N`、`--task A,B`、`--compare A..B`、`--min-count`、`--compare-min-count`、`--noise-factor`、`--chart <png>`、`--format` |
 | `evidence` | `--list` 只报告不下载、`--issue`、`--event`（历史事件，需配 `--issue`）、`--period`、`--limit`、`--max-events`、`--no-images` / `--no-log`、`--force`、`--outdir`、`--sort <newest\|oldest>`、`--keep-duplicates`、`--log-limit` |
 | `explore-csv` | `--log-out`、`--json-out`、`--no-write` |
+| `issue-resolve` | `--install`（写 `.git/hooks/pre-push`，默认 list-only）、`--install --apply`（写远端）、`--uninstall`、`--check`、`--ref LINE`（可重复，模拟 pre-push 输入）、`--stdin-file`、`--issue SHORT-ID`（追加，可重复）、`--only`（只用 `--issue`，不扫提交范围）、`--org`、`--base-url`、`--issue-prefix`、`--force` |
 | `flow` | `--case`（目录 / 多卷 zip / 日志文件）、`--task-id`、`--pid`、`--from` / `--to`、`--outdir`、`--all-tasks`、`--list-cases`、`--mermaid`、`--force`、`--telemetry-offline` / `--telemetry-issue`、`--telemetry-version`（`>=` / `<=` / `==` 筛 issue 的版本，可重复）、`--evidence-dir`、`--telemetry-bulk`、`--fetch-evidence` / `--no-fetch-evidence`、`--log-level` / `--log-file` |
 | `telemetry` | `--refresh`、`--case`、`--issue`、`--days`、`--gap`、`--keep-resolved`、`--period`、`--limit` |
 | `selftest` | 无参数 |
 
 参数的完整说明与口径见 [`docs/`](docs/)：统计口径与 `speed` 见 [`docs/methodology.md`](docs/methodology.md)，
 `evidence` / `telemetry` / `explore-csv` 的细节见 [`docs/evidence.md`](docs/evidence.md)，
+`issue-resolve` 的钩子边界见 [`docs/issue-resolve.md`](docs/issue-resolve.md)，
 版本与 release 见 [`docs/release-version.md`](docs/release-version.md)，坑见 [`docs/pitfalls.md`](docs/pitfalls.md)。
 
 ## 产物落在哪
