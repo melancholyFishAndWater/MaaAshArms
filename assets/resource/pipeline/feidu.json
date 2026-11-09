@@ -48,6 +48,8 @@
         ],
         "post_wait_freezes": 2000,
         "next": [
+            "BaseErrorNext",
+            "[JumpBack]BaseProbeBlackPage",
             "FeiduBranchHome",
             "[JumpBack]BaseBranchError"
         ]

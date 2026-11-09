@@ -29,6 +29,7 @@
         "action": "Click",
         "next": [
             "BaseErrorNext",
+            "[JumpBack]BaseProbeBlackPage",
             "FriendClickButtonLight",
             "[JumpBack]BaseBranchError",
             "FriendProbeButtonDart",
