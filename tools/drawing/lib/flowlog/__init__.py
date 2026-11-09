@@ -2,7 +2,8 @@
 
 入口留给 `tools/drawing/lib/flow_from_log.py`（只做 sys.path 引导与 re-export），本包按
 `logparse`（解析）→ `layout`（版面）→ `paint`/`draw`（像素）→ `render`（串联与落盘）
-分层，`media` 管图片证据，`stale` 管「疑似过时」，`notes` 管诊断注记，`cli` 管参数。
+分层，`media` 管图片证据，`stale` 管「疑似过时」，`notes` 管诊断注记，`trace` 管
+增量绘制的分步摘要，`cli` 管参数。
 行为与拆分前的单文件版本一致；对外只保证 `flow_from_log` 上那些名字可用。"""
 
 from __future__ import annotations

@@ -1,6 +1,8 @@
 """`run_case`：把 `Case` 渲染成 PNG（含「疑似过时」改名与 manifest 记账）。
 
-幂等判定靠指纹（日志摘要 + 选项 + 证据来源 + 渲染器版本）；不负责发现证据包。
+**要不要重画不在这里判**：分步摘要（`flowlog/trace.py`）与两级判定都在
+`flowlog.render.render_flow()` 里——快路不必读日志，慢路按数据步比较。本模块只负责
+找旧记录、把输入事实交过去、渲染成功（或按轨迹跳过）后记账。
 """
 
 from __future__ import annotations
@@ -22,9 +24,24 @@ from tools.drawing.lib.flow_from_log import (
 
 from .evidence import _evidence_event_note
 from .output import _stale_record, out_filename, stale_name
-from .pack import Case, _version_from_evidence, log_digest
+from .pack import Case, _version_from_evidence, issue_name_of, log_digest
+from .signature import code_stages, repo_state
 
 log = logging.getLogger("tools.flow_cases")
+
+
+def _record_for(manifest: dict, outdir: str, name: str) -> tuple[str, dict] | None:
+    """同名（含「疑似过时」后缀）的旧记录；文件不在就当没画过。
+
+    返回 `(记在哪个名字下, 记录)`——按轨迹跳过时要把**这个**名字登记进"本次保留"，
+    否则清理会把它当成过期产物删掉。
+    """
+    for candidate in (name, stale_name(name)):
+        record = manifest["cases"].get(candidate)
+        if record and os.path.isfile(os.path.join(outdir, candidate)):
+            return candidate, record
+    return None
+
 
 def run_case(
     case: Case,
@@ -38,16 +55,21 @@ def run_case(
     on_error_override: Any = None,
     issue_only: bool = False,
     stem_extra: str = "",
+    origin: str = "case",
+    kept: set[str] | None = None,
 ) -> FlowResult | None:
-    """渲染一个 case；命中 manifest 且产物还在就跳过（幂等）。
+    """渲染一个 case；按轨迹命中就跳过（幂等）。
 
     「疑似过时」只有在渲染完才知道（检查要拿到日志里实际跑过的节点名），所以文件名里的
     `_疑似过时` 是**画完之后**补的：先按普通名字渲染，命中就 `os.replace` 改名，再把
-    manifest 记到新名字上。幂等检查因此要同时认普通名与带后缀的名——上一轮画出来的
-    是哪一个，这一轮还不知道。
+    manifest 记到新名字上。按轨迹跳过时认普通名与带后缀的名——上一轮画出来的是哪一个，
+    这一轮还不知道。
+
+    `origin` 记进 manifest（`bulk` / `case`），清理旧产物时用来区分"批量画的"与"单包画的"；
+    `kept` 是本次运行保留的产物名集合，只有 `--telemetry-bulk` 会传。
     """
     # 资源版本基线：命令行 --version 优先；否则从遥测证据包 evidence.json 的 release 取
-    # （原生 maafw.log 没有「资源版本」那行，同装 MFA 界日志也不会被下载进来）。
+    # （原生 maafw.log 没有「资源版本」那行，同装 MFA 界面日志也不会被下载进来）。
     version, version_source = options.version, options.version_source
     if version is None:
         found = _version_from_evidence(case)
@@ -76,44 +98,59 @@ def run_case(
     )
     vision = vision_override if vision_override is not None else case.vision()
     on_error = on_error_override if on_error_override is not None else case.on_error()
+    digest = log_digest(case)
+    # 命名与"同名是否被别人占着"仍看这份指纹（`output.out_filename` 的既有约定）；
+    # 要不要重画改由分步摘要决定，所以这里不再比较指纹。
     fingerprint = {
-        "log": log_digest(case),
+        "log": digest,
         "options": case_options.summary(),
         "source": case.describe(),
         "has_vision": bool(vision),
         "has_on_error": bool(on_error),
-        # 渲染器版本：解析口径/版面改了必须换指纹，否则同一个证据包会一直命中旧记录"跳过"
         "renderer": RENDERER_VERSION,
     }
-    if not force:
-        for candidate in (name, stale_name(name)):
-            recorded = manifest["cases"].get(candidate)
-            path = os.path.join(outdir, candidate)
-            if (
-                recorded
-                and recorded.get("fingerprint") == fingerprint
-                and os.path.isfile(path)
-            ):
-                log.info("跳过（已画过）：%s", path)
-                return None
-
-    target = os.path.join(outdir, name)
+    old = None if force else _record_for(manifest, outdir, name)
+    matched = old[0] if old else ""
+    trace_extra = {
+        "code": code_stages(),
+        "input": {
+            "log": digest,
+            "source": case.describe(),
+            "has_vision": bool(vision),
+            "has_on_error": bool(on_error),
+        },
+        # 仓库状态单独一个阶段：它只影响「疑似过时」标记，提交后重新核对一遍，数据没变就不重画
+        "repo": repo_state(),
+    }
     result = render_flow(
         case.log_source(),
         vision=vision,
         on_error=on_error,
-        out=target,
+        out=os.path.join(outdir, name),
         options=case_options,
         mermaid=mermaid,
+        trace_extra=trace_extra,
+        recorded_stages=(old[1].get("trace_stages") if old else None) or None,
+        existing=os.path.join(outdir, matched) if matched else None,
     )
     assert isinstance(result, FlowResult)
+    if result.skipped:
+        log.info("跳过（%s）：%s", result.skip_reason, os.path.join(outdir, matched or name))
+        if kept is not None:
+            kept.add(matched or name)
+        return None
+    if result.redraw_reason:
+        log.info("重画（%s）：%s", result.redraw_reason, name)
+    elif old and not (old[1].get("trace_stages") or {}):
+        # 升级前画的：记录里没有分步摘要，这一轮只能重画一遍把它补上
+        log.info("重画（旧记录没有分步摘要）：%s", name)
 
     # 疑似过时命中：把 _疑似过时 追加到文件名最末尾（扩展名之前），.mmd 跟着改
     stale_hit = result.stale is not None and bool(result.stale.nodes)
     if stale_hit:
         renamed = stale_name(name)
         renamed_path = os.path.join(outdir, renamed)
-        os.replace(target, renamed_path)
+        os.replace(result.path, renamed_path)
         if result.mermaid and os.path.isfile(result.mermaid):
             new_mermaid = os.path.splitext(renamed_path)[0] + ".mmd"
             os.replace(result.mermaid, new_mermaid)
@@ -121,8 +158,15 @@ def run_case(
         result.path = renamed_path
         name = renamed
 
+    issue = case_options.issue or issue_name_of(case) or ""
     manifest["cases"][name] = {
         "fingerprint": fingerprint,
+        # 清理旧产物靠这两个字段判断"这条记录属于哪个 issue、是批量还是单包画的"
+        "issue": issue,
+        "origin": origin,
+        # 增量判定：分步摘要与合成 sha（`flowlog/trace.py`）
+        "trace": result.trace,
+        "trace_stages": result.trace_stages,
         "path": result.path,
         "mermaid": result.mermaid,
         "width": result.width,
@@ -139,6 +183,8 @@ def run_case(
         "rendered_at": datetime.now().isoformat(timespec="seconds"),
         "stale": _stale_record(result.stale),
     }
+    if kept is not None:
+        kept.add(name)
     merged = (
         f"（{result.overlay_groups} 段重复已合并 → {result.columns} 列）"
         if result.overlay_groups
@@ -163,4 +209,3 @@ def run_case(
     if case.bad_packages:
         log.warning("以下卷读不了，结果可能不完整：%s", case.bad_packages)
     return result
-

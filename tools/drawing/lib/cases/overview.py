@@ -11,7 +11,6 @@ from datetime import datetime
 from typing import Any
 
 from tools.drawing.lib.flow_from_log import (
-    RENDERER_VERSION,
     FlowResult,
     Note,
     render_overview,
@@ -19,13 +18,21 @@ from tools.drawing.lib.flow_from_log import (
 
 from .evidence import _evidence_on_error
 from .pack import _fmt_local, _telemetry_module
+from .signature import code_stages
 
 log = logging.getLogger("tools.flow_cases")
+
 
 def overview_filename(
     short_id: str, outdir: str, manifest: dict, fingerprint: dict
 ) -> str:
-    """概览卡文件名：`<SHORT>.png`；被别的指纹占用时追加指纹短哈希。"""
+    """概览卡文件名：`<SHORT>.png`；被**别的**产物占用时追加指纹短哈希。
+
+    占用判据只看 `fingerprint["short_id"]`：概览卡的身份就是问题号，`last_seen` /
+    `release` / 渲染器版本变了都不该换名字——否则库里每来一次新事件就多一个
+    `<SHORT>_<哈希>.png`，与增量清理互相打架（这一轮写哈希名、下一轮又删掉写回原名）。
+    同一个名字上是别的 issue、或是不带 `short_id` 的记录（单包流程图）时才算被占用。
+    """
 
     import hashlib
     import json
@@ -33,15 +40,10 @@ def overview_filename(
     base = f"{short_id}.png"
 
     def taken(name: str) -> bool:
-        path = os.path.join(outdir, name)
-        if os.path.isfile(path):
-            return name not in manifest["cases"] or manifest["cases"][name].get(
-                "fingerprint"
-            ) != fingerprint
-        return (
-            name in manifest["cases"]
-            and manifest["cases"][name].get("fingerprint") != fingerprint
-        )
+        record = manifest["cases"].get(name)
+        if record is not None:
+            return record.get("fingerprint", {}).get("short_id") != short_id
+        return os.path.isfile(os.path.join(outdir, name))
 
     if not taken(base):
         return base
@@ -59,10 +61,13 @@ def run_overview(
     force: bool,
     manifest: dict,
     no_log_hint: bool = True,
+    origin: str = "case",
+    kept: set[str] | None = None,
 ) -> FlowResult | None:
     """画一条遥测 issue 的概览卡（没有可画的完整日志时的降级产物）。
 
     `no_log_hint=True` 时在卡上补一句"怎么补完整输出"；证据包在但解析不出流程时传 False。
+    卡片内容与绘制实现都没变时按轨迹跳过（`render_overview` 里判），产物名登记进 `kept`。
     """
 
     rel = card.release or ""
@@ -93,19 +98,12 @@ def run_overview(
         "last_seen": card.last_seen,
         "release": rel,
         "images": len(images),
-        "renderer": RENDERER_VERSION,
     }
     name = overview_filename(card.short_id, outdir, manifest, fingerprint)
     target = os.path.join(outdir, name)
-    if not force:
-        rec = manifest["cases"].get(name)
-        if (
-            rec
-            and rec.get("fingerprint") == fingerprint
-            and os.path.isfile(target)
-        ):
-            log.info("跳过（已画过）：%s", target)
-            return None
+    old = manifest["cases"].get(name) if not force else None
+    if old is not None and not os.path.isfile(target):
+        old = None  # 记录还在、图没了：等于没画过
     try:
         result = render_overview(
             target,
@@ -115,13 +113,26 @@ def run_overview(
             images=images,
             notes=notes,
             mermaid=mermaid,
+            trace_extra={"code": code_stages()},
+            recorded_stages=(old.get("trace_stages") if old else None) or None,
         )
     except ModuleNotFoundError as exc:
+        # 缺 Pillow 这类环境问题：报出来但不中断整批（`failed_issues` 会保住这条 issue 的旧图）
         log.error("错误：%s: %s", card.short_id, exc)
         return None
-    assert isinstance(result, FlowResult)
+    if result.skipped:
+        log.info("跳过（%s）：%s", result.skip_reason, target)
+        if kept is not None:
+            kept.add(name)
+        return None
     manifest["cases"][name] = {
         "fingerprint": fingerprint,
+        # 清理旧产物靠这两个字段判断"这条记录属于哪个 issue、是批量还是单包画的"
+        "issue": card.short_id,
+        "origin": origin,
+        # 增量判定：分步摘要与合成 sha（`flowlog/trace.py`）
+        "trace": result.trace,
+        "trace_stages": result.trace_stages,
         "path": result.path,
         "mermaid": result.mermaid,
         "width": result.width,
@@ -138,6 +149,7 @@ def run_overview(
         "rendered_at": datetime.now().isoformat(timespec="seconds"),
         "stale": None,
     }
+    if kept is not None:
+        kept.add(name)
     print(f"概览 {card.short_id} → {result.path}  ({result.width}×{result.height})")
     return result
-

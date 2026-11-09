@@ -24,12 +24,13 @@
   # 只列一遍有哪些证据包，不画
   python tools/drawing/cli.py cases --case D:/MaaAshArms/debug --list-cases
 
-实现分在 `tools/drawing/cases/` 七个模块：
+实现分在 `tools/drawing/cases/` 八个模块：
   cases/pack.py      日志挑选、`Case`、`load_case`/`discover_cases`、问题号与文件名要素
-  cases/output.py    产物命名、manifest 读写与指纹
+  cases/output.py    产物命名、manifest 读写、批量清理（`prune_artifacts`）
   cases/runner.py    `run_case`（渲染 + 「疑似过时」改名 + 记账）
   cases/evidence.py  `--evidence-dir` 各根下的证据包、失败 task 定位、证据事件注记
   cases/overview.py  概览卡（`run_overview`）与遥测卡接线
+  cases/signature.py 代码摘要（读取实现 / 绘制实现）与仓库状态，增量判定的输入
   cases/version_filter.py  `--telemetry-version` 的条件解析、版本比较与卡片分堆
   cases/cli.py       argparse、`main`、批量出图循环
 本文件只做 `sys.path` 引导、re-export 与 `main()`。
@@ -81,7 +82,10 @@ from tools.drawing.lib.cases import (
     _warn_extra_logs,
     _with_telemetry,
     _zips_in,
+    BULK_STEM_SUFFIXES,
+    artifact_issue,
     base_filename,
+    code_stages,
     create_argument_parser,
     discover_cases,
     issue_name_of,
@@ -89,10 +93,15 @@ from tools.drawing.lib.cases import (
     load_manifest,
     clear_artifacts,
     log_digest,
+    module_digest,
     log_stamp,
     main,
     out_filename,
     overview_filename,
+    parse_signature,
+    prune_artifacts,
+    raster_signature,
+    repo_state,
     resource_version_from_release,
     run_case,
     run_overview,
@@ -138,6 +147,14 @@ __all__ = [
     "_with_telemetry",
     "_zips_in",
     "base_filename",
+    "BULK_STEM_SUFFIXES",
+    "artifact_issue",
+    "code_stages",
+    "module_digest",
+    "parse_signature",
+    "prune_artifacts",
+    "raster_signature",
+    "repo_state",
     "create_argument_parser",
     "discover_cases",
     "issue_name_of",

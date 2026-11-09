@@ -98,11 +98,15 @@ python tools/drawing/cli.py cases --case log_20261014-part01.zip log_20261014-pa
 python tools/drawing/cli.py cases --case D:/MaaAshArms/debug --list-cases
 
 # 按遥测库批量出图（有证据包出完整流程，没有的出概览卡）
-# 批量前会先清空输出目录里的旧 png/mmd/manifest（默认开，--no-clean-flow 可保留）
+# 默认增量：manifest 里分步摘要一致就跳过，画完只清掉不属于本次 issue 集合的旧产物
 python tools/drawing/cli.py cases --telemetry-bulk
 python tools/drawing/cli.py cases --telemetry-bulk --telemetry-offline --no-fetch-evidence
 python tools/drawing/cli.py cases --telemetry-bulk \
     --evidence-dir D:/Downloads/evidence --evidence-dir D:/MaaAshArms/evidence
+
+# 整目录清空后全量重画（大改版面、想彻底重来一遍时用）；--no-prune 是"增量但不删"
+python tools/drawing/cli.py cases --telemetry-bulk --clean-flow
+python tools/drawing/cli.py cases --telemetry-bulk --no-prune
 
 # 只画某一段版本的 issue（条件可重复，按「且」叠加）
 python tools/drawing/cli.py cases --telemetry-bulk \
@@ -126,17 +130,18 @@ python tools/drawing/cli.py cases --telemetry-bulk --telemetry-version "==v1.0.0
 | `--local-release DIR` | 本地 release 安装目录（默认 `D:/MaaAshArms`，环境变量 `MAA_DRAWING_LOCAL_ROOT` 可改）：画证据包时用它的完整日志与 `vision/`、`on_error/` 辅助，**按内容认运行**（本机面板日志的 `event_id` + 证据包日志行在本地日志里逐字相同 + 同 task），认不出就不用。见 [docs/packs.md](./docs/packs.md) |
 | `--no-local-release` | 不让本地 release 参与，只用证据包自己的文件 |
 | `--force` | 忽略 manifest，强制重画 |
-| `--no-clean-flow` | 批量出图（`--telemetry-bulk`）前不清空输出目录。默认会先删掉目录里的旧 `png`/`mmd` 与 `manifest.json`，按当前遥测库重画一遍；同目录下 `explore-csv` 的 `.log` 与子目录不动 |
+| `--clean-flow` | 批量出图（`--telemetry-bulk`）前先清空输出目录里的 `png`/`mmd` 与 `manifest.json`，再整批重画；同目录下 `explore-csv` 的 `.log` 与子目录不动 |
+| `--no-prune` | 增量出图，但不删任何旧产物（目录里会留着上次的图、以及版本筛选范围外的图） |
 | `--evidence-dir DIR` | 批量模式找证据包的根目录（可重复，先给的先找；`temp/evidence` 永远兜底） |
-| `--telemetry-bulk` | 批量出图：遍历本地遥测库所有未解决 issue，每个尽量出一张 |
+| `--telemetry-bulk` | 批量出图：遍历本地遥测库所有未解决 issue，每个尽量出一张。**默认增量**：分步摘要（输入/参数/解析/注记/疑似过时 + 两段代码摘要）一致就跳过，见 [docs/packs.md](./docs/packs.md#增量绘制与旧产物清理) |
 | `--fetch-evidence` / `--no-fetch-evidence` | 本地缺证据包时是否自动 `evidence` 拉取（默认开，需联网） |
 | `--list-cases` | 只列出发现的证据包 |
 | `--all-tasks` | 按 `(进程, task_id)` 各出一张，文件名带 `_task<id>_px<进程>` |
 | `--log-level` / `--log-file` | 同 `flow`（默认 `temp/logs/flow_cases_…`） |
 
 产物：`temp/flow/<NAME>.png`（`--mermaid` 另出 `.mmd`），追加进 `temp/flow/manifest.json`；
-同一份输入重跑会跳过，`--force` 强制重画。命名规则、批量模式的取舍、证据包布局见
-[docs/packs.md](./docs/packs.md)。
+同一份输入重跑会跳过（`--force` 强制重画），批量模式还会删掉不属于本次 issue 集合的旧图。
+命名规则、增量判据、批量模式的取舍、证据包布局见 [docs/packs.md](./docs/packs.md)。
 
 遥测侧的入口是 `python -m tools.sentry.cli flow`，它转发到 `cases`，产出目录一致。
 

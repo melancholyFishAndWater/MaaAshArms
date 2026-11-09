@@ -11,6 +11,7 @@ import logging
 import os
 import sys
 from dataclasses import replace
+from datetime import datetime
 
 from tools._logging import configure_tool_logging
 from tools.drawing.lib.flow_from_log import (
@@ -33,7 +34,13 @@ from .evidence import (
     set_evidence_dirs,
 )
 from .local_release import LocalRelease, default_root
-from .output import MANIFEST_NAME, clear_artifacts, load_manifest, save_manifest
+from .output import (
+    MANIFEST_NAME,
+    clear_artifacts,
+    load_manifest,
+    prune_artifacts,
+    save_manifest,
+)
 from .overview import run_overview
 from .pack import (
     EVIDENCE_ROOT,
@@ -45,6 +52,7 @@ from .pack import (
     load_case,
 )
 from .runner import run_case
+from .signature import code_stages
 from .version_filter import VersionFilter, label_of
 
 log = logging.getLogger("tools.flow_cases")
@@ -215,12 +223,18 @@ def create_argument_parser(prog: str | None = None) -> argparse.ArgumentParser:
     )
     ap.add_argument("--force", action="store_true", help="忽略 manifest，强制重画")
     ap.add_argument(
-        "--no-clean-flow",
+        "--clean-flow",
         dest="clean_flow",
+        action="store_true",
+        help="批量出图（--telemetry-bulk）前先清空输出目录里的 png/mmd 与 manifest，再整批重画。"
+        "默认是增量：manifest 里分步摘要一致就跳过，只在画完后删掉不属于本次 issue 集合、"
+        "或已被本次重画取代的旧产物；同一目录下 explore-csv 落的 .log 与子目录不动",
+    )
+    ap.add_argument(
+        "--no-prune",
+        dest="prune",
         action="store_false",
-        help="批量出图（--telemetry-bulk）前不清空输出目录。默认会先删掉目录里的旧 png/mmd 与 "
-        "manifest，按当前遥测库重画一遍（否则上一轮的图、已 resolve 的 issue 的图都会留在目录里）；"
-        "同一目录下 explore-csv 落的 .log 与子目录不动",
+        help="增量出图，但不删任何旧产物（目录里会留着上次的图、以及版本筛选范围外的图）",
     )
     ap.add_argument(
         "--evidence-dir",
@@ -290,7 +304,7 @@ def create_argument_parser(prog: str | None = None) -> argparse.ArgumentParser:
         help="按任务逐个输出（一个 (进程, task_id) 一张图）。任务号在各进程内复用，"
         "不加这个参数时整份日志混画一张；加了之后文件名带 _task<id>_px<进程>",
     )
-    ap.set_defaults(thumbs=True, telemetry=True)
+    ap.set_defaults(thumbs=True, telemetry=True, prune=True)
     return ap
 
 
@@ -442,16 +456,41 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
             print(f"{case.label}\t{case.describe()}")
         return 0
 
-    # 批量出图前先清空输出目录（默认开）：每轮都按**当前**遥测库重画一份，不把上一轮
-    # （以及已 resolve 的 issue）留下的图算进这一轮。single pack / --all-tasks 不清。
+    # `--clean-flow`：整目录清空后重画（大改版面、想彻底重来一遍时用）。默认增量，不清空；
+    # `--telemetry-bulk` 之外（单包 / --all-tasks）两种都不清。
     if args.telemetry_bulk and args.clean_flow:
         removed = clear_artifacts(args.outdir)
         if removed:
-            log.info("批量出图前清空输出目录：%s（删掉 %d 个旧产物）", args.outdir, removed)
+            log.info(
+                "批量出图前清空输出目录（--clean-flow）：%s（删掉 %d 个旧产物）",
+                args.outdir,
+                removed,
+            )
         else:
-            log.info("批量出图前清空输出目录：%s（没有旧产物）", args.outdir)
+            log.info("批量出图前清空输出目录（--clean-flow）：%s（没有旧产物）", args.outdir)
     os.makedirs(args.outdir, exist_ok=True)
     manifest = load_manifest(args.outdir)
+    code_now = code_stages()
+    if args.telemetry_bulk:
+        # 把"这次哪类代码变了"先摆出来：读取实现变了只会让下一轮多读一遍日志，
+        # 绘制实现变了才会整批重画（判据见 `flowlog/trace.py`）
+        previous = manifest.get("signature")
+        previous = previous if isinstance(previous, dict) else {}
+        log.info(
+            "代码摘要：读取实现 %s，绘制实现 %s%s",
+            code_now["parse_impl"],
+            code_now["raster_impl"],
+            (
+                "（上次 读取 %s / 绘制 %s：%s）"
+                % (
+                    previous.get("parse_impl", "?"),
+                    previous.get("raster_impl", "?"),
+                    "没变" if dict(previous) == code_now else "变了，受影响的图会重画",
+                )
+                if previous
+                else "（没有上次记录）"
+            ),
+        )
     drawn = skipped = failed = 0
 
     # 每个证据包要画的任务。默认一个（`--task-id` 指定，或全部混画一张）；
@@ -459,6 +498,11 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
     # 只按编号切会把两次不同运行的任务混进同一张图。批量出图必须按任务切：
     # 命中的 issue 才能各出一张完整流程、文件名用问题号。
     drawn_issues: set[str] = set()
+    # 本次保留的产物名（画成功 + 按轨迹跳过的）：批量清理时只有"不在这个集合里"的旧产物会被删。
+    # 单包 / --all-tasks 不清理，也就不传它。
+    kept: set[str] = set()
+    # 本次什么都没画出来的 issue：清理时保住它们的旧图（重画失败时那张是唯一能看的）
+    failed_issues: set[str] = set()
     jobs: list[tuple[Case, FlowOptions]] = []
     for case in cases:
         if args.all_tasks or args.telemetry_bulk:
@@ -558,6 +602,8 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
                     manifest=manifest,
                     vision_override=args.vision,
                     on_error_override=args.on_error,
+                    origin="bulk" if args.telemetry_bulk else "case",
+                    kept=kept if args.telemetry_bulk else None,
                 )
             except (FileNotFoundError, ValueError, OSError) as exc:
                 last_error = exc
@@ -581,6 +627,8 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
             drawn_issues.add(annotation.chosen)
     overview_drawn = 0
     evidence_drawn = 0
+    overview_skipped = 0
+    evidence_skipped = 0
     if args.telemetry_bulk:
         if not cards:
             if version_filter is not None:
@@ -672,6 +720,8 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
                                 on_error_override=None,
                                 issue_only=True,
                                 stem_extra=stem_extra,
+                                origin="bulk",
+                                kept=kept,
                             )
                         except (FileNotFoundError, ValueError, OSError) as exc:
                             last_error = exc
@@ -684,6 +734,7 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
                             continue
                         rendered_ok = True
                         evidence_drawn += res is not None
+                        evidence_skipped += res is None
                         break
                     if rendered_ok:
                         continue
@@ -702,25 +753,71 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
                     force=args.force,
                     manifest=manifest,
                     no_log_hint=ev_case is None and not stale_pack,
+                    origin="bulk",
+                    kept=kept,
                 )
             except (OSError, ValueError) as exc:
                 failed += 1
                 log.error("错误：%s: %s", card.short_id, exc)
                 continue
             overview_drawn += res is not None
+            overview_skipped += res is None
+            if not any(
+                manifest["cases"].get(item, {}).get("issue") == card.short_id
+                for item in kept
+            ):
+                # 这条 issue 这次什么都没画出来（渲染失败 / 缺 Pillow / 证据包画不出流程又退不回卡）：
+                # 清理时保住它的旧图——重画失败的那次，目录里那张是唯一还能看的
+                failed_issues.add(card.short_id)
 
+    pruned = 0
+    if args.telemetry_bulk and not args.telemetry_only:
+        if args.clean_flow:
+            log.info("提示：--clean-flow 已经清空过输出目录，本次不再单独清理")
+        elif not args.prune:
+            log.info("提示：--no-prune，本次不清理旧产物")
+        elif cards:
+            pruned = prune_artifacts(
+                args.outdir,
+                manifest,
+                kept,
+                issues={card.short_id for card in cards},
+                failed_issues=failed_issues,
+            )
+            if pruned:
+                log.info(
+                    "清理旧产物：%d 个（不在本次 %d 个 issue 集合内、或已被本次重画取代）",
+                    pruned,
+                    len(cards),
+                )
+        else:
+            # 库是空的 / 版本筛完为空：不能按"空集合"把目录清空，那通常意味着刷新失败或条件写错
+            log.info("提示：本次没有可画的 issue，跳过旧产物清理")
+        manifest["schema"] = 2
+        manifest["signature"] = code_now
+        manifest["bulk"] = {
+            "at": datetime.now().isoformat(timespec="seconds"),
+            "version_filter": list(args.telemetry_version or []),
+            "issues": [card.short_id for card in cards],
+            "pruned": pruned,
+        }
     save_manifest(args.outdir, manifest)
     if args.telemetry_only:
         print(f"\n共 {telemetry_shown} 个证据包（未画图）。")
         return 0
     tail = f"，失败 {failed}" if failed else ""
-    parts = [f"绘制 {drawn} 个", f"跳过 {skipped} 个"]
+    parts = [
+        f"绘制 {drawn} 个",
+        f"跳过 {skipped + evidence_skipped + overview_skipped} 个",
+    ]
     if version_skipped:
         parts.append(f"版本筛选排除 {version_skipped} 个")
     if evidence_drawn:
         parts.append(f"证据包流程 {evidence_drawn} 个")
     if overview_drawn:
         parts.append(f"概览 {overview_drawn} 个")
+    if pruned:
+        parts.append(f"清理 {pruned} 个旧产物")
     print(
         f"\n完成：{('，'.join(parts))}{tail}；"
         f"manifest → {os.path.join(args.outdir, MANIFEST_NAME)}"

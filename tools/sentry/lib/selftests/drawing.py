@@ -260,6 +260,7 @@ def check_overview_render() -> list[str]:
     from tools.drawing.lib.flow_cases import (
         clear_artifacts,
         overview_filename,
+        prune_artifacts,
         save_manifest,
     )
     from tools.sentry.lib import telemetry_index as ti
@@ -282,14 +283,22 @@ def check_overview_render() -> list[str]:
             "PYTHON-Z.png",
             "空闲文件名",
         )
-        manifest["cases"]["PYTHON-Z.png"] = {"fingerprint": dict(fp_a, last_seen="OTHER")}
+        # 被**别的产物**占着（单包流程图的记录没有 short_id）→ 让路，追加哈希
+        manifest["cases"]["PYTHON-Z.png"] = {"fingerprint": {"log": "deadbeef"}}
         taken = overview_filename("PYTHON-Z", tmp, manifest, fp_a)
         _eq(
             taken != "PYTHON-Z.png"
             and taken.startswith("PYTHON-Z_")
             and taken.endswith(".png"),
             True,
-            "被别指纹占用时追加哈希",
+            "被别的产物占用时追加哈希",
+        )
+        # 同一个 issue 的旧记录不算占用：last_seen 变了也沿用原名（否则每来一次新事件就换名）
+        manifest["cases"]["PYTHON-Z.png"] = {"fingerprint": dict(fp_a, last_seen="OTHER")}
+        _eq(
+            overview_filename("PYTHON-Z", tmp, manifest, fp_a),
+            "PYTHON-Z.png",
+            "同一 issue 的旧记录复用原名（增量清理不来回改名）",
         )
         manifest["cases"]["PYTHON-Z.png"]["fingerprint"] = fp_a
         _eq(
@@ -346,10 +355,66 @@ def check_overview_render() -> list[str]:
         _eq(_os.path.isfile(keep_log), True, "清理不动 .log")
         _eq(_os.path.isdir(keep_dir), True, "清理不动子目录")
         _eq(clear_artifacts(tmp), 0, "再清一次没有可删的")
+
+        # 4) 增量清理：只动 manifest 里记着的产物，按 issue 归属与"本次是否保留"判定
+        pdir = _os.path.join(tmp, "prune")
+        _os.makedirs(pdir, exist_ok=True)
+
+        def add(record_name: str, **extra) -> None:
+            for suffix in (".png", ".mmd"):
+                with open(
+                    _os.path.join(pdir, _os.path.splitext(record_name)[0] + suffix), "wb"
+                ) as handle:
+                    handle.write(b"x")
+            prune_manifest["cases"][record_name] = {
+                "path": _os.path.join(pdir, record_name),
+                **extra,
+            }
+
+        prune_manifest: dict = {"schema": 2, "cases": {}}
+        kept = {"PYTHON-FF.png"}
+        add("PYTHON-FF.png", issue="PYTHON-FF", origin="bulk")  # 本次保留
+        add("PYTHON-AA.png", issue="PYTHON-AA", origin="bulk")  # 在集合里但被取代
+        add("PYTHON-BB.png", origin="bulk")  # 归属靠文件名前缀，不在集合里
+        add("PYTHON-CC_task1.png", origin="case")  # 单包画的，issue 在集合里
+        add("PYTHON-DD.png", issue="PYTHON-DD", origin="bulk")  # 本次画失败
+        add("Entrust_20261001.png", origin="case")  # 认不出问题号
+        prune_manifest["cases"]["PYTHON-EE.png"] = {"issue": "PYTHON-EE"}  # 文件已不在
+        prune_manifest["cases"]["..\\evil.png"] = {"issue": "PYTHON-ZZ"}  # 坏 manifest
+        removed = prune_artifacts(
+            pdir,
+            prune_manifest,
+            kept,
+            issues={"PYTHON-AA", "PYTHON-CC", "PYTHON-FF"},
+            failed_issues={"PYTHON-DD"},
+        )
+        _eq(removed, 2, "清理：集合外一个 + 被取代一个")
+        for gone, name in (
+            ("PYTHON-AA.png", "被本次重画取代的批量产物"),
+            ("PYTHON-AA.mmd", "同干的 .mmd"),
+            ("PYTHON-BB.png", "不在本次 issue 集合里的产物"),
+        ):
+            _eq(_os.path.isfile(_os.path.join(pdir, gone)), False, f"{name} 删掉")
+        for stays, name in (
+            ("PYTHON-CC_task1.png", "issue 仍在集合里的单包产物"),
+            ("PYTHON-DD.png", "本次画失败的 issue 的旧图"),
+            ("PYTHON-FF.png", "本次保留的产物"),
+            ("Entrust_20261001.png", "认不出问题号的产物"),
+        ):
+            _eq(_os.path.isfile(_os.path.join(pdir, stays)), True, f"{name} 保留")
+        _eq("PYTHON-EE.png" in prune_manifest["cases"], False, "文件已不在的记录被清掉")
+        _eq(
+            "..\\evil.png" in prune_manifest["cases"],
+            True,
+            "文件名带路径分隔符的记录不动",
+        )
     finally:
         _shutil.rmtree(tmp, ignore_errors=True)
 
-    return ["概览卡渲染（PNG + .mmd）/ 文件名碰撞 / 来源标记 / 批量前清理旧产物 各自有断言"]
+    return [
+        "概览卡渲染（PNG + .mmd）/ 文件名占用判据（同 issue 稳定）/ 来源标记 / "
+        "整目录清理 / 按 issue 归属的增量清理 各自有断言"
+    ]
 
 
 def check_evidence_pack_gate() -> list[str]:
@@ -662,9 +727,178 @@ def check_local_release_assist() -> list[str]:
         ambiguous = LocalRelease.discover(str(tmp / "release"))
         assert ambiguous is not None
         _eq(ambiguous.find(pack, 200000001), None, "两份都对得上时不猜")
+
+        # 共享 trace：包的失败行属于另一个任务，目标任务只在更早轮转掉的那份里
+        shared_pack = tmp / "shared" / "PYTHON-SH" / "debug"
+        shared_pack.mkdir(parents=True)
+        other_task_lines = [
+            done("10:10:10.000", "TaskA", 200000002),
+            done("10:10:20.000", "AStep", 200000002),
+            timeout("10:10:30.000", "NodeA"),
+        ]
+        (shared_pack / "maafw.log").write_text(
+            "\n".join(other_task_lines) + "\n", encoding="utf-8"
+        )
+        release2 = tmp / "release2" / "debug"
+        release2.mkdir(parents=True)
+        (release2 / "maafw.log").write_text(
+            "\n".join(other_task_lines) + "\n", encoding="utf-8"
+        )
+        rotated = release2 / "maafw.bak.2026.11.09-10.20.00.000.log"
+        rotated.write_text(
+            "\n".join(
+                [other_task_lines[0], other_task_lines[1], done("10:10:40.000", "BStep", 200000099)]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        local2 = LocalRelease.discover(str(tmp / "release2"))
+        assert local2 is not None
+        shared_case = load_case([str(shared_pack)])
+        by_task = local2.find(shared_case, 200000099)
+        _eq(by_task is not None, True, "给了 task 就只认含这个 task 的日志")
+        if by_task is not None:
+            _eq(
+                _os.path.basename(by_task.log_path),
+                rotated.name,
+                "失败行属于别的任务时按 task 归属挑，不按失败行锚定",
+            )
+        whole_pack = local2.find(shared_case)
+        _eq(
+            whole_pack is not None
+            and _os.path.basename(whole_pack.log_path) == "maafw.log",
+            True,
+            "没给 task 时仍按失败行锚定（旧行为不变）",
+        )
     finally:
         _shutil.rmtree(tmp, ignore_errors=True)
 
     return [
-        "本地 release 按内容认运行 / 同时间同 task 不同内容不算 / 两份都对得上不猜 各有断言"
+        "本地 release 按内容认运行 / 同时间同 task 不同内容不算 / 两份都对得上不猜 / "
+        "共享 trace 时按 task 归属而不是失败行锚定 各有断言"
+    ]
+
+def check_incremental_trace() -> list[str]:
+    """增量绘制的分步摘要：代码摘要只认代码、数据步只认数据、理由要点到是哪一步。
+
+    判据来自实测需求：改绘图脚本时"哪些图要重画"不能靠人判。这里只验纯逻辑
+    （不渲染、不联网、不读真实 temp）：
+
+    - 代码摘要按规范化 AST 算，改注释 / docstring 不算改代码；
+    - 时间窗、注记要进 `options` 摘要（旧的 manifest 指纹把这两项漏掉了，改了不重画）；
+    - 实现步变了不算"数据变了"，注记变了才算，且理由点到那一步。
+    """
+    import os as _os
+    import shutil as _shutil
+    from datetime import datetime as _datetime
+    from pathlib import Path as _Path
+
+    root = _Path(__file__).resolve().parents[4]
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    from tools.drawing.lib.flow_cases import (
+        module_digest,
+        parse_signature,
+        raster_signature,
+    )
+    from tools.drawing.lib.flow_from_log import FlowOptions, Note
+    from tools.drawing.lib.flowlog.trace import (
+        STAGE_ORDER,
+        canonical,
+        notes_payload,
+        options_payload,
+        reason_of,
+        same_data,
+        stage_digest,
+        trace_of,
+    )
+
+    tmp = _os.path.join(str(root), "temp", "flow", "_selftest_trace")
+    _shutil.rmtree(tmp, ignore_errors=True)
+    _os.makedirs(tmp, exist_ok=True)
+    try:
+
+        def write(name: str, text: str) -> str:
+            path = _os.path.join(tmp, name)
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write(text)
+            return path
+
+        plain = write("plain.py", "def f(x):\n    return x + 1\n")
+        documented = write(
+            "documented.py",
+            '"""模块说明。"""\n\n\ndef f(x):\n    """函数说明。"""\n    return x + 1  # 尾注释\n',
+        )
+        changed = write("changed.py", "def f(x):\n    return x + 2\n")
+        _eq(
+            module_digest(plain) == module_digest(documented),
+            True,
+            "只差注释/docstring 的源码摘要相同",
+        )
+        _eq(module_digest(plain) != module_digest(changed), True, "改一个字面量摘要就变")
+        broken = write("broken.py", "def f(:\n")
+        _eq(
+            module_digest(broken) == module_digest(broken),
+            True,
+            "语法不完整的文件不抛异常、摘要稳定",
+        )
+        _eq(parse_signature() != raster_signature(), True, "读取实现与绘制实现分别记账")
+
+        base = FlowOptions(task_id=200000001)
+        window = FlowOptions(task_id=200000001, t_from=_datetime(2026, 11, 1, 8, 0, 0))
+        annotated = FlowOptions(task_id=200000001, extra_notes=[("提示", "info")])
+        _eq(
+            stage_digest(options_payload(base))
+            != stage_digest(options_payload(window)),
+            True,
+            "时间窗变化改 options 摘要",
+        )
+        _eq(
+            stage_digest(options_payload(base))
+            != stage_digest(options_payload(annotated)),
+            True,
+            "注记变化改 options 摘要",
+        )
+        _eq(notes_payload([Note("a", "fail")]), [["a", "fail"]], "注记载荷是 (文本, 颜色)")
+        _eq(
+            canonical({"b": 1, "a": (2, [3])}),
+            {"a": [2, [3]], "b": 1},
+            "规范化：键排序、元组转列表",
+        )
+
+        full = {name: f"v-{name}" for name in STAGE_ORDER}
+        _eq(
+            same_data(full, dict(full, parse_impl="x", raster_impl="y")),
+            True,
+            "实现步变了不算数据变",
+        )
+        _eq(same_data(full, dict(full, notes="x")), False, "注记变了算数据变")
+        _eq(
+            same_data(full, dict(full, repo="x")),
+            True,
+            "仓库状态变了不算数据变（只多读一遍日志核对标记）",
+        )
+        _eq(reason_of(full, dict(full, notes="x")), "注记变了", "理由点到那一步")
+        _eq(
+            reason_of(full, dict(full, repo="x")),
+            "仓库状态变了（只影响「疑似过时」标记）",
+            "只改了仓库状态时理由说清是它",
+        )
+        _eq(
+            reason_of(full, dict(full, raster_impl="x")),
+            "绘制实现变了",
+            "绘制实现变了优先报",
+        )
+        _eq(reason_of({}, full), "没有旧记录", "没有旧记录")
+        _eq(trace_of(full) == trace_of(dict(full)), True, "合成 sha 稳定")
+        _eq(
+            trace_of(full) != trace_of(dict(full, notes="x")),
+            True,
+            "任一阶段变了合成 sha 就变",
+        )
+    finally:
+        _shutil.rmtree(tmp, ignore_errors=True)
+
+    return [
+        "代码摘要去注释 / 时间窗与注记进 options / 数据步判定 / 理由与合成 sha 各自有断言"
     ]

@@ -33,6 +33,8 @@ from .paths import DEFAULT_OUTDIR, REPO_ROOT
 
 from .stale import VERSION_SOURCE_CLI, VERSION_SOURCE_MFA_LOG, VERSION_SOURCE_TELEMETRY, _apply_stale, _log_version_of, check_stale_nodes, stale_label
 
+from .trace import notes_payload, options_payload, reason_of, same_data, stage_digest, trace_of
+
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -144,6 +146,39 @@ class FlowResult:
     derived_from: str = ""  # 非空 = 步骤由识别记录合成（仅事件模式）
     out_of_order: int = 0  # 时间戳回跳的行数（>0 表示已按时间重排）
     stale: StaleCheck | None = None  # 疑似过时的节点（None = 没做这项检查）
+    # 增量绘制的分步摘要（`flowlog/trace.py`）：`trace_stages` 各步各一个，`trace` 是它们的合成。
+    # `cases` 把这组值写进 manifest，下一轮据此判断"这张图要不要重画"。
+    trace: str = ""
+    trace_stages: dict[str, str] = field(default_factory=dict)
+    # 按轨迹跳过：文件没动、也没设置宽高与统计（调用方据此把这一轮算成"跳过"）
+    skipped: bool = False
+    skip_reason: str = ""
+    # 没跳过时：这次为什么要重画（`代码签名变了` / `注记变了` / `没有旧记录` …）
+    redraw_reason: str = ""
+
+
+def _remove_quiet(path: str) -> None:
+    """删临时文件，失败不报（真正的错误由调用方继续抛，别让清理掩盖它）。"""
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+
+
+def _skipped_result(target: str, reason: str, stages: dict[str, str]) -> FlowResult:
+    """按轨迹跳过时的返回值：只带路径与摘要，没有像素产出。"""
+    return FlowResult(
+        path=target,
+        mermaid=None,
+        width=0,
+        height=0,
+        steps=0,
+        boxes=0,
+        rounds=0,
+        trace_stages=stages,
+        skipped=True,
+        skip_reason=reason,
+    )
 
 
 def _log_basename(log: Any) -> str:
@@ -542,12 +577,27 @@ def render_flow(
     options: FlowOptions | None = None,
     mermaid: bool = False,
     list_only: bool = False,
+    trace_extra: dict[str, Any] | None = None,
+    recorded_stages: dict[str, str] | None = None,
+    existing: str | None = None,
 ) -> FlowResult | str:
     """解析日志并画流程图；库调用入口，与命令行共用同一实现。
 
     ``log`` 可以是文件路径、日志正文，或任何可逐行的文本流——遥测从 Sentry 取回的
     日志没有本地文件，直接传文本即可。``list_only=True`` 时返回分轮文本（与 ``--list``
     输出一致），不画图。
+
+    ``trace_extra`` / ``recorded_stages`` 是增量绘制的钩子（只有 `cases` 用）：
+    ``trace_extra`` 给 ``{"code": {parse_impl, raster_impl}, "input": {…}}``——代码摘要与
+    调用方才知道的输入事实；``recorded_stages`` 是 manifest 里上一轮的分步摘要。两者都给、
+    且 ``out`` 指向的文件还在时，本函数自己决定"跳过还是重画"：
+
+    * 绘制实现（像素）没变、读取实现没变、输入与参数也没变 → 不读日志直接跳过（快路）；
+    * 否则读一遍、算数据步，数据步全同 → 跳过；不同 → 画，并在 ``redraw_reason`` 里写清
+      第一个不同的是哪一步。
+
+    ``existing`` 是"旧图实际在哪"：`cases` 会同时认 `<名>.png` 与 `<名>_疑似过时.png`，
+    命中带后缀的那个时把它传进来，否则这一轮会因为"普通名不存在"而白重画一遍。
     """
     opts = options or FlowOptions()
     vision = _norm_source(opts.vision if vision is None else vision)
@@ -560,6 +610,36 @@ def render_flow(
                 if os.path.isdir(cand):
                     on_error = MediaResolver(cand)
                     break
+
+    # 目标路径先算出来：增量判定的快路要看"旧图还在不在"，而它只依赖入参
+    if out:
+        target = os.path.abspath(out)
+    else:
+        base_dir = os.path.abspath(outdir) if outdir else DEFAULT_OUTDIR
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        target = os.path.join(base_dir, f"{_log_basename(log)}_{stamp}.png")
+
+    recorded = dict(recorded_stages or {})
+    # 旧图可能叫 `<名>.png`，也可能带 `_疑似过时` 后缀（`cases` 认得出来就传进来）
+    old_file = existing or target
+    stages: dict[str, str] = dict((trace_extra or {}).get("code") or {})
+    if trace_extra is not None:
+        stages["input"] = stage_digest(trace_extra.get("input") or {})
+        stages["options"] = stage_digest(options_payload(opts))
+        # 仓库状态只当"要不要重新核对「疑似过时」"的开关：变了就让下面读一遍日志
+        stages["repo"] = stage_digest(trace_extra.get("repo") or {})
+        if (
+            not list_only
+            and recorded
+            and os.path.isfile(old_file)
+            and recorded.get("raster_impl") == stages.get("raster_impl")
+            and all(
+                recorded.get(name) == stages.get(name)
+                for name in ("parse_impl", "input", "options", "repo")
+            )
+        ):
+            # 读日志的代码没变、输入与参数也没变 ⇒ 解析结果必然相同，不必把日志读一遍
+            return _skipped_result(old_file, "轨迹一致（没解析）", stages)
 
     parsed = parse_log(
         log, opts.t_from, opts.t_to, opts.task_id, opts.keep_internal, px=opts.px
@@ -694,13 +774,26 @@ def render_flow(
             lines.append(f"提示：{note}")
         return "\n".join(lines)
 
-    if out:
-        target = os.path.abspath(out)
-    else:
-        base_dir = os.path.abspath(outdir) if outdir else DEFAULT_OUTDIR
-        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        target = os.path.join(base_dir, f"{_log_basename(log)}_{stamp}.png")
     os.makedirs(os.path.dirname(target), exist_ok=True)
+
+    redraw_reason = ""
+    if trace_extra is not None:
+        stages["parse"] = stage_digest(parsed)
+        stages["notes"] = stage_digest(notes_payload(notes))
+        stages["stale"] = stage_digest(opts.stale)
+        if recorded and os.path.isfile(old_file):
+            if (
+                recorded.get("raster_impl") == stages.get("raster_impl")
+                and same_data(recorded, stages)
+            ):
+                # 读取实现的代码变了，但这段日志的解析/注记/标记一个字都没变：图不用重画
+                return _skipped_result(old_file, "轨迹一致（只有读取实现变了）", stages)
+            redraw_reason = reason_of(recorded, stages)
+        elif not recorded:
+            # 没有旧记录（第一次画、或旧记录被 --clean-flow 清掉了）：不用解释
+            redraw_reason = ""
+        else:
+            redraw_reason = "旧图不在了"
 
     opts.vision, opts.on_error = vision, on_error
     opts.truncated_start = truncated_start
@@ -710,50 +803,72 @@ def render_flow(
         if isinstance(log, str) and "\n" not in log
         else _log_basename(log) + ".log"
     )
+    # 先画到临时名、成功再换名：重画失败（Pillow 缺失、写盘出错）不会毁掉上一轮的好图，
+    # 配合 `cases` 的"这次没画出来的 issue 不清理旧产物"，目录里始终留着能看的那一张。
+    tmp_target = os.path.join(
+        os.path.dirname(target),
+        os.path.splitext(os.path.basename(target))[0] + ".rendering.png",
+    )
     try:
-        drawn = draw_flow(parsed, opts, target)
+        drawn = draw_flow(parsed, opts, tmp_target)
     except ModuleNotFoundError as exc:
+        _remove_quiet(tmp_target)
         if (exc.name or "").startswith("PIL"):
             raise ModuleNotFoundError(
                 "画图需要 Pillow，当前解释器里没有。发布包自带的 python 也不含它——"
                 "请用装了 Pillow 的系统 Python 跑（或先 pip install pillow）。"
             ) from exc
         raise
+    except BaseException:
+        _remove_quiet(tmp_target)
+        raise
 
     mermaid_path: str | None = None
-    if mermaid:
-        mermaid_path = os.path.splitext(target)[0] + ".mmd"
-        rnds = drawn.rounds_shown
-        # 父节点那一行同时作为虚线"派发"边（实线仍是执行顺序，两者含义不同，别混着读）
-        with open(mermaid_path, "w", encoding="utf-8") as fh:
-            fh.write("flowchart TD\n")
-            for i, r in enumerate(rnds):
-                span = drawn.spans[i]
-                head = (
-                    f"第 {span.first + 1}–{span.last + 1} 轮 ×{span.count}"
-                    if span.merged
-                    else f"第 {span.first + 1} 轮"
-                )
-                fh.write(f"  subgraph R{i + 1}[{head}]\n    direction TB\n")
-                for j, s in enumerate(r):
-                    fh.write(f'    n{i}_{j}["{stale_label(s.name)}"]\n')
-                for j in range(len(r) - 1):
-                    fh.write(f"    n{i}_{j} --> n{i}_{j + 1}\n")
-                fh.write("  end\n")
-                if i:
-                    fh.write(f"  n{i - 1}_{len(rnds[i - 1]) - 1} --> n{i}_0\n")
-            if opts.parents:
-                index: dict[str, str] = {}
+    tmp_mermaid: str | None = None
+    try:
+        if mermaid:
+            mermaid_path = os.path.splitext(target)[0] + ".mmd"
+            tmp_mermaid = os.path.splitext(tmp_target)[0] + ".mmd"
+            rnds = drawn.rounds_shown
+            # 父节点那一行同时作为虚线"派发"边（实线仍是执行顺序，两者含义不同，别混着读）
+            with open(tmp_mermaid, "w", encoding="utf-8") as fh:
+                fh.write("flowchart TD\n")
                 for i, r in enumerate(rnds):
+                    span = drawn.spans[i]
+                    head = (
+                        f"第 {span.first + 1}–{span.last + 1} 轮 ×{span.count}"
+                        if span.merged
+                        else f"第 {span.first + 1} 轮"
+                    )
+                    fh.write(f"  subgraph R{i + 1}[{head}]\n    direction TB\n")
                     for j, s in enumerate(r):
-                        index.setdefault(s.name, f"n{i}_{j}")
-                for i, r in enumerate(rnds):
-                    for j, s in enumerate(r):
-                        if not s.parent or s.dispatched:
-                            continue  # 自派发/自循环画出来只是噪音
-                        src = index.get(s.parent)
-                        if src and src != f"n{i}_{j}":
-                            fh.write(f"  {src} -.->|派发| n{i}_{j}\n")
+                        fh.write(f'    n{i}_{j}["{stale_label(s.name)}"]\n')
+                    for j in range(len(r) - 1):
+                        fh.write(f"    n{i}_{j} --> n{i}_{j + 1}\n")
+                    fh.write("  end\n")
+                    if i:
+                        fh.write(f"  n{i - 1}_{len(rnds[i - 1]) - 1} --> n{i}_0\n")
+                if opts.parents:
+                    index: dict[str, str] = {}
+                    for i, r in enumerate(rnds):
+                        for j, s in enumerate(r):
+                            index.setdefault(s.name, f"n{i}_{j}")
+                    for i, r in enumerate(rnds):
+                        for j, s in enumerate(r):
+                            if not s.parent or s.dispatched:
+                                continue  # 自派发/自循环画出来只是噪音
+                            src = index.get(s.parent)
+                            if src and src != f"n{i}_{j}":
+                                fh.write(f"  {src} -.->|派发| n{i}_{j}\n")
+    except BaseException:
+        _remove_quiet(tmp_target)
+        if tmp_mermaid is not None:
+            _remove_quiet(tmp_mermaid)
+        raise
+
+    os.replace(tmp_target, target)
+    if mermaid_path is not None and tmp_mermaid is not None:
+        os.replace(tmp_mermaid, mermaid_path)
 
     return FlowResult(
         path=target,
@@ -770,6 +885,9 @@ def render_flow(
         derived_from=parsed.derived_from,
         out_of_order=parsed.stats.out_of_order,
         stale=opts.stale,
+        trace=trace_of(stages) if trace_extra is not None else "",
+        trace_stages=stages,
+        redraw_reason=redraw_reason,
     )
 
 
@@ -782,12 +900,17 @@ def render_overview(
     images: list[str] | None = None,
     notes: list[Note] | None = None,
     mermaid: bool = False,
+    trace_extra: dict[str, Any] | None = None,
+    recorded_stages: dict[str, str] | None = None,
 ) -> FlowResult:
     """把一条遥测 issue 画成「概览卡」PNG——没有完整 maafw.log 时的降级产物。
 
     与 `render_flow` 同用 PIL，落盘到 `out`；`--mermaid` 时再写一个 `.mmd`（把事实列成节点）。
     issue 本体只存文本（`IssueCard`），没有 on_error 图：图只有在
     `temp/evidence/<SHORT>/debug/on_error/` 被下载过时才贴，否则纯文字。
+
+    `trace_extra` / `recorded_stages` 与 `render_flow` 同义：卡片内容（字段、注记、现场图）
+    没变、绘制实现也没变时直接跳过，不去建图。
     """
 
     def _text(draw: Any, xy: tuple[int, int], s: str, font: Any, fill: Any) -> None:
@@ -799,6 +922,27 @@ def render_overview(
     fields = fields or []
     images = images or []
     notes = notes or []
+
+    stages: dict[str, str] = dict((trace_extra or {}).get("code") or {})
+    recorded = dict(recorded_stages or {})
+    if trace_extra is not None:
+        stages["card"] = stage_digest(
+            {
+                "title": title,
+                "subtitle": subtitle,
+                "fields": fields,
+                "images": [os.path.basename(path) for path in images],
+                "notes": notes_payload(notes),
+            }
+        )
+        if (
+            recorded
+            and os.path.isfile(out)
+            and recorded.get("raster_impl") == stages.get("raster_impl")
+            and recorded.get("card") == stages.get("card")
+        ):
+            return _skipped_result(os.path.abspath(out), "轨迹一致", stages)
+
     font_title = load_font(int(24 * 1.0), bold=True)
     font_field = load_font(16)
     font_note = load_font(13)
@@ -856,19 +1000,36 @@ def render_overview(
             color = NOTE_COLORS.get(n.kind, NOTE_COLORS["info"])
             _text(draw, (pad, y), n.text, font_note, color)
             y += line_h - 8
-    os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
-    img.save(out)
+    target = os.path.abspath(out)
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+    tmp_target = os.path.splitext(target)[0] + ".rendering.png"
+    try:
+        img.save(tmp_target)
+    except BaseException:
+        _remove_quiet(tmp_target)
+        raise
     mermaid_path: str | None = None
-    if mermaid:
-        mermaid_path = os.path.splitext(out)[0] + ".mmd"
-        with open(mermaid_path, "w", encoding="utf-8") as fh:
-            fh.write("flowchart TD\n")
-            fh.write(f'  title["{re.sub(r"[\"\[\]\\]", "", title)}"]\n')
-            for i, (label, value) in enumerate(fields):
-                safe = re.sub(r'["\[\]]', "", str(value))[:40]
-                fh.write(f'  f{i}["{label}: {safe}"]\n')
+    tmp_mermaid: str | None = None
+    try:
+        if mermaid:
+            mermaid_path = os.path.splitext(target)[0] + ".mmd"
+            tmp_mermaid = os.path.splitext(tmp_target)[0] + ".mmd"
+            with open(tmp_mermaid, "w", encoding="utf-8") as fh:
+                fh.write("flowchart TD\n")
+                fh.write(f'  title["{re.sub(r"[\"\[\]\\]", "", title)}"]\n')
+                for i, (label, value) in enumerate(fields):
+                    safe = re.sub(r'["\[\]]', "", str(value))[:40]
+                    fh.write(f'  f{i}["{label}: {safe}"]\n')
+    except BaseException:
+        _remove_quiet(tmp_target)
+        if tmp_mermaid is not None:
+            _remove_quiet(tmp_mermaid)
+        raise
+    os.replace(tmp_target, target)
+    if mermaid_path is not None and tmp_mermaid is not None:
+        os.replace(tmp_mermaid, mermaid_path)
     return FlowResult(
-        path=os.path.abspath(out),
+        path=target,
         mermaid=mermaid_path,
         width=width,
         height=height,
@@ -882,4 +1043,6 @@ def render_overview(
         derived_from="overview",
         out_of_order=0,
         stale=None,
+        trace=trace_of(stages) if trace_extra is not None else "",
+        trace_stages=stages,
     )

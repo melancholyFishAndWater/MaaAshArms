@@ -38,19 +38,30 @@ from .pack import (
 )
 
 from .output import (
+    BULK_STEM_SUFFIXES,
     MANIFEST_NAME,
     _safe_part,
+    artifact_issue,
     base_filename,
     out_filename,
     stale_name,
     load_manifest,
     save_manifest,
     clear_artifacts,
+    prune_artifacts,
     _stale_record,
 )
 
 from .runner import (
     run_case,
+)
+
+from .signature import (
+    code_stages,
+    module_digest,
+    parse_signature,
+    raster_signature,
+    repo_state,
 )
 
 from .evidence import (
@@ -116,6 +127,14 @@ __all__ = [
     "_with_telemetry",
     "_zips_in",
     "base_filename",
+    "BULK_STEM_SUFFIXES",
+    "artifact_issue",
+    "code_stages",
+    "module_digest",
+    "parse_signature",
+    "prune_artifacts",
+    "raster_signature",
+    "repo_state",
     "create_argument_parser",
     "discover_cases",
     "issue_name_of",

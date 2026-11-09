@@ -1,6 +1,7 @@
-"""产物命名与 manifest：同名占用判定、指纹、原子替换。
+"""产物命名与 manifest：同名占用判定、指纹、原子替换、批量清理。
 
-文件名 = 问题号/任务名 + 日志指纹；manifest 记录指纹与产物，命中即跳过（幂等）。
+文件名 = 问题号/任务名 + 日志指纹；manifest 记录分步摘要与产物，命中即跳过（幂等）。
+「要不要重画」由 `flowlog/trace.py` 的分步摘要决定，这里只管命名、记账与清理旧产物。
 不读日志、不画图。
 """
 
@@ -13,11 +14,14 @@ from dataclasses import asdict
 
 from tools.drawing.lib.flow_from_log import FlowOptions
 
-from .pack import Case, issue_name_of, log_digest, log_stamp, task_name_of
+from .pack import ISSUE_RE, Case, issue_name_of, log_digest, log_stamp, task_name_of
 
 MANIFEST_NAME = "manifest.json"
 # 批量出图前清掉的产物：`explore-csv` 会往同一目录写 `<csv 名>.log`（那是**输入**），不能删
 ARTIFACT_SUFFIXES = (".png", ".mmd")
+# 批量出图的文件名形状：`<问题号>.png` 或 `<问题号>_疑似过时.png`（`base_filename()` 的规则）。
+# 问题号后面还有别的东西（`_task<id>`、`_px…`、`_<日志时间>`）就是"别的来路"，清理时更保守。
+BULK_STEM_SUFFIXES = frozenset({"", "疑似过时"})
 
 log = logging.getLogger("tools.flow_cases")
 def _safe_part(text: str) -> str:
@@ -147,18 +151,102 @@ def clear_artifacts(outdir: str) -> int:
     return removed
 
 
+def artifact_issue(name: str) -> tuple[str, str]:
+    """产物名 → `(问题号, 问题号后面剩下的那段)`；认不出问题号时返回 `("", "")`。
+
+    批量出的图一定以问题号开头（`base_filename()` 的规则），所以前缀就是归属。问题号不含
+    `_`（`ISSUE_RE`），按第一个下划线切开就是"问题号 + 其余"；`PYTHON-33_x` 不会误判成
+    `PYTHON-3`。
+    """
+    stem = os.path.splitext(os.path.basename(name))[0]
+    head, _sep, rest = stem.partition("_")
+    return (head, rest) if ISSUE_RE.match(head) else ("", "")
+
+
+def prune_artifacts(
+    outdir: str,
+    manifest: dict,
+    kept: set[str],
+    *,
+    issues: set[str],
+    failed_issues: set[str] | None = None,
+) -> int:
+    """批量出图结束后清掉不该留着的旧产物，返回删掉的个数。
+
+    只动 manifest 里有记录的产物：磁盘上没有记录的 `png`（`explore-csv` 的 `.log`、子目录、
+    用户自己放的文件）一律不碰——"清理"只清自己画的东西。
+
+    三类处理：
+
+    * 归属 issue **不在本次集合**里（版本筛掉 / 已 resolve / 库里消失）→ 删；
+    * 归属 issue 在集合里，但这条是**批量**画的（`origin == "bulk"`，或名字是批量的
+      `<问题号>.png` / `<问题号>_疑似过时.png`）且本次没保留 → 删（被本次重画取代）；
+    * 其余（单包画的、本次画失败的 issue、认不出归属的）→ 留着。
+
+    「本次画失败的 issue」必须保住旧图：重画失败时目录里那一张是唯一能看的东西。
+    """
+    failed = failed_issues or set()
+    records: dict = manifest.get("cases") or {}
+    removed = 0
+    # 记录指向的文件已经不在（用户手删、上一次清理中断）：丢掉记录，否则同名会一直被
+    # `out_filename()` 当成"被别的输入占着"，附加时间标签越加越长
+    for name in [
+        name
+        for name in records
+        if os.path.basename(name) == name
+        and not os.path.isfile(os.path.join(outdir, name))
+    ]:
+        records.pop(name, None)
+    for name in sorted(records):
+        if name in kept or os.path.basename(name) != name:
+            continue
+        record = records[name]
+        issue = str(record.get("issue") or "")
+        rest = ""
+        if not issue:
+            issue, rest = artifact_issue(name)
+        if not issue or issue in failed:
+            continue
+        if issue not in issues:
+            reason = "不在本次 issue 集合内"
+        elif record.get("origin") == "bulk" or rest in BULK_STEM_SUFFIXES:
+            reason = "已被本次重画取代"
+        else:
+            continue
+        path = os.path.join(outdir, name)
+        try:
+            if os.path.isfile(path):
+                os.remove(path)
+        except OSError as exc:
+            log.warning("提示：删不掉旧产物 %s（%s），下次再试", path, exc)
+            continue
+        mermaid = record.get("mermaid")
+        sidecar = mermaid if isinstance(mermaid, str) and mermaid else None
+        if sidecar is None:
+            sidecar = os.path.splitext(path)[0] + ".mmd"
+        try:
+            if os.path.isfile(sidecar):
+                os.remove(sidecar)
+        except OSError as exc:
+            log.warning("提示：删不掉 %s（%s）", sidecar, exc)
+        records.pop(name, None)
+        removed += 1
+        log.info("删掉旧产物（%s）：%s", reason, name)
+    return removed
+
+
 def load_manifest(outdir: str) -> dict:
     path = os.path.join(outdir, MANIFEST_NAME)
     if not os.path.isfile(path):
-        return {"schema": 1, "cases": {}}
+        return {"schema": 2, "cases": {}}
     try:
         with open(path, encoding="utf-8") as fh:
             data = json.load(fh)
     except (OSError, json.JSONDecodeError) as exc:
         log.warning("提示：%s 读不了（%s），本次当作空 manifest。", path, exc)
-        return {"schema": 1, "cases": {}}
+        return {"schema": 2, "cases": {}}
     if not isinstance(data, dict) or not isinstance(data.get("cases"), dict):
-        return {"schema": 1, "cases": {}}
+        return {"schema": 2, "cases": {}}
     return data
 
 

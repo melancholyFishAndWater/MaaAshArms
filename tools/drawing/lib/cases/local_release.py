@@ -182,13 +182,14 @@ class LocalRelease:
     ) -> LocalRun | None:
         """在本地 release 里找**同一次运行**的那份日志；认不出就返回 None（不猜）。
 
-        `task_id` 给了就要求命中日志里真有这个 task 的归属记录
-        （`task_id_=<id>` / `"task_id":<id>` / `task_id=<id>`）。
-        有失败行时**必须**在命中日志里找到失败行（锚定）：一次运行跨日志轮转时，
-        只对上 node done 的那份可能是这次运行的前半段，拿它画不出失败。
+        `task_id` 给了就**只认**真有这个 task 的日志（`task_id_=<id>` / `"task_id":<id>` /
+        `task_id=<id>`，后面不能再接数字）。原因：一条 trace 上常挂着好几个 issue（实测
+        `PYTHON-1E` 与训练/委托那几个共用一条），包的日志切片里失败行属于**另一个**任务，
+        按失败行锚定会挑到别的运行那一份，而真正跑过这个 task 的是轮转掉的另一份日志。
 
-        `event_id` 是本机能给的**最强身份**（遥测的一个事件只可能出现在一个包里，也只有
-        产生它的那台机器会把它写进面板日志）：命中时不再用时间缩范围，直接扫全部本地日志。
+        因此失败行在"给了 task"时只当**优先**（同名候选里优先挑锚得上那份），不再是门槛：
+        选定后若没有锚上行，会打一行说明。`task_id` 没给时仍然要求锚上失败行——
+        那种情况下没有更强的身份信号，宁可不用。
         """
         name = label or case.label
         fails, others = _needles(case)
@@ -214,7 +215,10 @@ class LocalRelease:
         hits: list[tuple[bool, int, bool, str]] = []
         for path in candidates:
             count, task_ok, anchor_ok = _scan(path, needles, task_id, anchor)
-            if anchor and not anchor_ok:
+            if task_id is not None:
+                if not task_ok:
+                    continue
+            elif anchor and not anchor_ok:
                 continue
             if count >= MIN_HITS or (count >= 1 and task_ok):
                 hits.append((anchor_ok, count, task_ok, path))
@@ -226,6 +230,14 @@ class LocalRelease:
                     name,
                     (event_id or "")[:8],
                     hint[1],
+                )
+            elif task_id is not None:
+                log.info(
+                    "提示：%s 的日志行在本地 release 的 %d 份日志里都没有同时对上 task %s，"
+                    "不参与辅助（不按时间猜）",
+                    name,
+                    len(candidates),
+                    task_id,
                 )
             else:
                 log.info(
@@ -247,6 +259,14 @@ class LocalRelease:
             )
             return None
         _anchor_ok, count, task_ok, path = best
+        if anchor and not _anchor_ok:
+            log.info(
+                "提示：%s 按 task %s 定位到 %s（包里的失败行不在这份里：它属于这条 trace 上的"
+                "别的任务）",
+                name,
+                task_id,
+                os.path.basename(path),
+            )
         debug_dir = os.path.dirname(path)
         vision = os.path.join(debug_dir, "vision")
         on_error = os.path.join(debug_dir, "on_error")
@@ -397,9 +417,9 @@ def _scan(
     except OSError:
         return (0, False, False)
     found = sum(1 for needle in needles if needle in text)
-    task_ok = task_id is None or any(
-        mark in text
-        for mark in (f"task_id_={task_id}", f'"task_id":{task_id}', f"task_id={task_id}")
-    )
+    # 后面不能接数字：`task_id=2000000041` 里也含 `task_id=200000004`，不加边界会误判成有 task
+    task_ok = task_id is None or re.search(
+        rf'(?:task_id_=|"task_id":|task_id=){task_id}(?!\d)', text
+    ) is not None
     anchor_ok = not anchor or anchor in text
     return (found, task_ok, anchor_ok)

@@ -13,6 +13,7 @@ from .core import check_flow_parser
 from .drawing import (
     check_evidence_pack_gate,
     check_flow_diagnostics,
+    check_incremental_trace,
     check_local_release_assist,
     check_overview_render,
 )
@@ -63,6 +64,7 @@ CHECKS: tuple[tuple[str, Callable[[], list[str]]], ...] = (
     ("流程图重复轮次合并", check_flow_overlay),
     ("本地遥测库（候选/分级/注记）", check_telemetry_index),
     ("遥测概览卡（渲染/命名）", check_overview_render),
+    ("增量绘制的分步摘要（代码摘要/数据步/理由）", check_incremental_trace),
     ("证据包版本门控与失败 task 定位", check_evidence_pack_gate),
     ("本地 release 辅助（按内容认运行）", check_local_release_assist),
     ("跨版本耗时报告", check_speed_report),
