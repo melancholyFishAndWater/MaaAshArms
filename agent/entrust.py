@@ -344,7 +344,7 @@ class EntrustClickSwitchChapterReco(CustomRecognition):
             for j in ocr_r.filtered_results:
                 assert type(j) == OCRResult
                 # 遍历校验子串 若子串匹配成功 移除子串
-                for k in str_targets:
+                for k in str_targets.copy():
                     if k in j.text:
                         str_targets.remove(k)
 
