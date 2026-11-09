@@ -88,7 +88,9 @@
         "action": "Click",
         "post_wait_freezes": 2000,
         "next": [
+            "BaseErrorNext",
             "ReplaysBranchBattle",
+            "ReplaysClickAttack",
             "[JumpBack]BaseBranchError"
         ],
         "focus": {
