@@ -33,7 +33,7 @@ from .evidence import (
     set_evidence_dirs,
 )
 from .local_release import LocalRelease, default_root
-from .output import MANIFEST_NAME, load_manifest, save_manifest
+from .output import MANIFEST_NAME, clear_artifacts, load_manifest, save_manifest
 from .overview import run_overview
 from .pack import (
     EVIDENCE_ROOT,
@@ -214,6 +214,14 @@ def create_argument_parser(prog: str | None = None) -> argparse.ArgumentParser:
         "--telemetry-only", action="store_true", help="只打印反查到的遥测问题，不画图"
     )
     ap.add_argument("--force", action="store_true", help="忽略 manifest，强制重画")
+    ap.add_argument(
+        "--no-clean-flow",
+        dest="clean_flow",
+        action="store_false",
+        help="批量出图（--telemetry-bulk）前不清空输出目录。默认会先删掉目录里的旧 png/mmd 与 "
+        "manifest，按当前遥测库重画一遍（否则上一轮的图、已 resolve 的 issue 的图都会留在目录里）；"
+        "同一目录下 explore-csv 落的 .log 与子目录不动",
+    )
     ap.add_argument(
         "--evidence-dir",
         dest="evidence_dir",
@@ -434,6 +442,14 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
             print(f"{case.label}\t{case.describe()}")
         return 0
 
+    # 批量出图前先清空输出目录（默认开）：每轮都按**当前**遥测库重画一份，不把上一轮
+    # （以及已 resolve 的 issue）留下的图算进这一轮。single pack / --all-tasks 不清。
+    if args.telemetry_bulk and args.clean_flow:
+        removed = clear_artifacts(args.outdir)
+        if removed:
+            log.info("批量出图前清空输出目录：%s（删掉 %d 个旧产物）", args.outdir, removed)
+        else:
+            log.info("批量出图前清空输出目录：%s（没有旧产物）", args.outdir)
     os.makedirs(args.outdir, exist_ok=True)
     manifest = load_manifest(args.outdir)
     drawn = skipped = failed = 0

@@ -16,6 +16,8 @@ from tools.drawing.lib.flow_from_log import FlowOptions
 from .pack import Case, issue_name_of, log_digest, log_stamp, task_name_of
 
 MANIFEST_NAME = "manifest.json"
+# 批量出图前清掉的产物：`explore-csv` 会往同一目录写 `<csv 名>.log`（那是**输入**），不能删
+ARTIFACT_SUFFIXES = (".png", ".mmd")
 
 log = logging.getLogger("tools.flow_cases")
 def _safe_part(text: str) -> str:
@@ -117,6 +119,32 @@ def stale_name(name: str) -> str:
     """
     stem, ext = os.path.splitext(name)
     return f"{stem}_疑似过时{ext}"
+
+
+def clear_artifacts(outdir: str) -> int:
+    """清掉输出目录里本工具的产物（`*.png` / `*.mmd` / `manifest.json`），返回删掉的文件数。
+
+    只给批量出图用（`--telemetry-bulk`）：每轮都按**当前**遥测库重画一份，上一轮留下的文件
+    （issue 被 resolve 后图还在、上次 `--outdir` 换过）会让目录看起来比库多。
+    **不删**：`explore-csv` 落在同目录的 `<csv 名>.log`（那是输入）、子目录、其它扩展名。
+    """
+    removed = 0
+    try:
+        names = sorted(os.listdir(outdir))
+    except OSError:
+        return 0
+    for name in names:
+        path = os.path.join(outdir, name)
+        if not os.path.isfile(path):
+            continue
+        if name != MANIFEST_NAME and not name.lower().endswith(ARTIFACT_SUFFIXES):
+            continue
+        try:
+            os.remove(path)
+            removed += 1
+        except OSError as exc:
+            log.warning("提示：清不掉旧产物 %s（%s），本次仍会继续画", path, exc)
+    return removed
 
 
 def load_manifest(outdir: str) -> dict:

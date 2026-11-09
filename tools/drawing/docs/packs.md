@@ -125,6 +125,10 @@ flowchart LR
   各成一张、互不覆盖。历史上不同运行用 `evidence --issue <ID> --event <id>` 分别取（见 sentry README）。
 - **连证据包都没有**才退化成**概览卡**（问题号 / 标题 / 失败节点 / 次数 / 最后出现 / 资源版本 / 链接，
   有 `on_error/` 时贴现场图），并在卡上写明用哪条命令补完整输出。
+- **批量前先清空输出目录**（默认开，`--no-clean-flow` 关）：删掉输出目录里的 `*.png`、`*.mmd`
+  与 `manifest.json`，按**当前**遥测库重画一遍。不清的话上一轮的图、已 resolve 的 issue 的图都会
+  留在目录里，看起来比库多。同目录下 `explore-csv` 产出的 `<csv 名>.log` 是输入，不动；子目录不动；
+  单包 / `--all-tasks` 不清。删了几个会在终端打出来。
 - 产物：每个 issue 一张 `temp/flow/<SHORT>.png`（`--mermaid` 另出 `.mmd`），同样记进
   `manifest.json`（与单包出图同目录、同账目）。
 

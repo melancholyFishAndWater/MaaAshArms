@@ -45,6 +45,7 @@ from .output import (
     stale_name,
     load_manifest,
     save_manifest,
+    clear_artifacts,
     _stale_record,
 )
 
@@ -120,6 +121,7 @@ __all__ = [
     "issue_name_of",
     "load_case",
     "load_manifest",
+    "clear_artifacts",
     "log_digest",
     "log_stamp",
     "main",

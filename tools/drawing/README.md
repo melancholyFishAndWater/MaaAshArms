@@ -98,6 +98,7 @@ python tools/drawing/cli.py cases --case log_20261014-part01.zip log_20261014-pa
 python tools/drawing/cli.py cases --case D:/MaaAshArms/debug --list-cases
 
 # 按遥测库批量出图（有证据包出完整流程，没有的出概览卡）
+# 批量前会先清空输出目录里的旧 png/mmd/manifest（默认开，--no-clean-flow 可保留）
 python tools/drawing/cli.py cases --telemetry-bulk
 python tools/drawing/cli.py cases --telemetry-bulk --telemetry-offline --no-fetch-evidence
 python tools/drawing/cli.py cases --telemetry-bulk \
@@ -125,6 +126,7 @@ python tools/drawing/cli.py cases --telemetry-bulk --telemetry-version "==v1.0.0
 | `--local-release DIR` | 本地 release 安装目录（默认 `D:/MaaAshArms`，环境变量 `MAA_DRAWING_LOCAL_ROOT` 可改）：画证据包时用它的完整日志与 `vision/`、`on_error/` 辅助，**按内容认运行**（本机面板日志的 `event_id` + 证据包日志行在本地日志里逐字相同 + 同 task），认不出就不用。见 [docs/packs.md](./docs/packs.md) |
 | `--no-local-release` | 不让本地 release 参与，只用证据包自己的文件 |
 | `--force` | 忽略 manifest，强制重画 |
+| `--no-clean-flow` | 批量出图（`--telemetry-bulk`）前不清空输出目录。默认会先删掉目录里的旧 `png`/`mmd` 与 `manifest.json`，按当前遥测库重画一遍；同目录下 `explore-csv` 的 `.log` 与子目录不动 |
 | `--evidence-dir DIR` | 批量模式找证据包的根目录（可重复，先给的先找；`temp/evidence` 永远兜底） |
 | `--telemetry-bulk` | 批量出图：遍历本地遥测库所有未解决 issue，每个尽量出一张 |
 | `--fetch-evidence` / `--no-fetch-evidence` | 本地缺证据包时是否自动 `evidence` 拉取（默认开，需联网） |

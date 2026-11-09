@@ -257,10 +257,15 @@ def check_overview_render() -> list[str]:
     if str(root) not in sys.path:
         sys.path.insert(0, str(root))
     from tools.drawing.lib.flow_from_log import Note, render_overview
-    from tools.drawing.lib.flow_cases import overview_filename
+    from tools.drawing.lib.flow_cases import (
+        clear_artifacts,
+        overview_filename,
+        save_manifest,
+    )
     from tools.sentry.lib import telemetry_index as ti
 
     tmp = _os.path.join(str(root), "temp", "flow", "_selftest_overview")
+    _shutil.rmtree(tmp, ignore_errors=True)
     _os.makedirs(tmp, exist_ok=True)
     try:
         # 1) 文件名：空闲 → 基础名；被不同指纹占用 → 追加哈希；同指纹 → 不追加
@@ -329,10 +334,22 @@ def check_overview_render() -> list[str]:
         )
         _eq(res.derived_from, "overview", "概览卡来源标记")
         _contains(notes[0].text, "beta.55", "注记带资源版本")
+
+        # 3) 批量出图前的清理：删 png/mmd/manifest，不动 explore-csv 的 .log 与子目录
+        save_manifest(tmp, manifest)
+        keep_log = _os.path.join(tmp, "Explore_2026.log")
+        with open(keep_log, "w", encoding="utf-8") as handle:
+            handle.write("x\n")
+        keep_dir = _os.path.join(tmp, "_sub")
+        _os.makedirs(keep_dir, exist_ok=True)
+        _eq(clear_artifacts(tmp), 3, "清掉 png + mmd + manifest")
+        _eq(_os.path.isfile(keep_log), True, "清理不动 .log")
+        _eq(_os.path.isdir(keep_dir), True, "清理不动子目录")
+        _eq(clear_artifacts(tmp), 0, "再清一次没有可删的")
     finally:
         _shutil.rmtree(tmp, ignore_errors=True)
 
-    return ["概览卡渲染（PNG + .mmd）/ 文件名碰撞 / 来源标记 各自有断言"]
+    return ["概览卡渲染（PNG + .mmd）/ 文件名碰撞 / 来源标记 / 批量前清理旧产物 各自有断言"]
 
 
 def check_evidence_pack_gate() -> list[str]:
