@@ -23,9 +23,11 @@
 `group` 时才再 `GET /api/0/issues/<groupId>/`），核对完把结果写回本地记录。
 `--only`（验证 REST 分支）不看任何状态——它要按显式给的 ID 原样处理。
 
-**手动运行**（stdin 一个 ref 行都没有，`pre-push` 不会这样）默认按**最新的本地 `v*` tag**
-处理：人刚建的 tag 就是最新那个，先跑一遍看清单，确认了再加 `--apply`；想指定别的 tag 用
-`--tag NAME`。`--ref` / `--stdin-file` 仍然只模拟 pre-push 输入。
+**手动运行**（stdin 一个 ref 行都没有，`pre-push` 不会这样）算的是**最新 tag 之后**的提交
+（`<最新 tag>..HEAD`）——要发的版本还没打 tag，这才是"这次会关掉哪些 issue"；最新 tag 之后
+没有提交时（HEAD 就停在 tag 上）退回这个 tag 自己的那一段（`<次新 tag>..<最新 tag>`）。
+先跑一遍看清单，确认了再加 `--apply`；想指定别的 tag 用 `--tag NAME`（处理它自己的提交范围）。
+`--ref` / `--stdin-file` 仍然只模拟 pre-push 输入。
 
 ## 为什么是本地 hook 而不是 CI
 
@@ -364,6 +366,30 @@ def log_args(previous: str, oid: str) -> list[str]:
     return ["log", f"{previous}..{oid}", "--format=%B"]
 
 
+def rev_list_args(left: str, right: str) -> list[str]:
+    return ["rev-list", "--count", f"{left}..{right}"]
+
+
+def pick_manual_range(
+    latest: str, previous: str | None, pending: int
+) -> tuple[str, str] | None:
+    """手动运行（没有 pre-push 输入、没给 `--tag`）用哪段提交：`(起点, 终点)`。
+
+    `pending` 是 `<最新 tag>..HEAD` 的提交数。
+
+    * `pending > 0` → `(latest, "HEAD")`：要发的版本还没打 tag，算**最新 tag 之后**的提交
+      ——这才是"这次会关掉哪些 issue"；
+    * `pending == 0`（HEAD 就停在最新 tag）→ `(previous, latest)`：算这个 tag 自己的提交，
+      也就是"最新 tag 之前、直到次新 tag"那一段；
+    * 没有次新 tag 且没有新提交 → `None`：不扫全历史（第一次发版前没法算范围）。
+    """
+    if pending > 0:
+        return (latest, "HEAD")
+    if previous is None:
+        return None
+    return (previous, latest)
+
+
 def shortids_url(base: str, org: str, short_id: str) -> str:
     return f"{base}/api/0/organizations/{org}/shortids/{short_id}/"
 
@@ -458,6 +484,25 @@ def latest_local_tag() -> str | None:
     return pick_latest_tag(listed.stdout.split())
 
 
+def collect_ids_in_range(
+    left: str, right: str, label: str, prefix: str, *, quiet: bool = False
+) -> list[str]:
+    """`git log <left>..<right>` 的提交正文里扫 `Fixes/Closes/Resolves`，回填并打印。
+
+    `quiet=True` 时一个字都不往 stderr 打：画图侧也要这段范围（给产物名加
+    「已修复待发版」），那边不该冒出一串 issue-resolve 的提示。
+    """
+    result = run_git(log_args(left, right))
+    if result.returncode != 0:
+        if not quiet:
+            warn(f"git log {left}..{right} 失败：{result.stderr.strip()}")
+        return []
+    found = extract_issue_ids(result.stdout, prefix)
+    if not quiet:
+        say(f"{label}: {', '.join(found) or '（无）'}")
+    return found
+
+
 def collect_issue_ids(tags: list[tuple[str, str]], prefix: str) -> list[str]:
     ids: list[str] = []
     for tag, oid in tags:
@@ -465,16 +510,65 @@ def collect_issue_ids(tags: list[tuple[str, str]], prefix: str) -> list[str]:
         if previous is None:
             warn(f"{tag} 找不到上一个 v* tag，跳过（不扫全历史）")
             continue
-        result = run_git(log_args(previous, oid))
-        if result.returncode != 0:
-            warn(f"git log {previous}..{oid} 失败：{result.stderr.strip()}")
-            continue
-        found = extract_issue_ids(result.stdout, prefix)
-        say(f"{previous}..{tag}: {', '.join(found) or '（无）'}")
-        for short_id in found:
+        for short_id in collect_ids_in_range(previous, oid, f"{previous}..{tag}", prefix):
             if short_id not in ids:
                 ids.append(short_id)
     return ids
+
+
+def commit_count(left: str, right: str) -> int:
+    """`<left>..<right>` 有几个提交；读不出（对象不存在 / 不是仓库）当 0。"""
+    result = run_git(rev_list_args(left, right))
+    if result.returncode != 0:
+        return 0
+    try:
+        return int(result.stdout.strip() or 0)
+    except ValueError:
+        return 0
+
+
+def manual_scope(prefix: str, *, quiet: bool = False) -> tuple[str, list[str]] | None:
+    """手动运行（没有 pre-push 输入、没给 `--tag`）的提交范围与扫到的编号。
+
+    默认算**最新 tag 之后**的提交（`<最新 tag>..HEAD`）——那是"这次要发的版本会关掉哪些
+    issue"；最新 tag 之后没有提交时（HEAD 就停在 tag 上）退回这个 tag 自己的那段
+    （`<次新 tag>..<最新 tag>`）。判据在 `pick_manual_range()` 里，这里只做 IO。
+
+    `quiet=True` 时不打任何提示（画图侧复用这段范围时用，见 `fixed_in_unreleased()`）。
+    """
+    emit = (lambda _message: None) if quiet else say
+    latest = latest_local_tag()
+    if latest is None:
+        emit("本地没有 v* tag，跳过")
+        return None
+    latest_oid = tag_oid(latest)
+    if latest_oid is None:
+        return None
+    pending = commit_count(latest_oid, "HEAD")
+    pair = pick_manual_range(latest, previous_v_tag(latest, latest_oid), pending)
+    if pair is None:
+        emit(f"{latest} 是最早的 v* tag，它之后也没有新提交，跳过（不扫全历史）")
+        return None
+    left, right = pair
+    label = f"{left}..{right}"
+    if pending:
+        emit(f"没有 pre-push 输入（手动运行）：按最新 tag 之后的提交算（{label}，{pending} 个）")
+    else:
+        emit(f"没有 pre-push 输入（手动运行）：{latest} 之后没有新提交，按 {label} 算")
+    return label, collect_ids_in_range(left, right, label, prefix, quiet=quiet)
+
+
+def fixed_in_unreleased(
+    prefix: str = DEFAULT_ISSUE_PREFIX,
+) -> tuple[str, list[str]]:
+    """「已修复、等发版」的 issue：与手动运行同一段提交，一个字都不打印。
+
+    画图侧用它给产物名加标记——提交里已经 `Fixes PYTHON-XX`，但那个版本还没打 tag / 没推，
+    Sentry 上仍是 unresolved，图里也还是失败现场。返回 `(范围标签, 编号)`；拿不到范围
+    （不是 git 仓库、没有 tag 且没有新提交）时返回 `("", [])`。
+    """
+    scope = manual_scope(prefix, quiet=True)
+    return scope if scope is not None else ("", [])
 
 
 def git_hook_path() -> Path | None:
@@ -668,43 +762,51 @@ def read_ref_lines(args: argparse.Namespace) -> list[str]:
 def hook_mode(args: argparse.Namespace) -> int:
     """`pre-push` 调用时的主路径；**恒返回 0**，不阻断 push。
 
-    三条取 tag 的路，按优先级：
+    取提交范围的路，按优先级：
 
-    1. `--tag NAME`：直接处理这个本地 tag（不读 stdin）；
-    2. stdin 的 pre-push 行：只认 remote oid 全零的**新建** `v*` tag；
-    3. stdin 一个 ref 行都没有（`pre-push` 不会这样，只会是人手动跑）→ 处理**最新的本地
-       `v*` tag**。先出清单，确认了再加 `--apply`。
+    1. `--tag NAME`：处理这个本地 tag 自己的提交（`<上一个 v* tag>..<NAME>`），不读 stdin；
+    2. stdin 的 pre-push 行：只认 remote oid 全零的**新建** `v*` tag，范围同上；
+    3. stdin 一个 ref 行都没有（`pre-push` 不会这样，只会是人手动跑）→ **最新 tag 之后**的
+       提交（`<最新 tag>..HEAD`）；最新 tag 之后没有提交时，退回这个 tag 自己的那一段
+       （`<次新 tag>..<最新 tag>`）。先出清单，确认了再加 `--apply`。
 
     第 3 条只在"完全没有输入"时触发：stdin 里**有行但没有新建 tag**时仍是原来的跳过——
     推送分支、更新已有 tag 都不该把本地最新 tag 的 issue 再关一遍。
     """
+    scanned: list[str] = []
+    scope_label = ""
+    tags: list[tuple[str, str]] = []
     if args.tag:
-        tags: list[tuple[str, str]] = []
         for name in args.tag:
             oid = tag_oid(name)
             if oid is not None:
                 tags.append((name, oid))
         if not tags:
             return 0
+        say(f"新 tag: {', '.join(name for name, _oid in tags)}")
+        scope_label = ", ".join(name for name, _oid in tags)
+        if not args.only:
+            scanned = collect_issue_ids(tags, args.issue_prefix)
     else:
         lines = read_ref_lines(args)
         tags = parse_ref_lines(lines)
-        if not tags and not lines:
-            latest = latest_local_tag()
-            if latest is None:
-                say("本地没有 v* tag，跳过")
-                return 0
-            oid = tag_oid(latest)
-            if oid is None:
-                return 0
-            say(f"没有 pre-push 输入（手动运行）：按最新的本地 tag {latest} 处理")
-            tags = [(latest, oid)]
-    if not tags:
-        say("没有新建的 v* tag，跳过")
-        return 0
-    say(f"新 tag: {', '.join(name for name, _oid in tags)}")
-    # --only：只用 --issue 给出的 ID，不扫提交范围。用于验证 REST 分支而不碰真实 issue。
-    scanned = [] if args.only else collect_issue_ids(tags, args.issue_prefix)
+        if tags:
+            say(f"新 tag: {', '.join(name for name, _oid in tags)}")
+            scope_label = ", ".join(name for name, _oid in tags)
+            if not args.only:
+                scanned = collect_issue_ids(tags, args.issue_prefix)
+        elif lines:
+            say("没有新建的 v* tag，跳过")
+            return 0
+        else:
+            # 手动运行：最新 tag 之后的提交；没有就退回最新 tag 自己那段
+            scope = None if args.only else manual_scope(args.issue_prefix)
+            if scope is None:
+                if not args.only:
+                    return 0
+                scope_label, scanned = "手动运行", []
+            else:
+                scope_label, scanned = scope
     ids = merge_ids(scanned, args.issue)
     target = config_target()
     org = args.org or os.environ.get("SENTRY_ORG") or (target[0] if target else "")
@@ -797,7 +899,7 @@ def hook_mode(args: argparse.Namespace) -> int:
     if done:
         remember_states(
             {short_id: "resolved" for short_id in done},
-            by="issue-resolve " + ", ".join(name for name, _oid in tags),
+            by="issue-resolve " + (scope_label or "手动运行"),
             groups=known_groups,
         )
     say(f"本次处理 {len(done)}/{len(targets)}")
@@ -896,8 +998,9 @@ def create_argument_parser(prog: str | None = None) -> argparse.ArgumentParser:
         action="append",
         default=[],
         metavar="NAME",
-        help="直接处理这个本地 v* tag（可重复），不读 pre-push stdin；"
-        "不传且 stdin 一个 ref 行都没有时，按最新的本地 v* tag 处理",
+        help="处理这个本地 v* tag 自己的提交（`<上一个 v* tag>..<NAME>`，可重复），"
+        "不读 pre-push stdin；不传且 stdin 一个 ref 行都没有时，按最新的本地 v* tag 之后的"
+        "提交处理（tag 之后没有提交则退回它自己那段）",
     )
     parser.add_argument("--stdin-file", metavar="PATH", help="从文件读 ref 行（测试用）")
     parser.add_argument(

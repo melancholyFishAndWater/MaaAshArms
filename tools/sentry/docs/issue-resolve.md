@@ -9,13 +9,15 @@ python -m tools.sentry.cli issue-resolve --uninstall
 
 ## 它读什么、写什么
 
-**tag 从哪来**，按优先级：
+**提交范围从哪来**，按优先级：
 
-1. `--tag NAME`（可重复）：直接处理这个本地 tag，不读 stdin；
+1. `--tag NAME`（可重复）：处理这个本地 tag 自己的提交（`<上一个 v* tag>..<NAME>`），不读 stdin；
 2. `pre-push` 的 stdin：每行 `<local ref> <local oid> <remote ref> <remote oid>`，只处理
-   **新建**的 `refs/tags/v*`（remote oid 全零、local oid 非零）；
-3. stdin **一个 ref 行都没有**（`pre-push` 不会这样，只会是人手动跑）→ 处理**最新的本地
-   `v*` tag**，并在提示里写明按哪个 tag 处理。
+   **新建**的 `refs/tags/v*`（remote oid 全零、local oid 非零），范围同上；
+3. stdin **一个 ref 行都没有**（`pre-push` 不会这样，只会是人手动跑）→ 算**最新 tag 之后**
+   的提交（`<最新 tag>..HEAD`）：要发的版本还没打 tag，这才是"这次会关掉哪些 issue"；
+   最新 tag 之后**没有**提交时（HEAD 就停在 tag 上）退回这个 tag 自己那段
+   （`<次新 tag>..<最新 tag>`）。两段都没得算（最早的 tag + 没有新提交）就跳过，不扫全历史。
 
 第 2 条用 **local oid** 算提交范围，不是 tag 名：annotated tag 的 oid 是 tag object，
 只有 stdin 给的那一份是 git 明确要推的对象。第 3 条只在"完全没有输入"时触发——stdin 里
@@ -91,13 +93,21 @@ Secrets；本地 `pre-push` 让凭据完全留在本机，零 Secret。凭据来
 
 ## 手动跑（不经过 push）
 
-`python -m tools.sentry.cli issue-resolve` 直接跑时没有 `pre-push` 输入，会按**最新的本地
-`v*` tag** 处理（`git tag --sort=-creatordate --list v*` 的第一个），先出清单；确认后
-`--apply` 才写远端。清单里的「已关闭」来自本地记录与本地遥测库（见上「为什么默认不联网」），
-不联网。看到 `没有新建的 v* tag，跳过` 说明 stdin 里有行但不是新建 tag（例如只推分支），
-或者本地确实没有 `v*` tag。
+`python -m tools.sentry.cli issue-resolve` 直接跑时没有 `pre-push` 输入，算的是**最新 tag
+之后**的提交（`<最新 tag>..HEAD`）——要发的版本还没打 tag，这才是"这次会关掉哪些 issue"。
+最新 tag 之后没有提交时（HEAD 就停在 tag 上），退回这个 tag 自己那段
+（`<次新 tag>..<最新 tag>`）。终端会写明这次按哪一段算：
 
-要处理别的 tag（补跑、重放某个版本）用 `--tag NAME`，可重复：
+```
+[sentry-issues] 没有 pre-push 输入（手动运行）：按最新 tag 之后的提交算（v1.0.0-beta.71..HEAD，8 个）
+[sentry-issues] v1.0.0-beta.71..HEAD: PYTHON-M, PYTHON-3D, PYTHON-3A, PYTHON-3B
+```
+
+先出清单，确认后 `--apply` 才写远端。清单里的「已关闭」来自本地记录与本地遥测库（见上
+「为什么默认不联网」），不联网。两段都没得算时（最早的 tag、且它之后没有新提交）跳过——
+不扫全历史。看到 `没有新建的 v* tag，跳过` 说明 stdin 里有行但不是新建 tag（例如只推分支）。
+
+要处理某个 tag 自己的提交（补跑、重放某个已发版本）用 `--tag NAME`，可重复：
 
 ```bash
 python -m tools.sentry.cli issue-resolve --tag v1.0.0-beta.70
@@ -105,6 +115,11 @@ python -m tools.sentry.cli issue-resolve --tag v1.0.0-beta.70 --tag v1.0.0-beta.
 ```
 
 `--tag` 名字不在本地时只告警并跳过（先 `git fetch --tags`）。
+
+**绘图侧复用这段范围**：`tools/drawing/lib/cases/release_mark.py` 调
+`fixed_in_unreleased()`（同一条范围、同一套 `Fixes/Closes/Resolves` 提取，静默不打日志），
+给"提交已修、还没发版"的 issue 产物名加 `_已修复待发版`。两边口径必须一致——一边改了
+范围另一边就要同批改，否则会出现"图说没修、关 issue 说修了"。标记只是改名，不重画图。
 
 ## 默认只列清单
 
@@ -119,7 +134,8 @@ python -m tools.sentry.cli issue-resolve --tag v1.0.0-beta.70 --tag v1.0.0-beta.
   不打印 token）。
 - `--ref LINE`（可重复）/ `--stdin-file`：不用真 push 就能模拟 hook 输入，例如
   `--ref "refs/tags/v1.0.0-beta.70 <oid> refs/tags/v1.0.0-beta.70 000…0"`。
-- `--tag NAME`：不模拟 stdin，直接指定要处理的本地 tag（见上「手动跑」）。和手动直跑一样默认只列清单。
+- `--tag NAME`：不模拟 stdin，直接指定要处理的本地 tag（处理它自己的提交范围，见上「手动跑」）。
+  和手动直跑一样默认只列清单。
 - `--only --issue <SHORT-ID>`：只用给定的 ID、**不扫提交范围**，也不看状态。验证 REST
   分支时用它——`--issue` 是**追加**语义，不带 `--only` 会把范围里扫到的真实 issue 一起关掉
   （踩过：验证 404 分支时误关了两条，见 `.agents/procedures/_inbox.md`）。

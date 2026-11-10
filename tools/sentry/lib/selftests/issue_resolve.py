@@ -26,6 +26,7 @@ def check_issue_resolve() -> list[str]:
         classify_states,
         describe_args,
         extract_issue_ids,
+        fixed_in_unreleased,
         hook_mode_label,
         issue_url,
         log_args,
@@ -33,6 +34,8 @@ def check_issue_resolve() -> list[str]:
         newest_state,
         parse_ref_lines,
         pick_latest_tag,
+        pick_manual_range,
+        rev_list_args,
         shortids_url,
     )
     import tools.sentry.lib.issue_resolve as ir
@@ -151,6 +154,69 @@ def check_issue_resolve() -> list[str]:
     _eq(no_group, ("7835314781", "unresolved"), "不带 group 段时退回第二次 GET 读 status")
     _eq(calls_no_group, 2, "退回路径确实只多一次 GET")
 
+    # 手动运行用哪段提交：最新 tag 之后有新提交就算 tag..HEAD（要发的版本还没打 tag），
+    # HEAD 停在 tag 上时退回"最新 tag 之前、直到次新 tag"那一段。
+    _eq(
+        pick_manual_range("v1.0.0-beta.71", "v1.0.0-beta.70", 8),
+        ("v1.0.0-beta.71", "HEAD"),
+        "tag 之后有新提交 → 算 tag..HEAD",
+    )
+    _eq(
+        pick_manual_range("v1.0.0-beta.71", "v1.0.0-beta.70", 0),
+        ("v1.0.0-beta.70", "v1.0.0-beta.71"),
+        "tag 之后没有提交 → 算次新 tag..最新 tag",
+    )
+    _eq(
+        pick_manual_range("v1.0.0-beta.71", None, 0),
+        None,
+        "没有次新 tag 且没有新提交 → 不扫全历史",
+    )
+    _eq(
+        pick_manual_range("v1.0.0-beta.71", None, 3),
+        ("v1.0.0-beta.71", "HEAD"),
+        "没有次新 tag 但有新提交 → 照常算 tag..HEAD",
+    )
+    _eq(
+        rev_list_args("v1.0.0-beta.71", "HEAD"),
+        ["rev-list", "--count", "v1.0.0-beta.71..HEAD"],
+        "数提交数用 rev-list --count",
+    )
+
+    # 画图侧复用这段范围给产物名加「已修复待发版」：必须与手动运行同一段，且**一句都不打**
+    # （否则每画一张图都会冒出 issue-resolve 的提示）。用假 run_git 顶掉真实仓库。
+    original_git = ir.run_git
+
+    def fake_git(args):
+        joined = " ".join(args)
+        if joined.startswith("tag --sort"):
+            return subprocess.CompletedProcess(args, 0, "v1.0.0-beta.71\nv1.0.0-beta.70\n", "")
+        if joined.startswith("rev-parse"):
+            # tag 名与 commit oid 都当同一个提交，省掉"annotated tag 剥壳"那段
+            return subprocess.CompletedProcess(args, 0, "a" * 40 + "\n", "")
+        if joined.startswith("describe"):
+            return subprocess.CompletedProcess(args, 0, "v1.0.0-beta.70\n", "")
+        if joined.startswith("rev-list --count"):
+            return subprocess.CompletedProcess(args, 0, "3\n", "")
+        if joined.startswith("log "):
+            body = "fix: 修 A\n\nFixes PYTHON-3D\n\nfix: 修 B\n\nCloses: PYTHON-M\n"
+            return subprocess.CompletedProcess(args, 0, body, "")
+        return subprocess.CompletedProcess(args, 1, "", "")
+
+    import contextlib as _contextlib
+    import io as _io
+    import subprocess
+
+    ir.run_git = fake_git
+    captured = _io.StringIO()
+    try:
+        with _contextlib.redirect_stderr(captured):
+            label, marked = fixed_in_unreleased("PYTHON-")
+    finally:
+        ir.run_git = original_git
+    _eq(label, "v1.0.0-beta.71..HEAD", "复用手动运行的那段提交")
+    _eq(marked, ["PYTHON-3D", "PYTHON-M"], "扫出提交里 Fixes/Closes 的编号")
+    _eq(captured.getvalue(), "", "静默：一个字都不往 stderr 打")
+
     tags = ["v1.0.0-beta.71", "v1.0.0-beta.70", "v1.0.0-beta.69"]
     _eq(
         choose_previous_tag(tags, "v1.0.0-beta.71"),
@@ -160,7 +226,7 @@ def check_issue_resolve() -> list[str]:
     _eq(choose_previous_tag(tags, "v1.0.0-beta.69"), None, "最早的 tag 没有上一个")
     _eq(choose_previous_tag(tags, "v9.9.9"), None, "不在列表里的 tag")
 
-    # 手动运行按"最新本地 tag"走：`git tag --sort=-creatordate` 的输出第一个就是它
+    # 手动运行的范围：`git tag --sort=-creatordate` 的输出第一个就是最新 tag
     _eq(
         pick_latest_tag(["v1.0.0-beta.71", "v1.0.0-beta.70", "v1.0.0-beta.69"]),
         "v1.0.0-beta.71",
@@ -192,5 +258,6 @@ def check_issue_resolve() -> list[str]:
     _eq("--apply" in build_hook_script(False), False, "默认 list-only 不带 --apply")
     return [
         "新建 tag 判定 / 关键字提取 / 状态分流（本地证据取最新，已关闭不列待关闭）/ "
-        "shortids 一次 GET 取状态 / 两次 REST URL / hook 入口与 exit 0 各有断言"
+        "手动范围（tag 后 / tag 前那段）+ 画图侧静默复用 / shortids 一次 GET 取状态 / "
+        "两次 REST URL / hook 入口与 exit 0 各有断言"
     ]
