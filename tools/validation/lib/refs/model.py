@@ -113,10 +113,9 @@ NEXT_CAP_EXCLUDED = frozenset({"BaseBranchError", "BaseErrorNext"})
 # v3.9：A26 口径收窄为「单探针包装」（`all_of` 恰好一项）；新增 A30（多条件 `And` 里写内联
 #   子识别对象 → warn，改独立 `Probe` 节点）。命名规范同步 v3.3。
 # v3.10：A28 的列表长度上限由 7 项下调到 5 项（结构文档 §10，作者裁定；不计入项不变）。
-# v4.0：动作节点默认不自环、不带 BaseErrorNext；自环只给成功率不高的动作，BaseErrorNext 只随自环出现（结构文档 §〇）。
 NAMING_SPEC_VERSION = "v3.3"
 NAMING_SPEC = Path("docs/zh_cn/develop/node-naming.md")
-STRUCT_SPEC_VERSION = "v4.0"
+STRUCT_SPEC_VERSION = "v3.10"
 STRUCT_SPEC = Path("docs/zh_cn/develop/pipeline-structure.md")
 
 
