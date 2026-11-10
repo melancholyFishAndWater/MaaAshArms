@@ -203,25 +203,44 @@
         "custom_recognition": "TrainBranchAcceptableReco",
         "next": [
             "BaseErrorNext",
-            "TrainClickAcceptInfo",
+            "TrainBranchAcceptInfo",
             "[JumpBack]TrainInfoMover",
             "[JumpBack]BaseBranchError"
         ]
     },
-    // INFO 目标路线
-    "TrainClickAcceptInfo": {
-        "desc": "[max] 点击目标路线",
-        "max_hit": 10,
-        "recognition": "Custom",
-        "custom_recognition": "TrainClickAcceptInfoReco",
+    /* -------------------- 动作-目标路线 -------------------- 
+    先判断是否可以直接进去编队页面
+    1.避免直接点击箭头后，游戏较卡识别可以进入，但点完箭头回到页面顶部，然后超时
+    2.方便接取后直接进入并发车
+    */
+    "TrainBranchAcceptInfo": {
+        "desc": "有目标路线",
+        "recognition": "And",
+        "all_of": [
+            "TrainProbeAcceptInfoButton"
+        ],
         "action": "Click",
         "next": [
             "BaseErrorNext",
             "TrainBranchAcceptPage",
             "[JumpBack]TrainInfoMover",
             "[JumpBack]BaseBranchError",
-            "TrainClickAcceptInfo"
+            "[JumpBack]TrainClickAcceptInfo"
         ]
+    },
+    "TrainClickAcceptInfo": {
+        "desc": "[jp] 点击目标路线",
+        "recognition": "And",
+        "all_of": [
+            "TrainProbeAcceptInfoButton"
+        ],
+        "action": "Click",
+        "post_wait_freezes": 1000
+    },
+    "TrainProbeAcceptInfoButton": {
+        "desc": "[end] 有目标路线按钮",
+        "recognition": "Custom",
+        "custom_recognition": "TrainBranchAcceptInfoReco"
     },
     // INFO 接取页面
     "TrainBranchAcceptPage": {
@@ -229,7 +248,7 @@
         "recognition": "TemplateMatch",
         "template": "Train/ArrowLight.png",
         "method": 10001,
-        "roi": "TrainClickAcceptInfo",
+        "roi": "TrainProbeAcceptInfoButton",
         "roi_offset": [
             115,
             -46,
