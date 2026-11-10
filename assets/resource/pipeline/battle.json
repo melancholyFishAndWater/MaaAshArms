@@ -223,7 +223,10 @@
     "BattleClickReplenish": {
         "desc": "[end] 点击补充按钮",
         "recognition": "OCR",
-        "expected": "一键补充",
+        "expected": [
+            "一键",
+            "补充"
+        ],
         "roi": [
             233,
             659,
