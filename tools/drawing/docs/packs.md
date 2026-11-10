@@ -33,6 +33,7 @@ flowchart LR
         O1["temp/flow/NAME.png<br/>PNG，主产物"]
         O2["temp/flow/NAME.mmd<br/>Mermaid 文本图，--mermaid"]
         O3["temp/flow/manifest.json<br/>追加一条：指纹 / 计数 / 注记"]
+        O4["temp/flow/images/<br/>失败现场图副本<br/>（遥测优先，日志包兜底）"]
     end
 
     I1 --> G1
@@ -46,6 +47,7 @@ flowchart LR
     N1 --> O1
     N1 --> O2
     G1 --> O3
+    G1 -.->|顺带导一份| O4
 ```
 
 `NAME` 的优先级（问题号 → 任务名 → 目录名）与附加项的出现条件，见下面「产物文件名」。
@@ -197,6 +199,7 @@ flowchart LR
 | `cases.<文件名>.trace` | 整条轨迹的合成 sha |
 | `cases.<文件名>.trace_stages` | 各阶段的分步 sha（上表那九个阶段，概览卡只有 `raster_impl` 与 `card`） |
 | `cases.<文件名>.issue` / `.origin` | 归属问题号、`bulk` 还是 `case` 画的（清理用） |
+| `images.<文件名>` | 现场图记录（`issue` / `source` / `sha256` / `from`…），见[现场图](#现场图images) |
 | `signature` | 本次运行的两段代码摘要（下次启动会打「上次 … 变了」） |
 | `bulk` | 本次批量的时间、`--telemetry-version` 条件、issue 名单、清掉了几个 |
 
@@ -212,6 +215,23 @@ flowchart LR
 - `repo` 只记 `HEAD`：提交后会把日志再读一遍核对「疑似过时」，标记没变就跳过（不会因为一次无关提交整批重画）；
   工作区里改了资源定义但没提交不触发。
 - `RENDERER_VERSION` 仍按约定在口径变化时 +1，但增量正确性不再依赖它（摘要会自己发现代码变了）。
+
+## 现场图（`images/`）
+
+失败现场图（`on_error/` 里的 `2026.11.09-17.37.19.721_GiftChooseReverse.png`）是画图用的原始证据，
+原件留在 `temp/evidence/<SHORT>/debug/on_error/<run_id>/` 不动——`--on-error`、概览卡贴图、
+输入摘要都还在读它。为了让读图的人不用进证据包里翻文件，画完之后**复制**一份到 `<outdir>/images/`：
+
+| 项 | 规则 |
+| --- | --- |
+| 来源 | **遥测证据包优先**（`temp/evidence/<SHORT>/debug/on_error/`，缺包时先按 `--fetch-evidence` 拉）；遥测包里没图时（`attachment.status` 不是 `attached`，实测 `PYTHON-3B`/`PYTHON-3C`/`PYTHON-3E` 都是）才用**补充日志包**——这次实际画成的那份日志的 `debug/on_error/`（`--case` 给的包，或本地 release 认出来的那次运行） |
+| 挑哪张 | 按**这次失败的时刻**就近挑（证据包 `evidence.json` 的 `event.received`，没有才用卡片的 `received`——实测 `PYTHON-3B` 卡片是 `13:52Z`、包里的失败事件是 `09:33Z`，用卡片就会挑到别的失败），再带上与它同批（±60 s）的几张、最多 4 张；标题里的失败节点优先。不知道失败时刻时只取最新那张。一个包里常躺着这个 issue 历次运行的图，不按时刻挑就会把旧图当成这次失败的现场 |
+| 名字 | `<问题号>_<问题名>[_日志包][_<时刻>].png`：`PYTHON-1E_Gift.png`、`PYTHON-3B_Reward_日志包.png`、`PYTHON-1E_Gift_日志包_20261109-173719.png`。问题名与流程图同一条规则（标题里的任务名）；来自日志包的加 `_日志包`，与遥测自带的那张分开；一次导多张时加抓图时刻，同秒的再加序号 |
+| 增量 | 同名且 sha256 相同就不重写（mtime 不动，看图工具不会重新解码） |
+| 清理 | 与产物同一套归属判据（`cases/scene.py:prune_scene`）：issue 不在本次集合 → 删；issue 在集合、这一轮也导出了图，但**这张**没被确认 → 删（被新的失败取代）；这一轮一张图都没拿到 → 留着；`--clean-flow` 时整个 `images/` 一起清 |
+| 记录 | `manifest.json` 的 `images.<文件名>`：`issue` / `label` / `source`（`telemetry` / `pack`）/ `origin` / `sha256` / `from`（来源成员名）/ `copied_at` |
+
+只有认出问题号时才导（单包、没有遥测身份时没有"问题名"可写）。
 
 ## 本地 release 辅助（默认开）
 

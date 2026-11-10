@@ -22,6 +22,7 @@ from .pack import (
     _pick_log,
     load_case,
 )
+from .scene import scene_entries, select_scene
 from .version_filter import VersionFilter
 
 log = logging.getLogger("tools.flow_cases")
@@ -48,6 +49,26 @@ def _evidence_on_error(short_id: str) -> list[str]:
             )
         if pngs:
             return sorted(pngs)[:4]
+    return []
+
+
+def _evidence_scene(
+    short_id: str, when: datetime | None = None, node_name: str = ""
+) -> list[str]:
+    """这个 issue 的现场图路径，按**失败时刻**挑（离最近的一张 + 同批几张）。
+
+    与 `_evidence_on_error()` 分工不同：那个给概览卡贴图，取的是包里前 4 张、不看时刻；
+    这里给 `temp/flow/images/` 导出，一个包里常躺着这个 issue 历次运行的图，全导出去会让人
+    把旧图当成这次失败的现场。找不到返回空表（调用方再去看补充日志包）。
+    """
+    for cand in _evidence_candidates(short_id):
+        base = os.path.join(cand, "on_error")
+        if not os.path.isdir(base):
+            continue
+        entries = scene_entries(base)
+        if not entries:
+            continue
+        return [entry.path for entry in select_scene(entries, when, node_name) if entry.path]
     return []
 
 

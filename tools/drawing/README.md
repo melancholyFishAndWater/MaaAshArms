@@ -130,7 +130,7 @@ python tools/drawing/cli.py cases --telemetry-bulk --telemetry-version "==v1.0.0
 | `--local-release DIR` | 本地 release 安装目录（默认 `D:/MaaAshArms`，环境变量 `MAA_DRAWING_LOCAL_ROOT` 可改）：画证据包时用它的完整日志与 `vision/`、`on_error/` 辅助，**按内容认运行**（本机面板日志的 `event_id` + 证据包日志行在本地日志里逐字相同 + 同 task），认不出就不用。见 [docs/packs.md](./docs/packs.md) |
 | `--no-local-release` | 不让本地 release 参与，只用证据包自己的文件 |
 | `--force` | 忽略 manifest，强制重画 |
-| `--clean-flow` | 批量出图（`--telemetry-bulk`）前先清空输出目录里的 `png`/`mmd` 与 `manifest.json`，再整批重画；同目录下 `explore-csv` 的 `.log` 与子目录不动 |
+| `--clean-flow` | 批量出图（`--telemetry-bulk`）前先清空输出目录里的 `png`/`mmd`、`images/` 与 `manifest.json`，再整批重画；同目录下 `explore-csv` 的 `.log` 与其它子目录不动 |
 | `--no-prune` | 增量出图，但不删任何旧产物（目录里会留着上次的图、以及版本筛选范围外的图） |
 | `--no-release-mark` | 不给产物名加「`_已修复待发版`」。默认会看 git：issue 的修复提交已经在最新 tag 之后（还没发版）时追加这段，见 [docs/packs.md](./docs/packs.md#已修复待发版改了但还没发版的-issue)；只改名、不重画 |
 | `--evidence-dir DIR` | 批量模式找证据包的根目录（可重复，先给的先找；`temp/evidence` 永远兜底） |
@@ -141,6 +141,8 @@ python tools/drawing/cli.py cases --telemetry-bulk --telemetry-version "==v1.0.0
 | `--log-level` / `--log-file` | 同 `flow`（默认 `temp/logs/flow_cases_…`） |
 
 产物：`temp/flow/<NAME>.png`（`--mermaid` 另出 `.mmd`），追加进 `temp/flow/manifest.json`；
+现场图另复制一份到 `temp/flow/images/`（`<问题号>_<问题名>[_日志包].png`：遥测证据包优先，
+遥测没图时用 `--case` 日志包里对得上的那张），见 [docs/packs.md](./docs/packs.md#现场图images)。
 同一份输入重跑会跳过（`--force` 强制重画），批量模式还会删掉不属于本次 issue 集合的旧图。
 名字里可能带 `_已修复待发版`（提交已修、还没发版）与 `_疑似过时`（节点定义改过），两者都是
 **只改名不重画**。命名规则、增量判据、批量模式的取舍、证据包布局见 [docs/packs.md](./docs/packs.md)。

@@ -1110,3 +1110,137 @@ def check_incremental_trace() -> list[str]:
     return [
         "代码摘要去注释 / 时间窗与注记进 options / 数据步判定 / 理由与合成 sha 各自有断言"
     ]
+
+
+def check_scene_images() -> list[str]:
+    """现场图导出：名字带问题名、日志包来源加后缀、按失败时刻挑图、清理只动自己的记录。
+
+    需求是"遥测拉下来的现场图别散在 `temp/evidence/<ID>/debug/on_error/<run_id>/` 里，
+    在 flow 产出目录留一份稳定名字的副本；遥测没图时用补充日志包里的命中图兜底"。
+    这里只用合成目录（不读真实 `temp/evidence`、不渲染、不联网）。
+    """
+    import os as _os
+    import shutil as _shutil
+    import time as _time
+    from datetime import datetime as _datetime
+    from pathlib import Path as _Path
+
+    root = _Path(__file__).resolve().parents[4]
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    from tools.drawing.lib.cases.scene import (
+        export_scene,
+        prune_scene,
+        scene_dir,
+        scene_entries,
+        scene_filename,
+        select_scene,
+    )
+
+    tmp = root / "temp" / "flow" / "_selftest_scene"
+    _shutil.rmtree(tmp, ignore_errors=True)
+    on_error = tmp / "pack" / "PYTHON-ZZ" / "debug" / "on_error"
+    on_error.mkdir(parents=True)
+    # 同一个 issue 的两次失败：10:00:05 那次两个节点同秒抓图，11:00:00 另一次
+    for name, blob in (
+        ("2026.11.09-10.00.05.100_NodeA.png", b"a" * 16),
+        ("2026.11.09-10.00.05.900_NodeB.png", b"b" * 16),
+        ("2026.11.09-11.00.00.000_NodeC.png", b"c" * 16),
+    ):
+        (on_error / name).write_bytes(blob)
+
+    _eq(scene_filename("PYTHON-3B", "Reward"), "PYTHON-3B_Reward.png", "遥测来的图名")
+    _eq(
+        scene_filename("PYTHON-3B", "Reward", from_pack=True),
+        "PYTHON-3B_Reward_日志包.png",
+        "日志包来的图加 _日志包",
+    )
+    _eq(
+        scene_filename("PYTHON-1E", "Gift", from_pack=True, clock="20261109-173719"),
+        "PYTHON-1E_Gift_日志包_20261109-173719.png",
+        "多张时追加抓图时刻",
+    )
+
+    entries = scene_entries(str(on_error))
+    _eq([name for _ts, name, _entry in entries], ["NodeA", "NodeB", "NodeC"], "按时刻枚举")
+    when = _datetime(2026, 11, 9, 10, 0, 6)
+    picked = select_scene(entries, when, "NodeB")
+    _eq(
+        [entry.member.rsplit("_", 1)[-1] for entry in picked],
+        ["NodeB.png", "NodeA.png"],
+        "同批两张都取、失败节点排第一；另一小时的失败不跟进来",
+    )
+    _eq(
+        len(select_scene(entries, _datetime(2026, 11, 9, 10, 0, 0))),
+        2,
+        "用失败时刻夹住批次",
+    )
+    _eq(
+        select_scene(entries, None)[0].member.endswith("NodeC.png"),
+        True,
+        "不知道失败时刻时只取最新那张",
+    )
+
+    manifest: dict = {}
+    written = export_scene(
+        str(tmp),
+        manifest,
+        issue="PYTHON-ZZ",
+        label="Mine",
+        entries=[(entry, True) for entry in picked],
+    )
+    _eq(
+        written,
+        [
+            "PYTHON-ZZ_Mine_日志包_20261109-100005.png",
+            "PYTHON-ZZ_Mine_日志包_20261109-100005-2.png",
+        ],
+        "同秒两张按序号区分，节点名优先的那张拿不带序号的名字",
+    )
+    _eq(
+        (manifest["images"][written[0]]["from"] or "").endswith("NodeB.png"),
+        True,
+        "记录里的 from 是来源成员名",
+    )
+    _eq(
+        _os.path.isfile(_os.path.join(scene_dir(str(tmp)), written[0])),
+        True,
+        "图真的落到 images/ 下",
+    )
+    first = _os.path.join(scene_dir(str(tmp)), written[0])
+    before = _os.path.getmtime(first)
+    _time.sleep(0.01)
+    again = export_scene(
+        str(tmp),
+        manifest,
+        issue="PYTHON-ZZ",
+        label="Mine",
+        entries=[(entry, True) for entry in picked],
+    )
+    _eq(again, written, "重导得到同一组名字")
+    _eq(_os.path.getmtime(first) == before, True, "内容一样就不重写（mtime 不动）")
+    _eq(
+        {rec["source"] for rec in manifest["images"].values()},
+        {"pack"},
+        "记录里标了来源是日志包",
+    )
+
+    _eq(
+        prune_scene(str(tmp), manifest, set(), issues={"PYTHON-ZZ"}, keep_issues=set()),
+        0,
+        "这一轮没导出图就保住上一轮的那几张",
+    )
+    _eq(
+        prune_scene(str(tmp), manifest, set(again), issues=set(), keep_issues=set()),
+        len(again),
+        "issue 不在本次集合就删",
+    )
+    _eq(_os.listdir(scene_dir(str(tmp))), [], "删干净")
+    _eq(manifest["images"], {}, "记录一起清掉")
+    _shutil.rmtree(tmp, ignore_errors=True)
+
+    return [
+        "名字带问题名 / 日志包来源加后缀 / 按失败时刻挑同批图 / 同秒加序号 / "
+        "内容没变不重写 / 清理按归属且保住没导出的那几张 各有断言"
+    ]
+

@@ -18,6 +18,9 @@ from .pack import ISSUE_RE, Case, issue_name_of, log_digest, log_stamp, task_nam
 from .release_mark import RELEASE_MARK, mark_suffix, unmarked_name
 
 MANIFEST_NAME = "manifest.json"
+# 现场图的子目录名（`cases/scene.py` 往这里复制遥测/日志包里的失败现场图）。
+# 常量放这里是因为 `clear_artifacts()` 也要清它，而 `scene.py` 反过来要 import 本模块的命名工具。
+SCENE_DIR = "images"
 # 批量出图前清掉的产物：`explore-csv` 会往同一目录写 `<csv 名>.log`（那是**输入**），不能删
 ARTIFACT_SUFFIXES = (".png", ".mmd")
 # 「疑似过时」后缀（`stale_name()` 补在最末尾）：单独写出来，清理判定要用同一串
@@ -165,7 +168,8 @@ def clear_artifacts(outdir: str) -> int:
 
     只给批量出图用（`--telemetry-bulk`）：每轮都按**当前**遥测库重画一份，上一轮留下的文件
     （issue 被 resolve 后图还在、上次 `--outdir` 换过）会让目录看起来比库多。
-    **不删**：`explore-csv` 落在同目录的 `<csv 名>.log`（那是输入）、子目录、其它扩展名。
+    同目录的 `images/`（现场图）也一起清：manifest 都清了，记录一没就再没人认得出那些图。
+    **不删**：`explore-csv` 落在同目录的 `<csv 名>.log`（那是输入）、其它子目录、其它扩展名。
     """
     removed = 0
     try:
@@ -183,6 +187,20 @@ def clear_artifacts(outdir: str) -> int:
             removed += 1
         except OSError as exc:
             log.warning("提示：清不掉旧产物 %s（%s），本次仍会继续画", path, exc)
+    scene = os.path.join(outdir, SCENE_DIR)
+    try:
+        scene_names = sorted(os.listdir(scene))
+    except OSError:
+        return removed
+    for name in scene_names:
+        path = os.path.join(scene, name)
+        if not os.path.isfile(path) or not name.lower().endswith(".png"):
+            continue
+        try:
+            os.remove(path)
+            removed += 1
+        except OSError as exc:
+            log.warning("提示：清不掉旧现场图 %s（%s），本次仍会继续画", path, exc)
     return removed
 
 
