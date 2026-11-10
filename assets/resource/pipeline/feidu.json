@@ -47,6 +47,8 @@
             39
         ],
         "post_wait_freezes": 2000,
+        "timeout": 60000,
+        "rate_limit": 3000,
         "next": [
             "BaseErrorNext",
             "[JumpBack]BaseProbeBlackPage",
