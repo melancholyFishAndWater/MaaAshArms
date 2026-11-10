@@ -99,7 +99,8 @@ flowchart LR
 - **没命中日志包的 issue**：用该 issue **自己的证据包**（`temp/evidence/<SHORT>/debug/` 里的
   `maafw.log` 尾部 + `on_error/`）画**完整流程图**——证据包就是那次运行的日志，不是"预览"。
   **本地没有就自动调 `evidence` 拉取**（默认开，需联网）；`--no-fetch-evidence` 关掉，
-  `--telemetry-offline` 时也不拉。
+  `--telemetry-offline` 时也不拉。Sentry CLI 没登录（刷新库时报 `Not authenticated`）时同样不拉：
+  终端给一次 `sentry auth login` 的指路，缺包的 issue 直接出概览卡，不逐 issue 重试。
 - **筛选版本时先核对证据包的版本**：issue 跨多个版本，本地包可能是它早先那次运行的。包内版本
   （清单 `event.release` → 日志「资源版本：」行）不在筛选范围内就**按最新事件重拉**；重拉不了
   （离线 / `--no-fetch-evidence` / 包不在 `temp/evidence` 下）或重拉后仍不符 → 这个包不用来画流程，

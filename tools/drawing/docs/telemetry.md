@@ -20,7 +20,9 @@
 
 **反查给候选、不给唯一答案**：一次运行常有多个失败事件，同一个包可能对应好几个 issue。
 只有"恰好一个 `task_id` + `node_id` 全等"时才自动采用，否则取时间最近的并打提示。
-刷新失败（没装 `sentry` CLI / 没登录）只提示一次，照常画图。
+刷新失败（没装 `sentry` CLI / 没登录）只提示一次，照常画图。**没登录时还会明确指路并跳过逐 issue
+拉证据包**：终端打 `Sentry 没登录：先执行一次 sentry auth login…`，之后缺包的 issue 直接出概览卡，
+不会每个 issue 再白跑一趟联网子进程（判断在 `lib/cases/cli.py:_sentry_failure_hint`）。
 
 ## 按版本筛（`--telemetry-version`）
 

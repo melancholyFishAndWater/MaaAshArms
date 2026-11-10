@@ -59,6 +59,22 @@ from .version_filter import VersionFilter, label_of
 
 log = logging.getLogger("tools.flow_cases")
 
+
+def _sentry_failure_hint(exc: Exception) -> str:
+    """Sentry CLI 没登录时返回一句可执行的下一步；否则返回空串。
+
+    与 `tools/sentry/lib/report_common.py:authority_error_hint` 同口径（那边给 sentry 子命令
+    用）。这里给绘图侧用：刷新遥测库失败后它会退回本地数据，但还会逐 issue 去调 `evidence`
+    拉包，每次都白跑一趟联网子进程、每个 issue 再补一条失败告警。
+    """
+    text = str(exc).lower()
+    if "not authenticated" in text or "auth login" in text:
+        return (
+            "Sentry 没登录：先执行一次 `sentry auth login`（浏览器授权），或把 SENTRY_CONFIG_DIR "
+            "指到含已登录 cli.db 的目录。本次跳过证据包拉取，缺包的 issue 直接出概览卡。"
+        )
+    return ""
+
 def _with_telemetry(options: FlowOptions, annotation) -> FlowOptions:
     """把遥测结论并进 options：产物名用问题号、注记带上、release 当版本基线。"""
     version = options.version or annotation.version or None
@@ -385,6 +401,8 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
     # 刷新失败只提示，不影响画图——遥测是加分项，不是画图的前提。
     telemetry = _telemetry_module()
     telemetry_data: dict | None = None
+    # Sentry CLI 不可用（没登录 / 凭据打不开）：刷新失败后不再逐 issue 重试拉包
+    sentry_down = False
     if args.telemetry:
         if args.telemetry_offline:
             telemetry_data = telemetry.load_index()
@@ -403,6 +421,10 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
                     exc,
                 )
                 telemetry_data = telemetry.load_index()
+                hint = _sentry_failure_hint(exc)
+                if hint:
+                    log.warning("%s", hint)
+                    sentry_down = True
     cards = telemetry.load_cards(telemetry_data) if telemetry_data else []
     if version_filter is not None:
         # 筛一次库，后面（批量出图 / --telemetry-only）都用筛过的这批。
@@ -666,14 +688,19 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
                     "指到含可写 cli.db 的目录，再跑 "
                     "`python -m tools.sentry.cli telemetry --refresh`（需联网）。"
                 )
+        if sentry_down:
+            log.info(
+                "提示：Sentry 不可用，本次不逐 issue 拉取证据包；本地已有包的照常画，缺包的出概览卡"
+            )
         for card in cards:
             if card.short_id in drawn_issues:
                 continue  # 已经被日志包出成完整流程了
-            # 本地没有证据包就自动拉取（离线 / --no-fetch-evidence 时跳过）
+            # 本地没有证据包就自动拉取（离线 / --no-fetch-evidence / Sentry 没登录时跳过）
             if (
                 not _has_evidence(card.short_id)
                 and args.fetch_evidence
                 and not args.telemetry_offline
+                and not sentry_down
             ):
                 _fetch_evidence(card.short_id)
             # 证据包里有日志就画完整流程，不再按标题里有没有 <节点>/<阶段> 挑：
@@ -688,7 +715,11 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
                     card,
                     ev_case,
                     version_filter,
-                    allow_fetch=args.fetch_evidence and not args.telemetry_offline,
+                    allow_fetch=(
+                        args.fetch_evidence
+                        and not args.telemetry_offline
+                        and not sentry_down
+                    ),
                 )
                 stale_pack = ev_case is None
             if ev_case is not None:
@@ -776,7 +807,7 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
                     mermaid=args.mermaid,
                     force=args.force,
                     manifest=manifest,
-                    no_log_hint=ev_case is None and not stale_pack,
+                    no_log_hint=ev_case is None and not stale_pack and not sentry_down,
                     origin="bulk",
                     kept=kept,
                 )

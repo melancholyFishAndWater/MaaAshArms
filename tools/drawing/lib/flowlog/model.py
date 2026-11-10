@@ -371,6 +371,15 @@ class Note:
     text: str
     kind: str = "info"  # info | version | stale | agent | derive | time | fail
 
+    def __str__(self) -> str:
+        """插值时给正文，不给 dataclass 的 repr。
+
+        `--list` 末尾那几行是 `f"提示：{note}"`（`render.render_flow` 的 `list_only` 分支），
+        没有 `__str__` 时打出来的是 `Note(text='…', kind='stale')`，读的人看不到正文。
+        `repr(note)` 仍是 dataclass 自动生成的那个，排查时不影响。
+        """
+        return self.text
+
 
 def _fmt_ts(ts: datetime | None) -> str:
     return ts.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3] if ts else "?"
