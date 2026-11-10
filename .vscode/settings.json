@@ -89,7 +89,8 @@
         "**/build",
         "**/install",
         "**/temp",
-        "**/deps"
+        "**/deps",
+        "**/debug"
     ],
     "files.watcherExclude": {
         "**/node_modules/**": true,
