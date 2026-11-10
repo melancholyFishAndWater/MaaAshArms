@@ -17,7 +17,9 @@ from tools.drawing.lib.flow_from_log import (
 )
 
 from .evidence import _evidence_on_error
+from .output import find_existing, rename_artifact
 from .pack import _fmt_local, _telemetry_module
+from .release_mark import mark_suffix
 from .signature import code_stages
 
 log = logging.getLogger("tools.flow_cases")
@@ -26,18 +28,19 @@ log = logging.getLogger("tools.flow_cases")
 def overview_filename(
     short_id: str, outdir: str, manifest: dict, fingerprint: dict
 ) -> str:
-    """概览卡文件名：`<SHORT>.png`；被**别的**产物占用时追加指纹短哈希。
+    """概览卡文件名：`<SHORT>[_已修复待发版].png`；被**别的**产物占用时追加指纹短哈希。
 
     占用判据只看 `fingerprint["short_id"]`：概览卡的身份就是问题号，`last_seen` /
     `release` / 渲染器版本变了都不该换名字——否则库里每来一次新事件就多一个
     `<SHORT>_<哈希>.png`，与增量清理互相打架（这一轮写哈希名、下一轮又删掉写回原名）。
     同一个名字上是别的 issue、或是不带 `short_id` 的记录（单包流程图）时才算被占用。
-    """
 
+    「已修复待发版」的后缀由 `cases/release_mark.py` 决定（提交里已 `Fixes`、还没发版）。
+    """
     import hashlib
     import json
 
-    base = f"{short_id}.png"
+    base = f"{short_id}{mark_suffix(short_id)}.png"
 
     def taken(name: str) -> bool:
         record = manifest["cases"].get(name)
@@ -101,9 +104,12 @@ def run_overview(
     }
     name = overview_filename(card.short_id, outdir, manifest, fingerprint)
     target = os.path.join(outdir, name)
-    old = manifest["cases"].get(name) if not force else None
-    if old is not None and not os.path.isfile(target):
-        old = None  # 记录还在、图没了：等于没画过
+    old = None if force else find_existing(outdir, manifest, name, fingerprint)
+    if old is not None and old[0] != name:
+        # 只有「已修复待发版」标记（或日志时间标签）那段变了：先把上一轮的卡改名、
+        # 不重画，之后 `render_overview` 的"文件还在就跳过"才认得出来。
+        rename_artifact(outdir, manifest, old[0], name)
+        old = (name, manifest["cases"].get(name, old[1]))
     try:
         result = render_overview(
             target,
@@ -114,7 +120,9 @@ def run_overview(
             notes=notes,
             mermaid=mermaid,
             trace_extra={"code": code_stages()},
-            recorded_stages=(old.get("trace_stages") if old else None) or None,
+            recorded_stages=(
+                (old[1].get("trace_stages") if old else None) or None
+            ),
         )
     except ModuleNotFoundError as exc:
         # 缺 Pillow 这类环境问题：报出来但不中断整批（`failed_issues` 会保住这条 issue 的旧图）

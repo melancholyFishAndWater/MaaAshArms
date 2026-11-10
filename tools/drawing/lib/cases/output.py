@@ -15,15 +15,28 @@ from dataclasses import asdict
 from tools.drawing.lib.flow_from_log import FlowOptions
 
 from .pack import ISSUE_RE, Case, issue_name_of, log_digest, log_stamp, task_name_of
+from .release_mark import RELEASE_MARK, mark_suffix, unmarked_name
 
 MANIFEST_NAME = "manifest.json"
 # 批量出图前清掉的产物：`explore-csv` 会往同一目录写 `<csv 名>.log`（那是**输入**），不能删
 ARTIFACT_SUFFIXES = (".png", ".mmd")
-# 批量出图的文件名形状：`<问题号>.png` 或 `<问题号>_疑似过时.png`（`base_filename()` 的规则）。
+# 「疑似过时」后缀（`stale_name()` 补在最末尾）：单独写出来，清理判定要用同一串
+STALE_SUFFIX = "疑似过时"
+# 批量出图的文件名形状：`<问题号>.png` / `<问题号>_疑似过时.png` /
+# `<问题号>_已修复待发版.png`（两者同时命中时是 `<问题号>_已修复待发版_疑似过时.png`）。
 # 问题号后面还有别的东西（`_task<id>`、`_px…`、`_<日志时间>`）就是"别的来路"，清理时更保守。
-BULK_STEM_SUFFIXES = frozenset({"", "疑似过时"})
+BULK_STEM_SUFFIXES = frozenset(
+    {
+        "",
+        STALE_SUFFIX,
+        RELEASE_MARK,
+        f"{RELEASE_MARK}_{STALE_SUFFIX}",
+    }
+)
 
 log = logging.getLogger("tools.flow_cases")
+
+
 def _safe_part(text: str) -> str:
     """文件名里只留字母数字与 `-_`，其余换成 `-`（中文、空格、斜杠都换掉）。"""
     return "".join(c if c.isalnum() or c in "-_" else "-" for c in text)
@@ -47,6 +60,10 @@ def base_filename(
 
     `issue_only=True`（批量出图按 issue 出一个）时不追加任务名：命名规则里 issue 就是身份，
     任务名会拼成 `<问题号>_<任务名>` 这种不符合规则的长名字。
+
+    这个 issue 的修复提交已经进了「最新 tag 之后」但还没发版时，末尾再追加
+    `_已修复待发版`（`cases/release_mark.py`）：图仍是失败现场，但读图的人立刻知道
+    "已经修了、等发版"。标记只看 git，不联网；`--no-release-mark` 可关掉。
     """
     # `options.issue` 优先：遥测反查 / `--telemetry-issue` 给的问题号比目录名可靠
     issue = options.issue or issue_name_of(case)
@@ -65,6 +82,9 @@ def base_filename(
     if options.px:
         # 多进程日志里同号任务会出现多次，进程号必须进名字，否则两次运行互相覆盖
         parts.append(_safe_part(options.px).lower())
+    mark = mark_suffix(issue or "")
+    if mark:
+        parts.append(mark.lstrip("_"))
     return "_".join(p for p in parts if p)
 
 
@@ -122,7 +142,7 @@ def stale_name(name: str) -> str:
     后缀用中文：文件名直接写清这是哪一类产物，不必再记 `_stale` 这个缩写。
     """
     stem, ext = os.path.splitext(name)
-    return f"{stem}_疑似过时{ext}"
+    return f"{stem}_{STALE_SUFFIX}{ext}"
 
 
 def clear_artifacts(outdir: str) -> int:
@@ -149,6 +169,78 @@ def clear_artifacts(outdir: str) -> int:
         except OSError as exc:
             log.warning("提示：清不掉旧产物 %s（%s），本次仍会继续画", path, exc)
     return removed
+
+
+def find_existing(
+    outdir: str, manifest: dict, name: str, fingerprint: dict | None = None
+) -> tuple[str, dict] | None:
+    """找"同一张图的上一轮产物"，返回 `(记在哪个名字下, 记录)`；没画过返回 None。
+
+    先按名字试四种写法：本次算出的名字、它的「疑似过时」变体、去掉「已修复待发版」标记的
+    两个变体——标记刚出现/刚消失时旧记录就在另一侧。
+
+    再退回**按指纹认**：`fingerprint` 相同（同一份日志、同一套参数、同一来源、同一渲染器）
+    就是同一张图，名字怎么变都认得出。这一步兜住"名字里带了日志时间标签"的老产物
+    （`PYTHON-M_20261109175132_疑似过时.png`），否则标记一变就会把它们当新图重画、还留下两张。
+
+    命中之后调用方**只改名、不重画**：图的内容没变，变的只是名字。
+    """
+    bare = unmarked_name(name)
+    seen: list[str] = []
+    for base in (name, bare):
+        for candidate in (base, stale_name(base)):
+            if candidate in seen:
+                continue
+            seen.append(candidate)
+            record = manifest["cases"].get(candidate)
+            if record and os.path.isfile(os.path.join(outdir, candidate)):
+                return candidate, record
+    if not fingerprint:
+        return None
+    for candidate, record in sorted(manifest.get("cases", {}).items()):
+        if os.path.basename(candidate) != candidate:
+            continue
+        if record.get("fingerprint") != fingerprint:
+            continue
+        if os.path.isfile(os.path.join(outdir, candidate)):
+            return candidate, record
+    return None
+
+
+def rename_artifact(outdir: str, manifest: dict, old: str, new: str) -> bool:
+    """把已画好的产物从 `old` 改名成 `new`（png + 同干 `.mmd` + manifest 记录），不重画。
+
+    只给「已修复待发版」标记出现/消失时用：那次改动只涉及文件名，图本身没变
+    （`cases/release_mark.py`），所以按轨迹跳过时顺手把上一轮的产物换个名字，省一次渲染。
+    成功返回 True；`old` 的文件不在了就返回 False，让调用方照常重画。
+    """
+    if old == new:
+        return False
+    old_path = os.path.join(outdir, old)
+    if not os.path.isfile(old_path):
+        return False
+    record = manifest["cases"].pop(old, None)
+    try:
+        os.replace(old_path, os.path.join(outdir, new))
+    except OSError as exc:
+        if record is not None:
+            manifest["cases"][old] = record  # 改不动就把记录放回去，别把账弄丢
+        log.warning("提示：%s 改名成 %s 失败（%s），本次按重画处理", old, new, exc)
+        return False
+    old_mermaid = os.path.splitext(old_path)[0] + ".mmd"
+    new_mermaid = os.path.splitext(os.path.join(outdir, new))[0] + ".mmd"
+    if os.path.isfile(old_mermaid):
+        try:
+            os.replace(old_mermaid, new_mermaid)
+        except OSError as exc:
+            log.warning("提示：%s 改名失败（%s）", old_mermaid, exc)
+    if record is not None:
+        record["path"] = os.path.join(outdir, new)
+        if isinstance(record.get("mermaid"), str) and record["mermaid"]:
+            record["mermaid"] = new_mermaid
+        manifest["cases"][new] = record
+    log.info("改名（已修复待发版标记变化）：%s → %s", old, new)
+    return True
 
 
 def artifact_issue(name: str) -> tuple[str, str]:

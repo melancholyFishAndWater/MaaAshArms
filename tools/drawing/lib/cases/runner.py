@@ -23,24 +23,28 @@ from tools.drawing.lib.flow_from_log import (
 )
 
 from .evidence import _evidence_event_note
-from .output import _stale_record, out_filename, stale_name
+from .output import (
+    STALE_SUFFIX,
+    _stale_record,
+    find_existing,
+    out_filename,
+    rename_artifact,
+    stale_name,
+)
 from .pack import Case, _version_from_evidence, issue_name_of, log_digest
 from .signature import code_stages, repo_state
 
 log = logging.getLogger("tools.flow_cases")
 
 
-def _record_for(manifest: dict, outdir: str, name: str) -> tuple[str, dict] | None:
-    """同名（含「疑似过时」后缀）的旧记录；文件不在就当没画过。
+def _has_stale(name: str) -> bool:
+    stem, _ext = os.path.splitext(name)
+    return stem.endswith(f"_{STALE_SUFFIX}")
 
-    返回 `(记在哪个名字下, 记录)`——按轨迹跳过时要把**这个**名字登记进"本次保留"，
-    否则清理会把它当成过期产物删掉。
-    """
-    for candidate in (name, stale_name(name)):
-        record = manifest["cases"].get(candidate)
-        if record and os.path.isfile(os.path.join(outdir, candidate)):
-            return candidate, record
-    return None
+
+def _target_name(name: str, matched: str) -> str:
+    """跳过时要落到哪个名字：沿用旧记录有没有「疑似过时」后缀，只更新标记那一段。"""
+    return stale_name(name) if _has_stale(matched) else name
 
 
 def run_case(
@@ -109,7 +113,7 @@ def run_case(
         "has_on_error": bool(on_error),
         "renderer": RENDERER_VERSION,
     }
-    old = None if force else _record_for(manifest, outdir, name)
+    old = None if force else find_existing(outdir, manifest, name, fingerprint)
     matched = old[0] if old else ""
     trace_extra = {
         "code": code_stages(),
@@ -135,9 +139,15 @@ def run_case(
     )
     assert isinstance(result, FlowResult)
     if result.skipped:
-        log.info("跳过（%s）：%s", result.skip_reason, os.path.join(outdir, matched or name))
+        # 名字可能因为「已修复待发版」标记变化而与旧记录不同：只改名，不重画。
+        # 图的内容没变（绘图逻辑与数据步都没动），所以这里既不重渲染也不动 RENDERER_VERSION。
+        final = _target_name(name, matched or name)
+        if matched and matched != final:
+            rename_artifact(outdir, manifest, matched, final)
+        final_path = os.path.join(outdir, final)
+        log.info("跳过（%s）：%s", result.skip_reason, final_path)
         if kept is not None:
-            kept.add(matched or name)
+            kept.add(final)
         return None
     if result.redraw_reason:
         log.info("重画（%s）：%s", result.redraw_reason, name)

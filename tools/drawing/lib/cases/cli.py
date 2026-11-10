@@ -33,6 +33,7 @@ from .evidence import (
     _usable_evidence_case,
     set_evidence_dirs,
 )
+from . import release_mark
 from .local_release import LocalRelease, default_root
 from .output import (
     MANIFEST_NAME,
@@ -52,6 +53,7 @@ from .pack import (
     load_case,
 )
 from .runner import run_case
+from .release_mark import set_enabled as set_release_mark_enabled
 from .signature import code_stages
 from .version_filter import VersionFilter, label_of
 
@@ -223,6 +225,14 @@ def create_argument_parser(prog: str | None = None) -> argparse.ArgumentParser:
     )
     ap.add_argument("--force", action="store_true", help="忽略 manifest，强制重画")
     ap.add_argument(
+        "--no-release-mark",
+        dest="release_mark",
+        action="store_false",
+        help="不给产物名加「_已修复待发版」：默认会看 git——issue 的修复提交已经在最新 tag "
+        "之后（还没打 tag 发版）时，图名追加这段，表示「已修、等发版」；只看 git、不联网，"
+        "读不出 git 历史就不加。标记只改名不重画（图的内容没变）",
+    )
+    ap.add_argument(
         "--clean-flow",
         dest="clean_flow",
         action="store_true",
@@ -304,7 +314,7 @@ def create_argument_parser(prog: str | None = None) -> argparse.ArgumentParser:
         help="按任务逐个输出（一个 (进程, task_id) 一张图）。任务号在各进程内复用，"
         "不加这个参数时整份日志混画一张；加了之后文件名带 _task<id>_px<进程>",
     )
-    ap.set_defaults(thumbs=True, telemetry=True, prune=True)
+    ap.set_defaults(thumbs=True, telemetry=True, prune=True, release_mark=True)
     return ap
 
 
@@ -470,6 +480,20 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
             log.info("批量出图前清空输出目录（--clean-flow）：%s（没有旧产物）", args.outdir)
     os.makedirs(args.outdir, exist_ok=True)
     manifest = load_manifest(args.outdir)
+    set_release_mark_enabled(args.release_mark)
+    label, marked = release_mark.fixed_issue_ids()
+    if marked:
+        # 只影响产物名（标记出现/消失时只改名、不重画），所以单独打一行，不与"代码摘要"混在一起
+        log.info(
+            "已修复待发版（%s）：%s；这些图的名字会带「_%s」，打新 tag 推送后自动去掉",
+            label,
+            "、".join(sorted(marked)),
+            release_mark.RELEASE_MARK,
+        )
+    elif args.release_mark:
+        log.info("已修复待发版：最新 tag 之后没有 Fixes 的提交（%s）", label or "无可用范围")
+    else:
+        log.info("已修复待发版：--no-release-mark，产物名不加标记")
     code_now = code_stages()
     if args.telemetry_bulk:
         # 把"这次哪类代码变了"先摆出来：读取实现变了只会让下一轮多读一遍日志，

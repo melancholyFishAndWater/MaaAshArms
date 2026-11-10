@@ -408,12 +408,71 @@ def check_overview_render() -> list[str]:
             True,
             "文件名带路径分隔符的记录不动",
         )
+
+        # 5) 「已修复待发版」只是改名：后缀、去标记、改名搬文件、清理认得它
+        from tools.drawing.lib.flow_cases import (
+            RELEASE_MARK,
+            artifact_issue,
+            mark_suffix,
+            rename_artifact,
+            unmarked_name,
+        )
+
+        marked = frozenset({"PYTHON-3D"})
+        _eq(mark_suffix("PYTHON-3D", marked), f"_{RELEASE_MARK}", "命中的 issue 加后缀")
+        _eq(mark_suffix("PYTHON-3A", marked), "", "没命中的不加")
+        _eq(mark_suffix("", marked), "", "没有 issue 身份时不加")
+        _eq(
+            mark_suffix("python-3d", marked),
+            f"_{RELEASE_MARK}",
+            "大小写归一（Sentry 编号可能小写）",
+        )
+        _eq(
+            unmarked_name(f"PYTHON-3D_{RELEASE_MARK}.png"),
+            "PYTHON-3D.png",
+            "去掉标记",
+        )
+        _eq(
+            unmarked_name(f"PYTHON-3D_{RELEASE_MARK}_疑似过时.png"),
+            "PYTHON-3D_疑似过时.png",
+            "去掉标记时保留「疑似过时」",
+        )
+        _eq(unmarked_name("PYTHON-3D.png"), "PYTHON-3D.png", "没有标记就原样返回")
+        _eq(
+            artifact_issue(f"PYTHON-3D_{RELEASE_MARK}.png"),
+            ("PYTHON-3D", RELEASE_MARK),
+            "归属仍按第一个下划线切，带标记不影响 issue 身份",
+        )
+
+        rdir = _os.path.join(tmp, "rename")
+        _os.makedirs(rdir, exist_ok=True)
+        rmap: dict = {"schema": 2, "cases": {}}
+        old = "PYTHON-3D_疑似过时.png"
+        new = f"PYTHON-3D_{RELEASE_MARK}_疑似过时.png"
+        for suffix in (".png", ".mmd"):
+            with open(_os.path.join(rdir, _os.path.splitext(old)[0] + suffix), "wb") as fh:
+                fh.write(b"x")
+        rmap["cases"][old] = {"issue": "PYTHON-3D", "path": _os.path.join(rdir, old)}
+        _eq(rename_artifact(rdir, rmap, old, new), True, "改名成功")
+        _eq(_os.path.isfile(_os.path.join(rdir, new)), True, "png 落到新名字")
+        _eq(
+            _os.path.isfile(_os.path.join(rdir, _os.path.splitext(new)[0] + ".mmd")),
+            True,
+            "同干的 .mmd 跟着改",
+        )
+        _eq(_os.path.isfile(_os.path.join(rdir, old)), False, "旧名字不再占着")
+        _eq(new in rmap["cases"] and old not in rmap["cases"], True, "manifest 记录搬到新名字")
+        _eq(
+            rename_artifact(rdir, rmap, "PYTHON-ZZ.png", "PYTHON-ZZ_new.png"),
+            False,
+            "旧文件不在时返回 False（让调用方照常重画）",
+        )
     finally:
         _shutil.rmtree(tmp, ignore_errors=True)
 
     return [
         "概览卡渲染（PNG + .mmd）/ 文件名占用判据（同 issue 稳定）/ 来源标记 / "
-        "整目录清理 / 按 issue 归属的增量清理 各自有断言"
+        "整目录清理 / 按 issue 归属的增量清理 / 「已修复待发版」只改名不重画 各自有断言"
     ]
 
 

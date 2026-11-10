@@ -40,16 +40,26 @@ from .pack import (
 from .output import (
     BULK_STEM_SUFFIXES,
     MANIFEST_NAME,
+    STALE_SUFFIX,
     _safe_part,
     artifact_issue,
     base_filename,
     out_filename,
+    rename_artifact,
     stale_name,
     load_manifest,
     save_manifest,
     clear_artifacts,
     prune_artifacts,
     _stale_record,
+)
+
+from .release_mark import (
+    RELEASE_MARK,
+    fixed_issue_ids,
+    mark_suffix,
+    set_enabled as set_release_mark,
+    unmarked_name,
 )
 
 from .runner import (
@@ -128,7 +138,14 @@ __all__ = [
     "_zips_in",
     "base_filename",
     "BULK_STEM_SUFFIXES",
+    "STALE_SUFFIX",
+    "RELEASE_MARK",
     "artifact_issue",
+    "fixed_issue_ids",
+    "mark_suffix",
+    "rename_artifact",
+    "set_release_mark",
+    "unmarked_name",
     "code_stages",
     "module_digest",
     "parse_signature",
