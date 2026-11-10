@@ -426,6 +426,11 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
                     log.warning("%s", hint)
                     sentry_down = True
     cards = telemetry.load_cards(telemetry_data) if telemetry_data else []
+    # 问题名（遥测卡上的 `Reward` / `Factory`…）：进产物名，清理时也用它认
+    # `PYTHON-3B_Reward.png` 这类带问题名的名字（版本筛掉的也要留着 label，否则清不掉）
+    labels_by_issue = {
+        card.short_id: card.label for card in cards if getattr(card, "label", "")
+    }
     if version_filter is not None:
         # 筛一次库，后面（批量出图 / --telemetry-only）都用筛过的这批。
         # 两处排除分开说：`release` 缺失是数据不全，不是被条件筛掉的。
@@ -650,6 +655,11 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
                     on_error_override=args.on_error,
                     origin="bulk" if args.telemetry_bulk else "case",
                     kept=kept if args.telemetry_bulk else None,
+                    issue_label=(
+                        annotation.card.label
+                        if annotation is not None and annotation.card is not None
+                        else ""
+                    ),
                 )
             except (FileNotFoundError, ValueError, OSError) as exc:
                 last_error = exc
@@ -777,6 +787,7 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
                                 stem_extra=stem_extra,
                                 origin="bulk",
                                 kept=kept,
+                                issue_label=getattr(card, "label", ""),
                             )
                         except (FileNotFoundError, ValueError, OSError) as exc:
                             last_error = exc
@@ -838,6 +849,7 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
                 kept,
                 issues={card.short_id for card in cards},
                 failed_issues=failed_issues,
+                labels=labels_by_issue,
             )
             if pruned:
                 log.info(

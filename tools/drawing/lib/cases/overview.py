@@ -17,7 +17,7 @@ from tools.drawing.lib.flow_from_log import (
 )
 
 from .evidence import _evidence_on_error
-from .output import BULK_STEM_SUFFIXES, artifact_issue, find_existing, rename_artifact
+from .output import _own_rest, _safe_part, artifact_issue, find_existing, rename_artifact
 from .pack import _fmt_local, _telemetry_module
 from .release_mark import mark_suffix
 from .signature import code_stages
@@ -26,9 +26,12 @@ log = logging.getLogger("tools.flow_cases")
 
 
 def overview_filename(
-    short_id: str, outdir: str, manifest: dict, fingerprint: dict
+    short_id: str, outdir: str, manifest: dict, fingerprint: dict, label: str = ""
 ) -> str:
-    """概览卡文件名：`<SHORT>[_已修复待发版].png`；被**别的**产物占用时追加指纹短哈希。
+    """概览卡文件名：`<SHORT>[_<问题名>][_已修复待发版].png`；被**别的**产物占用时追加指纹短哈希。
+
+    `label` 是遥测卡上的问题名（`Maa task failed: Reward` → `Reward`）：产物叫
+    `PYTHON-3B_Reward.png`，读图的人不用回查标题。
 
     占用判据只看 `fingerprint["short_id"]`：概览卡的身份就是问题号，`last_seen` /
     `release` / 渲染器版本变了都不该换名字——否则库里每来一次新事件就多一个
@@ -40,29 +43,31 @@ def overview_filename(
     import hashlib
     import json
 
-    base = f"{short_id}{mark_suffix(short_id)}.png"
+    safe = _safe_part(label) if label else ""
+    stem = f"{short_id}_{safe}" if safe else short_id
+    base = f"{stem}{mark_suffix(short_id)}.png"
 
     def taken(name: str) -> bool:
         """这个名字被**别人**的产物占着吗？
 
         有记录时看它属于哪个 issue；没有记录、又是本工具给这个 issue 用的名字
-        （`<SHORT>.png` / `_已修复待发版.png` 这类形状）就当成自己的旧图，直接覆盖——
-        否则记录一旦丢了（改名、旧版本留下的），旧卡会永远占着名字，新卡只能写哈希名
-        （实测 PYTHON-V：旧卡 25 次/.65 一直躺在 temp/flow，新卡叫 PYTHON-V_2c6cb52faaaf.png）。
+        （`<SHORT>[_问题名].png` 这类形状）就当成自己的旧图，直接覆盖——否则记录一旦丢了
+        （改名、旧版本留下的），旧卡会永远占着名字，新卡只能写哈希名（实测 PYTHON-V：
+        旧卡 25 次/.65 一直躺在 temp/flow，新卡叫 PYTHON-V_2c6cb52faaaf.png）。
         别的无主文件才算占用。
         """
         record = manifest["cases"].get(name)
         if record is not None:
             return record.get("fingerprint", {}).get("short_id") != short_id
         issue, rest = artifact_issue(name)
-        return not (issue and rest in BULK_STEM_SUFFIXES)
+        return not (issue and _own_rest(rest, label))
 
     if not taken(base):
         return base
     digest = hashlib.sha256(
         json.dumps(fingerprint, sort_keys=True).encode("utf-8")
     ).hexdigest()[:12]
-    return f"{short_id}_{digest}.png"
+    return f"{stem}_{digest}.png"
 
 
 def run_overview(
@@ -111,7 +116,9 @@ def run_overview(
         "release": rel,
         "images": len(images),
     }
-    name = overview_filename(card.short_id, outdir, manifest, fingerprint)
+    name = overview_filename(
+        card.short_id, outdir, manifest, fingerprint, label=card.label
+    )
     target = os.path.join(outdir, name)
     old = None if force else find_existing(outdir, manifest, name, fingerprint)
     if old is not None and old[0] != name:

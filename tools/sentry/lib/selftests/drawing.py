@@ -363,6 +363,12 @@ def check_overview_render() -> list[str]:
             "PYTHON-Z.png",
             "没有记录的同名旧图直接覆盖，不写哈希名",
         )
+        # 问题名进名字：`PYTHON-3B_Reward.png`（读图的人不用回查标题）
+        _eq(
+            overview_filename("PYTHON-Z", tmp, manifest, fp_a, label="Reward"),
+            "PYTHON-Z_Reward.png",
+            "问题名跟在问题号后面",
+        )
 
         # 2) 渲染：合成卡片 → 一张非空 PNG（+ --mermaid 时的 .mmd），来源标记为 overview
         card = ti.IssueCard(
@@ -509,6 +515,47 @@ def check_overview_render() -> list[str]:
             _os.path.isfile(_os.path.join(pdir, "Entrust_20261001_old.png")),
             True,
             "无记录、认不出问题号 → 不碰",
+        )
+
+        # 4c) 名字里带问题名（`PYTHON-JJ_Reward.png`）：认得出就照同一套规则清
+        ndir = _os.path.join(tmp, "named")
+        _os.makedirs(ndir, exist_ok=True)
+        for unrecorded in (
+            "PYTHON-JJ_Reward.png",
+            "PYTHON-JJ_Reward_已修复待发版_疑似过时.png",
+            "PYTHON-KK_Other.png",
+        ):
+            with open(_os.path.join(ndir, unrecorded), "wb") as handle:
+                handle.write(b"x")
+        removed_named = prune_artifacts(
+            ndir,
+            {"schema": 2, "cases": {}},
+            set(),
+            issues={"PYTHON-II"},
+            failed_issues=set(),
+            labels={"PYTHON-JJ": "Reward", "PYTHON-KK": "Reward"},
+        )
+        _eq(
+            removed_named,
+            2,
+            "带问题名的旧产物：label 对得上的删、对不上的不碰",
+        )
+        _eq(
+            _os.path.isfile(_os.path.join(ndir, "PYTHON-JJ_Reward.png")),
+            False,
+            "问题名 + 集合外 → 删",
+        )
+        _eq(
+            _os.path.isfile(
+                _os.path.join(ndir, "PYTHON-JJ_Reward_已修复待发版_疑似过时.png")
+            ),
+            False,
+            "问题名 + 标记 + 疑似过时也认得出来",
+        )
+        _eq(
+            _os.path.isfile(_os.path.join(ndir, "PYTHON-KK_Other.png")),
+            True,
+            "问题名对不上 → 当成别的来路，不碰",
         )
 
         # 5) 「已修复待发版」只是改名：后缀、去标记、改名搬文件、清理认得它

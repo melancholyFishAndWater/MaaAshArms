@@ -61,6 +61,7 @@ def run_case(
     stem_extra: str = "",
     origin: str = "case",
     kept: set[str] | None = None,
+    issue_label: str = "",
 ) -> FlowResult | None:
     """渲染一个 case；按轨迹命中就跳过（幂等）。
 
@@ -70,7 +71,8 @@ def run_case(
     这一轮还不知道。
 
     `origin` 记进 manifest（`bulk` / `case`），清理旧产物时用来区分"批量画的"与"单包画的"；
-    `kept` 是本次运行保留的产物名集合，只有 `--telemetry-bulk` 会传。
+    `kept` 是本次运行保留的产物名集合，只有 `--telemetry-bulk` 会传。`issue_label` 是遥测卡
+    上的问题名（`Reward` / `Factory`…），只影响产物名（`PYTHON-3B_Reward.png`），不改图。
     """
     # 资源版本基线：命令行 --version 优先；否则从遥测证据包 evidence.json 的 release 取
     # （原生 maafw.log 没有「资源版本」那行，同装 MFA 界面日志也不会被下载进来）。
@@ -99,6 +101,7 @@ def run_case(
         manifest,
         issue_only=issue_only,
         stem_extra=stem_extra,
+        issue_label=issue_label,
     )
     vision = vision_override if vision_override is not None else case.vision()
     on_error = on_error_override if on_error_override is not None else case.on_error()

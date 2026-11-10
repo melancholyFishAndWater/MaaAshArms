@@ -48,6 +48,7 @@ def base_filename(
     *,
     issue_only: bool = False,
     stem_extra: str = "",
+    issue_label: str = "",
 ) -> str:
     """不含去重后缀的文件名主干：优先遥测问题名，其次任务名，最后证据包目录名。
 
@@ -57,6 +58,10 @@ def base_filename(
     指定了 `--task-id` 时**不把任务名放进主干**：那个 task 的入口行不一定在导出的那一段里
     （实测 200000007 只留下 `BaseReturnHome`，它不是任务入口），而 `task<id>` 本身就唯一、
     也一定对——宁可少一个名字，不放一个可能错的名字。
+
+    `issue_label` 是遥测卡上的**问题名**（`Maa task failed: Reward` → `Reward`）：主干就是
+    问题号时追加一段，产物叫 `PYTHON-3B_Reward.png`，一眼看出是哪个任务。已经带了任务名
+    （`--case` 里从日志认出来的）时不重复加。
 
     `issue_only=True`（批量出图按 issue 出一个）时不追加任务名：命名规则里 issue 就是身份，
     任务名会拼成 `<问题号>_<任务名>` 这种不符合规则的长名字。
@@ -76,6 +81,9 @@ def base_filename(
     elif issue and task and not issue_only:
         # 有 issue 名但没有 task_id：把任务名也带上，图才读得出画的是哪个任务
         parts.append(_safe_part(task))
+    elif issue and issue_label:
+        # 遥测问题：问题号后面带一段问题名（`PYTHON-3B_Reward`），读图的人不用回查标题
+        parts.append(_safe_part(issue_label))
     if stem_extra:
         # 例如 BaseTaskStopError 那类 issue：按 BaseErrorNext 的派发者分桶，带进文件名
         parts.append(_safe_part(stem_extra))
@@ -96,8 +104,9 @@ def out_filename(
     *,
     issue_only: bool = False,
     stem_extra: str = "",
+    issue_label: str = "",
 ) -> str:
-    """产物文件名：`<问题名或任务名>[_task<id>][_<日志时间>][_<短指纹>].png`.
+    """产物文件名：`<问题名或任务名>[_<问题名>][_task<id>][_<日志时间>][_<短指纹>].png`.
 
     相比旧版去掉了 `flow_` 前缀（目录已经是 `temp/flow/`，前缀是重复的）。
 
@@ -108,7 +117,13 @@ def out_filename(
     「疑似过时」的后缀不在这里加：那项检查要等渲染完才知道有没有命中，
     所以后缀由 `stale_name()` 在渲染后补上。
     """
-    base = base_filename(case, options, issue_only=issue_only, stem_extra=stem_extra)
+    base = base_filename(
+        case,
+        options,
+        issue_only=issue_only,
+        stem_extra=stem_extra,
+        issue_label=issue_label,
+    )
     digest = log_digest(case)
     recorded = (manifest or {}).get("cases", {})
 
@@ -255,6 +270,21 @@ def artifact_issue(name: str) -> tuple[str, str]:
     return (head, rest) if ISSUE_RE.match(head) else ("", "")
 
 
+def _own_rest(rest: str, label: str = "") -> bool:
+    """`<问题号>` 后面那一段是不是本工具会写出来的形状。
+
+    会写出来的：`_疑似过时`、`_已修复待发版`（可叠加），以及问题名（`PYTHON-3B_Reward`，
+    后面还可能有 `_<派发者>_task<id>`、日志时间、短指纹）。问题名只能按"已知 label"比，
+    比不了就是别的来路（单包按任务名起的名、用户自己放的文件）。
+    """
+    if rest in BULK_STEM_SUFFIXES:
+        return True
+    safe = _safe_part(label) if label else ""
+    if not safe:
+        return False
+    return rest == safe or rest.startswith(f"{safe}_")
+
+
 def prune_artifacts(
     outdir: str,
     manifest: dict,
@@ -262,6 +292,7 @@ def prune_artifacts(
     *,
     issues: set[str],
     failed_issues: set[str] | None = None,
+    labels: dict[str, str] | None = None,
 ) -> int:
     """批量出图结束后清掉不该留着的旧产物，返回删掉的个数。
 
@@ -276,11 +307,14 @@ def prune_artifacts(
     * 其余（单包画的、本次画失败的 issue、认不出归属的）→ 留着。
 
     记录丢了但文件还在的（改名 / 旧版本留下的）：名字正好是本工具的批量命名时也删——
-    判据同上（集合外删、被本次保留的取代也删），别的无主文件仍然不碰。
+    判据同上（集合外删、被本次保留的取代也删），别的无主文件仍然不碰。`labels` 是
+    `问题号 → 问题名`（遥测卡上的 `Reward` / `Factory`…），用来认 `PYTHON-3B_Reward.png`
+    这种带问题名的名字。
 
     「本次画失败的 issue」必须保住旧图：重画失败时目录里那一张是唯一能看的东西。
     """
     failed = failed_issues or set()
+    label_of = labels or {}
     records: dict = manifest.get("cases") or {}
     removed = 0
     # 记录指向的文件已经不在（用户手删、上一次清理中断）：丢掉记录，否则同名会一直被
@@ -304,7 +338,7 @@ def prune_artifacts(
             continue
         if issue not in issues:
             reason = "不在本次 issue 集合内"
-        elif record.get("origin") == "bulk" or rest in BULK_STEM_SUFFIXES:
+        elif record.get("origin") == "bulk" or _own_rest(rest, label_of.get(issue, "")):
             reason = "已被本次重画取代"
         else:
             continue
@@ -344,7 +378,7 @@ def prune_artifacts(
             # `.mmd` 不单独判：跟着同干的 png 一起删，免得把一份图的边文件算成两次清理
             continue
         issue, rest = artifact_issue(name)
-        if not issue or rest not in BULK_STEM_SUFFIXES:
+        if not issue or not _own_rest(rest, label_of.get(issue, "")):
             continue
         if issue in failed:
             continue
