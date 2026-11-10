@@ -17,7 +17,7 @@ from tools.drawing.lib.flow_from_log import (
 )
 
 from .evidence import _evidence_on_error
-from .output import find_existing, rename_artifact
+from .output import BULK_STEM_SUFFIXES, artifact_issue, find_existing, rename_artifact
 from .pack import _fmt_local, _telemetry_module
 from .release_mark import mark_suffix
 from .signature import code_stages
@@ -43,10 +43,19 @@ def overview_filename(
     base = f"{short_id}{mark_suffix(short_id)}.png"
 
     def taken(name: str) -> bool:
+        """这个名字被**别人**的产物占着吗？
+
+        有记录时看它属于哪个 issue；没有记录、又是本工具给这个 issue 用的名字
+        （`<SHORT>.png` / `_已修复待发版.png` 这类形状）就当成自己的旧图，直接覆盖——
+        否则记录一旦丢了（改名、旧版本留下的），旧卡会永远占着名字，新卡只能写哈希名
+        （实测 PYTHON-V：旧卡 25 次/.65 一直躺在 temp/flow，新卡叫 PYTHON-V_2c6cb52faaaf.png）。
+        别的无主文件才算占用。
+        """
         record = manifest["cases"].get(name)
         if record is not None:
             return record.get("fingerprint", {}).get("short_id") != short_id
-        return os.path.isfile(os.path.join(outdir, name))
+        issue, rest = artifact_issue(name)
+        return not (issue and rest in BULK_STEM_SUFFIXES)
 
     if not taken(base):
         return base

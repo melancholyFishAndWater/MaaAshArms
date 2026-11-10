@@ -275,6 +275,9 @@ def prune_artifacts(
       `<问题号>.png` / `<问题号>_疑似过时.png`）且本次没保留 → 删（被本次重画取代）；
     * 其余（单包画的、本次画失败的 issue、认不出归属的）→ 留着。
 
+    记录丢了但文件还在的（改名 / 旧版本留下的）：名字正好是本工具的批量命名时也删——
+    判据同上（集合外删、被本次保留的取代也删），别的无主文件仍然不碰。
+
     「本次画失败的 issue」必须保住旧图：重画失败时目录里那一张是唯一能看的东西。
     """
     failed = failed_issues or set()
@@ -324,6 +327,48 @@ def prune_artifacts(
         records.pop(name, None)
         removed += 1
         log.info("删掉旧产物（%s）：%s", reason, name)
+    # 没有 manifest 记录的旧产物：只有名字正好是本工具的批量命名（`<问题号>.png` /
+    # `_疑似过时` / `_已修复待发版` 变体）时才动，别的无主文件一律不碰。
+    # 这一条兜住"记录丢了但文件还在"（改名、旧版本、`--clean-flow` 之后又被旧图占位）：
+    # 否则那张旧图会永远占着名字，新图只能写哈希名——实测 PYTHON-V 的旧卡（25 次、.65）
+    # 一直躺在 temp/flow，新卡只能叫 PYTHON-V_2c6cb52faaaf.png，用户看到的是旧内容。
+    kept_issues = {
+        str(records.get(item, {}).get("issue") or "") or artifact_issue(item)[0]
+        for item in kept
+    }
+    kept_issues.discard("")
+    for name in sorted(os.listdir(outdir)):
+        if name in records or name in kept or os.path.basename(name) != name:
+            continue
+        if not name.lower().endswith(".png"):
+            # `.mmd` 不单独判：跟着同干的 png 一起删，免得把一份图的边文件算成两次清理
+            continue
+        issue, rest = artifact_issue(name)
+        if not issue or rest not in BULK_STEM_SUFFIXES:
+            continue
+        if issue in failed:
+            continue
+        if issue in issues and issue not in kept_issues:
+            # 本次该画它但没画出来（渲染失败 / 被别的名字取代前就退出了）：留着旧图
+            continue
+        path = os.path.join(outdir, name)
+        try:
+            os.remove(path)
+        except OSError as exc:
+            log.warning("提示：删不掉旧产物 %s（%s），下次再试", path, exc)
+            continue
+        sidecar = os.path.splitext(path)[0] + ".mmd"
+        try:
+            if os.path.isfile(sidecar):
+                os.remove(sidecar)
+        except OSError as exc:
+            log.warning("提示：删不掉 %s（%s）", sidecar, exc)
+        removed += 1
+        log.info(
+            "删掉旧产物（没有 manifest 记录、%s）：%s",
+            "已被本次重画取代" if issue in kept_issues else "不在本次 issue 集合内",
+            name,
+        )
     return removed
 
 

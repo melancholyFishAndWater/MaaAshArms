@@ -353,6 +353,16 @@ def check_overview_render() -> list[str]:
             "PYTHON-Z.png",
             "同指纹不算占用（幂等跳过）",
         )
+        # 记录丢了但磁盘上还有同名文件（改名 / 旧版本留下的）：名字是本工具的批量形状就
+        # 复用它（覆盖旧图），不再追加哈希——否则旧卡永远占着名字、新卡只能叫哈希名
+        manifest["cases"].pop("PYTHON-Z.png", None)
+        with open(_os.path.join(tmp, "PYTHON-Z.png"), "wb") as handle:
+            handle.write(b"stale")
+        _eq(
+            overview_filename("PYTHON-Z", tmp, manifest, fp_a),
+            "PYTHON-Z.png",
+            "没有记录的同名旧图直接覆盖，不写哈希名",
+        )
 
         # 2) 渲染：合成卡片 → 一张非空 PNG（+ --mermaid 时的 .mmd），来源标记为 overview
         card = ti.IssueCard(
@@ -454,6 +464,51 @@ def check_overview_render() -> list[str]:
             "..\\evil.png" in prune_manifest["cases"],
             True,
             "文件名带路径分隔符的记录不动",
+        )
+
+        # 4b) 没有 manifest 记录、但名字是本工具批量形状的旧产物：也按归属清
+        for unrecorded in (
+            "PYTHON-GG.png",
+            "PYTHON-GG.mmd",
+            "PYTHON-HH.png",
+            "PYTHON-II.png",
+            "Entrust_20261001_old.png",
+        ):
+            with open(_os.path.join(pdir, unrecorded), "wb") as handle:
+                handle.write(b"x")
+        # HH 本次是画成 `_task1` 的：规范名上的无记录旧图属于"被本次取代"
+        removed_unrecorded = prune_artifacts(
+            pdir,
+            prune_manifest,
+            {"PYTHON-FF.png", "PYTHON-HH_task1.png"},
+            issues={"PYTHON-AA", "PYTHON-CC", "PYTHON-FF", "PYTHON-HH", "PYTHON-II"},
+            failed_issues={"PYTHON-DD"},
+        )
+        _eq(removed_unrecorded, 2, "无记录旧产物：集合外一个 + 被取代一个")
+        _eq(
+            _os.path.isfile(_os.path.join(pdir, "PYTHON-GG.png")),
+            False,
+            "无记录、不在本次集合 → 删",
+        )
+        _eq(
+            _os.path.isfile(_os.path.join(pdir, "PYTHON-GG.mmd")),
+            False,
+            "同干 .mmd 跟着删",
+        )
+        _eq(
+            _os.path.isfile(_os.path.join(pdir, "PYTHON-HH.png")),
+            False,
+            "无记录、本次换了名字画 → 删（否则旧图永远占着规范名）",
+        )
+        _eq(
+            _os.path.isfile(_os.path.join(pdir, "PYTHON-II.png")),
+            True,
+            "无记录、本次该画但没画出来 → 留着",
+        )
+        _eq(
+            _os.path.isfile(_os.path.join(pdir, "Entrust_20261001_old.png")),
+            True,
+            "无记录、认不出问题号 → 不碰",
         )
 
         # 5) 「已修复待发版」只是改名：后缀、去标记、改名搬文件、清理认得它
