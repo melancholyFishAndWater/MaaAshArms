@@ -37,7 +37,7 @@ from .evidence import (
     set_evidence_dirs,
 )
 from . import release_mark
-from .local_release import LocalRelease, default_root
+from .local_release import LocalReleases, default_root
 from .output import (
     MANIFEST_NAME,
     clear_artifacts,
@@ -149,7 +149,7 @@ def _assist_pack(
     case: Case,
     options: FlowOptions,
     task_id: int | None,
-    local: LocalRelease | None,
+    local: LocalReleases | None,
     label: str = "",
     event_id: str = "",
 ) -> tuple[Case, FlowOptions] | None:
@@ -350,18 +350,19 @@ def create_argument_parser(prog: str | None = None) -> argparse.ArgumentParser:
     ap.add_argument(
         "--local-release",
         dest="local_release",
-        default=default_root(),
+        action="append",
+        default=None,
         metavar="DIR",
-        help="本地 release 安装目录（默认 D:/MaaAshArms，环境变量 MAA_DRAWING_LOCAL_ROOT 可改）："
+        help="本地 release 安装目录（可重复；默认根 D:/MaaAshArms 或环境变量 "
+        "MAA_DRAWING_LOCAL_ROOT 永远兜底，给的是**叠加**不是替换）："
         "画证据包时按**内容**对账（证据包日志里的行在本地日志里逐字相同 + 同 task），认得出"
         "同一次运行就用它在本地的完整日志、vision/ 与 on_error/ 辅助绘图；认不出就不用"
         "（不按时间猜——本地日志名是轮转时刻，不是内容区间）",
     )
     ap.add_argument(
         "--no-local-release",
-        dest="local_release",
-        action="store_const",
-        const="",
+        dest="no_local_release",
+        action="store_true",
         help="不让本地 release 参与绘图：只用证据包自己的日志与图片",
     )
     ap.add_argument(
@@ -505,19 +506,24 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
             # 只报个数看不出是"库被清了"还是"新问题进来了"
             log.info("命中的 issue：%s", "、".join(card.short_id for card in cards))
 
-    # 本地 release 辅助（默认开）：只按内容对账，认不出就不用；目录不在就当没开
-    local: LocalRelease | None = None
-    if args.local_release:
-        local = LocalRelease.discover(args.local_release)
+    # 本地 release 辅助（默认开）：只按内容对账，认不出就不用；根不存在就当没给。
+    # `--local-release` 可重复，默认根永远兜底（给的是叠加，不是替换——一个根只装得下一台
+    # 机器的 debug/，换掉默认根会让默认根里的日志整体失效）。
+    local: LocalReleases | None = None
+    if args.no_local_release:
+        log.info("本地 release 辅助：--no-local-release，只用证据包自己的文件")
+    else:
+        roots: list[str] = [*(args.local_release or []), default_root()]
+        local = LocalReleases.discover(roots)
         if local is None:
             log.info(
-                "提示：本地 release 不可用（%s 的 debug/ 下没有日志），本次只用证据包自己的文件",
-                args.local_release,
+                "提示：本地 release 不可用（%s 的 debug/ 下都没有日志），本次只用证据包自己的文件",
+                "、".join(roots),
             )
         else:
             log.info(
-                "本地 release 辅助：%s（%d 份日志，按内容对账）",
-                local.root,
+                "本地 release 辅助：%s（%d 份日志，按内容对账；--local-release 可重复，默认根兜底）",
+                local.describe(),
                 len(local.logs()),
             )
 

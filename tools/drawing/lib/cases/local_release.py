@@ -66,6 +66,12 @@ def default_root() -> str:
     return os.environ.get(ENV_LOCAL_ROOT) or DEFAULT_LOCAL_ROOT
 
 
+def _say(quiet: bool, level: int, message: str, *args: object) -> None:
+    """`find()` 的提示语：`LocalReleases` 汇总时逐根静音，只由它打一行结论。"""
+    if not quiet:
+        log.log(level, message, *args)
+
+
 @dataclass(frozen=True)
 class LocalRun:
     """本地 release 里与证据包**同一次运行**的那份证据。"""
@@ -179,6 +185,7 @@ class LocalRelease:
         task_id: int | None = None,
         label: str = "",
         event_id: str = "",
+        quiet: bool = False,
     ) -> LocalRun | None:
         """在本地 release 里找**同一次运行**的那份日志；认不出就返回 None（不猜）。
 
@@ -190,12 +197,17 @@ class LocalRelease:
         因此失败行在"给了 task"时只当**优先**（同名候选里优先挑锚得上那份），不再是门槛：
         选定后若没有锚上行，会打一行说明。`task_id` 没给时仍然要求锚上失败行——
         那种情况下没有更强的身份信号，宁可不用。
+
+        `quiet=True` 时不打"没对上"这类提示：`LocalReleases`（多个根）逐根扫的时候会问
+        每一份日志，逐根打就是刷屏，它自己汇总成一行。
         """
         name = label or case.label
         fails, others = _needles(case)
         needles = fails + others
         if not needles:
-            log.info(
+            _say(
+                quiet,
+                logging.INFO,
                 "提示：%s 的日志里没有可用于对账的独特行，本地 release 不参与（不猜）",
                 name,
             )
@@ -224,7 +236,9 @@ class LocalRelease:
                 hits.append((anchor_ok, count, task_ok, path))
         if not hits:
             if hint is not None:
-                log.warning(
+                _say(
+                    quiet,
+                    logging.WARNING,
                     "提示：%s 的事件 %s… 记在本地面板日志（%s），但本地 debug 日志里没有这次"
                     "运行的记录（可能已被轮转覆盖），不参与辅助",
                     name,
@@ -232,7 +246,9 @@ class LocalRelease:
                     hint[1],
                 )
             elif task_id is not None:
-                log.info(
+                _say(
+                    quiet,
+                    logging.INFO,
                     "提示：%s 的日志行在本地 release 的 %d 份日志里都没有同时对上 task %s，"
                     "不参与辅助（不按时间猜）",
                     name,
@@ -240,7 +256,9 @@ class LocalRelease:
                     task_id,
                 )
             else:
-                log.info(
+                _say(
+                    quiet,
+                    logging.INFO,
                     "提示：%s 的日志行在本地 release 的 %d 份日志里都没逐字对上，"
                     "不参与辅助（不按时间猜）",
                     name,
@@ -250,7 +268,9 @@ class LocalRelease:
         hits.sort(key=lambda item: (item[0], item[2], item[1]), reverse=True)
         best = hits[0]
         if len(hits) > 1 and hits[1][:3] == best[:3]:
-            log.warning(
+            _say(
+                quiet,
+                logging.WARNING,
                 "本地 release 有 %d 份日志都与 %s 对上了同样多的行（%s），"
                 "认不出是哪一次，不参与辅助",
                 len(hits),
@@ -260,7 +280,9 @@ class LocalRelease:
             return None
         _anchor_ok, count, task_ok, path = best
         if anchor and not _anchor_ok:
-            log.info(
+            _say(
+                quiet,
+                logging.INFO,
                 "提示：%s 按 task %s 定位到 %s（包里的失败行不在这份里：它属于这条 trace 上的"
                 "别的任务）",
                 name,
@@ -321,6 +343,88 @@ class LocalRelease:
                 break
         self._events[wanted] = found
         return found
+
+
+@dataclass
+class LocalReleases:
+    """多个本地 release 根一起参与对账：`--local-release` 可重复，默认根永远兜底。
+
+    一个根只装得下一台机器的 `debug/`，而"这次运行"的日志可能在另一个导出目录里（用户把
+    几次导出的 `debug/` 各放一处）。根之间**没有先后**：仍然只按内容认；两个根装着同一份
+    运行（文件名与对上的行数都一样）算同一份，各装一份不同的运行则都不采用（不猜）。
+    """
+
+    releases: list[LocalRelease] = field(default_factory=list)
+
+    @classmethod
+    def discover(cls, roots: list[str]) -> LocalReleases | None:
+        """按给的根建一组；一个可用的都没有就返回 None（静默关闭）。"""
+        found: list[LocalRelease] = []
+        for root in roots:
+            one = LocalRelease.discover(root)
+            if one is None:
+                log.info("提示：本地 release 根 %s 没有 debug/ 日志，跳过", root)
+                continue
+            if any(
+                os.path.normcase(one.root) == os.path.normcase(item.root)
+                for item in found
+            ):
+                continue
+            found.append(one)
+        return cls(releases=found) if found else None
+
+    def logs(self) -> list[str]:
+        """所有根的日志（按根的顺序拼接）。"""
+        return [path for one in self.releases for path in one.logs()]
+
+    def describe(self) -> str:
+        return "、".join(one.root for one in self.releases)
+
+    def panel_event(self, event_id: str) -> tuple[datetime | None, str] | None:
+        """本机面板日志里记着这个事件吗：任一根命中就算（同一次运行只可能在一台机器上）。"""
+        for one in self.releases:
+            hit = one.panel_event(event_id)
+            if hit is not None:
+                return hit
+        return None
+
+    def find(
+        self,
+        case: Case,
+        task_id: int | None = None,
+        label: str = "",
+        event_id: str = "",
+    ) -> LocalRun | None:
+        """在各根里找同一次运行：唯一命中才用；多个根给出不同的运行时不猜。"""
+        name = label or case.label
+        runs: list[LocalRun] = []
+        for one in self.releases:
+            run = one.find(
+                case, task_id, label=label, event_id=event_id, quiet=True
+            )
+            if run is not None:
+                runs.append(run)
+        if not runs:
+            log.info(
+                "提示：%s 的日志行在本地 release 的 %d 个根 / %d 份日志里都没逐字对上，"
+                "不参与辅助（不按时间猜）",
+                name,
+                len(self.releases),
+                len(self.logs()),
+            )
+            return None
+        if len(runs) > 1:
+            same = {(os.path.basename(run.log_path), run.matched_lines) for run in runs}
+            if len(same) > 1:
+                log.warning(
+                    "本地 release 有 %d 个根都认出了 %s、但不是同一份运行（%s），"
+                    "认不出用哪个，不参与辅助",
+                    len(runs),
+                    name,
+                    "、".join(os.path.basename(run.log_path) for run in runs),
+                )
+                return None
+        return runs[0]
 
 
 def _parse_ts(text: str) -> datetime | None:

@@ -978,6 +978,50 @@ def check_local_release_assist() -> list[str]:
             True,
             "没给 task 时仍按失败行锚定（旧行为不变）",
         )
+
+        # 多个根一起用（`--local-release` 可重复，默认根叠加）：根之间不分先后，仍只按内容认
+        from tools.drawing.lib.cases.local_release import LocalReleases
+
+        release3 = tmp / "release3" / "debug"
+        release3.mkdir(parents=True)
+        (release3 / "maafw.log").write_text(
+            "\n".join([done("12:00:00.000", "TaskOther", 200000777)]) + "\n",
+            encoding="utf-8",
+        )
+        both = LocalReleases.discover([str(tmp / "release2"), str(tmp / "release3")])
+        _eq(both is not None, True, "多个本地 release 根可以一起参与")
+        if both is not None:
+            _eq(
+                [entry.root for entry in both.releases],
+                [
+                    _os.path.abspath(str(tmp / "release2")),
+                    _os.path.abspath(str(tmp / "release3")),
+                ],
+                "给的根都记下来了（叠加，不是替换）",
+            )
+            multi = both.find(shared_case, 200000099)
+            _eq(
+                multi is not None
+                and _os.path.basename(multi.log_path) == rotated.name,
+                True,
+                "多根时仍按内容认，不按根的顺序",
+            )
+            _eq(len(both.logs()) >= 3, True, "多根的日志合并参与对账")
+            # 同一份运行被两个根各存一份：算同一次，不判歧义
+            (release3 / rotated.name).write_text(
+                rotated.read_text(encoding="utf-8"), encoding="utf-8"
+            )
+            copied = LocalReleases.discover(
+                [str(tmp / "release2"), str(tmp / "release3")]
+            )
+            assert copied is not None
+            again = copied.find(shared_case, 200000099)
+            _eq(
+                again is not None
+                and _os.path.basename(again.log_path) == rotated.name,
+                True,
+                "两个根装着同一份日志时照用，不判成歧义",
+            )
     finally:
         _shutil.rmtree(tmp, ignore_errors=True)
 
