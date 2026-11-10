@@ -1,4 +1,12 @@
 {
     "days": 7,
-    "ignore": ["flow", "M9A", "telemetry", "sentry-cfg", "uvcache", "uvtools"]
+    "ignore": [
+        "flow",
+        "M9A",
+        "telemetry",
+        "sentry-cfg",
+        "uvcache",
+        "uvtools",
+        "MaaFramework"
+    ]
 }
