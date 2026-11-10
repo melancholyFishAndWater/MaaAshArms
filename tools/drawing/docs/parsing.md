@@ -31,6 +31,15 @@
   能还原的只是"依次派发了哪些节点"，不是完整执行顺序；候选表一次都没成功过的那个节点画成
   「未命中」（`kind=miss`），"卡在派发层"的候选表账照常由 `stall_notes` 出。父节点按链上前一步
   推出来（`parent_source=chain`，单列记账，不算进"父节点没找到"）。
+- **运行期覆写建出来的节点**：`agent/shared/generic.py:BaseErrorNextReco` 在同一个 next 连续
+  10 轮没命中时调 `context.override_pipeline()`，建出 `<父节点>ErrorNext`（`DirectHit` +
+  `BaseTaskStopErrorAct`）并把父节点的 `next` 改成它。这类节点只存在于运行期，
+  `assets/resource/pipeline/` 里永远没有。框架把覆写内容原样打进日志（两种写法：
+  `handle_context_override_pipeline … "pipeline_override":{…}` 与 `Context::override_pipeline
+  … [pipeline_override={…}]`），解析器从里面取出被覆写的**节点名**记进 `ParsedLog.override_nodes`
+  （内部识别/动作 `recognition/*`、`action/*` 剔掉；导出裁断的行解析不出就跳过，不猜）。
+  用途只有一个：「疑似过时」据此把"pipeline 里找不到"的节点分成「运行期合成」与「真的改名/删除了」，
+  见 [stale.md](./stale.md)。
 - **`--task-id` 严格过滤 + 任务判定窗口**：`steps` 与事件都按 `task_id` 过滤；框架级事件
   （`Task timeout` / `invalid node id` / `node not completed`，没有 `task_id`）改用**判定窗口**归属——
   下界是本任务第一步，上界优先取**它自己的 `task end`**（任务失败后框架不再为它记东西），

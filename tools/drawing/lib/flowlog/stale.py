@@ -13,6 +13,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+from collections.abc import Iterable
 from typing import Any
 
 from tools._pipeline_state import (
@@ -74,6 +75,9 @@ class StaleCheck:
     tag: str = ""  # 对应的 git tag
     nodes: list[StaleNode] = field(default_factory=list)
     missing: list[str] = field(default_factory=list)  # 当前 pipeline 里已不存在的节点名
+    # 运行期 `override_pipeline` 建出来的节点（`<父节点>ErrorNext`）：pipeline 里没有属正常，
+    # 与 `missing`（真的改名/删除了）分开，见 `logparse._override_names`
+    synthesized: list[str] = field(default_factory=list)
     reason: str = ""  # 非空 = 检查没做成的原因
     # 版本是从哪来的：`日志`（自己写的）或 `MFA日志`（同装 logs/log-*.log 里借的）
     source: str = ""
@@ -110,7 +114,12 @@ def _version_marks(lines) -> list[tuple[datetime, str]]:
 
 
 def check_stale_nodes(
-    repo: Path, node_names: set[str], version: str | None, source: str = ""
+    repo: Path,
+    node_names: set[str],
+    version: str | None,
+    source: str = "",
+    *,
+    override_nodes: Iterable[str] = (),
 ) -> StaleCheck:
     """查这批节点里哪些"疑似过时"。
 
@@ -120,8 +129,10 @@ def check_stale_nodes(
       没有就从同装 `logs/log-*.log` 借（`source` 记来源）。**不看安装目录名**——正常安装目录
       不带版本，带了也是装机时的旧名字（更新资源后就是错的）。取不到就查不了，`reason` 写明
       原因，不是"没有过时节点"；
-    - 节点名在**当前** `assets/resource/pipeline/` 里找不到 → 记进 `missing`
-      （这是"已被改名或删除"的事实，不是推测）；
+    - 节点名在**当前** `assets/resource/pipeline/` 里找不到 → 再分两种：
+      `override_nodes` 里有的（运行期 `override_pipeline` 建出来的，例如 `BaseErrorNext` 的
+      `<父节点>ErrorNext`）记进 `synthesized`——pipeline 里没有它属正常，不能报成"已改名/删除"；
+      其余记进 `missing`（这是"已被改名或删除"的事实，不是推测）；
     - 找得到 → 拿它**在 `vX.Y.Z` 那一刻的定义**和**现在的定义**逐字段比：
       不同 → 标"疑似过时"，把最近一次改动它所在文件的提交写出来供人核对。
       只比定义，不比 diff 里的名字出现（那种粒度会把"文件被重排"也算进来，实测
@@ -162,10 +173,14 @@ def check_stale_nodes(
             now[module] = {k: v for k, v in data.items() if isinstance(v, dict)}
 
     out = StaleCheck(version=version, tag=version, source=source)
+    overridden = set(override_nodes)
     for name in sorted(node_names):
         module = owner.get(name)
         if module is None:
-            out.missing.append(name)
+            if name in overridden:
+                out.synthesized.append(name)
+            else:
+                out.missing.append(name)
             continue
         before = then.get(module, {}).get(name)
         after = now.get(module, {}).get(name)

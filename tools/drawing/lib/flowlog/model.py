@@ -332,6 +332,10 @@ class ParsedLog:
     # （`(时刻, 进程, 是否在场)`）。两者都只进注记，不需要进图。
     custom_missing: list[CustomMissing] = field(default_factory=list)
     agent_state: list[tuple[datetime, str, bool]] = field(default_factory=list)
+    # 运行期 `override_pipeline` 覆写里出现过的节点名（`BaseErrorNextReco` 会建出
+    # `<父节点>ErrorNext`）。只用于「疑似过时」：这些节点在 pipeline JSON 里没有属正常，
+    # 不能和"真的改名/删除了"混成一条"已找不到"。见 `logparse._override_names`。
+    override_nodes: set[str] = field(default_factory=set)
 
 
 def source_kind_of(source: Any) -> str:

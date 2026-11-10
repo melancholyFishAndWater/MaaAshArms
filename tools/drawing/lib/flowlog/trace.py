@@ -113,6 +113,27 @@ def notes_payload(notes: Iterable[Any]) -> list[list[str]]:
     return [[note.text, note.kind] for note in notes]
 
 
+def parsed_payload(parsed: Any) -> Any:
+    """`parse` 阶段的载荷：`override_nodes` 为空时**不进摘要**。
+
+    加一个"只有特定输入才会非空"的字段（这里是运行期 `override_pipeline` 建出来的节点名）
+    不该让所有旧图的摘要一起变——`canonical()` 会把它当成空集写进载荷，等于整批白重画。
+    空集本来也不带信息：渲染结果与没有这个字段时完全一样。
+    """
+    payload = canonical(parsed)
+    if isinstance(payload, dict) and not payload.get("override_nodes"):
+        payload.pop("override_nodes", None)
+    return payload
+
+
+def stale_payload(check: Any) -> Any:
+    """`stale` 阶段的载荷：`synthesized` 为空时不进摘要（理由同 `parsed_payload`）。"""
+    payload = canonical(check)
+    if isinstance(payload, dict) and not payload.get("synthesized"):
+        payload.pop("synthesized", None)
+    return payload
+
+
 def trace_of(stages: dict[str, str]) -> str:
     """整条轨迹的 sha：把各阶段摘要按固定顺序再取一次。"""
     return stage_digest({name: stages.get(name, "") for name in STAGE_ORDER})

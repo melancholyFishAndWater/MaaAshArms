@@ -266,6 +266,18 @@ def stale_notes(check: StaleCheck | None) -> list[Note]:
                 "stale",
             )
         )
+    if check.synthesized:
+        # 与 `missing` 分开说：这些是运行期 `override_pipeline` 建出来的（如 BaseErrorNext 的
+        # `<父节点>ErrorNext`），pipeline 里没有它属正常，不能让人当成"节点被删了"
+        shown = "、".join(check.synthesized[:4])
+        more = f" 另 {len(check.synthesized) - 4} 个" if len(check.synthesized) > 4 else ""
+        notes.append(
+            Note(
+                f"{len(check.synthesized)} 个节点由运行期覆写合成（pipeline 里没有属正常）："
+                f"{shown}{more}",
+                "info",
+            )
+        )
     if check.missing:
         shown = "、".join(check.missing[:6])
         more = f" 另 {len(check.missing) - 6} 个" if len(check.missing) > 6 else ""

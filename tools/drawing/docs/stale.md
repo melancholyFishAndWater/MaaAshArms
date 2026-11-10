@@ -24,9 +24,15 @@
    三处都没有就不做这项检查，注记写明原因（遥测附件只带日志尾部、且 `evidence.json` 没记到
    release 时，实测 `PYTHON-25`/`28`/`2F`/`2G` 里取不到）。
 
-2. **节点所在模块**：读当前 `assets/resource/pipeline/*.json` 的顶层 key。找不到 → 记进
-   "已被改名或删除"那条注记（这是事实，不是推测；例如 `TrainClickArrow` / `TrainEnsureHome` /
-   `TrainEnsureInfo`）。
+2. **节点所在模块**：读当前 `assets/resource/pipeline/*.json` 的顶层 key。找不到 → 再分两种：
+   - 日志里有运行期覆写记录（`handle_context_override_pipeline` 的 `pipeline_override` /
+     `Context::override_pipeline`）建出过这个名字 → 记成**「由运行期覆写合成」**，单独一条注记。
+     `agent/shared/generic.py:BaseErrorNextReco` 在同一个 next 连续 10 轮没命中时会覆写出
+     `<父节点>ErrorNext`（`recognition: DirectHit` + `custom_action: BaseTaskStopErrorAct`），
+     它只存在于运行期，pipeline JSON 里永远没有（实测 `PYTHON-3C` 的
+     `EscortEnterAcceptErrorNext` 既是失败节点、也被报成"已找不到"）；
+   - 其余记进"已被改名或删除"那条注记（这是事实，不是推测；例如 `TrainClickArrow` /
+     `TrainEnsureHome` / `TrainEnsureInfo`）。
 
 3. **比定义**：`git show <tag>:<pipeline 文件>` 取那个版本的定义，与当前定义逐字段比（按键排序，
    避免键顺序造成假差异）。**不同 → 节点名后标「疑似过时」**；图上注记写 `模块@短hash`，
@@ -53,6 +59,12 @@
   `train.json` 有 6 次提交，42 个节点里 38 个被标，等于没标）；也**不按"名字有没有出现在 diff 里"**——
   `dec9686` 重写 `feidu_gift.json` 时 47 个名字全在增删行里，但其中 4 个节点定义一字未改。
 - **版本之后才新增的节点不标**：那时它还不存在，谈不上"过时"。
+- **运行期覆写建出来的节点不算"已删除"**：`BaseErrorNextReco` 覆写出的 `<父节点>ErrorNext`
+  只活在运行期，pipeline JSON 里没有它属正常。日志里的覆写记录（`pipeline_override`）是唯一
+  能区分"合成"与"真的改名/删除了"的证据，所以 `ParsedLog.override_nodes` 记下这批名字，
+  `check_stale_nodes(..., override_nodes=…)` 把它们放进 `StaleCheck.synthesized`（单独一条注记），
+  不进 `missing`、也不标「疑似过时」。日志里没有覆写记录时（裁断/没打到）退化成旧行为，
+  仍报"已找不到"——那是数据不足，不猜。
 - **tag 必须在本地**：`git fetch --tags` 之后再跑；缺 tag 时注记会直说，不当成"没有过时节点"。
 - **开销**：一次 `git show` 每模块 + 带缓存的 `git log -1` 每模块，一份 42 节点 4 轮的日志多约 4 s
   （1.5 s → 5.7 s，其中大部分是画图本身）。嫌慢就 `--no-stale-check`。

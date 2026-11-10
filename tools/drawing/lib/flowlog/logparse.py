@@ -103,6 +103,75 @@ def _count_truncated(msg: str, stats: ParseStats) -> None:
             return
 
 
+_OVERRIDE_MARKS = ('"pipeline_override":', "[pipeline_override=")
+
+
+def _override_names(msg: str) -> set[str]:
+    """从运行期覆写事件的日志行里取出被覆写的节点名（解析不出就返回空集，不猜）。
+
+    agent 的 `BaseErrorNext`（`agent/shared/generic.py:BaseErrorNextReco`）在同一个 next 连续
+    10 轮没命中时会调 `context.override_pipeline()`，建出 `<父节点>ErrorNext` 并把父节点的
+    `next` 改成它。这个节点只存在于**运行期**，`assets/resource/pipeline/` 里永远没有它，
+    所以「疑似过时」不能把它当成"已改名/删除"（实测 `EscortEnterAcceptErrorNext`）。
+
+    框架会把覆写内容原样打进日志，两种写法都见过：
+    `handle_context_override_pipeline … [req={…"pipeline_override":{…}}]`、
+    `Context::override_pipeline … [pipeline_override={…}]`。导出裁过的行解析不出就跳过。
+    """
+    start = -1
+    if "override" not in msg:
+        # 快筛：绝大多数行没有覆写，别对它们做两次 find + JSON 括号扫描
+        return set()
+    for mark in _OVERRIDE_MARKS:
+        at = msg.find(mark)
+        if at >= 0:
+            start = at + len(mark)
+            break
+    if start < 0:
+        return set()
+    text = msg[start:].lstrip()
+    if not text.startswith("{"):
+        return set()
+    depth = 0
+    in_string = False
+    escaped = False
+    end = -1
+    for index, char in enumerate(text):
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                end = index + 1
+                break
+    if end < 0:
+        return set()
+    try:
+        data = json.loads(text[:end])
+    except ValueError:
+        return set()
+    # 内部识别与内部动作（`recognition/OCR/<uuid>`、`action/Swipe/<uuid>`）是 MFA 自己建的，
+    # 不在 pipeline JSON 里，也不能算"运行期合成"的 pipeline 节点——一律剔掉，免得把
+    # missing/synthesized 搅浑（顺带让这份名字集合不掺 uuid）
+    return {
+        key
+        for key, value in data.items()
+        if isinstance(value, dict)
+        and not INTERNAL_NAME_RE.match(key)
+        and not key.startswith(("recognition/", "action/"))
+    }
+
+
 def parse_log(
     path,
     t_from: datetime | None,
@@ -249,6 +318,13 @@ def parse_log(
         line_px = m.group("px")
         func = m.group("func")
         msg = m.group("msg")
+
+        # 运行期覆写建出来的节点（BaseErrorNext 的 `<父节点>ErrorNext`）：只记名字，
+        # 「疑似过时」据此把"pipeline 里找不到"的节点分成"合成"与"真的没了"两类。
+        # 不 continue：覆写行本身不含步骤，但没有必要改变后续解析的路径
+        override_names = _override_names(msg)
+        if override_names:
+            out.override_nodes.update(override_names)
 
         # 谁在评估 next 表（父节点 + 候选表）；同时记一份"评估账"——
         # 连续的 failed 就是卡在派发层的证据，见 NextListStat 的注释。

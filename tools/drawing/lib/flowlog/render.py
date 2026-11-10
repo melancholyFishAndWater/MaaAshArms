@@ -33,7 +33,7 @@ from .paths import DEFAULT_OUTDIR, REPO_ROOT
 
 from .stale import VERSION_SOURCE_CLI, VERSION_SOURCE_MFA_LOG, VERSION_SOURCE_TELEMETRY, _apply_stale, _log_version_of, check_stale_nodes, stale_label
 
-from .trace import notes_payload, options_payload, reason_of, same_data, stage_digest, trace_of
+from .trace import notes_payload, options_payload, parsed_payload, reason_of, same_data, stage_digest, stale_payload, trace_of
 
 from typing import TYPE_CHECKING
 
@@ -534,6 +534,18 @@ def stale_notes(check: StaleCheck | None) -> list[Note]:
                 "stale",
             )
         )
+    if check.synthesized:
+        # 与 `missing` 分开说：这些是运行期 `override_pipeline` 建出来的（如 BaseErrorNext 的
+        # `<父节点>ErrorNext`），pipeline 里没有它属正常，不能让人当成"节点被删了"
+        shown = "、".join(check.synthesized[:4])
+        more = f" 另 {len(check.synthesized) - 4} 个" if len(check.synthesized) > 4 else ""
+        notes.append(
+            Note(
+                f"{len(check.synthesized)} 个节点由运行期覆写合成（pipeline 里没有属正常）："
+                f"{shown}{more}",
+                "info",
+            )
+        )
     if check.missing:
         shown = "、".join(check.missing[:6])
         more = f" 另 {len(check.missing) - 6} 个" if len(check.missing) > 6 else ""
@@ -664,6 +676,9 @@ def render_flow(
             {s.name for s in raw},
             found[0] if found else None,
             found[1] if found else "",
+            # 运行期覆写建出来的节点（`BaseErrorNext` 的 `<父节点>ErrorNext`）：pipeline 里没有
+            # 它属正常，不能报成"已改名/删除"
+            override_nodes=parsed.override_nodes,
         )
         _apply_stale(opts.stale)
 
@@ -778,9 +793,9 @@ def render_flow(
 
     redraw_reason = ""
     if trace_extra is not None:
-        stages["parse"] = stage_digest(parsed)
+        stages["parse"] = stage_digest(parsed_payload(parsed))
         stages["notes"] = stage_digest(notes_payload(notes))
-        stages["stale"] = stage_digest(opts.stale)
+        stages["stale"] = stage_digest(stale_payload(opts.stale))
         if recorded and os.path.isfile(old_file):
             if (
                 recorded.get("raster_impl") == stages.get("raster_impl")

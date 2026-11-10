@@ -31,6 +31,7 @@ def check_flow_diagnostics() -> list[str]:
         parse_log,
         round_steps,
     )
+    from tools.drawing.lib.flowlog.stale import check_stale_nodes
 
     def raw(ts: str, msg: str, px: str = "Px1") -> str:
         return (
@@ -241,9 +242,55 @@ def check_flow_diagnostics() -> list[str]:
     _eq(parsed.steps, [], "只有别的 task 时不合成步骤")
     _eq(parsed.derived_from, "", "不标成仅事件模式")
 
+    # 13) 运行期覆写建出来的节点：`BaseErrorNextReco` 会 override 出 `<父节点>ErrorNext`，
+    #     它不在 pipeline JSON 里，「疑似过时」不能报成"已改名/删除"（实测 PYTHON-3C：
+    #     `EscortEnterAcceptErrorNext` 既是失败节点，也被记进 missing）
+    override_log = "\n".join(
+        [
+            done("00:43:00.000", "EscortEnterAccept", 300),
+            done("00:43:01.000", "EscortEnterAcceptErrorNext", 300),
+            raw(
+                "00:43:00.500",
+                'handle_context_override_pipeline [req={"_ContextOverridePipelineReverseRequest":1,'
+                '"pipeline_override":{"EscortEnterAccept":{"next":["EscortEnterAcceptErrorNext"]},'
+                '"EscortEnterAcceptErrorNext":{"action":"Custom",'
+                '"custom_action":"BaseTaskStopErrorAct","recognition":"DirectHit"}}}] ',
+            ),
+            # 内部识别/动作是 MFA 自己建的，不是 pipeline 节点：不该进这份名字集合
+            raw(
+                "00:43:00.600",
+                'Context::override_pipeline [pipeline_override={'
+                '"recognition/OCR/0dd7369e-4f37-4128-b174-58468dac622b":{"recognition":"OCR"},'
+                '"action/Swipe/bf1bbf9e-1dbd-4c81-8e71-a49d9f779661":{"action":"Swipe"}}] ',
+            ),
+        ]
+    )
+    parsed = parse_log(override_log, None, None, 300, False)
+    _eq(
+        parsed.override_nodes,
+        {"EscortEnterAccept", "EscortEnterAcceptErrorNext"},
+        "覆写建出来的节点名进 override_nodes（内部识别/动作不算）",
+    )
+    check = check_stale_nodes(
+        root,
+        {s.name for s in parsed.steps},
+        "v1.0.0-beta.71",
+        "cli",
+        override_nodes=parsed.override_nodes,
+    )
+    _eq(check.synthesized, ["EscortEnterAcceptErrorNext"], "覆写节点记成「合成」")
+    _eq(check.missing, [], "覆写节点不再被报成已找不到")
+    _eq([n.name for n in check.nodes], [], "覆写节点不标疑似过时")
+    _contains(
+        _note_text(build_notes(parsed, FlowOptions(task_id=300, stale=check))),
+        "由运行期覆写合成",
+        "合成节点有独立注记",
+    )
+
     out.append(
         "  回跳重排 / 仅事件模式（4 条识别合成步骤）/ 派发链模式（只剩 Node.NextList）/ "
-        "别的 task 的日志不硬画 / 截断行 / 三类空窗口 / 严格 task 过滤 / 任务区间 各自有说法"
+        "别的 task 的日志不硬画 / 截断行 / 三类空窗口 / 严格 task 过滤 / 任务区间 / "
+        "运行期覆写合成的节点不算已删除 各自有说法"
     )
     return out
 
