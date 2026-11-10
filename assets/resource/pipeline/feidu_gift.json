@@ -194,6 +194,8 @@
         "action": "Click",
         "post_wait_freezes": 1000,
         "next": [
+            "BaseErrorNext",
+            "GiftClickSortConfirm", // 先于反转 保证没有确认按钮
             "GiftChooseReverse",
             "[JumpBack]BaseBranchError"
         ]
@@ -210,12 +212,6 @@
             10,
             61,
             60
-        ],
-        "action": "Click",
-        "post_wait_freezes": 1000,
-        "next": [
-            "GiftClickFirstcharacter",
-            "[JumpBack]BaseBranchError"
         ]
     },
     // INFO 点第一个角色
