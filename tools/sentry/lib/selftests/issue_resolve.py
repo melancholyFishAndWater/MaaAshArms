@@ -1,4 +1,4 @@
-"""`issue-resolve` 用例：pre-push ref 解析、提交正文里的 issue 提取、REST URL 与 hook 内容。
+"""`issue-resolve` 用例：pre-push ref 解析、提交正文提取、状态分流、REST URL 与 hook 内容。
 
 只放用例：断言助手在 `asserts.py`，固定输入在 `fixtures.py`，入口在 `cli.py`。
 """
@@ -23,15 +23,19 @@ def check_issue_resolve() -> list[str]:
     from tools.sentry.lib.issue_resolve import (
         build_hook_script,
         choose_previous_tag,
+        classify_states,
         describe_args,
         extract_issue_ids,
+        hook_mode_label,
         issue_url,
         log_args,
         merge_ids,
+        newest_state,
         parse_ref_lines,
         pick_latest_tag,
         shortids_url,
     )
+    import tools.sentry.lib.issue_resolve as ir
 
     zero40 = "0" * 40
     zero64 = "0" * 64
@@ -79,6 +83,74 @@ def check_issue_resolve() -> list[str]:
     _eq(merge_ids([], []), [], "两边都空")
     _eq(merge_ids([], ["python-34"]), ["PYTHON-34"], "只给 --issue")
 
+    # 状态分流：hook 装成 --apply 后 push 时已经关过，手动再跑不能把它们列成「待关闭」。
+    # 证据带时刻：push 之后本地遥测库还没刷新（卡片说 unresolved），关闭记录更新 → 取记录。
+    ids = ["PYTHON-2T", "PYTHON-2P", "PYTHON-34", "PYTHON-32"]
+    evidence = {
+        "PYTHON-2T": [(1.0, "resolved", "本地记录")],
+        "PYTHON-2P": [(1.0, "IGNORED", "本地遥测库")],
+        "PYTHON-34": [(2.0, "unresolved", "本地遥测库")],
+    }
+    pending, closed = classify_states(ids, evidence)
+    _eq(pending, ["PYTHON-34", "PYTHON-32"], "未关闭与状态未知的留在待关闭")
+    _eq(
+        [short_id for short_id, _source in closed],
+        ["PYTHON-2T", "PYTHON-2P"],
+        "已 resolved/ignored 的分到已关闭",
+    )
+    _eq(
+        [source for _short_id, source in closed],
+        ["本地记录", "本地遥测库"],
+        "已关闭的那条带上来源说明",
+    )
+    _eq(
+        newest_state([(1.0, "unresolved", "本地遥测库"), (2.0, "resolved", "本地记录")])[0],
+        "resolved",
+        "取时刻最新的那条（新记录压过旧卡片）",
+    )
+    _eq(
+        newest_state([(2.0, "resolved", "本地记录"), (3.0, "unresolved", "本地遥测库")])[0],
+        "unresolved",
+        "反过来也按时刻取（库更新时以库为准）",
+    )
+    _eq(newest_state([]), ("", 0.0, ""), "没有任何证据时状态为空")
+    _eq(classify_states(ids, {})[0], ids, "一个状态都没有时全部按待关闭处理")
+    _eq(classify_states([], {})[0], [], "空清单")
+    _eq(
+        hook_mode_label()
+        in {"apply", "list-only", "未安装", "不可读", "外部 hook（不是本工具生成的）"},
+        True,
+        "hook 模式标签落在约定的几种取值里（不依赖本机装没装）",
+    )
+
+    # shortids 的 group 段就带 status：一次 GET 够用；不带 group 时才退回第二次 GET。
+    # 用假 api_request 顶掉网络，只验解析与请求次数（自检不联网）。
+    original_api = ir.api_request
+    calls: list[str] = []
+
+    def fake_api(method, url, token, payload=None, timeout=10.0):
+        calls.append(url)
+        if "shortids/PYTHON-32" in url:
+            return {"groupId": "7835286269", "group": {"status": "resolved"}}
+        if "shortids/PYTHON-34" in url:
+            return {"groupId": "7835314781"}  # 模拟不带 group 段的部署
+        return {"status": "unresolved"}  # GET /issues/<gid>/ 的兜底
+
+    ir.api_request = fake_api
+    try:
+        calls.clear()
+        with_group = ir.shortids_info("PYTHON-32", "org", "https://sentry.io", "t")
+        calls_with_group = len(calls)
+        calls.clear()
+        no_group = ir.shortids_info("PYTHON-34", "org", "https://sentry.io", "t")
+        calls_no_group = len(calls)
+    finally:
+        ir.api_request = original_api
+    _eq(with_group, ("7835286269", "resolved"), "shortids 一次 GET 同时取 groupId 与 status")
+    _eq(calls_with_group, 1, "带 group.status 时只发一次 GET")
+    _eq(no_group, ("7835314781", "unresolved"), "不带 group 段时退回第二次 GET 读 status")
+    _eq(calls_no_group, 2, "退回路径确实只多一次 GET")
+
     tags = ["v1.0.0-beta.71", "v1.0.0-beta.70", "v1.0.0-beta.69"]
     _eq(
         choose_previous_tag(tags, "v1.0.0-beta.71"),
@@ -119,5 +191,6 @@ def check_issue_resolve() -> list[str]:
     _contains(hook, "managed-by: sentry_issue_resolve", "hook 带可识别的标记")
     _eq("--apply" in build_hook_script(False), False, "默认 list-only 不带 --apply")
     return [
-        "新建 tag 判定 / 关键字提取 / 两次 REST URL / hook 入口与 exit 0 各有断言"
+        "新建 tag 判定 / 关键字提取 / 状态分流（本地证据取最新，已关闭不列待关闭）/ "
+        "shortids 一次 GET 取状态 / 两次 REST URL / hook 入口与 exit 0 各有断言"
     ]

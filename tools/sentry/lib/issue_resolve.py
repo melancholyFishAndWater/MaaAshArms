@@ -3,6 +3,7 @@
     python -m tools.sentry.cli issue-resolve            # 手动：按最新的本地 v* tag 列清单
     python -m tools.sentry.cli issue-resolve --tag v1.0.0-beta.71   # 指定 tag
     python -m tools.sentry.cli issue-resolve --apply    # 真的把 issue 置 resolved
+    python -m tools.sentry.cli issue-resolve --status   # 额外联网核对 Sentry 上的状态
     python -m tools.sentry.cli issue-resolve --install  # 写 .git/hooks/pre-push（默认 list-only）
     python -m tools.sentry.cli issue-resolve --check    # 看配置 / hook 模式 / token 来源
 
@@ -11,6 +12,16 @@
 用 local oid（不是 tag 名，annotated tag 的 oid 是 tag object）算
 `<上一个 v* tag>..<新 tag>` 的提交正文，只认行首 `Fixes` / `Closes` / `Resolves` 后面跟的
 `PYTHON-<ID>`，再逐个把 issue 置 resolved。
+
+**默认不联网**（联网一次就够麻烦的了）：清单里的「已关闭」来自两个本地来源——本工具自己
+关过的（`RESOLVE_LOG`：`--apply` 成功、或 `--status` 观察后写回）与本地遥测库的卡片；两者都
+按时刻取最新。tag 推送之后这些 issue 通常已经 `resolved`（hook 装成 `--apply` 时 push 就关过
+一遍，Sentry 的提交关联也会按 `Fixes` 关），只按提交正文列「待关闭」会让人以为没关（实测
+`v1.0.0-beta.71` 的 PYTHON-2T / 2P / 34 / 32）。
+本地没有记录时如实说"没有本地状态记录"，并提示 `--status`——**不猜**已关闭。
+`--status` 走一次 shortids GET（响应 `group` 段同时带 `groupId` 与 `status`；少数部署不带
+`group` 时才再 `GET /api/0/issues/<groupId>/`），核对完把结果写回本地记录。
+`--only`（验证 REST 分支）不看任何状态——它要按显式给的 ID 原样处理。
 
 **手动运行**（stdin 一个 ref 行都没有，`pre-push` 不会这样）默认按**最新的本地 `v*` tag**
 处理：人刚建的 tag 就是最新那个，先跑一遍看清单，确认了再加 `--apply`；想指定别的 tag 用
@@ -29,14 +40,16 @@ CI 侧（`install.yml` 的 tag 触发）改 Sentry 状态必须把 token 放进�
 
 ## 两步 REST
 
-`GET /api/0/organizations/<org>/shortids/<SHORT-ID>/` 取 `groupId`，再
-`PUT /api/0/issues/<groupId>/` 带 `{"status": "resolved"}`。直接把 short ID 塞
+`GET /api/0/organizations/<org>/shortids/<SHORT-ID>/` 取 `groupId`；响应的 `group` 段
+同时带 `status`（少数部署不带时再 `GET /api/0/issues/<groupId>/`），`PUT
+/api/0/issues/<groupId>/` 带 `{"status": "resolved"}` 才写。直接把 short ID 塞
 `/api/0/issues/<ID>/` 会 404。用标准库 `urllib`，不装第三方包。
 
 ## 验证
 
 `--check` 打印仓库 / 配置 / org / hook 模式 / token 来源；`--only --issue <ID>` 只用给定 ID、
-不扫提交范围（验证 REST 分支时别把扫到的真实 issue 一起关掉）；纯函数自检在
+不扫提交范围、也不看状态（验证 REST 分支时别把扫到的真实 issue 一起关掉）；`--status` 额外
+联网核对并把结果写回本地记录；纯函数自检在
 `python -m tools.sentry.cli selftest`（`lib/selftests/issue_resolve.py`）。
 """
 
@@ -51,10 +64,12 @@ import shutil
 import sqlite3
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.request
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from pathlib import Path
+from typing import Any
 
 from .config import CONFIG
 
@@ -63,6 +78,15 @@ COMMAND = "python -m tools.sentry.cli issue-resolve"
 HOOK_MARKER = "# managed-by: sentry_issue_resolve"
 DEFAULT_BASE_URL = "https://sentry.io"
 DEFAULT_ISSUE_PREFIX = "PYTHON-"
+# 这两种状态都算"已经处理过"：list-only 不再列进待关闭
+CLOSED_STATUSES = frozenset({"resolved", "ignored"})
+# 状态核对是只读 GET，但它跑在 pre-push 里；网络明显不通时连查两次就收手，别拖住 push
+STATUS_TIMEOUT = 5.0
+STATUS_MAX_FAILURES = 2
+# 本地关闭记录：这个工具自己关掉过哪些 issue（`--apply` 成功后写，`--status` 观察也会写回）。
+# 放在 `temp/` 下（不入库），离线跑时靠它回答"是不是已经关过了"——不用联网、不用 token。
+RESOLVE_LOG = "temp/sentry/issue-resolve.json"
+LOG_SCHEMA = 1
 
 ZERO_RE = re.compile(r"^0+$")
 TAG_REF_RE = re.compile(r"^refs/tags/(v.+)$")
@@ -140,6 +164,176 @@ def merge_ids(scanned: list[str], extra: list[str]) -> list[str]:
         if short_id not in out:
             out.append(short_id)
     return out
+
+
+# --------------------------------------------------------------------------- #
+# 离线状态：本地关闭记录 + 本地遥测库
+# --------------------------------------------------------------------------- #
+
+
+def resolve_log_path() -> Path:
+    return REPO_ROOT / RESOLVE_LOG
+
+
+def read_resolve_log() -> dict[str, dict[str, Any]]:
+    """本地关闭记录 `{short_id: {"status", "at", "by"}}`；没有 / 读不出就是空。"""
+    try:
+        data = json.loads(resolve_log_path().read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    issues = data.get("issues") if isinstance(data, dict) else None
+    if not isinstance(issues, dict):
+        return {}
+    return {str(key): value for key, value in issues.items() if isinstance(value, dict)}
+
+
+def write_resolve_log(entries: dict[str, dict[str, Any]]) -> None:
+    path = resolve_log_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w", encoding="utf-8", newline="\n") as handle:
+            json.dump(
+                {"schema": LOG_SCHEMA, "issues": entries},
+                handle,
+                ensure_ascii=False,
+                indent=2,
+            )
+            handle.write("\n")
+    except OSError as exc:
+        warn(f"写本地关闭记录失败（不影响远端）：{exc}")
+
+
+def remember_states(
+    states: dict[str, str], *, by: str, groups: dict[str, str] | None = None
+) -> None:
+    """把已知状态写进本地记录：`--apply` 关成功后、`--status` 联网观察后都走这里。
+
+    `groups` 给了就把 `groupId` 一起缓存——`groupId` 只跟 issue 走，缓存住之后离线 `--apply`
+    省掉每条一次 shortids GET（联网麻烦的时候少一半请求）。
+    """
+    if not states:
+        return
+    entries = read_resolve_log()
+    stamp = time.strftime("%Y-%m-%dT%H:%M:%S")
+    touched = False
+    for short_id, status in states.items():
+        text = status.strip().lower()
+        if not text:
+            continue
+        entry: dict[str, Any] = {"status": text, "at": stamp, "by": by}
+        group = (groups or {}).get(short_id)
+        if group:
+            entry["group"] = group
+        elif isinstance(entries.get(short_id), dict) and entries[short_id].get("group"):
+            entry["group"] = entries[short_id]["group"]  # 保留旧的 groupId
+        entries[short_id] = entry
+        touched = True
+    if touched:
+        write_resolve_log(entries)
+
+
+def local_group_ids(ids: Iterable[str]) -> dict[str, str]:
+    """本地记录里缓存的 `short_id → groupId`（没有就没有，调用方再联网解析）。"""
+    entries = read_resolve_log()
+    out: dict[str, str] = {}
+    for short_id in ids:
+        group = str((entries.get(short_id) or {}).get("group") or "")
+        if group:
+            out[short_id] = group
+    return out
+
+
+def telemetry_state(short_id: str) -> tuple[str, float] | None:
+    """本地遥测库里这条的状态与写入时刻（没有卡片返回 None）。
+
+    这个库默认只留**未解决**的 issue（`telemetry_index.ISSUE_OPEN_STATUSES`，刷新时清掉
+    resolved），所以"在库里"≈"上次刷新时还没关"；不在库里既可能是已解决，也可能只是超出
+    `--telemetry-days` 或从没上报过——不能当"已关闭"的证据。
+    """
+    try:
+        from . import telemetry_index
+    except ImportError:  # 单独拷走这个模块时不该整条命令失败
+        return None
+    card = telemetry_index.read_card(short_id)
+    if card is None:
+        return None
+    try:
+        when = telemetry_index.card_path(short_id).stat().st_mtime
+    except OSError:
+        when = 0.0
+    return (str(card.status or ""), when)
+
+
+def local_evidence(ids: Iterable[str]) -> dict[str, list[tuple[float, str, str]]]:
+    """离线证据：每条 issue 的 `(时刻, 状态, 来源说明)` 候选，交给 `newest_state` 取最新。
+
+    两个来源都会给：工具自己关过的（`RESOLVE_LOG`）与本地遥测库的卡片。谁的时刻更新算谁
+    ——push 之后本地库还没刷新时，卡片说 unresolved、关闭记录说 resolved，取关闭记录。
+    """
+    entries = read_resolve_log()
+    evidence: dict[str, list[tuple[float, str, str]]] = {}
+    for short_id in ids:
+        items: list[tuple[float, str, str]] = []
+        entry = entries.get(short_id)
+        if entry:
+            status = str(entry.get("status") or "")
+            at = str(entry.get("at") or "")
+            by = str(entry.get("by") or "本工具")
+            items.append((_iso_epoch(at), status, f"{by}（{at or '?'}）"))
+        card = telemetry_state(short_id)
+        if card is not None:
+            status, when = card
+            stamp = time.strftime("%m-%d %H:%M", time.localtime(when)) if when else "?"
+            items.append((when, status, f"本地遥测库 {stamp} 记为 {status or '未知'}"))
+        evidence[short_id] = items
+    return evidence
+
+
+def _iso_epoch(text: str) -> float:
+    try:
+        return time.mktime(time.strptime(text, "%Y-%m-%dT%H:%M:%S"))
+    except (ValueError, OverflowError):
+        return 0.0
+
+
+def newest_state(entries: Iterable[tuple[float, str, str]]) -> tuple[str, float, str]:
+    """时刻最新的那条 `(status, when, source)`；没有就返回 `("", 0.0, "")`。"""
+    best: tuple[float, str, str] | None = None
+    for entry in entries:
+        if best is None or entry[0] >= best[0]:
+            best = entry
+    if best is None:
+        return ("", 0.0, "")
+    return (best[1], best[0], best[2])
+
+
+def classify_states(
+    ids: Iterable[str], evidence: dict[str, list[tuple[float, str, str]]]
+) -> tuple[list[str], list[tuple[str, str]]]:
+    """→ `(待关闭, [(已关闭的编号, 来源说明)])`。状态未知的留在待关闭。"""
+    pending: list[str] = []
+    closed: list[tuple[str, str]] = []
+    for short_id in ids:
+        status, _when, source = newest_state(evidence.get(short_id, []))
+        if status.strip().lower() in CLOSED_STATUSES:
+            closed.append((short_id, source))
+        else:
+            pending.append(short_id)
+    return pending, closed
+
+
+def hook_mode_label() -> str:
+    """已装 hook 的模式（`apply` / `list-only` / 未安装 / 不可读 / 外部 hook）。"""
+    path = git_hook_path()
+    if path is None or not path.exists():
+        return "未安装"
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return "不可读"
+    if HOOK_MARKER not in text:
+        return "外部 hook（不是本工具生成的）"
+    return "apply" if "--apply" in text else "list-only"
 
 
 def choose_previous_tag(sorted_tags: list[str], current: str) -> str | None:
@@ -342,7 +536,11 @@ def resolve_token() -> tuple[str, str]:
 
 
 def api_request(
-    method: str, url: str, token: str, payload: dict[str, str] | None = None
+    method: str,
+    url: str,
+    token: str,
+    payload: dict[str, str] | None = None,
+    timeout: float = 10.0,
 ) -> dict[str, object]:
     data = None if payload is None else json.dumps(payload).encode("utf-8")
     request = urllib.request.Request(
@@ -355,25 +553,98 @@ def api_request(
             "Accept": "application/json",
         },
     )
-    with urllib.request.urlopen(request, timeout=10) as response:
+    with urllib.request.urlopen(request, timeout=timeout) as response:
         raw = response.read().decode("utf-8", "replace")
     parsed = json.loads(raw) if raw.strip() else {}
     return parsed if isinstance(parsed, dict) else {}
 
 
-def resolve_issues(ids: list[str], org: str, base: str, token: str) -> int:
-    """逐个把 short ID 置 resolved；单个失败只告警，不中断后面的。"""
-    done = 0
+def shortids_info(
+    short_id: str, org: str, base: str, token: str, *, with_status: bool = True
+) -> tuple[str | None, str]:
+    """一次 GET 同时拿 `groupId` 与 `status`：shortids 响应的 `group` 段就带 status。
+
+    直接把 short ID 塞 `/issues/<ID>/` 会 404，所以 groupId 还得从 shortids 取。少数部署
+    的 shortids 不带 `group` 段时才退回 `GET /api/0/issues/<groupId>/` 读 status
+    （`with_status=False` 时不做这一步——`resolve_issues` 只需要 groupId）。
+    """
+    info = api_request(
+        "GET", shortids_url(base, org, short_id), token, timeout=STATUS_TIMEOUT
+    )
+    raw_id = info.get("groupId")
+    if isinstance(raw_id, str) and raw_id:
+        group_id: str | None = raw_id
+    elif isinstance(raw_id, int) and raw_id > 0:
+        group_id = str(raw_id)
+    else:
+        group_id = None
+    group = info.get("group")
+    status = group.get("status") if isinstance(group, dict) else None
+    if not isinstance(status, str) and with_status and group_id:
+        detail = api_request(
+            "GET", issue_url(base, group_id), token, timeout=STATUS_TIMEOUT
+        )
+        fallback = detail.get("status")
+        status = fallback if isinstance(fallback, str) else None
+    return group_id, status if isinstance(status, str) else ""
+
+
+def group_id_of(short_id: str, org: str, base: str, token: str) -> str | None:
+    """short ID → groupId（`resolve_issues` 用，不需要状态）。"""
+    return shortids_info(short_id, org, base, token, with_status=False)[0]
+
+
+def fetch_issue_states(
+    ids: list[str], org: str, base: str, token: str
+) -> tuple[dict[str, str], dict[str, str]]:
+    """只读核对远端状态，返回 `(short_id → status, short_id → groupId)`。
+
+    `groupId` 一并返回给 `--apply` 复用，省掉一次 shortids GET；单个失败只告警，那个 ID
+    的 status 留空（`partition_issue_states` 会把它当"待关闭"）。连续两次失败就收手：
+    网络明显不通时不该为每条 issue 都等一次超时，hook 还在 push 的关键路径上。
+    """
+    states: dict[str, str] = {}
+    group_ids: dict[str, str] = {}
+    failures = 0
+    for short_id in ids:
+        if failures >= STATUS_MAX_FAILURES:
+            warn("状态核对连续失败，剩下的不再查（按待关闭处理）")
+            break
+        try:
+            group_id, status = shortids_info(short_id, org, base, token)
+            if group_id is None:
+                warn(f"{short_id} 没解析到 groupId，状态未知")
+                failures += 1
+                continue
+            group_ids[short_id] = group_id
+            if status:
+                states[short_id] = status
+            failures = 0
+        except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
+            failures += 1
+            warn(f"{short_id} 状态核对失败，按待关闭处理：{exc}")
+    return states, group_ids
+
+
+def resolve_issues(
+    ids: list[str],
+    org: str,
+    base: str,
+    token: str,
+    group_ids: dict[str, str] | None = None,
+) -> list[str]:
+    """逐个把 short ID 置 resolved，返回**成功**的那些；单个失败只告警，不中断后面的。"""
+    done: list[str] = []
+    known = group_ids or {}
     for short_id in ids:
         try:
-            info = api_request("GET", shortids_url(base, org, short_id), token)
-            group_id = info.get("groupId")
-            if not isinstance(group_id, str) or not group_id:
+            group_id = known.get(short_id) or group_id_of(short_id, org, base, token)
+            if not group_id:
                 warn(f"{short_id} 没解析到 groupId，跳过")
                 continue
             api_request("PUT", issue_url(base, group_id), token, {"status": "resolved"})
             say(f"resolved {short_id} (group {group_id})")
-            done += 1
+            done.append(short_id)
         except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
             warn(f"{short_id} 处理失败，跳过：{exc}")
     return done
@@ -435,24 +706,101 @@ def hook_mode(args: argparse.Namespace) -> int:
     # --only：只用 --issue 给出的 ID，不扫提交范围。用于验证 REST 分支而不碰真实 issue。
     scanned = [] if args.only else collect_issue_ids(tags, args.issue_prefix)
     ids = merge_ids(scanned, args.issue)
-    say(f"待关闭: {', '.join(ids) or '（无）'}")
-    if not args.apply:
-        say("list-only（未写远端）；hook 加 --apply 才实际关闭")
-        return 0
-    if not ids:
-        return 0
     target = config_target()
     org = args.org or os.environ.get("SENTRY_ORG") or (target[0] if target else "")
+    base = args.base_url.rstrip("/")
+
+    # 状态来源按"代价从低到高"：本地关闭记录 + 本地遥测库（零网络零 token）→ `--status`
+    # 联网核对。默认不联网：hook 已经关过的东西本地记着，没必要每次去 Sentry 问一遍。
+    evidence = {} if args.only else local_evidence(ids)
+    token, token_source = "", ""
+    group_ids: dict[str, str] = {}
+    if ids and args.status:
+        token, token_source = resolve_token()
+        if org and token:
+            network_states, group_ids = fetch_issue_states(ids, org, base, token)
+            stamp = time.strftime("%m-%d %H:%M")
+            for short_id, status in network_states.items():
+                evidence.setdefault(short_id, []).append(
+                    (time.time(), status, f"联网核对 {stamp}：{status}")
+                )
+            # 顺手把观察到的状态与 groupId 记下来，下次离线也能答、也少一次 GET
+            remember_states(network_states, by="联网核对", groups=group_ids)
+        else:
+            say("--status 需要 org 与 token，这次只按本地记录判断")
+
+    pending, closed = classify_states(ids, evidence)
+    grouped: dict[str, list[str]] = {}
+    for short_id, source in closed:
+        grouped.setdefault(source, []).append(short_id)
+    for source, sids in grouped.items():
+        say(f"已关闭（{source}）：{', '.join(sids)}")
+    say(f"待关闭: {', '.join(pending) or '（无）'}")
+    if not args.status and not args.only and ids:
+        unknown = [short_id for short_id in pending if not evidence.get(short_id)]
+        if unknown:
+            say(
+                f"提示：{', '.join(unknown)} 没有本地状态记录（只有这个工具关过的才留记录）；"
+                "hook 是 --apply 时 push 可能已经关过，加 --status 可联网核对"
+            )
+
+    if not args.apply:
+        if not pending:
+            say(f"list-only（本次未写远端）；没有需要处理的 issue（已关闭 {len(closed)} 条）")
+        elif hook_mode_label() == "apply":
+            say(
+                "list-only（本次未写远端）；hook 已是 --apply 模式，push 新 tag 时会自动关闭"
+                "上面「待关闭」的 issue；要现在就关加 --apply"
+            )
+        else:
+            say(
+                "list-only（本次未写远端）；要现在就关加 --apply，"
+                "或 --install --apply 让 hook 自动关"
+            )
+        return 0
+    # 写哪些：联网核对过的按核对结果（已关闭的不再重复 PUT）；纯离线时只跳过 ignored
+    # （那是有意"不修"的状态，不能被 resolved 覆盖），其余照旧幂等 PUT。
+    if args.status:
+        targets = list(pending)
+    else:
+        targets = [
+            short_id
+            for short_id in ids
+            if newest_state(evidence.get(short_id, []))[0].strip().lower() != "ignored"
+        ]
+    if not targets:
+        say("没有需要写远端的 issue，跳过写远端")
+        return 0
     if not org:
         warn("没有 organization slug（--org / SENTRY_ORG / config.json target），跳过写远端")
         return 0
-    token, source = resolve_token()
+    if not token:
+        token, token_source = resolve_token()
     if not token:
         warn("拿不到 Sentry token（env / sentry auth token / cli.db 都没有），跳过写远端")
         return 0
-    say(f"token 来源: {source}; org={org}; base={args.base_url}")
-    count = resolve_issues(ids, org, args.base_url.rstrip("/"), token)
-    say(f"本次处理 {count}/{len(ids)}")
+    if not args.status:
+        # 离线 apply 只跳过 ignored（有意"不修"的状态不能被 resolved 覆盖），已 resolved 的仍
+        # 幂等重写一次：issue 可能被 Sentry 自动 reopened，跳过就会漏关。
+        stale = [
+            short_id
+            for short_id in targets
+            if newest_state(evidence.get(short_id, []))[0].strip().lower() in CLOSED_STATUSES
+        ]
+        if stale:
+            say(f"本地记录说这些已关闭，仍幂等重写一次：{', '.join(stale)}")
+    say(f"本次写入: {', '.join(targets)}")
+    say(f"token 来源: {token_source}; org={org}; base={args.base_url}")
+    known_groups = dict(local_group_ids(targets))
+    known_groups.update(group_ids)
+    done = resolve_issues(targets, org, base, token, known_groups)
+    if done:
+        remember_states(
+            {short_id: "resolved" for short_id in done},
+            by="issue-resolve " + ", ".join(name for name, _oid in tags),
+            groups=known_groups,
+        )
+    say(f"本次处理 {len(done)}/{len(targets)}")
     return 0
 
 
@@ -507,15 +855,7 @@ def print_check(args: argparse.Namespace) -> int:
     """打印配置、hook 模式与 token 来源；不写任何东西。"""
     target = config_target()
     path = git_hook_path()
-    mode = "未安装"
-    if path and path.exists():
-        try:
-            text = path.read_text(encoding="utf-8", errors="replace")
-            mode = "apply" if "--apply" in text else "list-only"
-            if HOOK_MARKER not in text:
-                mode = "外部 hook（不是本工具生成的）"
-        except OSError:
-            mode = "不可读"
+    mode = hook_mode_label()
     token, source = resolve_token()
     org = args.org or os.environ.get("SENTRY_ORG") or (target[0] if target else "")
     print(f"[sentry-issues] repo       = {REPO_ROOT}")
@@ -570,11 +910,18 @@ def create_argument_parser(prog: str | None = None) -> argparse.ArgumentParser:
     parser.add_argument(
         "--only", action="store_true", help="只用 --issue 给出的 ID，不扫提交范围（验证 REST 用）"
     )
+    parser.add_argument(
+        "--status",
+        action="store_true",
+        help="联网核对 Sentry 上的 issue 状态（默认只看本地：这个工具关过的记录 + 本地遥测库）。"
+        "核对过就把观察到的状态记进本地记录，之后离线也能答；已 resolved 的不再重复写远端",
+    )
     parser.add_argument("--org", help="organization slug（默认 env / config.json target）")
     parser.add_argument("--base-url", default=os.environ.get("SENTRY_URL", DEFAULT_BASE_URL))
     parser.add_argument(
         "--issue-prefix", default=os.environ.get("SENTRY_ISSUE_PREFIX", DEFAULT_ISSUE_PREFIX)
     )
+    parser.set_defaults(status=False)
     parser.add_argument("remote", nargs="?", help="git 给的远端名（hook 调用时自动传入）")
     parser.add_argument("url", nargs="?", help="git 给的远端 URL（hook 调用时自动传入）")
     return parser

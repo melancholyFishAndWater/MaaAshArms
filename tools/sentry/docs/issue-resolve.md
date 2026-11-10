@@ -28,9 +28,48 @@ python -m tools.sentry.cli issue-resolve --uninstall
    （不扫全历史）。
 2. `git log <上一个 tag>..<oid> --format=%B`，只认**行首**的 `Fixes` / `Closes` / `Resolves`
    后面跟的 `PYTHON-<ID>`。正文别处提到的编号不算（否则改一句注释、提一下问题号就会关 issue）。
-3. 两步 REST：`GET /api/0/organizations/<org>/shortids/<SHORT-ID>/` 取 `groupId`，
-   再 `PUT /api/0/issues/<groupId>/` 带 `{"status": "resolved"}`。直接把 short ID 塞
-   `/api/0/issues/<ID>/` 会 404。只改 `status`，不加备注、不动事件、不删 issue。
+3. **状态从本地来**（默认不联网）：本工具自己关过的记录
+   （`temp/sentry/issue-resolve.json`，`--apply` 成功或 `--status` 观察后写）与本地遥测库
+   （`temp/telemetry/issues/<SHORT>.json`）的卡片，两者按**时刻取最新**。`resolved` / `ignored`
+   的列进「已关闭」、不写远端；没有记录或状态未知的留在「待关闭」——不猜"已经关了"。
+4. **`--status` 才联网核对**：`GET /api/0/organizations/<org>/shortids/<SHORT-ID>/` 一次请求
+   同时带回 `groupId` 与 `group.status`（少数部署不带 `group` 时才再
+   `GET /api/0/issues/<groupId>/`），核对完把结果写回本地记录，下次离线也能答。
+5. **写远端**：`PUT /api/0/issues/<groupId>/` 带 `{"status": "resolved"}`。直接把 short ID
+   塞 `/api/0/issues/<ID>/` 会 404。只改 `status`，不加备注、不动事件、不删 issue。
+   `groupId` 优先用本地记录里缓存的，没有再 GET 一遍 shortids（离线 `--apply` 因此只有 PUT）。
+
+## 为什么默认不联网
+
+联网一次要 token、要代理、要等超时——`issue-resolve` 的主要用法（push 后问"关了吗"）
+不该依赖它。本地能答的部分就本地答：
+
+- hook 装成 `--apply` 时 **push 新 tag 就关过一遍**，Sentry 的提交关联也会按
+  `Fixes PYTHON-XX` 关。这些动作在 `--apply` 成功后写进 `temp/sentry/issue-resolve.json`，
+  下次手动跑 list-only 直接读它。
+- 本地遥测库（画图用的那个库）默认只留未解决的 issue，它的卡片写着"上次刷新时还没关"。
+  两个来源都带时刻，谁新算谁——push 之后库还没刷新时，卡片说 unresolved、关闭记录说
+  resolved，取关闭记录。
+
+实测旧版（只看提交正文，或每次都联网）：`v1.0.0-beta.71` 推送后 `PYTHON-2T / 2P / 34 / 32`
+在 Sentry 上全是 `resolved`，清单仍列四个「待关闭」并写"hook 加 --apply 才实际关闭"。
+
+现在的清单：`已关闭（<来源>（<时刻>））：…` 与 `待关闭: …`；都关过了就打
+`待关闭: （无）` + `没有需要处理的 issue（已关闭 N 条）`。提示还会看已装 hook 的模式：hook
+已是 `apply` 时说"push 新 tag 时会自动关闭上面「待关闭」的 issue"，没装或仍是 list-only 时
+才说"加 --apply / --install --apply"。
+
+本地一条记录都没有时，清单会说清"没有本地状态记录（只有这个工具关过的才留记录）"并提示
+`--status`；**不会**因为"库里没有这条"就当成已关闭（超期、从没上报过都会不在库里）。
+
+`--only`（验证 REST 分支）不看任何状态——它是"按显式给的 ID 原样处理"的开关，不该被已
+resolved 挡住。`--status` 连续失败 2 次就收手，pre-push 仍恒 exit 0。
+
+## 离线 `--apply` 为什么重写已关闭的
+
+已关闭的 issue 仍会被 `--apply` 幂等 PUT 一次：issue 可能被 Sentry 自动 reopened，跳过就会
+漏关。只跳过 `ignored`（那是有意"不修"的状态，不能被 resolved 覆盖）。终端会点明这点：
+`本地记录说这些已关闭，仍幂等重写一次：…`。带 `--status` 时按核对结果写，已关闭的不再重复 PUT。
 
 输出一律走 stderr：`pre-push` 的 stdout 会被 `git-send-pack` 转发到对端，本机未必看得到。
 
@@ -54,8 +93,9 @@ Secrets；本地 `pre-push` 让凭据完全留在本机，零 Secret。凭据来
 
 `python -m tools.sentry.cli issue-resolve` 直接跑时没有 `pre-push` 输入，会按**最新的本地
 `v*` tag** 处理（`git tag --sort=-creatordate --list v*` 的第一个），先出清单；确认后
-`--apply` 才写远端。看到 `没有新建的 v* tag，跳过` 说明 stdin 里有行但不是新建 tag（例如只推
-分支），或者本地确实没有 `v*` tag。
+`--apply` 才写远端。清单里的「已关闭」来自本地记录与本地遥测库（见上「为什么默认不联网」），
+不联网。看到 `没有新建的 v* tag，跳过` 说明 stdin 里有行但不是新建 tag（例如只推分支），
+或者本地确实没有 `v*` tag。
 
 要处理别的 tag（补跑、重放某个版本）用 `--tag NAME`，可重复：
 
@@ -68,9 +108,10 @@ python -m tools.sentry.cli issue-resolve --tag v1.0.0-beta.70 --tag v1.0.0-beta.
 
 ## 默认只列清单
 
-`--install` 默认生成 **list-only** 的 hook：只打印"新 tag / 扫到哪些 issue / 待关闭"，不写远端。
-确认无误后再 `--install --apply`。两种 hook 都**恒 exit 0**（含内部异常），任何失败只告警、
-不阻断 push——`pre-push` 非零退出会拦下整个 push，那不是一个"关 issue"的脚本该做的事。
+`--install` 默认生成 **list-only** 的 hook：只打印"新 tag / 扫到哪些 issue / 已关闭 / 待关闭"，
+不写远端（状态读本地，不联网）。确认无误后再 `--install --apply`。两种 hook 都**恒 exit 0**
+（含内部异常），任何失败只告警、不阻断 push——`pre-push` 非零退出会拦下整个 push，那不是一个
+"关 issue" 的脚本该做的事。
 
 ## 验证与排查
 
@@ -79,9 +120,13 @@ python -m tools.sentry.cli issue-resolve --tag v1.0.0-beta.70 --tag v1.0.0-beta.
 - `--ref LINE`（可重复）/ `--stdin-file`：不用真 push 就能模拟 hook 输入，例如
   `--ref "refs/tags/v1.0.0-beta.70 <oid> refs/tags/v1.0.0-beta.70 000…0"`。
 - `--tag NAME`：不模拟 stdin，直接指定要处理的本地 tag（见上「手动跑」）。和手动直跑一样默认只列清单。
-- `--only --issue <SHORT-ID>`：只用给定的 ID、**不扫提交范围**。验证 REST 分支时用它——`--issue`
-  是**追加**语义，不带 `--only` 会把范围里扫到的真实 issue 一起关掉（踩过：验证 404 分支时误关了
-  两条，见 `.agents/procedures/_inbox.md`）。
+- `--only --issue <SHORT-ID>`：只用给定的 ID、**不扫提交范围**，也不看状态。验证 REST
+  分支时用它——`--issue` 是**追加**语义，不带 `--only` 会把范围里扫到的真实 issue 一起关掉
+  （踩过：验证 404 分支时误关了两条，见 `.agents/procedures/_inbox.md`）。
+- `--status`：额外联网核对一次（一次 shortids GET 同时带回 `groupId` 与 `status`），并把结果
+  与 `groupId` 写进本地记录，之后离线也能答、离线 `--apply` 也少一半请求。
+- 本地记录在 `temp/sentry/issue-resolve.json`（不入库）：`{short_id: {status, at, by, group}}`，
+  想让它重来一遍就删这个文件。
 - 纯函数自检在 `python -m tools.sentry.cli selftest`（`lib/selftests/issue_resolve.py`）。
 
 ## 换位置或升级之后
