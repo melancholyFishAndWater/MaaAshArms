@@ -28,7 +28,7 @@ from typing import Any
 
 from tools.drawing.lib.flow_from_log import MediaEntry, MediaResolver
 
-from .output import SCENE_DIR, _safe_part
+from .output import SCENE_DIR, _safe_part, artifact_issue
 
 log = logging.getLogger("tools.flow_cases")
 
@@ -243,7 +243,11 @@ def prune_scene(
     * 归属 issue 在集合里、这一轮也导出了图，但**这张**没被本次确认 → 删（被新的失败取代）；
     * 归属 issue 在集合里、这一轮一张图都没拿到（遥测包没图、日志包也没命中）→ 留着，
       道理同"重画失败的 issue 保住旧图"；
-    * `keep_issues`（本次什么都没画出来的 issue）里的、以及 manifest 里没有记录的文件 → 不动。
+    * `keep_issues`（本次什么都没画出来的 issue）里的 → 不动。
+
+    磁盘上**没有记录**、但名字正好是本工具命名（`<问题号>_<问题名>…png`）的文件也按归属判一次
+    （`_prune_unrecorded`）：manifest 被另一轮覆盖过、或 `--clean-flow` 之后又被旧图占位时，
+    那张图就永远没人认领；别的文件（用户自己放进去的）不碰。
     """
     records = manifest.get("images")
     if not isinstance(records, dict):
@@ -256,6 +260,20 @@ def prune_scene(
         for name in confirmed
         if isinstance(records.get(name), dict)
     }
+    removed = _prune_recorded(records, target, confirmed, issues, keep, written_issues)
+    removed += _prune_unrecorded(target, records, confirmed, issues, keep, written_issues)
+    return removed
+
+
+def _prune_recorded(
+    records: dict,
+    target: str,
+    confirmed: set[str],
+    issues: set[str],
+    keep: set[str],
+    written_issues: set[str],
+) -> int:
+    """有记录的那些：按 issue 归属删。"""
     removed = 0
     for name in sorted(records):
         record = records.get(name)
@@ -283,4 +301,48 @@ def prune_scene(
         records.pop(name, None)
         removed += 1
         log.info("删掉旧现场图（%s）：%s", reason, name)
+    return removed
+
+
+def _prune_unrecorded(
+    target: str,
+    records: dict,
+    confirmed: set[str],
+    issues: set[str],
+    keep: set[str],
+    written_issues: set[str],
+) -> int:
+    """没有记录、但名字正好是本工具现场图命名的那些（记录丢了 / 并发跑过 / `--clean-flow` 之后
+    又被旧图占位）：issue 不在集合内、或已被本次确认的那张取代 → 删；别的文件不碰。
+
+    这一条兜住实测遇到的一次：另一台命令在同一个目录里跑过、写下的记录被这次的 manifest 覆盖，
+    磁盘上就留了一张没人认领的 `<问题号>_<问题名>_日志包.png`，而新图已经叫 `<问题号>_<问题名>.png`。
+    """
+    removed = 0
+    try:
+        names = sorted(os.listdir(target))
+    except OSError:
+        return 0
+    for name in names:
+        if name in records or name in confirmed or not name.lower().endswith(".png"):
+            continue
+        path = os.path.join(target, name)
+        if not os.path.isfile(path):
+            continue
+        issue, _rest = artifact_issue(name)
+        if not issue or issue in keep:
+            continue
+        if issue not in issues:
+            reason = "不在本次 issue 集合内"
+        elif issue in written_issues:
+            reason = "已被本次重画取代"
+        else:
+            continue
+        try:
+            os.remove(path)
+        except OSError as exc:
+            log.warning("提示：删不掉旧现场图 %s（%s），下次再试", path, exc)
+            continue
+        removed += 1
+        log.info("删掉旧现场图（没有记录、%s）：%s", reason, name)
     return removed

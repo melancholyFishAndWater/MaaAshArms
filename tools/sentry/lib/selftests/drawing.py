@@ -1269,6 +1269,18 @@ def check_scene_images() -> list[str]:
         "记录里标了来源是日志包",
     )
 
+    # 没有记录、但名字正好是本工具现场图命名的旧文件（manifest 被另一轮覆盖过）：按归属删；
+    # 用户自己放的别的文件不碰
+    stray = _os.path.join(scene_dir(str(tmp)), "PYTHON-ZZ_Mine.png")
+    with open(stray, "wb") as handle:
+        handle.write(b"z" * 8)
+    with open(_os.path.join(scene_dir(str(tmp)), "note.txt"), "wb") as handle:
+        handle.write(b"n")
+    _eq(
+        prune_scene(str(tmp), manifest, set(again), issues={"PYTHON-ZZ"}, keep_issues=set()),
+        1,
+        "没有记录、但名字是本工具现场图命名的旧文件也按归属删",
+    )
     _eq(
         prune_scene(str(tmp), manifest, set(), issues={"PYTHON-ZZ"}, keep_issues=set()),
         0,
@@ -1279,7 +1291,15 @@ def check_scene_images() -> list[str]:
         len(again),
         "issue 不在本次集合就删",
     )
-    _eq(_os.listdir(scene_dir(str(tmp))), [], "删干净")
+    _eq(
+        [
+            name
+            for name in _os.listdir(scene_dir(str(tmp)))
+            if name.lower().endswith(".png")
+        ],
+        [],
+        "图删干净",
+    )
     _eq(manifest["images"], {}, "记录一起清掉")
     _shutil.rmtree(tmp, ignore_errors=True)
 

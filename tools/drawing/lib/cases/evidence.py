@@ -72,6 +72,19 @@ def _evidence_scene(
     return []
 
 
+def _scene_images_missing(card: Any) -> bool:
+    """遥测说这个事件带现场图、本地证据包里却没有——通常意味着**上次下载失败了**。
+
+    实测 `PYTHON-3H`：`attachment_status=attached`、附件 914 KB，而包里只有 `maafw.log`，
+    清单 `written.attachment_failed` 记着 `SSL: UNEXPECTED_EOF_WHILE_READING`。`evidence` 的增量
+    判据是"这个 run 的图在不在磁盘上"，所以重跑一次就会重试失败的那份；不重试的话这张图永远
+    缺着，流程图里也永远没有现场图。
+    """
+    if str(getattr(card, "attachment_status", "") or "") != "attached":
+        return False
+    return not _evidence_on_error(card.short_id)
+
+
 def set_evidence_dirs(dirs: list[str] | None) -> None:
     """设置证据包搜索目录：用户给的在先，默认 `temp/evidence` 兜底，重复的去掉。
 

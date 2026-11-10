@@ -32,6 +32,7 @@ from .evidence import (
     _evidence_task_id,
     _fetch_evidence,
     _has_evidence,
+    _scene_images_missing,
     _terminal_dispatcher,
     _usable_evidence_case,
     set_evidence_dirs,
@@ -618,6 +619,8 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
     kept: set[str] = set()
     # 本次什么都没画出来的 issue：清理时保住它们的旧图（重画失败时那张是唯一能看的）
     failed_issues: set[str] = set()
+    # 本轮已经拉过证据包的 issue：缺日志、缺现场图各可能触发一次拉取，同一轮不重复拉
+    fetched: set[str] = set()
     jobs: list[tuple[Case, FlowOptions]] = []
     for case in cases:
         if args.all_tasks or args.telemetry_bulk:
@@ -784,10 +787,30 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
                 and not sentry_down
             ):
                 _fetch_evidence(card.short_id)
+                fetched.add(card.short_id)
             # 证据包里有日志就画完整流程，不再按标题里有没有 <节点>/<阶段> 挑：
             # 缺后缀只是标题写法（PYTHON-V / PYTHON-11 实测，日志尾部能画出 17 节点流程）。
             # 画不出时才退概览卡：没有日志、尾部解析不出流程、定位不到失败 task（下面两处）。
             ev_case = _evidence_case(card.short_id)
+            # 遥测说这个事件带现场图、包里却没有：上次那份没下成（实测 PYTHON-3H 是 SSL 中断），
+            # 重拉一次把图补上——否则这张图永远缺着，流程图里也没有现场图可贴。
+            # 一轮只重试一次（`fetched`），离线 / --no-fetch-evidence / Sentry 没登录时不试。
+            if (
+                ev_case is not None
+                and card.short_id not in fetched
+                and _scene_images_missing(card)
+                and args.fetch_evidence
+                and not args.telemetry_offline
+                and not sentry_down
+            ):
+                _fetch_evidence(card.short_id, why="遥测说有现场图，本地证据包里没有")
+                fetched.add(card.short_id)
+                ev_case = _evidence_case(card.short_id)
+                if ev_case is not None and _scene_images_missing(card):
+                    log.warning(
+                        "提示：%s 重拉后仍没有现场图（附件下载失败？），本次按无图处理",
+                        card.short_id,
+                    )
             # 版本筛选下，本地包可能是这个 issue 早先那次运行的（issue 跨多个版本）：
             # 包内 release 不符就重拉最新事件，重拉不到才退概览卡（见 `_usable_evidence_case`）
             stale_pack = False
