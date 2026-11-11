@@ -74,7 +74,72 @@ def check_flow_parser() -> list[str]:
     # 路径输入路径仍要可用（本地工具的主用法）
     lines = list(_open_log_lines(sample))
     _eq(len(lines), 6, "文本按行切分")
+
+    # 复合识别（Or / And 引用别的节点）的子识别不算候选：框架会真的跑一次被引用节点的识别并落
+    # 一条 reco 行（实测 PYTHON-3H 的 BaseProbeReward / StartUpClickLogin），判据只能是 NextList 的候选表
+    def raw(ts: str, msg: str) -> str:
+        return f"[2026-10-14 {ts}][INF][Px1][Tx1][X.cpp][L1][A::b] {msg}"
+
+    def done(ts: str, name: str, tid: int) -> str:
+        return raw(
+            ts,
+            f'PipelineTask node done [result={{"name":"{name}","node_id":1,"reco_id":1,'
+            f'"completed":true}}] [task_id_={tid}]',
+        )
+
+    def reco(ts: str, name: str) -> str:
+        return raw(
+            ts,
+            f'reco [result={{"name":"{name}","algorithm":"OCR","box":null,"reco_id":7,'
+            f'"detail":{{"all":[],"best":null}}}}]',
+        )
+
+    def nextlist(ts: str, event: str, dispatcher: str, names: list[str], tid: int) -> str:
+        items = ",".join(
+            '{"anchor":false,"jump_back":false,"name":"%s"}' % name for name in names
+        )
+        return raw(
+            ts,
+            "!!!OnEventNotify!!! [handle=true] [msg=Node.NextList.%s] "
+            '[details={"focus":null,"list":[%s],"name":"%s","task_id":%d}]'
+            % (event, items, dispatcher, tid),
+        )
+
+    tid = 200000501
+    candidates = ["BattleClickReplenish", "BaseBranchError"]
+    body = [
+        done("00:31:00.000", "BattleClickReplenish", tid),
+        reco("00:31:00.050", "BattleClickReplenish"),  # 真候选的未命中
+        reco("00:31:00.100", "BaseProbeReward"),  # 子识别，不在候选表里
+        reco("00:31:00.150", "StartUpClickLogin"),  # 同上
+        nextlist("00:31:00.200", "Starting", "BattleClickReplenish", candidates, tid),
+        nextlist("00:31:00.300", "Failed", "BattleClickReplenish", candidates, tid),
+    ]
+    with_table = parse_log("\n".join(body), None, None, tid, False)
+    _eq(
+        [a.name for a in with_table.attempts],
+        ["BattleClickReplenish"],
+        "只保留候选表里的识别（复合识别的子识别丢掉）",
+    )
+    without_table = parse_log(
+        "\n".join(line for line in body if "Node.NextList" not in line),
+        None,
+        None,
+        tid,
+        False,
+    )
+    _eq(
+        sorted(a.name for a in without_table.attempts),
+        ["BaseProbeReward", "BattleClickReplenish", "StartUpClickLogin"],
+        "没有 Node.NextList 时不过滤（Sentry 导出的包常见这种形态）",
+    )
+    whole = parse_log("\n".join(body), None, None, None, False)
+    _eq(
+        len(whole.attempts),
+        3,
+        "整段日志模式（不给 --task-id）也不过滤",
+    )
     return [
         f"  文本 / 文本流 / 路径 三种入参一致（{len(from_text.steps)} 步，"
-        f"父节点={from_text.steps[0].parent}）"
+        f"父节点={from_text.steps[0].parent}）；复合识别的子识别按候选表过滤"
     ]

@@ -690,6 +690,7 @@ def parse_log(
         stats.events_dropped = dropped
         out.events = kept
 
+    _drop_sub_recognition_attempts(out, task_id)
     _synthesize_steps(out, task_id)
     # 父节点覆盖率的账按**最终进图的步骤**算（过滤与合成都已结束）
     for step in out.steps:
@@ -821,6 +822,46 @@ def scan_tasks(
         (r for r in refs.values() if r.steps),
         key=lambda r: (r.first_ts or datetime.min, r.px, r.task_id),
     )
+
+
+def _drop_sub_recognition_attempts(out: ParsedLog, task_id: int | None) -> int:
+    """丢掉**不是本任务候选**的识别记录——复合识别（`Or` / `And` 引用别的节点）的子识别。
+
+    框架真的会跑一次被引用节点的识别：`BaseBranchError` 的 `Or` 里引用 `BaseProbeReward`、
+    `StartUpClickLogin`、`BaseClickRewardTap`…，日志里就落了它们各自的 `reco [result=…]` 行
+    （实测 `PYTHON-3H` 的 task 200000107：这类名字 17 个、共 150 次）。把它们当成候选评估画成
+    「未命中 ×9」「未命中 ×10」的框，读图的人会以为任务在等这些页面，其实那一步在评估的是
+    `BattleClickReplenish` 的候选表。
+
+    判据只看 `Node.NextList`：候选表（`real_candidates`）+ 派发者本身才叫"本任务评估过的东西"，
+    且只丢**落在本任务活动区间**（`out.span`：首步 → 任务结束/下一步）里的那些。
+
+    两条限定都是为了避免误删：
+
+    * **没有 NextList 就全留**（Sentry 导出的包常见这种形态）——那时没有别的依据，宁可保留；
+    * **整段日志模式（`task_id` 为空）不动**：那种视图本来就混着多个任务，`known` 只是并集，
+      拿它判"是不是候选"会把别的任务的正常识别也删掉。
+
+    返回丢掉的条数（调用方目前不展示，靠这条 docstring 与 `docs/parsing.md` 说清）。
+    """
+    if task_id is None or out.span is None:
+        return 0
+    known: set[str] = set()
+    for (tid, name), stat in out.nextlist_stats.items():
+        if tid != task_id:
+            continue
+        known.add(name)
+        known.update(stat.real_candidates)
+    if not known:
+        return 0
+    lo, hi = out.span
+    before = len(out.attempts)
+    out.attempts = [
+        attempt
+        for attempt in out.attempts
+        if attempt.name in known or not (lo <= attempt.ts <= hi)
+    ]
+    return before - len(out.attempts)
 
 
 def _synthesize_steps(out: ParsedLog, task_id: int | None) -> None:

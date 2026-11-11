@@ -25,6 +25,14 @@
   **取不到范围、而日志里又看得出是别的 task**（`Node.NextList` / 任务事件带 task_id，且一条都不属于
   这个 task）时**不合成**：这段识别记录全属于别的任务，硬画出来就是同一份"全任务混在一起"的日志
   （实测 `PYTHON-33/35/36` 的包只留了 MFA 面板行，三张图除了标题一模一样）。调用方会因此退概览卡。
+- **复合识别的子识别不算候选**：`BaseBranchError` 那类 `Or` / `And` 引用别的节点时，框架会真的跑一次
+  被引用节点的识别，日志里就落下它们各自的 `reco [result=…]` 行（实测 `PYTHON-3H` 的 task 200000107：
+  `BaseProbeReward` / `StartUpClickLogin` / `BaseClickRewardTap` / `ReplaysBranchFormation` 等 17 个名字、
+  150 条）。判据只看 `Node.NextList`：本任务的**候选表**（`real_candidates`）+ 派发者本身才算"这个任务
+  评估过的东西"，落在任务判定窗口内、又不在这个集合里的 `reco` 直接丢掉——否则图上会多出「未命中 ×9」
+  这样的框，读图的人会以为任务在等这些页面（实际在评估的是 `BattleClickReplenish` 的候选表）。
+  两条限定的目的都是不误删：**没有 `Node.NextList` 的日志**（Sentry 导出的常见形态）全留；
+  **整段日志模式（不给 `--task-id`）** 也不动——那时候选集只是各任务的并集，拿它判"是不是候选"会误伤。
 - **派发链模式**（再退一步）：日志里连 `reco` 行都没有、只剩事件总线时（Sentry 有时只留这一段：
   实测 `PYTHON-31` 的包在失败的那 95 秒里只有 `Node.*` 事件），用该 task 的 `Node.NextList.*`
   派发记录还原——**一个派发者一步**，按第一次派发排成一条链，图上印「由 NextList 派发记录还原」。
