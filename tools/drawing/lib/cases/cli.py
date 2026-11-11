@@ -288,6 +288,21 @@ def create_argument_parser(prog: str | None = None) -> argparse.ArgumentParser:
         "--telemetry-gap", type=int, default=3, help="反查的时间窗（天，默认 3）"
     )
     ap.add_argument(
+        "--telemetry-max-age",
+        dest="telemetry_max_age",
+        type=float,
+        default=300.0,
+        metavar="SECONDS",
+        help="本地遥测库多少秒内刷新过就直接复用、不再起 sentry 子进程（默认 300；"
+        "0 = 每次刷新）",
+    )
+    ap.add_argument(
+        "--telemetry-refresh",
+        dest="telemetry_refresh",
+        action="store_true",
+        help="忽略 --telemetry-max-age，强制联网刷新本地遥测库",
+    )
+    ap.add_argument(
         "--telemetry-keep-resolved",
         action="store_true",
         help="本地遥测库保留已解决/已忽略的 issue（默认清掉）",
@@ -465,7 +480,9 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
             telemetry_data = telemetry.load_index()
         else:
             try:
-                telemetry_data, changes = telemetry.refresh_default(
+                telemetry_data, changes = telemetry.load_or_refresh(
+                    max_age=args.telemetry_max_age,
+                    force=args.telemetry_refresh,
                     days=args.telemetry_days,
                     keep_resolved=args.telemetry_keep_resolved,
                 )

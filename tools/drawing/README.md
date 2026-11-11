@@ -79,7 +79,7 @@ python tools/drawing/cli.py flow <安装根>/debug/maafw.log --no-overlay
 | `--list` / `--list-tasks` | 只打印步骤 / 只列日志里的任务 |
 | `--mermaid` | 另出同名 `.mmd`（Mermaid 文本图） |
 | `--no-stale-check` / `--version` | 关掉「疑似过时」检查 / 手动给基线版本（`vX.Y.Z`） |
-| `--telemetry` `--no-telemetry` `--telemetry-offline` `--telemetry-issue` `--telemetry-days` `--telemetry-gap` `--telemetry-only` | 遥测关联开关，见 [docs/telemetry.md](./docs/telemetry.md) |
+| `--telemetry` `--no-telemetry` `--telemetry-offline` `--telemetry-issue` `--telemetry-days` `--telemetry-gap` `--telemetry-only` `--telemetry-max-age` `--telemetry-refresh` | 遥测关联开关（默认 5 分钟内刷新过的库直接复用，不再起 sentry 子进程），见 [docs/telemetry.md](./docs/telemetry.md) |
 | `--log-level` / `--log-file` | 工具日志（默认 `temp/logs/flow_from_log_<时间戳>_<pid>.log`；`none` = 只走控制台） |
 
 产物：`temp/flow/<日志名>_<时间戳>.png`；`--out` / `--outdir` 改路径。版面与端口规则见

@@ -172,6 +172,49 @@ def _override_names(msg: str) -> set[str]:
     }
 
 
+_PARSE_CACHE: dict[tuple, ParsedLog] = {}
+_PARSE_CACHE_MAX = 4
+# 只缓存 4 MB 以内的日志：`cases` 批量时同一份**证据包日志**会被 `_evidence_task_id`、
+# `_terminal_dispatcher`、`render_flow` 各解析一次（1 MB 的包省两次）；本机 15 MB 的
+# `maafw.log` 只解析一次，缓存它只会白占几十 MB 内存。
+_PARSE_CACHE_MAX_BYTES = 4 * 1024 * 1024
+
+
+def _parse_cache_key(
+    path: Any,
+    t_from: datetime | None,
+    t_to: datetime | None,
+    task_id: int | None,
+    keep_internal: bool,
+    px: str | None,
+) -> tuple | None:
+    """同一份日志 + 同样参数只解析一次：给出缓存键；不能缓存时返回 None。
+
+    只认**文件路径**输入（正文/文本流每次都可能不同），并且按 `mtime + 大小` 认身份——
+    日志被轮转或重写后键就变了，不会拿到旧结果。
+
+    **返回的 `ParsedLog` 在进程内是共享的**：调用方只读；要就地改先 `copy.deepcopy`。
+    """
+    if not isinstance(path, str) or not os.path.isfile(path):
+        return None
+    try:
+        stat = os.stat(path)
+    except OSError:
+        return None
+    if stat.st_size > _PARSE_CACHE_MAX_BYTES:
+        return None
+    return (
+        os.path.abspath(path),
+        stat.st_mtime_ns,
+        stat.st_size,
+        t_from,
+        t_to,
+        task_id,
+        keep_internal,
+        px,
+    )
+
+
 def parse_log(
     path,
     t_from: datetime | None,
@@ -184,7 +227,12 @@ def parse_log(
 
     全量读入（不再在第一条晚于 `--to` 的行上提前结束），时间戳回跳时先按时间重排行；
     `steps` 为空而 `attempts` 非空时，用识别记录合成步骤（"仅事件模式"）。
+
+    同一份**文件**日志配同样参数时，进程内复用上一次的结果（见 `_parse_cache_key`）。
     """
+    cache_key = _parse_cache_key(path, t_from, t_to, task_id, keep_internal, px)
+    if cache_key is not None and cache_key in _PARSE_CACHE:
+        return _PARSE_CACHE[cache_key]
     out = ParsedLog()
     stats = out.stats
     stats.source_kind = source_kind_of(path)
@@ -745,6 +793,10 @@ def parse_log(
         out.events.sort(key=lambda s: s.ts)
 
     _mark_agent_missing(out)
+    if cache_key is not None:
+        _PARSE_CACHE[cache_key] = out
+        while len(_PARSE_CACHE) > _PARSE_CACHE_MAX:
+            _PARSE_CACHE.pop(next(iter(_PARSE_CACHE)))
     return out
 
 

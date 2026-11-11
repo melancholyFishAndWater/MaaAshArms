@@ -32,7 +32,12 @@ PIPELINE_REL = "assets/resource/pipeline"
 
 
 def parse_ts(text: str) -> datetime:
-    return datetime.strptime(text, "%Y-%m-%d %H:%M:%S.%f")
+    """`2026-11-02 08:38:15.973` → datetime。日志行首是 ISO 格式，`fromisoformat` 比
+    `strptime` 快一个量级（`strptime` 每次还要 `setlocale`），不认的写法才回退。"""
+    try:
+        return datetime.fromisoformat(text)
+    except ValueError:
+        return datetime.strptime(text, "%Y-%m-%d %H:%M:%S.%f")
 
 
 def git(repo: Path, *args: str) -> tuple[int, str]:
@@ -88,13 +93,32 @@ def strip_jsonc(text: str) -> str:
     return re.sub(r",(\s*[}\]])", r"\1", "".join(out))
 
 
+_PIPELINE_MODULES_CACHE: dict[tuple[str, tuple[tuple[str, int, int], ...]], dict[str, str]] = {}
+
+
 def pipeline_modules(repo: Path) -> dict[str, str]:
-    """当前 pipeline 的节点名 → 模块文件名（读每个文件的顶层 key）。"""
-    owner: dict[str, str] = {}
+    """当前 pipeline 的节点名 → 模块文件名（读每个文件的顶层 key）。
+
+    每画一张图都会问一次（18 个 JSON，约 10~20 ms），bulk 里 26 张图白读 26 遍；
+    按"仓库 + 各文件的 (名字, mtime, 大小)"缓存，工作区改过就自动失效。
+    """
     root = repo / PIPELINE_REL
     if not root.is_dir():
-        return owner
-    for path in sorted(root.glob("*.json")):
+        return {}
+    paths = sorted(root.glob("*.json"))
+    signature: list[tuple[str, int, int]] = []
+    for path in paths:
+        try:
+            stat = path.stat()
+        except OSError:
+            continue
+        signature.append((path.name, stat.st_mtime_ns, stat.st_size))
+    key = (str(repo), tuple(signature))
+    cached = _PIPELINE_MODULES_CACHE.get(key)
+    if cached is not None:
+        return dict(cached)
+    owner: dict[str, str] = {}
+    for path in paths:
         try:
             data = json.loads(
                 strip_jsonc(path.read_text(encoding="utf-8", errors="replace"))
@@ -104,7 +128,57 @@ def pipeline_modules(repo: Path) -> dict[str, str]:
         if isinstance(data, dict):
             for name in data:
                 owner.setdefault(name, path.name)
-    return owner
+    _PIPELINE_MODULES_CACHE[key] = owner
+    return dict(owner)
+
+
+def _show_many(repo: Path, rev: str, paths: list[Path]) -> dict[str, str]:
+    """一次 `git cat-file --batch` 取多个 blob：文件名的 basename → 文本。
+
+    逐个 `git show` 每次都要起一个 git 进程（Windows 上约 57 ms），18 个 pipeline 文件就是
+    1 s；而这一步每画一张图都要做一遍。批处理实测 18 个文件 1.02 s → 0.06 s。
+    失败（不是仓库、rev 写错、git 不可用）返回空 dict，调用方退回逐个 `git show`。
+    """
+    if not paths:
+        return {}
+    query = "".join(
+        f"{rev}:{path.relative_to(repo).as_posix()}\n" for path in paths
+    ).encode("utf-8")
+    try:
+        proc = subprocess.run(
+            ["git", "-c", "core.fsmonitor=false", "cat-file", "--batch"],
+            cwd=str(repo),
+            input=query,
+            capture_output=True,
+            check=False,
+            timeout=120,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return {}
+    if proc.returncode != 0:
+        return {}
+    data = proc.stdout
+    out: dict[str, str] = {}
+    pos = 0
+    for path in paths:
+        nl = data.find(b"\n", pos)
+        if nl < 0:
+            break
+        header = data[pos:nl].decode("utf-8", "replace")
+        pos = nl + 1
+        parts = header.split(" ")
+        if len(parts) < 3 or parts[-1] == "missing":
+            continue  # `<rev>:<path> missing`：这个修订里还没有这个文件
+        try:
+            size = int(parts[-1])
+        except ValueError:
+            continue
+        out[path.name] = data[pos : pos + size].decode("utf-8", "replace")
+        pos += size + 1  # 内容后面那个换行
+    return out
+
+
+_NODE_DEFINITION_CACHE: dict[tuple[str, str], dict[str, dict[str, Any]]] = {}
 
 
 def node_definitions(repo: Path, rev: str | None = None) -> dict[str, dict[str, Any]]:
@@ -112,28 +186,48 @@ def node_definitions(repo: Path, rev: str | None = None) -> dict[str, dict[str, 
 
     `rev` 为空时读当前工作区。取不到（文件在该修订里还不存在、解析失败）就跳过——
     调用方拿不到就以空定义处理，不当成"没变"。
+
+    `rev` 非空时按 `(仓库, rev)` 缓存在进程内（同一批图共用同一个基线版本），并返回浅拷贝：
+    调用方改了不影响缓存。
     """
-    out: dict[str, dict[str, Any]] = {}
     root = repo / PIPELINE_REL
     if not root.is_dir():
-        return out
-    for path in sorted(root.glob("*.json")):
+        return {}
+    paths = sorted(root.glob("*.json"))
+    key: tuple[str, str] | None = None
+    texts: dict[str, str] = {}
+    if rev is None:
+        texts = {}
+    else:
+        key = (str(repo), rev)
+        cached = _NODE_DEFINITION_CACHE.get(key)
+        if cached is not None:
+            return {name: dict(nodes) for name, nodes in cached.items()}
+        texts = _show_many(repo, rev, paths)
+    out: dict[str, dict[str, Any]] = {}
+    for path in paths:
         if rev is None:
             try:
                 text = path.read_text(encoding="utf-8", errors="replace")
             except OSError:
                 continue
         else:
-            code, text = git(repo, "show", f"{rev}:{path.relative_to(repo).as_posix()}")
-            if code != 0 or not text.strip():
-                continue
+            text = texts.get(path.name, "")
+            if not text.strip():
+                code, text = git(
+                    repo, "show", f"{rev}:{path.relative_to(repo).as_posix()}"
+                )
+                if code != 0 or not text.strip():
+                    continue
         try:
             data = json.loads(strip_jsonc(text))
         except ValueError:
             continue
         if isinstance(data, dict):
             out[path.name] = {k: v for k, v in data.items() if isinstance(v, dict)}
-    return out
+    if key is not None:
+        _NODE_DEFINITION_CACHE[key] = out
+    return {name: dict(nodes) for name, nodes in out.items()}
 
 
 def definition_changed(old: Any, new: Any) -> bool:

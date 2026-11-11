@@ -169,6 +169,8 @@ def apply_telemetry(args, options: FlowOptions) -> bool:
         task_id=options.task_id,
         days=args.telemetry_days,
         gap=args.telemetry_gap,
+        max_age=getattr(args, "telemetry_max_age", 300.0),
+        force=getattr(args, "telemetry_refresh", False),
     )
     if annotation.notes:
         options.extra_notes = list(annotation.notes)
@@ -346,6 +348,21 @@ def create_argument_parser(prog: str | None = None) -> argparse.ArgumentParser:
     )
     ap.add_argument(
         "--telemetry-gap", type=int, default=3, help="反查的时间窗（天，默认 3）"
+    )
+    ap.add_argument(
+        "--telemetry-max-age",
+        dest="telemetry_max_age",
+        type=float,
+        default=300.0,
+        metavar="SECONDS",
+        help="本地遥测库多少秒内刷新过就直接复用、不再起 sentry 子进程（默认 300；"
+        "0 = 每次刷新）。调图时一分钟跑一条命令，这 5.7 s 全是等同一份数据",
+    )
+    ap.add_argument(
+        "--telemetry-refresh",
+        dest="telemetry_refresh",
+        action="store_true",
+        help="忽略 --telemetry-max-age，强制联网刷新本地遥测库",
     )
     ap.add_argument(
         "--telemetry-only", action="store_true", help="只打印反查到的遥测问题，不画图"

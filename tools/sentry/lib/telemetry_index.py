@@ -62,6 +62,9 @@ STORE_DIR = "temp/telemetry/issues"
 INDEX_NAME = "index.json"
 DEFAULT_DAYS = 14
 DEFAULT_GAP_DAYS = 3
+# `--telemetry-max-age` 的默认值：这么多秒内刷新过就直接读本地库，不再起 sentry 子进程。
+# 5 分钟足够"调一张图连跑几条命令"的场景，又不会让人对着隔夜的库当最新数据用。
+DEFAULT_MAX_AGE = 300.0
 # 匹配级别：越小越强。排序与展示都用它
 TIER_RANK = {"high": 0, "mid": 1, "low": 2}
 TIER_LABEL = {"high": "高", "mid": "中", "low": "低"}
@@ -494,8 +497,46 @@ def refresh(
         shown = "、".join(sorted(fetched_ids)[:10])
         more = f" 等 {fetched} 个" if len(fetched_ids) > 10 else ""
         notes.append(f"本地遥测库新增/更新 {fetched} 个 issue：{shown}{more}")
+    index["refreshed_at"] = now.isoformat()
     save_index(index)
     return index, notes
+
+
+def index_age() -> float | None:
+    """本地库距上次刷新过了多少秒；没有 `refreshed_at`（旧库）或读不出时返回 None。"""
+    stamp = load_index().get("refreshed_at")
+    if not isinstance(stamp, str) or not stamp:
+        return None
+    try:
+        when = datetime.fromisoformat(stamp)
+    except ValueError:
+        return None
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    return max(0.0, (datetime.now(timezone.utc) - when).total_seconds())
+
+
+def load_or_refresh(
+    *,
+    offline: bool = False,
+    max_age: float = DEFAULT_MAX_AGE,
+    force: bool = False,
+    **kwargs: Any,
+) -> tuple[dict, list[str]]:
+    """读本地库；只有过期（超过 `max_age` 秒）或 `force=True` 时才联网刷新。
+
+    `flow` / `cases` 默认每次都跑 `sentry issue list` + 逐 issue `issue view`，本机实测 5.7 s；
+    调图时一分钟跑一条命令，这笔等待全是为了拿一份没变的数据。`max_age=0` 等于每次都刷。
+    """
+    if offline:
+        return load_index(), []
+    age = index_age()
+    if not force and max_age > 0 and age is not None and age <= max_age:
+        return load_index(), [
+            f"本地遥测库 {int(age)} 秒前刷新过（--telemetry-max-age {max_age:g} 内直接复用；"
+            "要最新数据加 --telemetry-refresh）"
+        ]
+    return refresh_default(**kwargs)
 
 
 def load_cards(index: dict, *, short_ids: list[str] | None = None) -> list[IssueCard]:
@@ -810,10 +851,14 @@ def annotate(
     keep_resolved: bool = False,
     verbose: bool = False,
     timeout: float = 180.0,
+    max_age: float = DEFAULT_MAX_AGE,
+    force: bool = False,
 ) -> Annotation:
     """拿本地日志在本地遥测库里查对应的 issue；返回注记 + 版本基线。
 
     `index` 给了就不再刷新（调用方已刷过一次）；`offline=True` 只读本地库、不联网。
+    `max_age` 秒内刷新过就直接用本地库（`force=True` 强制刷新）——每次 `flow` 都跑一遍
+    `sentry issue list` 要 5.7 s，调图时一分钟跑一条命令全是白等。
     刷新失败（没装 sentry CLI / 没登录 / 网络不通）只记一条警告，**不影响画图**。
     """
     out = Annotation()
@@ -822,15 +867,18 @@ def annotate(
             index = load_index()
         else:
             try:
-                sentry = report_common.resolve_sentry_command()
-                index, _notes = refresh(
-                    sentry,
-                    CONFIG.target,
+                index, notes = load_or_refresh(
+                    max_age=max_age,
+                    force=force,
                     verbose=verbose,
                     timeout=timeout,
                     days=days,
                     keep_resolved=keep_resolved,
                 )
+                # 注意：本函数的参数叫 `log`（日志正文），不能用模块级的 `log` logger——
+                # 那会变成 `str.info`（实测 AttributeError）。刷新的说明走 warnings，
+                # 调用方本来就把 warnings 打成「提示：…」。
+                out.warnings.extend(notes)
             except (RuntimeError, OSError) as exc:
                 out.warnings.append(f"遥测库没刷新成（{exc}），本次用本地已有数据")
                 index = load_index()

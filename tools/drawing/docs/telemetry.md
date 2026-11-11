@@ -12,11 +12,17 @@
 | 开关 | 作用 |
 | --- | --- |
 | 默认 | 联网刷新本地库（只补新增/`lastSeen` 变了的 issue），再在本地查 |
+| `--telemetry-max-age 300` | 库在这么多秒内刷新过就直接复用、**不起 sentry 子进程**（默认 300；0 = 每次刷新）。本机实测一次刷新 3~5 s（`sentry issue list` + 逐 issue `issue view`），调图时一分钟跑一条命令全是白等 |
+| `--telemetry-refresh` | 忽略 `--telemetry-max-age`，强制刷新 |
 | `--telemetry-offline` | 只读本地库，不联网 |
 | `--no-telemetry` | 完全不做这层关联 |
 | `--telemetry-issue PYTHON-2X` | 指定问题号，不自动反查 |
 | `--telemetry-only` | 只打印候选问题，不画图 |
 | `--telemetry-days N` / `--telemetry-gap N` | 反查的保留天数 / 时间窗天数 |
+
+刷新时刻记在 `temp/telemetry/index.json` 的顶层 `refreshed_at`（UTC ISO）；旧库没有这个字段时
+第一次照常刷新，之后就有了。库里的数据仍是"刷新那一刻"的快照：要看线上最新状态就
+`--telemetry-refresh` 或把 `--telemetry-max-age` 调小。
 
 **反查给候选、不给唯一答案**：一次运行常有多个失败事件，同一个包可能对应好几个 issue。
 只有"恰好一个 `task_id` + `node_id` 全等"时才自动采用，否则取时间最近的并打提示。
