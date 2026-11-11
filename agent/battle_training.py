@@ -31,8 +31,8 @@ selected_level_name: str = ""
 
 
 # 判断是否在训练所某一个关卡内
-@AgentServer.custom_recognition("TrainingProbeOneReco")
-class TrainingProbeOneReco(CustomRecognition):
+@AgentServer.custom_recognition("TrainingBranchBackReco")
+class TrainingBranchBackReco(CustomRecognition):
     def analyze(
         self, context: Context, argv: CustomRecognition.AnalyzeArg
     ) -> CustomRecognition.AnalyzeResult | Rect | list[int] | None:

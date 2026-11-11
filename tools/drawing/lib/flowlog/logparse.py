@@ -16,11 +16,50 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from .constants import ACTION_FAILED_DEDUP_SECONDS, ACTION_FAILED_RE, ACTION_RE, AGENT_CONNECT_FUNC, AGENT_DESTROY_FUNC, CUSTOM_MISS_WINDOW_SECONDS, CUSTOM_NULL_ACT_RE, CUSTOM_NULL_RECO_RE, INTERNAL_NAME_RE, INVALID_RE, LINE_RE, NODE_DONE_RE, NOT_COMPLETED_RE, PIPE_FAILED_DETAILS_RE, PIPE_FAILED_MARK_RE, PIPE_FAILED_NAME_FIELD_RE, PIPE_FAILED_NAME_RE, PIPE_FAILED_TASK_FIELD_RE, RECO_RE, TASKER_TASK_RE, TASK_END_RE, TASK_START_RE, TIMEOUT_RE, TRUNCATION_HEADS, WALK_RE
+from .constants import (
+    ACTION_FAILED_DEDUP_SECONDS,
+    ACTION_FAILED_RE,
+    ACTION_RE,
+    AGENT_CONNECT_FUNC,
+    AGENT_DESTROY_FUNC,
+    CUSTOM_MISS_WINDOW_SECONDS,
+    CUSTOM_NULL_ACT_RE,
+    CUSTOM_NULL_RECO_RE,
+    INTERNAL_NAME_RE,
+    INVALID_RE,
+    LINE_RE,
+    NODE_DONE_RE,
+    NOT_COMPLETED_RE,
+    PIPE_FAILED_DETAILS_RE,
+    PIPE_FAILED_MARK_RE,
+    PIPE_FAILED_NAME_FIELD_RE,
+    PIPE_FAILED_NAME_RE,
+    PIPE_FAILED_TASK_FIELD_RE,
+    RECO_RE,
+    TASKER_TASK_RE,
+    TASK_END_RE,
+    TASK_START_RE,
+    TIMEOUT_RE,
+    TRUNCATION_HEADS,
+    WALK_RE,
+)
 
 from .layout import task_span
 
-from .model import CustomMissing, NextListStat, ParseStats, ParsedLog, Step, _fmt_ts, _source_label, collect_texts, parse_nextlist, parse_ts, resolve_parent, source_kind_of
+from .model import (
+    CustomMissing,
+    NextListStat,
+    ParseStats,
+    ParsedLog,
+    Step,
+    _fmt_ts,
+    _source_label,
+    collect_texts,
+    parse_nextlist,
+    parse_ts,
+    resolve_parent,
+    source_kind_of,
+)
 
 from typing import TYPE_CHECKING
 
@@ -335,7 +374,11 @@ def parse_log(
             completed=completed,
             kind=kind,
             action=action,
-            task_id=task_id if task_id is not None else (task_ref if kind == "task" else None),
+            task_id=(
+                task_id
+                if task_id is not None
+                else (task_ref if kind == "task" else None)
+            ),
         )
         if node:
             record, _gap = resolve_parent(
@@ -546,9 +589,10 @@ def parse_log(
             tid = tid if isinstance(tid, int) else None
             key = (node_name, tid, act_aid, act_name)
             prev = seen_action_failed.get(key)
-            if prev is not None and (
-                ts - prev
-            ).total_seconds() <= ACTION_FAILED_DEDUP_SECONDS:
+            if (
+                prev is not None
+                and (ts - prev).total_seconds() <= ACTION_FAILED_DEDUP_SECONDS
+            ):
                 continue
             seen_action_failed[key] = ts
             # 动作没派发时 `action` 与 `action_details.name` 都是空串、`action_id` 是 0
@@ -1041,8 +1085,9 @@ def _dispatch_chain(
     return steps
 
 
-def _match_custom_missing(records: list[CustomMissing], ts: datetime, name: str,
-                          kind: str) -> CustomMissing | None:
+def _match_custom_missing(
+    records: list[CustomMissing], ts: datetime, name: str, kind: str
+) -> CustomMissing | None:
     """找「这条记录之前 `CUSTOM_MISS_WINDOW_SECONDS` 内、同名、同类」的那次未注册。
 
     只比节点名与时间，**不比进程号**：同一份日志里进程在时间上是串行的（实测 6 次启动
@@ -1053,7 +1098,9 @@ def _match_custom_missing(records: list[CustomMissing], ts: datetime, name: str,
         if record.kind != kind or record.node != name:
             continue
         delta = (ts - record.ts).total_seconds()
-        if 0 <= delta <= CUSTOM_MISS_WINDOW_SECONDS and (best is None or record.ts > best.ts):
+        if 0 <= delta <= CUSTOM_MISS_WINDOW_SECONDS and (
+            best is None or record.ts > best.ts
+        ):
             best = record
     return best
 
@@ -1073,7 +1120,9 @@ def _mark_agent_missing(out: ParsedLog) -> None:
     for attempt in out.attempts:
         if attempt.box or attempt.algorithm != "Custom":
             continue
-        hit = _match_custom_missing(out.custom_missing, attempt.ts, attempt.name, "reco")
+        hit = _match_custom_missing(
+            out.custom_missing, attempt.ts, attempt.name, "reco"
+        )
         if hit is not None:
             attempt.agent_missing = hit.reg
     for step in out.steps:

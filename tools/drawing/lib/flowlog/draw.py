@@ -12,9 +12,26 @@ import zipfile
 import zlib
 from dataclasses import dataclass
 
-from .layout import ColumnSpan, anchor_of, build_rounds, choose_cut_set, classify, compose_columns, overlay_repeats, parent_groups, roles, round_steps
+from .layout import (
+    ColumnSpan,
+    anchor_of,
+    build_rounds,
+    choose_cut_set,
+    classify,
+    compose_columns,
+    overlay_repeats,
+    parent_groups,
+    roles,
+    round_steps,
+)
 
-from .media import MediaResolver, OnErrorIndex, VisionIndex, backfill_failure_thumbs, member_clock
+from .media import (
+    MediaResolver,
+    OnErrorIndex,
+    VisionIndex,
+    backfill_failure_thumbs,
+    member_clock,
+)
 
 from .paint import NOTE_COLORS, PALETTE, PARENT_COLORS, _note_lines, load_font
 

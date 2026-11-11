@@ -25,7 +25,7 @@
         "desc": "[once][jp] 检测每日一次",
         "max_hit": 1,
         "recognition": "Custom",
-        "custom_recognition": "TaskTrainingReco",
+        "custom_recognition": "TrainingProbeDailyReco",
         "custom_recognition_param": {
             "enable": true // 每日一次开关 覆写关闭
         }
@@ -178,7 +178,7 @@
     "TrainingBranchBack": {
         "desc": "从关卡内返回",
         "recognition": "Custom",
-        "custom_recognition": "TrainingProbeOneReco",
+        "custom_recognition": "TrainingBranchBackReco",
         "next": [
             "BaseClickBackButton"
         ]

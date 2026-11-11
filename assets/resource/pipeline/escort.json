@@ -31,9 +31,9 @@
         "post_wait_freezes": 1000,
         "next": [
             "BaseErrorNext",
-            "TrainCloseStatusArrowSuccess",
             "TrainCloseStatusArrow",
-            "[JumpBack]BaseBranchError"
+            "[JumpBack]BaseBranchError",
+            "TrainCloseStatusArrowSuccess"
         ]
     },
     "TrainProbeCloseArrow": {
@@ -92,6 +92,7 @@
             "EscortClickCancel"
         ]
     },
+    /* -------------------- 分支-主页面 -------------------- */
     "EscortBranchHome": {
         "desc": "主页面分支",
         "recognition": "And",

@@ -267,8 +267,8 @@ def _training_func(x: list[str]) -> bool:
 _training = Store[list[str]]("daily_training.json", default=[], func=_training_func)
 
 
-@AgentServer.custom_recognition("TaskTrainingReco")
-class TaskTrainingReco(CustomRecognition):
+@AgentServer.custom_recognition("TrainingProbeDailyReco")
+class TrainingProbeDailyReco(CustomRecognition):
     def analyze(
         self, context: Context, argv: CustomRecognition.AnalyzeArg
     ) -> list[int] | None:

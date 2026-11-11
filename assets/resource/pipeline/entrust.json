@@ -299,6 +299,7 @@
             "[JumpBack]BaseBranchError"
         ]
     },
+    /* -------------------- 分支-领取奖励 -------------------- */
     "EntrustBranchReward": {
         "desc": "领取奖励",
         "recognition": "And",
