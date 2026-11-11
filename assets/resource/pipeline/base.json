@@ -142,8 +142,7 @@
             600,
             500
         ],
-        "end_hold": 300,
-        "post_wait_freezes": 200
+        "duration": 1000
     },
     "BaseMoveUp": {
         "desc": "通用上滑",
@@ -156,8 +155,7 @@
             600,
             300
         ],
-        "end_hold": 300,
-        "post_wait_freezes": 200
+        "duration": 1000
     },
     "BaseMoveLeft": {
         "desc": "通用左滑",
@@ -170,8 +168,7 @@
             340,
             360
         ],
-        "end_hold": 200,
-        "post_wait_freezes": 200
+        "duration": 1000
     },
     "BaseMoveRight": {
         "desc": "通用右滑",
@@ -184,8 +181,7 @@
             940,
             360
         ],
-        "end_hold": 200,
-        "post_wait_freezes": 200
+        "duration": 1000
     },
     "BaseMoveUpDown": {
         "desc": "上滑动x次 下滑动x次",
