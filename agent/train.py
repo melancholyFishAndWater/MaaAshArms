@@ -59,7 +59,7 @@ class _Train:
 def _info_move(context: Context, start: int, end: int):
     r = context.run_action_direct(
         JActionType.Swipe,
-        JSwipe(begin=(120, start, 10, 10), end=[(120, end, 10, 10)]),
+        JSwipe(begin=(120, start, 10, 10), end=[(120, end, 10, 10)], duration=[1000]),
     )
     context.wait_freezes(200, box=(18, 103, 247, 595))
     return r
