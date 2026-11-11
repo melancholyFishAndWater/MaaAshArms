@@ -89,6 +89,7 @@
         "post_wait_freezes": 2000,
         "next": [
             "BaseErrorNext",
+            "BattleStopNoProps",
             "ReplaysBranchBattle",
             "ReplaysClickAttack",
             "[JumpBack]BaseBranchError"

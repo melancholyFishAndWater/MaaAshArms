@@ -127,22 +127,5 @@
                 60
             ]
         }
-    },
-    /* -------------------- 就位-废都主页（旧，待删） -------------------- */
-    // INFO 赠礼模块仍引用
-    "FeiduEnsureHome": {
-        "desc": "[jp] 确保在废都主页",
-        "recognition": "And",
-        "all_of": [
-            "FeiduProbeHome"
-        ],
-        "inverse": true,
-        "timeout": 30000,
-        "next": [
-            "FeiduProbeHome",
-            "[JumpBack]BaseBranchError",
-            "[JumpBack]FeiduEnterHome",
-            "[JumpBack]BaseReturnHome"
-        ]
     }
 }

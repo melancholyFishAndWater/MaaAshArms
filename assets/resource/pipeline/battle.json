@@ -338,15 +338,6 @@
             "Node.PipelineNode.Failed": "代理作战出发失败"
         }
     },
-    "BattleClickAttack": {
-        "desc": "[jp] 点击出击按钮",
-        "recognition": "And",
-        "all_of": [
-            "BattleProbeActionLight"
-        ],
-        "action": "Click",
-        "post_wait_freezes": 1000
-    },
     /* -------------------- 分支-战斗中 -------------------- */
     // INFO 战斗
     "BattleBranchBattle": {
