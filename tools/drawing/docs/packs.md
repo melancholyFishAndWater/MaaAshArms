@@ -226,7 +226,7 @@ flowchart LR
 | --- | --- |
 | 来源 | **遥测证据包优先**（`temp/evidence/<SHORT>/debug/on_error/`，缺包时先按 `--fetch-evidence` 拉）；遥测包里没图时（`attachment.status` 不是 `attached`，实测 `PYTHON-3B`/`PYTHON-3C`/`PYTHON-3E` 都是）才用**补充日志包**——这次实际画成的那份日志的 `debug/on_error/`（`--case` 给的包，或本地 release 认出来的那次运行） |
 | 缺图重拉 | 卡片说 `attachment_status=attached`、包里却没有图，通常是**上次下载失败**（实测 `PYTHON-3H` 的 `SSL: UNEXPECTED_EOF_WHILE_READING`）——批量出图会**重拉一次**（`evidence` 的增量判据是"这个 run 的图在不在磁盘上"，重跑只重试失败的那份）；离线 / `--no-fetch-evidence` / Sentry 没登录时不试，一轮只重试一次 |
-| 挑哪张 | 按**这次失败的时刻**就近挑（证据包 `evidence.json` 的 `event.received`，没有才用卡片的 `received`——实测 `PYTHON-3B` 卡片是 `13:52Z`、包里的失败事件是 `09:33Z`，用卡片就会挑到别的失败），再带上与它同批（±60 s）的几张、最多 4 张；标题里的失败节点优先。不知道失败时刻时只取最新那张。一个包里常躺着这个 issue 历次运行的图，不按时刻挑就会把旧图当成这次失败的现场 |
+| 挑哪张 | 锚点是**这次画出来的那次运行**的失败时刻：解析图上那份日志，取最晚的一条失败事件（`Task timeout` / `invalid node id` / `node not completed` / 动作失败 / `PipelineNode.Failed`）；日志里没有失败事件时才退到证据包 `event.received`、再退到卡片的 `received`。锚点来自失败事件时只认离它 **15 分钟**内的图（`scene.MATCH_SECONDS`），离得远的宁可不导——一个包里躺着这个 issue 历次运行的图，画的可能是历史那一次（实测 `PYTHON-3J`：图是 01:14 那次、包里最新事件是 13:51，12 小时）。挑中后再带上与它同批（±60 s）的几张、最多 4 张，标题里的失败节点优先；不知道失败时刻时只取最新那张 |
 | 名字 | `<问题号>_<问题名>[_日志包][_<时刻>].png`：`PYTHON-1E_Gift.png`、`PYTHON-3B_Reward_日志包.png`、`PYTHON-1E_Gift_日志包_20261109-173719.png`。问题名与流程图同一条规则（标题里的任务名）；来自日志包的加 `_日志包`，与遥测自带的那张分开；一次导多张时加抓图时刻，同秒的再加序号 |
 | 增量 | 同名且 sha256 相同就不重写（mtime 不动，看图工具不会重新解码） |
 | 清理 | 与产物同一套归属判据（`cases/scene.py:prune_scene`）：issue 不在本次集合 → 删；issue 在集合、这一轮也导出了图，但**这张**没被确认 → 删（被新的失败取代）；这一轮一张图都没拿到 → 留着；`--clean-flow` 时整个 `images/` 一起清 |

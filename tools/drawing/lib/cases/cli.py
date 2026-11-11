@@ -21,6 +21,7 @@ from tools.drawing.lib.flow_from_log import (
     VERSION_SOURCE_TELEMETRY,
     FlowOptions,
     MediaEntry,
+    parse_log,
     parse_time,
     scan_tasks,
 )
@@ -60,7 +61,14 @@ from .pack import (
 )
 from .runner import run_case
 from .release_mark import set_enabled as set_release_mark_enabled
-from .scene import export_scene, prune_scene, scene_dir, scene_entries, select_scene
+from .scene import (
+    MATCH_SECONDS,
+    export_scene,
+    prune_scene,
+    scene_dir,
+    scene_entries,
+    select_scene,
+)
 from .signature import code_stages
 from .version_filter import VersionFilter, label_of
 
@@ -97,44 +105,85 @@ def _with_telemetry(options: FlowOptions, annotation) -> FlowOptions:
     )
 
 
-def _scene_anchor(card: Any, pack_case: Case | None):
-    """这次失败的**时刻**：优先证据包 `event.received`，没有才用卡片上的 `received`。
+def _failure_time(case: Case | None, options: FlowOptions | None) -> datetime | None:
+    """这份**画出来的日志**里，失败发生在哪一刻（取最晚的一条失败事件）。
 
-    卡片的 `received` 不总等于失败时刻（实测 `PYTHON-3B`：卡片是 `13:52Z`，包里的失败事件是
-    `09:33Z`、本地释放的现场图在 17:33 本地时），拿它当锚点会挑到另一场失败的图。
+    现场图必须按"这次画的那次运行"挑，不能按证据包的最新事件挑：实测 `PYTHON-3J` 用
+    `--telemetry-issue` 画的是 01:14 那次历史运行，而证据包是 13:51 那次——按包挑会把
+    12 小时后的图当成本次的现场。失败事件是 `kind="event" and not completed`
+    （`Task timeout` / `invalid node id` / `node not completed` / `动作失败` / `失败 X`）；
+    `任务开始`（`kind="task"`）与任务收尾不算。解析走 `parse_log` 的进程内缓存。
     """
+    if case is None or options is None:
+        return None
+    try:
+        parsed = parse_log(
+            case.log_source(),
+            options.t_from,
+            options.t_to,
+            options.task_id,
+            options.keep_internal,
+            px=options.px,
+        )
+    except (OSError, TypeError, ValueError):
+        return None
+    fails = [event.ts for event in parsed.events if event.kind == "event" and not event.completed]
+    return max(fails) if fails else None
+
+
+def _scene_anchor(
+    card: Any, pack_case: Case | None, options: FlowOptions | None = None
+) -> tuple[datetime | None, bool]:
+    """这次失败的**时刻**，以及它是不是从日志里认出来的真实失败时刻。
+
+    顺序：① 画出来的那份日志里的失败事件（最可靠，和图上贴的图同一次运行）；
+    ② 证据包 `event.received`；③ 卡片的 `received`。
+    ②③ 不是真失败时刻（实测 `PYTHON-3B`：卡片 `13:52Z`、包里失败事件 `09:33Z`），所以只有
+    ① 才允许后面用 `MATCH_SECONDS` 卡"离得太远的图不算"。
+    """
+    found = _failure_time(pack_case, options)
+    if found is not None:
+        return found, True
     candidates: list[Case | None] = [pack_case] if pack_case is not None else []
     candidates.append(_evidence_case(card.short_id))
     for case in candidates:
         if case is None:
             continue
         event = _evidence_manifest(case).get("event") or {}
-        found = _local_time(str(event.get("received") or ""))
-        if found is not None:
-            return found
-    return _local_time(str(getattr(card, "received", "") or ""))
+        received = _local_time(str(event.get("received") or ""))
+        if received is not None:
+            return received, False
+    return _local_time(str(getattr(card, "received", "") or "")), False
 
 
 def _scene_for(
-    card: Any, pack_case: Case | None, outdir: str, manifest: dict, origin: str
+    card: Any,
+    pack_case: Case | None,
+    options: FlowOptions | None,
+    outdir: str,
+    manifest: dict,
+    origin: str,
 ) -> list[str]:
     """导出一个 issue 的现场图：遥测证据包优先，遥测没图时用补充日志包里对得上的那张。
 
     返回写进 `images/` 的文件名（含内容没变、只是确认过的那些）。两个来源都没图时返回空表：
     清理时这一条会保住上一轮的图，不因为这次拿不到图就删掉。
     """
-    when = _scene_anchor(card, pack_case)
+    when, exact = _scene_anchor(card, pack_case, options)
+    limit = MATCH_SECONDS if exact else None
     node = str(getattr(card, "node_name", "") or "")
     entries: list[tuple[MediaEntry, bool]] = [
         (MediaEntry(member=path, path=path), False)
-        for path in _evidence_scene(card.short_id, when, node)
+        for path in _evidence_scene(card.short_id, when, node, max_gap=limit)
     ]
     if not entries and pack_case is not None:
         # 补充日志包（`--case` 的 debug 目录 / 导出包）：按失败时刻认"命中图"，
         # 名字带 `_日志包`，与遥测自带的那张分开
         entries = [
             (entry, True)
-            for entry in select_scene(scene_entries(pack_case.on_error()), when, node)
+            for entry in select_scene(
+                scene_entries(pack_case.on_error()), when, node, max_gap=limit
+            )
         ]
     return export_scene(
         outdir,
@@ -630,7 +679,7 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
     drawn_issues: set[str] = set()
     # 现场图来源：问题号 → (遥测卡, 补充日志包)。遥测包没图的 issue 才用得到第二个，
     # 没有日志包命中时是 None（那就只导遥测的那张 / 一张都不导）。
-    scene_sources: dict[str, tuple[Any, Case | None]] = {}
+    scene_sources: dict[str, tuple[Any, Case | None, FlowOptions]] = {}
     # 本次保留的产物名（画成功 + 按轨迹跳过的）：批量清理时只有"不在这个集合里"的旧产物会被删。
     # 单包 / --all-tasks 不清理，也就不传它。
     kept: set[str] = set()
@@ -724,6 +773,7 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
             )
         rendered_ok = False
         rendered_case = case
+        rendered_options = case_options
         last_error: Exception | None = None
         for render_case, render_options in (
             [assisted, (case, case_options)] if assisted else [(case, case_options)]
@@ -757,6 +807,7 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
                 continue
             rendered_ok = True
             rendered_case = render_case
+            rendered_options = render_options
             break
         if not rendered_ok:
             failed += 1
@@ -767,7 +818,11 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
         if annotation is not None and annotation.chosen and annotation.card is not None:
             # 这个任务对应的 issue：现场图统一在画图之后导（遥测优先，日志包兜底）。
             # 兜底用**实际画成的那份**日志包：本地 release 认出来时就是它的 `on_error/`
-            scene_sources[annotation.chosen] = (annotation.card, rendered_case)
+            scene_sources[annotation.chosen] = (
+                annotation.card,
+                rendered_case,
+                rendered_options,
+            )
         if result is not None and annotation is not None and annotation.chosen:
             # 这个任务对应的问题号已经被日志包出成完整流程了，概览卡就跳过它
             drawn_issues.add(annotation.chosen)
@@ -795,7 +850,7 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
         for card in cards:
             if card.short_id in drawn_issues:
                 continue  # 已经被日志包出成完整流程了
-            scene_sources.setdefault(card.short_id, (card, None))
+            scene_sources.setdefault(card.short_id, (card, None, options))
             # 本地没有证据包就自动拉取（离线 / --no-fetch-evidence / Sentry 没登录时跳过）
             if (
                 not _has_evidence(card.short_id)
@@ -879,6 +934,7 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
                     )
                     rendered_ok = False
                     rendered_case = ev_case
+                    rendered_options = ev_options
                     last_error: Exception | None = None
                     for render_case, render_options in (
                         [assisted, (ev_case, ev_options)]
@@ -912,12 +968,17 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
                             continue
                         rendered_ok = True
                         rendered_case = render_case
+                        rendered_options = render_options
                         evidence_drawn += res is not None
                         evidence_skipped += res is None
                         break
                     if rendered_ok:
                         # 现场图兜底用**实际画成的那份**日志包：本地 release 认出来时是它
-                        scene_sources[card.short_id] = (card, rendered_case)
+                        scene_sources[card.short_id] = (
+                            card,
+                            rendered_case,
+                            rendered_options,
+                        )
                         continue
                     # 证据包在但解析不出流程（例如日志尾部没有 pipeline 步骤）：
                     # 退概览卡，而不是把这条 issue 整个丢掉
@@ -951,17 +1012,19 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
                 # 清理时保住它的旧图——重画失败的那次，目录里那张是唯一还能看的
                 failed_issues.add(card.short_id)
 
-    # 现场图：把遥测证据包里这个 issue 的失败现场（离卡片上的失败时刻最近的那几张）复制到
-    # `<outdir>/images/`；遥测包没图时用补充日志包里对得上的那张，名字带 `_日志包`。
-    # 放在所有画图之后统一做：日志包那条分支画完就 `continue` 了，导出得等整轮跑完。
+    # 现场图：把这**一次画出来的运行**的失败现场复制到 `<outdir>/images/`——锚点是日志里的
+    # 失败事件（不是卡片/证据包的最新事件，画的可能是历史那一次）；遥测包里没有对得上的图时
+    # 用补充日志包里那张，名字带 `_日志包`。放在所有画图之后统一做：日志包那条分支画完就
+    # `continue` 了，导出得等整轮跑完。
     scene_kept: set[str] = set()
     scene_total = 0
     for issue in sorted(scene_sources):
-        card, pack_case = scene_sources[issue]
+        card, pack_case, scene_options = scene_sources[issue]
         try:
             names = _scene_for(
                 card,
                 pack_case,
+                scene_options,
                 args.outdir,
                 manifest,
                 "bulk" if args.telemetry_bulk else "case",

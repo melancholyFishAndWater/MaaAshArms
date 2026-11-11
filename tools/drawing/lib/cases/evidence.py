@@ -53,13 +53,17 @@ def _evidence_on_error(short_id: str) -> list[str]:
 
 
 def _evidence_scene(
-    short_id: str, when: datetime | None = None, node_name: str = ""
+    short_id: str,
+    when: datetime | None = None,
+    node_name: str = "",
+    max_gap: float | None = None,
 ) -> list[str]:
     """这个 issue 的现场图路径，按**失败时刻**挑（离最近的一张 + 同批几张）。
 
     与 `_evidence_on_error()` 分工不同：那个给概览卡贴图，取的是包里前 4 张、不看时刻；
     这里给 `temp/flow/images/` 导出，一个包里常躺着这个 issue 历次运行的图，全导出去会让人
-    把旧图当成这次失败的现场。找不到返回空表（调用方再去看补充日志包）。
+    把旧图当成这次失败的现场。`max_gap` 见 `scene.select_scene`：画的可能是历史那一次运行，
+    离得远的图一律不采用（宁可不导，也不把另一次失败的图当这次）。找不到返回空表。
     """
     for cand in _evidence_candidates(short_id):
         base = os.path.join(cand, "on_error")
@@ -68,7 +72,8 @@ def _evidence_scene(
         entries = scene_entries(base)
         if not entries:
             continue
-        return [entry.path for entry in select_scene(entries, when, node_name) if entry.path]
+        picked = select_scene(entries, when, node_name, max_gap=max_gap)
+        return [entry.path for entry in picked if entry.path]
     return []
 
 

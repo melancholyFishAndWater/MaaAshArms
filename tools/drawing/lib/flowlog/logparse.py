@@ -174,10 +174,12 @@ def _override_names(msg: str) -> set[str]:
 
 _PARSE_CACHE: dict[tuple, ParsedLog] = {}
 _PARSE_CACHE_MAX = 4
-# 只缓存 4 MB 以内的日志：`cases` 批量时同一份**证据包日志**会被 `_evidence_task_id`、
-# `_terminal_dispatcher`、`render_flow` 各解析一次（1 MB 的包省两次）；本机 15 MB 的
-# `maafw.log` 只解析一次，缓存它只会白占几十 MB 内存。
-_PARSE_CACHE_MAX_BYTES = 4 * 1024 * 1024
+# 只缓存 16 MB 以内的日志：`cases` 批量时同一份**证据包日志**会被 `_evidence_task_id`、
+# `_terminal_dispatcher`、`render_flow` 各解析一次；本地 `--case` 画历史运行时还要再解析一次
+# 来定"失败在哪一刻"。缓存里只存解析结果（不含日志正文），15.5 MB 的日志解析出来也就几千个
+# `Step`，占用与体积无关；用 `_PARSE_CACHE_MAX_STEPS` 再兜一道，别让满屏 reco 的日志吃内存。
+_PARSE_CACHE_MAX_BYTES = 16 * 1024 * 1024
+_PARSE_CACHE_MAX_STEPS = 20000
 
 
 def _parse_cache_key(
@@ -793,7 +795,7 @@ def parse_log(
         out.events.sort(key=lambda s: s.ts)
 
     _mark_agent_missing(out)
-    if cache_key is not None:
+    if cache_key is not None and len(out.attempts) <= _PARSE_CACHE_MAX_STEPS:
         _PARSE_CACHE[cache_key] = out
         while len(_PARSE_CACHE) > _PARSE_CACHE_MAX:
             _PARSE_CACHE.pop(next(iter(_PARSE_CACHE)))

@@ -39,6 +39,10 @@ PACK_MARK = "日志包"
 BURST_SECONDS = 60.0
 # 一次最多导几张（与概览卡贴图的上限一致，看多了也没用）
 LIMIT = 4
+# 知道"这次画的运行失败在哪一刻"时，只认离它这么近的图（秒）。
+# 一个证据包里躺着这个 issue 历次运行的图，而画的可能是历史那一次（实测 `PYTHON-3J`：图画的是
+# 01:14 那次、包里的图是 13:51 那次，12 小时）——离得远的一律不采用，宁可不导。
+MATCH_SECONDS = 900.0
 
 # `2026.11.09-17.37.19.721_GiftChooseReverse.png`：时刻 + 节点名
 _NAME_RE = re.compile(
@@ -84,12 +88,16 @@ def select_scene(
     *,
     burst_seconds: float = BURST_SECONDS,
     limit: int = LIMIT,
+    max_gap: float | None = None,
 ) -> list[MediaEntry]:
     """挑出"这次失败"的那几张：离 `when` 最近的一张，加上与它同批（±`burst_seconds`）的。
 
     `node_name`（遥测卡标题里的失败节点）命中时优先——同一次失败里框架可能给好几个节点各抓
     一张图，读图的人先要看的是"失败的那个节点"看到了什么（与 `flowlog/media.py:OnErrorIndex.find`
     同一取舍）。不知道失败时刻（卡片没有 `received`）时只取最新的一张，不猜。
+
+    `max_gap` 给了就只认原始时刻离 `when` 不超过它的图；最近的一张都超出范围时返回空表
+    （`MATCH_SECONDS`：别把另一次运行的现场图当成这次的）。
     """
     if not entries:
         return []
@@ -104,6 +112,11 @@ def select_scene(
         return distance, entry.member
 
     ordered = sorted(entries, key=rank)
+    if max_gap is not None:
+        # 用**原始**时间差判，别用打了折的 rank 值
+        nearest_gap = abs((ordered[0][0] - when).total_seconds())
+        if nearest_gap > max_gap:
+            return []
     best_ts = ordered[0][0]
     picked: list[MediaEntry] = []
     for ts, _name, entry in ordered:

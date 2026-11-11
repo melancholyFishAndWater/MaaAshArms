@@ -1224,6 +1224,17 @@ def check_scene_images() -> list[str]:
         True,
         "不知道失败时刻时只取最新那张",
     )
+    _eq(
+        select_scene(entries, _datetime(2026, 11, 9, 10, 0, 6), "NodeB", max_gap=60)[0]
+        .member.rsplit("_", 1)[-1],
+        "NodeB.png",
+        "15 分钟以内的图照常挑",
+    )
+    _eq(
+        select_scene(entries, _datetime(2026, 11, 9, 22, 0, 0), max_gap=900),
+        [],
+        "画的可能是历史那一次：离失败时刻太远的图不采用（宁可不导）",
+    )
 
     manifest: dict = {}
     written = export_scene(
