@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 from datetime import datetime
 
@@ -58,6 +59,32 @@ def default_output_dir() -> str:
     return DEFAULT_OUTDIR
 
 
+def _default_on_error(args: argparse.Namespace) -> str | None:
+    """现场图来源：`--on-error` 优先；没给时取**日志同目录**的 `on_error/`。
+
+    本地画流程时日志就在 `<安装根>/debug/maafw.log`，`on_error/` 与它同级。不默认带上就等于
+    "旁边明明有现场图，图上一张都不贴、也不说为什么"（实测用户就是这样跑的：
+    `flow D:/MaaAshArms/debug/maafw.log --task-id 200000228`，还以为是工具没画）。
+    带上之后：窗口内有图就贴，没有就由注记说清"包里的那些属于另一次失败"。
+    """
+    if args.on_error:
+        return _pick_subdir(args.on_error, "on_error")
+    vision = getattr(args, "vision", None)
+    if isinstance(vision, str) and vision:
+        # 显式给了 --vision：先取它同级的 on_error——那份图与这批画面同源，
+        # 比"日志同目录"更可信（日志可能已经被复制到别处）
+        resolved = _pick_subdir(vision, "vision")
+        if isinstance(resolved, str):
+            sibling = os.path.join(os.path.dirname(resolved), "on_error")
+            if os.path.isdir(sibling):
+                return sibling
+    log_path = getattr(args, "log", None)
+    if not isinstance(log_path, str) or not log_path or log_path == "-":
+        return None
+    candidate = os.path.join(os.path.dirname(os.path.abspath(log_path)), "on_error")
+    return candidate if os.path.isdir(candidate) else None
+
+
 def build_flow_options(args: argparse.Namespace) -> FlowOptions:
     """命令行参数 → FlowOptions（库调用方可以直接构造，不必过 CLI）。"""
     return FlowOptions(
@@ -83,7 +110,7 @@ def build_flow_options(args: argparse.Namespace) -> FlowOptions:
         version=args.version,
         version_source=VERSION_SOURCE_CLI if args.version else "",
         vision=_pick_subdir(args.vision, "vision") if args.vision else None,
-        on_error=_pick_subdir(args.on_error, "on_error") if args.on_error else None,
+        on_error=_default_on_error(args),
         thumbs=args.thumbs,
         thumb_height=args.thumb_height,
         box_width=args.box_width,
@@ -161,7 +188,9 @@ def create_argument_parser(prog: str | None = None) -> argparse.ArgumentParser:
         "--on-error",
         dest="on_error",
         default=None,
-        help="on_error 目录或导出包（可选，默认取 --vision 同级的 on_error；给超时/失败框贴现场图）",
+        help="on_error 目录或导出包（可选；默认取**日志同目录**的 `on_error/`，没有才退到 "
+        "--vision 同级的那个）：给超时/失败框贴现场图。给了 `--vision` 却没给本参数时，"
+        "不会因为默认值把 --vision 指到别处的那份盖掉",
     )
     ap.add_argument(
         "--out",

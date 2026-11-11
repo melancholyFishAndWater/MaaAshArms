@@ -56,7 +56,10 @@ import re
 # 27：复合识别（`Or` / `And` 引用别的节点）的子识别不再画成候选未命中框——框架会真的跑一次
 #     被引用节点的识别并落 `reco` 行（实测 PYTHON-3H 的 task 200000107 多出 4 个「未命中 ×6…×10」
 #     的框）；判据是 `Node.NextList` 的候选表，没有 NextList 的日志与整段日志模式不变。
-RENDERER_VERSION = 27
+# 28：`flow` 的 `--on-error` 默认取**日志同目录**的 `on_error/`（给了 `--vision` 时优先它同级的）——
+#     本地画流程时现场图就在 `<安装根>/debug/on_error/`，原来必须显式给参数才贴，"旁边有图却一张
+#     不贴、也不说为什么"（实测 `flow D:/MaaAshArms/debug/maafw.log --task-id 200000228`）。
+RENDERER_VERSION = 28
 
 # 框里最多列几个候选，多的折成"另 N 项"（`--list` 不受这个限制）。
 # 默认只列 2 个：父节点名字 + 本次真跑的那个候选是这一行最要紧的两件事，
