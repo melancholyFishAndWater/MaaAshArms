@@ -43,7 +43,7 @@ python tools/drawing/cli.py flow <安装根>/debug/maafw.log --no-overlay
 | 参数 | 说明 |
 | --- | --- |
 | `log`（位置） | `maafw.log` 路径；也可以是 zip 里的那份，见 `--vision` |
-| `--vision` | 识别帧目录，或导出包（zip / 多卷）、或它们的父目录（如 `debug/`） |
+| `--vision` | 识别帧目录，或导出包（zip / 多卷）、或它们的父目录（如 `debug/`）；**默认取日志同目录的 `vision/`**，不想要画面加 `--no-thumbs` |
 | `--on-error` | 失败现场图目录或导出包；**默认取日志同目录的 `on_error/`**（本地 `debug/maafw.log` 旁边就有），没有才退到 `--vision` 同级的那个 |
 | `--from` / `--to` | 时间窗；支持 `HH:MM:SS` 或完整时间戳 |
 | `--task-id` / `--pid` | 只看某个任务 / 某个进程（`Px<pid>`）；任务号在各进程内复用，定位唯一一段要两个一起给 |

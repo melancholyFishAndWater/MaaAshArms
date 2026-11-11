@@ -59,6 +59,23 @@ def default_output_dir() -> str:
     return DEFAULT_OUTDIR
 
 
+def _default_vision(args: argparse.Namespace) -> str | None:
+    """识别帧来源：`--vision` 优先；没给时取**日志同目录**的 `vision/`。
+
+    本地画流程时 `vision/` 与日志同级（`<安装根>/debug/vision`）。不默认带上就等于"只画框、
+    不画画面"，读图的人看不出当时停在哪一页（用户原话："有 debug/vision 啊，画得还是不完整"）。
+    代价可控：`VisionIndex` 先只按文件名建索引，真正要画的帧才解码；本机 7062 张的目录整张图
+    多花约 1 s（实测 8.2 s vs 7.3 s）。不想要画面用 `--no-thumbs`。
+    """
+    if args.vision:
+        return _pick_subdir(args.vision, "vision")
+    log_path = getattr(args, "log", None)
+    if not isinstance(log_path, str) or not log_path or log_path == "-":
+        return None
+    candidate = os.path.join(os.path.dirname(os.path.abspath(log_path)), "vision")
+    return candidate if os.path.isdir(candidate) else None
+
+
 def _default_on_error(args: argparse.Namespace) -> str | None:
     """现场图来源：`--on-error` 优先；没给时取**日志同目录**的 `on_error/`。
 
@@ -109,7 +126,7 @@ def build_flow_options(args: argparse.Namespace) -> FlowOptions:
         stale_check=args.stale_check,
         version=args.version,
         version_source=VERSION_SOURCE_CLI if args.version else "",
-        vision=_pick_subdir(args.vision, "vision") if args.vision else None,
+        vision=_default_vision(args),
         on_error=_default_on_error(args),
         thumbs=args.thumbs,
         thumb_height=args.thumb_height,
@@ -182,7 +199,8 @@ def create_argument_parser(prog: str | None = None) -> argparse.ArgumentParser:
     ap.add_argument(
         "--vision",
         default=None,
-        help="vision 目录，或 MFA 导出包（zip / 多个 archive-partNN.zip），或它们的父目录（如 debug/）",
+        help="vision 目录，或 MFA 导出包（zip / 多个 archive-partNN.zip），或它们的父目录（如 debug/）；"
+        "**默认取日志同目录的 `vision/`**（本地 debug/ 旁边就有），不想要画面用 --no-thumbs",
     )
     ap.add_argument(
         "--on-error",

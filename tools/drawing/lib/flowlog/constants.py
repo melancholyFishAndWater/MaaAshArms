@@ -59,7 +59,10 @@ import re
 # 28：`flow` 的 `--on-error` 默认取**日志同目录**的 `on_error/`（给了 `--vision` 时优先它同级的）——
 #     本地画流程时现场图就在 `<安装根>/debug/on_error/`，原来必须显式给参数才贴，"旁边有图却一张
 #     不贴、也不说为什么"（实测 `flow D:/MaaAshArms/debug/maafw.log --task-id 200000228`）。
-RENDERER_VERSION = 28
+# 29：`flow` 的 `--vision` 默认取**日志同目录**的 `vision/`——本地画流程时画面帧就在
+#     `<安装根>/debug/vision/`，原来不给参数就只画框不画画面（实测用户："有 debug/vision 啊，
+#     画得还是不完整"）。索引只读文件名、真要用才解码，7062 张的目录整图多花约 1 s。
+RENDERER_VERSION = 29
 
 # 框里最多列几个候选，多的折成"另 N 项"（`--list` 不受这个限制）。
 # 默认只列 2 个：父节点名字 + 本次真跑的那个候选是这一行最要紧的两件事，
