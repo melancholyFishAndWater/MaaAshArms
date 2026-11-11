@@ -38,6 +38,11 @@ SKIP_PARTS = (
     "deps", "temp", "ffmpeg", "docs",
 )
 SKIP_PREFIXES = (".python-runtime",)
+# 仓库约定"先拷贝、改拷贝、验证通过再原子替换"（根 `AGENTS.md`「改脚本文件」），拷贝名是
+# `<原名>.new.py`。校验与改脚本常常同时在跑：那份拷贝在改到一半时必然语法不全，扫进来就会
+# 让全量 `check-python` 变红（实测 ISSUES 里那条 `logparse.new.py:234 invalid syntax`），
+# 而且**不是**真问题——正式文件当时是完好的。所以临时产物一律不扫。
+TEMP_SUFFIXES = (".new.py",)
 
 # 路径引用检查认这些扩展名（内联在下面的正则里），避免把 `python -m tools.sentry.cli`
 # 之类模块路径当文件。前面的 `(?<![\w/.])` 很关键：schema 快照放在 `deps/` 下的同名
@@ -85,6 +90,8 @@ def iter_py_files(roots: list[str]) -> list[Path]:
         if not base.exists():
             continue
         for path in sorted(base.rglob("*.py")):
+            if path.name.endswith(TEMP_SUFFIXES):
+                continue
             rel_parts = path.relative_to(REPO_ROOT).parts
             if any(part in SKIP_PARTS or part.startswith(SKIP_PREFIXES) for part in rel_parts):
                 continue
@@ -103,6 +110,8 @@ def iter_text_files() -> list[Path]:
             continue
         for path in sorted(base.rglob("*")):
             if not path.is_file() or path.suffix.lower() not in TEXT_EXT:
+                continue
+            if path.name.endswith(TEMP_SUFFIXES):
                 continue
             rel_parts = path.relative_to(REPO_ROOT).parts
             if any(part in SKIP_PARTS for part in rel_parts):

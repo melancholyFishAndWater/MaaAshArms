@@ -60,6 +60,15 @@ Pylance 是 VS Code 内的 LSP，没有命令行入口（`dist/server.bundle.js`
 
 ## 其他已知坑
 
+- **`*.new.py` 临时拷贝会让全量校验假红，已跳过**（2026-11-11）：仓库约定改脚本要先拷成
+  同目录的 `<原名>.new.py` 再改、验证通过后原子替换；改到一半时那份拷贝语法不全，而
+  `check-python` 的 `rglob("*.py")` 与 pyright 的 `include` 都会扫到它，于是全量报
+  `[ERROR] syntax …logparse.new.py:234 invalid syntax`——正式文件当时是完好的（实测一次）。
+  现在 `check_python.iter_py_files` / `iter_text_files` 与 `pyright.config.json` 的 `exclude`
+  都跳过 `*.new.py`：改脚本期间跑校验不再被自己的半成品打断。
+  **pyright 的 `exclude` 要写相对配置目录的路径**（`../../tools/**/*.new.py`）——只写
+  `**/*.new.py` 匹配不到 `include` 里的 `../../tools`（2026-11-11 两次实测：带前缀的那次
+  0 error，只有裸模式的那次把测试用的坏文件报了 6 条 error）。
 - **`validate-schema` / `validate-refs` 的输出编码**：两者把 stdout 固定成
   UTF-8，`check-python` 与 `check-sentry-offline` 只把编不出的字符换成替代字符。所以控制台不是
   UTF-8 时校验不会中断，但中文与 `✓` / `❌` 会显示成乱码——先设 `[Console]::OutputEncoding` 或

@@ -99,7 +99,7 @@ python tools/perf/cli.py rounds --selftest                    # 性能基准（�
   「已知坑」bump `RENDERER_VERSION` 并重画一张核对。
 
 **会制造"假红"、以及会漏检的坑**（ruff 抑制被折行、`validate-schema` 的 `config/` 跳过、pyright 看不见
-`site-packages`、Pylance 复现配方）见 [`docs/pitfalls.md`](docs/pitfalls.md)。
+`site-packages`、`*.new.py` 临时拷贝被扫进来、Pylance 复现配方）见 [`docs/pitfalls.md`](docs/pitfalls.md)。
 
 ## 依赖与前置
 

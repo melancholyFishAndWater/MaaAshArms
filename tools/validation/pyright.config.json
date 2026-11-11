@@ -5,7 +5,9 @@
     ],
     "exclude": [
         "**/node_modules",
-        "**/__pycache__"
+        "**/__pycache__",
+        "../../tools/**/*.new.py",
+        "../../agent/**/*.new.py"
     ],
     "python.analysis.extraPaths": [
         "agent",
