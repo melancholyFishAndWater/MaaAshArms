@@ -7,7 +7,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from .model import Ctx, Option, Reg
-from .rules_misc import check_option_shape, template_calls_in_source
+from .rules_misc import check_agent, check_option_shape, template_calls_in_source
 from .rules_pipeline_a import (
     _is_inverse_guard,
     check_a17_guard_in_next,
@@ -649,7 +649,53 @@ def _checks_rest(checks: list[tuple]) -> None:
         ),
     ]
 
-    # A2：pipeline 解析失败时不下"没被引用"的结论（引用集不完整）
+    # D1：只有带 `@AgentServer.custom_*` 的模块才要求被 main 导入
+    # （实测 `agent/shared/direct.py` 只是还没用上的工具模块，没有装饰器，报 D1 是假红）
+    d1_dir = Path(__file__).resolve().parents[4] / "temp" / "selftest-d1" / "agent"
+    d1_shared = d1_dir / "shared"
+    d1_shared.mkdir(parents=True, exist_ok=True)
+    try:
+        (d1_dir / "main.py").write_text("import shared.used\n", encoding="utf-8")
+        (d1_shared / "used.py").write_text("VALUE = 1\n", encoding="utf-8")
+        (d1_shared / "plain.py").write_text("VALUE = 2\n", encoding="utf-8")
+        (d1_shared / "registered.py").write_text(
+            "from maa.agent.agent_server import AgentServer\n"
+            "\n"
+            '@AgentServer.custom_action("XLostAct")\n'
+            "class XLostAct:\n"
+            "    pass\n",
+            encoding="utf-8",
+        )
+        d1_ctx = Ctx(repo_root=Path("."))
+        d1_ctx.agent_files = [
+            d1_dir / "main.py",
+            d1_shared / "used.py",
+            d1_shared / "plain.py",
+            d1_shared / "registered.py",
+        ]
+        check_agent(d1_ctx)
+        checks += [
+            (
+                any(
+                    f.id == "D1-unimported-module"
+                    and "registered.py" in str(f.file)
+                    for f in d1_ctx.findings
+                ),
+                "没被 main 导入、但带 @AgentServer.custom_* 的模块报 D1",
+            ),
+            (
+                not any(
+                    "plain.py" in str(f.file) or "used.py" in str(f.file)
+                    for f in d1_ctx.findings
+                ),
+                "没有装饰器的工具模块不报 D1（还没用上不算错）",
+            ),
+        ]
+    finally:
+        for path in sorted(d1_shared.glob("*.py")) + [d1_dir / "main.py"]:
+            path.unlink(missing_ok=True)
+        for folder in (d1_shared, d1_dir, d1_dir.parent):
+            folder.rmdir() if folder.exists() else None
     broken_ctx = Ctx(repo_root=Path("."))
     broken_ctx.regs = {"XReco": Reg("XReco", "recognition", "XReco", Path("x.py"), 1)}
     broken_ctx.add("A0-parse-error", "error", Path("p.json"), None, "坏文件")

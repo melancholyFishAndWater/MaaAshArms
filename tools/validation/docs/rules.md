@@ -178,7 +178,7 @@
 
 | 规则 | 管什么 |
 | --- | --- |
-| `D1-unimported-module`（error） | agent 模块没被 `main.py` 导入（装饰器不执行 → 注册不生效） |
+| `D1-unimported-module`（error） | agent 模块没被 `main.py` 导入（装饰器不执行 → 注册不生效）。**只对带 `@AgentServer.custom_*` 的模块报**：没有注册副作用的工具模块还没接进来不算错（2026-11-11 修过 `agent/shared/direct.py` 的假红） |
 | `D2-registration-suffix`（warn） | 注册名后缀不是 `Reco` / `Act` |
 | `D2-class-name`（warn） | 注册名与类名不一致 |
 

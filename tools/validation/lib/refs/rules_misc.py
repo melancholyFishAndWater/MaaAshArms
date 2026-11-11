@@ -30,6 +30,10 @@ from .model import (
     walk_key,
 )
 
+# 注册副作用的标志：`@AgentServer.custom_recognition("Xxx")` / `custom_action(...)`。
+# 只用来判"这个模块没被导入会不会真丢注册"，不判名字与类名（那是 D2 的事）。
+AGENT_REGISTER_RE = re.compile(r"@AgentServer\.custom_(?:recognition|action)\b")
+
 
 
 def list_images(roots: list[Path]) -> list[Path]:
@@ -648,9 +652,14 @@ def check_agent(ctx: Ctx) -> None:
         local[".".join(rel.with_suffix("").parts)] = p
 
     graph: dict[str, set[str]] = {}
+    # 哪些模块里有注册副作用（`@AgentServer.custom_*`）：只有这类模块"没被导入"才会真丢注册
+    # （实测 `agent/shared/direct.py` 只是还没用上的工具模块，没有任何装饰器，报 D1 是假红）
+    registers: set[str] = set()
     for name, path in local.items():
         deps: set[str] = set()
         for line in lines_of(path):
+            if AGENT_REGISTER_RE.search(line.split("#", 1)[0]):
+                registers.add(name)
             for target in import_targets(line):
                 dep = local_module(target, local)
                 if dep is not None:
@@ -668,15 +677,20 @@ def check_agent(ctx: Ctx) -> None:
     for name, path in local.items():
         if name == "main":
             continue
-        if name not in reachable:
-            rel = f"{name.replace('.', '/')}.py"
-            ctx.add(
-                "D1-unimported-module",
-                "error",
-                path,
-                None,
-                f"agent/{rel} 没有被 main.py 导入（装饰器不执行 -> 注册不生效）",
-            )
+        if name in reachable:
+            continue
+        if name not in registers:
+            # 没有注册副作用：没接进 main 也不会丢注册（可能只是还没用上的工具模块）。
+            # D1 的理由是"装饰器不执行 -> 注册不生效"，没有装饰器就无从谈起。
+            continue
+        rel = f"{name.replace('.', '/')}.py"
+        ctx.add(
+            "D1-unimported-module",
+            "error",
+            path,
+            None,
+            f"agent/{rel} 没有被 main.py 导入（装饰器不执行 -> 注册不生效）",
+        )
 
     for name, reg in ctx.regs.items():
         want = "Reco" if reg.kind == "recognition" else "Act"
