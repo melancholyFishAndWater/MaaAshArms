@@ -320,9 +320,10 @@ def prune_artifacts(
     三类处理：
 
     * 归属 issue **不在本次集合**里（版本筛掉 / 已 resolve / 库里消失）→ 删；
-    * 归属 issue 在集合里，但这条是**批量**画的（`origin == "bulk"`，或名字是批量的
-      `<问题号>.png` / `<问题号>_疑似过时.png`）且本次没保留 → 删（被本次重画取代）；
-    * 其余（单包画的、本次画失败的 issue、认不出归属的）→ 留着。
+    * 归属 issue 在集合里，但这条是**批量**画的（`origin == "bulk"`，或记录里没有 `origin`
+      且名字是批量的 `<问题号>.png` / `<问题号>_疑似过时.png`）且本次没保留 → 删（被本次重画
+      取代）；
+    * 其余（单包画的 `origin == "case"`、本次画失败的 issue、认不出归属的）→ 留着。
 
     记录丢了但文件还在的（改名 / 旧版本留下的）：名字正好是本工具的批量命名时也删——
     判据同上（集合外删、被本次保留的取代也删），别的无主文件仍然不碰。`labels` 是
@@ -349,14 +350,22 @@ def prune_artifacts(
             continue
         record = records[name]
         issue = str(record.get("issue") or "")
-        rest = ""
+        # 名字里那段后缀**总是**要从文件名算出来：单包画的产物也带 `<问题号>_task<id>`，
+        # 只按记录里的 issue 判断会让 rest 一直是空串，`_own_rest("")` 又恒为真——于是
+        # 记录里带 issue 的单包产物会被当成"批量形状"删掉（实测 `PYTHON-3J_task200000005.png`）。
+        issue_from_name, rest = artifact_issue(name)
         if not issue:
-            issue, rest = artifact_issue(name)
+            issue = issue_from_name
         if not issue or issue in failed:
             continue
+        origin = str(record.get("origin") or "")
         if issue not in issues:
             reason = "不在本次 issue 集合内"
-        elif record.get("origin") == "bulk" or _own_rest(rest, label_of.get(issue, "")):
+        elif origin == "bulk" or (
+            not origin and _own_rest(rest, label_of.get(issue, ""))
+        ):
+            # `origin` 说了算：单包画的（`case`）哪怕名字撞上批量形状也不动；只有老记录
+            # 没有 `origin` 时才退回"看名字形状"。
             reason = "已被本次重画取代"
         else:
             continue

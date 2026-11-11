@@ -442,24 +442,37 @@ def check_overview_render() -> list[str]:
         add("PYTHON-CC_task1.png", origin="case")  # 单包画的，issue 在集合里
         add("PYTHON-DD.png", issue="PYTHON-DD", origin="bulk")  # 本次画失败
         add("Entrust_20261001.png", origin="case")  # 认不出问题号
+        # 单包画的、记录里带 issue（`run_case` 一定会写）：名字虽是 `_task<id>` 也绝不能被
+        # 当成批量形状删掉（实测 `PYTHON-3J_task200000005.png` 被批量清理误删）
+        add("PYTHON-JJ_task9.png", issue="PYTHON-JJ", origin="case")
+        # 老记录没有 origin：只能退回看名字形状，规范名（批量形状）照删
+        add("PYTHON-KK.png", issue="PYTHON-KK")
         prune_manifest["cases"]["PYTHON-EE.png"] = {"issue": "PYTHON-EE"}  # 文件已不在
         prune_manifest["cases"]["..\\evil.png"] = {"issue": "PYTHON-ZZ"}  # 坏 manifest
         removed = prune_artifacts(
             pdir,
             prune_manifest,
             kept,
-            issues={"PYTHON-AA", "PYTHON-CC", "PYTHON-FF"},
+            issues={
+                "PYTHON-AA",
+                "PYTHON-CC",
+                "PYTHON-FF",
+                "PYTHON-JJ",
+                "PYTHON-KK",
+            },
             failed_issues={"PYTHON-DD"},
         )
-        _eq(removed, 2, "清理：集合外一个 + 被取代一个")
+        _eq(removed, 3, "清理：集合外一个 + 被取代的批量一个 + 无 origin 的规范名一个")
         for gone, name in (
             ("PYTHON-AA.png", "被本次重画取代的批量产物"),
             ("PYTHON-AA.mmd", "同干的 .mmd"),
             ("PYTHON-BB.png", "不在本次 issue 集合里的产物"),
+            ("PYTHON-KK.png", "没有 origin 记录的规范名（只能按形状判）"),
         ):
             _eq(_os.path.isfile(_os.path.join(pdir, gone)), False, f"{name} 删掉")
         for stays, name in (
             ("PYTHON-CC_task1.png", "issue 仍在集合里的单包产物"),
+            ("PYTHON-JJ_task9.png", "带 issue 记录的单包产物（不能被当成批量形状）"),
             ("PYTHON-DD.png", "本次画失败的 issue 的旧图"),
             ("PYTHON-FF.png", "本次保留的产物"),
             ("Entrust_20261001.png", "认不出问题号的产物"),
@@ -487,7 +500,14 @@ def check_overview_render() -> list[str]:
             pdir,
             prune_manifest,
             {"PYTHON-FF.png", "PYTHON-HH_task1.png"},
-            issues={"PYTHON-AA", "PYTHON-CC", "PYTHON-FF", "PYTHON-HH", "PYTHON-II"},
+            issues={
+                "PYTHON-AA",
+                "PYTHON-CC",
+                "PYTHON-FF",
+                "PYTHON-HH",
+                "PYTHON-II",
+                "PYTHON-JJ",
+            },
             failed_issues={"PYTHON-DD"},
         )
         _eq(removed_unrecorded, 2, "无记录旧产物：集合外一个 + 被取代一个")
@@ -1279,6 +1299,33 @@ def check_scene_images() -> list[str]:
         {"pack"},
         "记录里标了来源是日志包",
     )
+
+    # 单包（origin=case）导出的图：issue 在集合里、这一轮导的是别的图名，也**不动**
+    # （与产物清理同一取舍：用户按某次运行单独导的那张删了就找不回来）
+    solo_name = "PYTHON-ZZ_Mine_case.png"
+    solo = _os.path.join(scene_dir(str(tmp)), solo_name)
+    with open(solo, "wb") as handle:
+        handle.write(b"s" * 8)
+    manifest["images"][solo_name] = {
+        "issue": "PYTHON-ZZ",
+        "label": "Mine",
+        "source": "pack",
+        "origin": "case",
+        "sha256": "0" * 64,
+        "size": 8,
+        "from": "manual",
+    }
+    _eq(
+        prune_scene(
+            str(tmp), manifest, set(again), issues={"PYTHON-ZZ"}, keep_issues=set()
+        ),
+        0,
+        "单包导出的现场图不因批量这一轮换了图名就被删",
+    )
+    _eq(_os.path.isfile(solo), True, "单包那张还在")
+    # 后面的"全删"断言按批量那两张算：把这条单包记录清掉再继续
+    _os.remove(solo)
+    manifest["images"].pop(solo_name, None)
 
     # 没有记录、但名字正好是本工具现场图命名的旧文件（manifest 被另一轮覆盖过）：按归属删；
     # 用户自己放的别的文件不碰

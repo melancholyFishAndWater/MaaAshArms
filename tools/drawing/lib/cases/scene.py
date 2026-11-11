@@ -298,11 +298,18 @@ def _prune_recorded(
             records.pop(name, None)  # 文件早就不在了：别让记录一直挂着
             continue
         issue = str(record.get("issue") or "")
+        origin = str(record.get("origin") or "")
         if not issue or issue in keep:
             continue
         if issue not in issues:
             reason = "不在本次 issue 集合内"
-        elif issue in written_issues and name not in confirmed:
+        elif (
+            issue in written_issues
+            and name not in confirmed
+            and origin in ("", "bulk")
+        ):
+            # 单包（`origin == "case"`）导出的图不动：那是用户按某次运行单独导的，
+            # 批量这一轮导的是别的图名，删掉就再也找不回来（与产物清理同一取舍）
             reason = "已被本次重画取代"
         else:
             continue
