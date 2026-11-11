@@ -124,7 +124,10 @@ temp/telemetry/issues/index.json        ← {schema, issues: {<SHORT>: {status, 
 **一次运行经常产出多个失败事件**（同一个 `BaseTaskStopError` 一小时里失败 4 次），所以
 "这个包对应哪个 issue"本来就不唯一：30 个包里期望的 issue 有 26 个出现在候选里、17 个排第一。
 工具因此列候选 + 级别，只有"**恰好一个**高置信"时才自动采用；否则取时间最近的那个并明确 warning。
-要精确指定就用 `--telemetry-issue PYTHON-2X`。
+要精确指定就用 `--telemetry-issue PYTHON-2X`。中/低置信只用于"提示有候选"：画图侧不拿它命名产物、
+不拿它的 `release` 当「疑似过时」基线、也不往图上挂「遥测问题 / 遥测失败」注记
+（判据 `telemetry_index.usable_match()`，2026-11-11 修过一次：低置信的 beta.68 被当成基线，
+把当次 beta.73 的节点标成「疑似过时」）。
 
 排序按 **级别 → 时间差 → 事件新旧**，刻意**不用 `count`**：热门问题会把真正的那次压下去。
 

@@ -839,6 +839,17 @@ class Annotation:
     candidates: int = 0
 
 
+def usable_match(picked: "Match", issue: str | None = None) -> bool:
+    """这个匹配能不能拿来定「这次在哪个版本」——即命名产物、`release` 基线、失败注记。
+
+    只有**高**置信（task_id + node_id 全等）才算；`--telemetry-issue` 显式点名时另说。
+    中/低置信只说明"节点名撞上了"，可能是一次别的任务、甚至另一个用户在同名节点上的失败
+    （实测 `PYTHON-2Y`：3 天前 beta.68 的低置信匹配被当成基线，把当次 beta.73 的 3 个节点
+    标成「疑似过时」，还挂上不相干的「遥测失败 GiftEnterHome」）。
+    """
+    return picked.tier == "high" or bool(issue)
+
+
 def annotate(
     log: Any,
     *,
@@ -922,10 +933,10 @@ def annotate(
         out.card = picked.card
         # 只有「高」置信才用它命名产物；中/低置信只进注记（显式 --telemetry-issue 例外）。
         # 通用兜底节点会让中置信的问题号挂到别的任务上，写进文件名就是把问题张冠李戴。
-        out.chosen = (
-            picked.card.short_id if (picked.tier == "high" or issue) else ""
-        )
-        if picked.card.release:
+        # 同理也**不拿它的 release 当基线**：拿错版本会把当次运行的动作全标成「疑似过时」。
+        usable = usable_match(picked, issue)
+        out.chosen = picked.card.short_id if usable else ""
+        if usable and picked.card.release:
             try:
                 out.version = report_common.version_label(picked.card.release) or ""
             except Exception:  # noqa: BLE001 - release 字段类型不定，解析失败就留空
@@ -939,9 +950,14 @@ def annotate(
         elif picked.tier != "high":
             out.warnings.append(
                 f"{picked.card.short_id} 只是「{TIER_LABEL[picked.tier]}」置信（{picked.detail}），"
-                "别把它当唯一答案；不以它命名产物"
+                "别把它当唯一答案；不以它命名产物、不拿它的 release 当「疑似过时」基线"
             )
-    out.notes = card_notes(out.card, out.matches, chosen=out.chosen)
+    # 低置信连卡片注记都不挂：那会造成"这次真的是这个失败"的错觉
+    out.notes = card_notes(
+        out.card if (picked is not None and usable_match(picked, issue)) else None,
+        out.matches,
+        chosen=out.chosen,
+    )
     return out
 
 

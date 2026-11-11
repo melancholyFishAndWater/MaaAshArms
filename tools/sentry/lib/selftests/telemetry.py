@@ -597,6 +597,13 @@ def check_telemetry_index() -> list[str]:
     _eq([m.tier for m in matches], ["high", "mid", "low"], "高/中/低")
     _eq(matches[0].detail, "task_id + node_id 全等", "高级的判据说明")
 
+    # 3b) 只有「高」置信才拿来定 release 基线 / 命名产物 / 挂「遥测失败」注记
+    #     （实测 `PYTHON-2Y` 的低置信匹配被当成基线，把当次 beta.73 的节点标成「疑似过时」）
+    _eq(ti.usable_match(matches[0]), True, "高置信可用")
+    _eq(ti.usable_match(matches[1]), False, "中置信不拿来定 release 基线")
+    _eq(ti.usable_match(matches[2]), False, "低置信不拿来定 release 基线")
+    _eq(ti.usable_match(matches[2], "PYTHON-L"), True, "显式 --telemetry-issue 例外")
+
     # 4) 注记
     notes = ti.card_notes(cards[0], matches, chosen="PYTHON-H")
     _eq(len(notes), 3, "卡片两行 + 候选一行")

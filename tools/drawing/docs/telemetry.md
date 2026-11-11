@@ -25,7 +25,11 @@
 `--telemetry-refresh` 或把 `--telemetry-max-age` 调小。
 
 **反查给候选、不给唯一答案**：一次运行常有多个失败事件，同一个包可能对应好几个 issue。
-只有"恰好一个 `task_id` + `node_id` 全等"时才自动采用，否则取时间最近的并打提示。
+只有"恰好一个 `task_id` + `node_id` 全等"时才自动采用，否则取时间最近的并打提示。中/低置信的匹配
+**只进终端提示**，不参与三件事：产物命名、`release` 当「疑似过时」基线、图上「遥测问题 / 遥测失败」
+两行注记——它们只说明"节点名撞上了"，可能是别的任务、甚至别的用户在同名节点上的失败（实测
+`PYTHON-2Y`：3 天前 beta.68 的低置信匹配被当成基线，把当次 beta.73 的 3 个节点标成「疑似过时」，
+还挂上不相干的「遥测失败 GiftEnterHome」）。判据在 `telemetry_index.usable_match()`。
 刷新失败（没装 `sentry` CLI / 没登录）只提示一次，照常画图。**没登录时还会明确指路并跳过逐 issue
 拉证据包**：终端打 `Sentry 没登录：先执行一次 sentry auth login…`，之后缺包的 issue 直接出概览卡，
 不会每个 issue 再白跑一趟联网子进程（判断在 `lib/cases/cli.py:_sentry_failure_hint`）。
