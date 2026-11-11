@@ -178,9 +178,9 @@
         "next": [
             "BaseErrorNext",
             "TrainGetRewardSuccess",
-            "[JumpBack]BaseClickTapBox",
+            "TrainGetReward",
             "[JumpBack]BaseBranchError",
-            "TrainGetReward"
+            "[JumpBack]BaseClickTapBox"
         ]
     },
     // INFO 领取成功
