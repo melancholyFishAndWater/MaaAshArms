@@ -590,3 +590,83 @@ def check_a27_click_ok(ctx: Ctx) -> None:
                 f"{node.name}：确认按钮统一命名 *ClickConfirm（如 BaseClickConfirm），"
                 f"不要用 ClickOk / …Ok 后缀（node-naming.md §6）",
             )
+
+
+def _node_kind(data: dict) -> str:
+    """按结构分三类（与 `node-naming.md` §3 的分工一致）：动作 / 分支 / 探针。
+
+    判据不看名字：动作 = 有 `action`；分支 = 没有 `action` 但有 `next`；探针 = 有
+    `recognition`、既没 `action` 也没 `next`。
+    """
+    if data.get("action"):
+        return "action"
+    if to_list(data.get("next")):
+        return "branch"
+    if "recognition" in data:
+        return "probe"
+    return ""
+
+
+def check_a31_unreferenced_node(ctx: Ctx) -> None:
+    """没有任何引用、也没被 interface / tasks / agent 提到的 Pipeline 节点（2026-11-11 用户要求）。
+
+    判据：
+    - 引用 = 别的节点的 `next` / `on_error` / `all_of` / `any_of`，或别的节点数据里"整串等于
+      这个名字"的字符串（`roi` / `target` / `anchor` 这类不走 `ref_lists`）；
+    - 外部引用 = interface / option / preset / agent 源码里出现这个名字（保守：出现就算被引用）；
+    - 自引用不算引用：只指自己的节点仍然是死的（自环另有 A20/A21 判）。
+
+    级别按用户口径：`base.json` 里无引用 → warn（通用节点可能被别处按名调用，先提示）；
+    其他文件里探针 → warn（可能是还没接上的探针），动作 / 分支 → error（写好了却没人调用，
+    等于白写，且会被误读成"流程里在用它"）。`Task*` 入口不在这里判：由 interface / agent 按名
+    调用，拦它只会制造假红。
+    """
+    refs = _reference_kinds(ctx)
+    external = _external_mentions(ctx)
+    # 别的节点数据里出现过的名字（不含自己的数据）：`roi` / `target` / `anchor` 里的引用也算
+    owners: dict[str, set[str]] = {}
+
+    def walk(value, owner: str) -> None:
+        if isinstance(value, dict):
+            for item in value.values():
+                walk(item, owner)
+        elif isinstance(value, list):
+            for item in value:
+                walk(item, owner)
+        elif isinstance(value, str):
+            candidate = _TAG_RE.sub("", value).strip()
+            if candidate in ctx.nodes:
+                owners.setdefault(candidate, set()).add(owner)
+
+    for node in ctx.nodes.values():
+        walk(node.data, node.name)
+
+    for name, node in ctx.nodes.items():
+        if name.startswith("Task"):
+            continue
+        if any(consumer != name for consumer, _kind, _jump in refs.get(name, ())):
+            continue
+        if any(owner != name for owner in owners.get(name, ())):
+            continue
+        if name in external:
+            continue
+        kind = _node_kind(node.data)
+        if node.file.name == "base.json":
+            severity = "warn"
+            where = "base.json 里的通用节点"
+        elif kind == "probe":
+            severity = "warn"
+            where = "探针"
+        elif kind in ("action", "branch"):
+            severity = "error"
+            where = "动作/分支节点"
+        else:
+            continue
+        ctx.add(
+            "A31-unreferenced-node",
+            severity,
+            node.file,
+            find_line(node.file, name),
+            f"{name} 没有任何引用（{where}）：要么接进流程的 next / on_error，要么删掉"
+            f"（自引用不算引用）",
+        )

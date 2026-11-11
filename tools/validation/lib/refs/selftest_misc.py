@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .model import Ctx, Option, Reg
+from .model import Ctx, Node, Option, Reg
 from .rules_misc import check_agent, check_option_shape, template_calls_in_source
 from .rules_pipeline_a import (
     _is_inverse_guard,
@@ -27,6 +27,7 @@ from .rules_pipeline_b import (
     check_a28_next_list_cap,
     check_a29_and_box_index,
     check_a30_and_inline_sub,
+    check_a31_unreferenced_node,
 )
 from .selftest_pipeline import synth_ctx
 
@@ -707,3 +708,47 @@ def _checks_rest(checks: list[tuple]) -> None:
         )
     ]
 
+    # A31：没有任何引用、也没被 interface / agent 提到的节点
+    #   非 base.json：探针 warn、动作/分支 error；base.json 一律 warn；自引用不算引用
+    a31_ctx = Ctx(repo_root=Path("."))
+    a31_base = Path("base.json")
+    a31_misc = Path("gift.json")
+
+    def a31_node(name: str, data: dict, path: Path = a31_misc) -> None:
+        a31_ctx.nodes[name] = Node(name, data, path)
+
+    a31_node(
+        "XClickDead",
+        {"action": "Click", "target": [1, 2]},
+    )
+    a31_node(
+        "XBranchDead",
+        {"recognition": "OCR", "next": ["BaseErrorNext"]},
+    )
+    a31_node("XProbeDead", {"recognition": "OCR", "expected": "x"})
+    a31_node(
+        "XClickUsed",
+        {"action": "Click"},
+    )
+    a31_node(
+        "XSelfOnly",
+        {"action": "Click", "next": ["XSelfOnly", "BaseErrorNext"]},
+    )
+    a31_node("XBaseDead", {"action": "Click"}, a31_base)
+    a31_node(
+        "TaskGiftEntry",
+        {"recognition": "OCR", "next": ["XClickUsed"]},
+    )
+    check_a31_unreferenced_node(a31_ctx)
+    a31 = {(f.message.split(" ")[0], f.severity) for f in a31_ctx.findings if f.id == "A31-unreferenced-node"}
+    checks += [
+        (("XClickDead", "error") in a31, "A31：没人调用的动作节点报 error"),
+        (("XBranchDead", "error") in a31, "A31：没人调用的分支节点报 error"),
+        (("XProbeDead", "warn") in a31, "A31：没人引用的探针只报 warn"),
+        (("XBaseDead", "warn") in a31, "A31：base.json 里无引用只报 warn"),
+        (("XSelfOnly", "error") in a31, "A31：只被自己 next 引用的同样算没人用"),
+        (
+            not any(name in {"XClickUsed", "TaskGiftEntry"} for name, _lv in a31),
+            "A31：被别的节点 next 引用、或自己是入口时不报",
+        ),
+    ]

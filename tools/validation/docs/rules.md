@@ -44,7 +44,7 @@
 | 组 | 规则 | 管什么 |
 | --- | --- | --- |
 | 解析 | `A0-parse-error` / `A0-duplicate-node` | pipeline 文件 JSONC 解析失败、节点重名 |
-| 引用 | `A1-dangling-node`、`A2-unknown-custom` / `A2-unused-registration`、`A3-custom-name-mapping` | `next` / `on_error` 悬空引用；自定义识别/动作没被任何节点引用或 agent 侧没有；注册名 = 节点名 + `Reco`/`Act` |
+| 引用 | `A1-dangling-node`、`A2-unknown-custom` / `A2-unused-registration`、`A3-custom-name-mapping`、`A31-unreferenced-node` | `next` / `on_error` 悬空引用；自定义识别/动作没被任何节点引用或 agent 侧没有；注册名 = 节点名 + `Reco`/`Act`；节点自己没人引用（探针 warn、动作/分支 error、`base.json` 一律 warn） |
 | 结构 | `A4-shadowed-candidate`、`A5-spin-trap`、`A6-complement-unreachable`、`A7-jumpback-target`、`A8-loop-guard`、`A10-maxhit-in-loop`、`A11-bad-regex` / `A11-bounded-quantifier`、`A12-bad-focus-key` | 必然命中挡路、`[JumpBack]` 空转陷阱、取反 cut 不可达、`[JumpBack]` 落点、`Loop` 写法、`max_hit` 预算、`expected` 正则质量、`focus` 键名 |
 | 命名 | `A13-*`（`branch-action` / `branch-next` / `branch-recognition` / `click-synonym` / `legacy-prefix` / `loop-next` / `missing-prefix` / `probe-action` / `probe-next` / `verb` / `file-case` / `key-case`）、`A27-click-ok-banned` | 节点命名与分类、同义写法、参数键 snake_case、片段文件名；`Ok` 结尾禁用（确认统一 `*Confirm`） |
 | 语义 | `A14-fallback-same-probe`、`A15-error-branch-jumpback` / `A15-error-branch-shadowed` / `A15-error-branch-conflict`、`A17-guard-in-next`、`A18-next-length`、`A28-next-list-cap` | `Loop` 末尾兜底同探针；通用错误分支位次（含 conflict 为 error）；守卫探针重复识别；`next` 长度上限 |
@@ -119,6 +119,29 @@
 
 `A26` 只按引用计数报，**不报"`next` 里唯一候选但引用方另有 recognition"那类**：那种内联会把「命中就转」
 改成「先满足守卫」，语义不等价，判不准就不报。
+
+`A31-unreferenced-node` 是 2026-11-11 用户要求新增的一条（`rules_pipeline_b.py:check_a31_unreferenced_node`）：
+节点自己**没有任何引用**时报出来。
+
+| 级别 | 条件 |
+| --- | --- |
+| warn | `base.json` 里的节点没人引用（通用节点可能被别处按名调用，先提示） |
+| warn | 其他文件里没人引用的**探针**（可能还没接上） |
+| error | 其他文件里没人引用的**动作 / 分支**节点（写好了却没人调用，读图的人会以为流程里在用它） |
+
+判据：
+
+- 引用 = 别的节点 `next` / `on_error` / `all_of` / `any_of` 里出现，或别的节点数据里"整串等于这个名字"
+  的字符串（`roi` / `target` / `anchor` 这类不走 `ref_lists`）；**自引用不算引用**（只指自己的节点仍然
+  进不来，自环另有 `A20` / `A21`）；
+- interface / option / preset / agent 源码里出现过这个名字也算被引用（保守，宁可少报）；
+- 类别按结构判、不看名字：有 `action` = 动作，无 `action` 有 `next` = 分支，有 `recognition`、
+  既无 `action` 又无 `next` = 探针；
+- `Task*` 入口不在这里判：由 interface / agent 按名调用，拦它只会制造假红。
+
+实测（2026-11-11）：4 条 error —— `BattleStopNoProps`（`battle.json:160`）、`BattleClickAttack`
+（`battle.json:341`，只在注释里出现过）、`ExploreClickTap`（`explore.json:182`，只被自己 `next` 引用）、
+`FeiduEnsureHome`（`feidu.json:133`，`Ensure` 遗留，`A25` 同时也在报）。都是存量死节点，接进流程或删掉即可。
 
 `A27` 是 v3.2 新增的一条（`node-naming.md` §6），**error**：
 
