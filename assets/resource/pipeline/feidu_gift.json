@@ -215,13 +215,19 @@
             10,
             61,
             60
+        ],
+        "action": "Click",
+        "post_wait_freezes": 3000,
+        "next": [
+            "GiftClickFirstcharacter",
+            "[JumpBack]BaseBranchError"
         ]
     },
     // INFO 点第一个角色
     "GiftClickFirstcharacter": {
         "desc": "点击第一个角色位置",
         "recognition": "OCR",
-        "expected": "请选择邀请的.+",
+        "expected": "请选择邀请的",
         "roi": [
             161,
             97,
