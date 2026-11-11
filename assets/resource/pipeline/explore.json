@@ -1,0 +1,219 @@
+{
+    /*
+    INFO 探索任务
+
+    使用任务链结构 v3.10 校验年月日 26/11/11
+    使用节点命名与分类 v3.3 校验年月日 26/11/11
+    */
+    "TaskExplore": {
+        "desc": "探索任务",
+        "next": [
+            "ExploreEnterBattleHome",
+            "ExploreBranchHome",
+            "[JumpBack]BaseReturnHome"
+        ]
+    },
+    /* -------------------- 动作-出击主页 -------------------- */
+    "ExploreEnterBattleHome": {
+        "desc": "进入出击页面",
+        "recognition": "OCR",
+        "expected": "出击作战",
+        "roi": [
+            805,
+            288,
+            460,
+            111
+        ],
+        "action": "Click",
+        "post_wait_freezes": 1000,
+        "timeout": 60000,
+        "rate_limit": 3000,
+        "next": [
+            "BaseErrorNext",
+            "ExploreEnterHome",
+            "ExploreEnterBattleHome",
+            "[JumpBack]BaseBranchError"
+        ]
+    },
+    /* -------------------- 动作-探索主页 -------------------- */
+    "ExploreEnterHome": {
+        "desc": "进入探索主页",
+        "recognition": "OCR",
+        "expected": "探索",
+        "roi": [
+            792,
+            679,
+            57,
+            34
+        ],
+        "action": "Click",
+        "post_wait_freezes": 1000,
+        "next": [
+            "BaseErrorNext",
+            "ExploreBranchHome",
+            "[JumpBack]BaseBranchError",
+            "ExploreEnterHome"
+        ]
+    },
+    /* -------------------- 分支-探索主页 -------------------- */
+    "ExploreBranchHome": {
+        "desc": "探索主页",
+        "recognition": "OCR",
+        "expected": "探索",
+        "roi": [
+            131,
+            14,
+            85,
+            43
+        ],
+        "next": [
+            "ExploreClickStart",
+            "[JumpBack]ExploreSwitchLevel",
+            "[JumpBack]BaseBranchError"
+        ]
+    },
+    /* -------------------- 动作-切换关卡 -------------------- */
+    "ExploreSwitchLevel": {
+        "desc": "[jp][max] 切换关卡",
+        "max_hit": 14, // 两轮预算
+        "recognition": "And",
+        "all_of": [
+            "ExploreProbeLevel"
+        ],
+        "inverse": true,
+        "target": [
+            34,
+            320
+        ], // 上一页
+        "action": "Click",
+        "post_wait_freezes": 1000
+    },
+    /* -------------------- 动作-开始探索 -------------------- */
+    "ExploreClickStart": {
+        "desc": "开始探索",
+        "recognition": "And",
+        "all_of": [
+            "ExploreProbeLevel",
+            "ExploreProbeStartButton"
+        ],
+        "box_index": 1,
+        "action": "Click",
+        "post_wait_freezes": 1000,
+        "next": [
+            "BaseErrorNext",
+            "ExploreBranchLevel",
+            "ExploreClickStart",
+            "[JumpBack]BaseBranchError"
+        ]
+    },
+    "ExploreProbeLevel": {
+        "desc": "[end] 是目标关卡",
+        "recognition": "OCR",
+        "expected": "火山中心", // interface 覆写
+        "roi": [
+            490,
+            435,
+            114,
+            50
+        ]
+    },
+    "ExploreProbeStartButton": {
+        "desc": "[end] 有开始探索按钮",
+        "recognition": "OCR",
+        "expected": "开始探索",
+        "roi": [
+            960,
+            623,
+            119,
+            42
+        ]
+    },
+    /* -------------------- 动作-点击菜单 -------------------- */
+    "ExploreBranchLevel": {
+        "desc": "点击菜单",
+        "recognition": "TemplateMatch",
+        "template": "Explore/Menu.png",
+        "roi": [
+            103,
+            24,
+            63,
+            63
+        ],
+        "action": "Click",
+        "next": [
+            "BaseErrorNext",
+            "ExploreClickGiveUp",
+            "ExploreBranchLevel",
+            "[JumpBack]BaseBranchError"
+        ]
+    },
+    // 点击放弃
+    "ExploreClickGiveUp": {
+        "desc": "点击放弃",
+        "recognition": "OCR",
+        "expected": [
+            "放弃",
+            "探索"
+        ],
+        "action": "Click",
+        "post_wait_freezes": 1000,
+        "next": [
+            "BaseErrorNext",
+            "ExploreClickConfirm",
+            "ExploreClickGiveUp",
+            "[JumpBack]BaseBranchError"
+        ]
+    },
+    // 确认放弃
+    "ExploreClickConfirm": {
+        "desc": "点击确认放弃",
+        "recognition": "And",
+        "all_of": [
+            "BaseProbeConfirm"
+        ],
+        "action": "Click",
+        "next": [
+            "BaseErrorNext",
+            "ExploreClickConfirm",
+            "[JumpBack]BaseBranchError"
+        ]
+    },
+    // 点击tap区域
+    "ExploreClickTap": {
+        "desc": "点击tap区域",
+        "recognition": "OCR",
+        "expected": [
+            "探索",
+            "中止"
+        ],
+        "roi": [
+            513,
+            75,
+            249,
+            67
+        ],
+        "target": [
+            640,
+            620
+        ],
+        "action": "Click",
+        "post_wait_freezes": 1000,
+        "next": [
+            "BaseErrorNext",
+            "ExploreProbeEnd",
+            "ExploreClickTap",
+            "[JumpBack]BaseBranchError"
+        ]
+    },
+    "ExploreProbeEnd": {
+        "desc": "[end] 到出击页面",
+        "recognition": "OCR",
+        "expected": "出击",
+        "roi": [
+            116,
+            12,
+            114,
+            47
+        ]
+    }
+}

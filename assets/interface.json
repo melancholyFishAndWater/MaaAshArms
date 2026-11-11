@@ -128,6 +128,15 @@
             ]
         },
         {
+            "name": "Explore",
+            "label": "探索",
+            "entry": "TaskExplore",
+            "default_check": true,
+            "option": [
+                "explore_level"
+            ]
+        },
+        {
             "name": "Train",
             "label": "武装押运",
             "entry": "TaskTrain",
@@ -266,6 +275,7 @@
         "resource/tasks/option/entrust.json",
         "resource/tasks/option/battle_replays.json",
         "resource/tasks/option/reward.json",
-        "resource/tasks/option/train.json"
+        "resource/tasks/option/train.json",
+        "resource/tasks/option/explore.json"
     ]
 }

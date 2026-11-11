@@ -1,0 +1,74 @@
+{
+    "option": {
+        "explore_level": {
+            "type": "select",
+            "label": "地图",
+            "default_case": "7",
+            "cases": [
+                {
+                    "name": "7",
+                    "label": "火山中心",
+                    "pipeline_override": {
+                        "ExploreProbeLevel": {
+                            "expected": "火山中心"
+                        }
+                    }
+                },
+                {
+                    "name": "1",
+                    "label": "沙漠",
+                    "pipeline_override": {
+                        "ExploreProbeLevel": {
+                            "expected": "沙漠"
+                        }
+                    }
+                },
+                {
+                    "name": "2",
+                    "label": "冰原",
+                    "pipeline_override": {
+                        "ExploreProbeLevel": {
+                            "expected": "冰原"
+                        }
+                    }
+                },
+                {
+                    "name": "3",
+                    "label": "火山",
+                    "pipeline_override": {
+                        "ExploreProbeLevel": {
+                            "expected": "火山"
+                        }
+                    }
+                },
+                {
+                    "name": "4",
+                    "label": "荒原",
+                    "pipeline_override": {
+                        "ExploreProbeLevel": {
+                            "expected": "荒原"
+                        }
+                    }
+                },
+                {
+                    "name": "5",
+                    "label": "沙漠腹地",
+                    "pipeline_override": {
+                        "ExploreProbeLevel": {
+                            "expected": "沙漠腹地"
+                        }
+                    }
+                },
+                {
+                    "name": "6",
+                    "label": "冰原核心",
+                    "pipeline_override": {
+                        "ExploreProbeLevel": {
+                            "expected": "冰原核心"
+                        }
+                    }
+                }
+            ]
+        }
+    }
+}
