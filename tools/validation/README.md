@@ -76,7 +76,7 @@ uvx ruff check tools --select F401,F841,E722,FURB162,S110,PLW1510,BLE001,RUF100 
 node tools/validation/check_pyright.mjs                   # 4. 类型检查（需 npx，首次要网络）
 
 # 5. 改到哪个脚本，就跑它自己的 CLI 与自检
-python -m tools.sentry.cli selftest                       # 遥测工具：27 项
+python -m tools.sentry.cli selftest                       # 遥测工具：28 项
 python tools/validation/cli.py check-sentry-offline
 python tools/drawing/cli.py flow --help
 python tools/drawing/cli.py cases --help

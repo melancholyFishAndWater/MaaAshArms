@@ -48,6 +48,7 @@ try:
         release_version_key,
         resolve_sentry_command,
         show_progress,
+        task_alias_map,
         version_label,
         warn_on_truncated_period,
         write_console_table,
@@ -70,6 +71,7 @@ except ImportError:
         release_version_key,
         resolve_sentry_command,
         show_progress,
+        task_alias_map,
         version_label,
         warn_on_truncated_period,
         write_console_table,
@@ -257,20 +259,28 @@ def resolve_task_name(task_filter: str, candidates: Iterable[str]) -> str:
     规则与 `build_trend_rows` 里的一致，这里是**唯一实现**：先精确匹配（忽略大小写），
     再唯一子串匹配，命中多个就抛错并列出候选，都没命中就原样返回（让调用方拿到空表）。
 
+    中文标签与入口名先按 `interface.json` 翻成遥测里记的 `name`：面板写的是 `武装押运`、
+    代码里是 `TaskTrain`，而 `mfa.task` span 的 `description` 是 `Train`（`report_common.
+    task_alias_map`）。不翻的话按面板文字筛就是整列 0 样本。
+
     单独抽出来的原因：报告标题要回显解析后的名字，而这件事不需要构造行集合。
     """
     pool = sorted(set(candidates))
-    exact = next((task for task in pool if task.lower() == task_filter.lower()), None)
-    if exact is not None:
-        return exact
-    fuzzy = [task for task in pool if task_filter.lower() in task.lower()]
-    if len(fuzzy) == 1:
-        return fuzzy[0]
-    if len(fuzzy) > 1:
-        listed = "、".join(f"'{match}'" for match in fuzzy)
-        raise ValueError(
-            f"任务筛选 '{task_filter}' 匹配到多个候选：{listed}。请指定更精确的名称。"
-        )
+    alias = task_alias_map().get(task_filter.strip().casefold(), "")
+    asked = [task_filter] if not alias or alias == task_filter else [alias, task_filter]
+    for want in asked:
+        exact = next((task for task in pool if task.casefold() == want.casefold()), None)
+        if exact is not None:
+            return exact
+    for want in asked:
+        fuzzy = [task for task in pool if want.casefold() in task.casefold()]
+        if len(fuzzy) == 1:
+            return fuzzy[0]
+        if len(fuzzy) > 1:
+            listed = "、".join(f"'{match}'" for match in fuzzy)
+            raise ValueError(
+                f"任务筛选 '{task_filter}' 匹配到多个候选：{listed}。请指定更精确的名称。"
+            )
     return task_filter
 
 
@@ -728,7 +738,15 @@ def collect_report(
         quiet=quiet,
     )
 
-    query_filter = f'span.description:"{task_filter}"' if task_filter else ""
+    # Sentry 里的 `span.description` 是 `interface.json` 的 `name`（`Train`），而用户按面板
+    # 文字筛（`武装押运`）或按入口筛（`TaskTrain`）。不先翻成 name，查询过滤本身就查不到行
+    # （实测：15 个版本整列「暂无样本」）。
+    alias = task_alias_map().get(task_filter.strip().casefold(), "") if task_filter else ""
+    query_task = alias or (task_filter or "")
+    query_filter = f'span.description:"{query_task}"' if query_task else ""
+    shown_filter: str | None = None
+    if task_filter and alias and alias.casefold() != task_filter.strip().casefold():
+        shown_filter = f"{task_filter}（{alias}）"
     show_progress("[2/2] 查询各版本任务执行总量与结果分布", quiet=quiet)
     totals, statuses = explore_all(
         sentry_command,
@@ -761,6 +779,7 @@ def collect_report(
         period=period,
         provenance=provenance_line(None, period),
         task_filter=task_filter,
+        resolved_task_filter=shown_filter,
         min_latest_runs=min_latest_runs,
         sort=sort,
         reverse=reverse,

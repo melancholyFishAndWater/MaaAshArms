@@ -26,6 +26,8 @@ try:
         release_version_key,
         repo_root,
         save_artifact,
+        task_alias_map,
+        to_neutral_rows,
         version_label,
         wilson_interval,
     )
@@ -38,6 +40,8 @@ except ImportError:
         release_version_key,
         repo_root,
         save_artifact,
+        task_alias_map,
+        to_neutral_rows,
         version_label,
         wilson_interval,
     )
@@ -53,6 +57,8 @@ __all__ = [
     "release_version_key",
     "repo_root",
     "save_artifact",
+    "task_alias_map",
+    "to_neutral_rows",
     "version_label",
     "wilson_interval",
 ]

@@ -22,6 +22,7 @@ import unicodedata
 from collections.abc import Generator, Iterable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
+from functools import lru_cache
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -257,6 +258,48 @@ def repo_root() -> Path:
     return Path(__file__).resolve().parents[3]
 
 
+@lru_cache(maxsize=1)
+def task_alias_map() -> dict[str, str]:
+    """任务别名（小写）→ MFA 上报的 `span.description`（= `interface.json` 的 `name`）。
+
+    面板上看到的是 `label`（`武装押运`）、代码里调用的是 `entry`（`TaskTrain`），而遥测里
+    `mfa.task` span 的 `span.description` 记的是任务 `name`（`Train`，beta.46/65/73 实测都是
+    这个名字）。报告拿 `description` 当任务键，所以用户按面板文字筛选时要先翻成 `name`——
+    不翻就是「`--task 武装押运` 全是 0 样本」。
+
+    读不到 `interface.json` 时返回空表（按原名筛，不阻断报告）。
+    """
+    path = repo_root() / "assets" / "interface.json"
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except OSError:
+        return {}
+    # interface.json 是 JSONC（带注释），复用流水线那边的去注释实现；直接跑本文件时
+    # 仓库根可能不在 sys.path 上，这里补一次。
+    root = str(repo_root())
+    if root not in sys.path:
+        sys.path.insert(0, root)
+    try:
+        from tools._pipeline_state import strip_jsonc
+    except ImportError:
+        return {}
+    try:
+        data = json.loads(strip_jsonc(raw))
+    except (json.JSONDecodeError, ValueError):
+        return {}
+    aliases: dict[str, str] = {}
+    for task in data.get("task") or []:
+        if not isinstance(task, dict):
+            continue
+        name = task.get("name")
+        if not isinstance(name, str) or not name:
+            continue
+        for key in (name, task.get("label"), task.get("entry")):
+            if isinstance(key, str) and key.strip():
+                aliases.setdefault(key.strip().casefold(), name)
+    return aliases
+
+
 def get_release_pattern() -> re.Pattern[str]:
     """获取项目 Release 匹配正则。"""
     if CONFIG.release_pattern:
@@ -444,6 +487,11 @@ def explore(
 
     ``fresh=False`` 允许 Sentry CLI 复用本地缓存：同一查询只需约三分之一的往返时间，
     代价是结果可能略滞后于最新遥测。
+
+    返回的行**已经换成中性字段名**（`span.description` → `description`、
+    `span.status` → `status`，与工件里读回的行同形）：分析函数只认中性名，把 `span.` 前缀的
+    原始键喂进去会让任务表整片变空（实测 `task-failure` / `task-trend` 的「任务失败率」全是
+    「（无数据）」而「运行失败率」有数——后者只读 `release` 列）。
     """
     base_arguments = ["explore", target, "--dataset", "spans"]
     for field in fields:
@@ -475,7 +523,7 @@ def explore(
             raise RuntimeError("sentry explore 返回的 data 不是数组。")
         rows.extend(data)
         if not result.get("hasMore"):
-            return rows
+            break
 
         next_cursor = result.get("nextCursor") or (result.get("meta") or {}).get("nextCursor")
         if not isinstance(next_cursor, str) or not next_cursor:
@@ -484,6 +532,8 @@ def explore(
             raise RuntimeError(f"sentry explore 返回了重复分页游标：{next_cursor}")
         seen_cursors.add(next_cursor)
         cursor = next_cursor
+
+    return to_neutral_rows(rows, fields)
 
 
 @dataclass(frozen=True)
@@ -853,8 +903,13 @@ def select_latest_release(
         candidates: list[tuple[tuple[int, int, int, int, int], int, int, str]] = []
         for row in rows:
             release = row.get("release")
-            user_count = row.get("count_unique(user)")
-            trace_count = row.get("count_unique(trace)")
+            # 行可能来自实时查询（已换成中性名 `_count_user` / `_count`）或旧工件（原始字段名）
+            user_count = row.get("_count_user")
+            if user_count is None:
+                user_count = row.get("count_unique(user)")
+            trace_count = row.get("_count")
+            if trace_count is None:
+                trace_count = row.get("count_unique(trace)")
             if not isinstance(release, str) or not isinstance(trace_count, int):
                 continue
             users = user_count if isinstance(user_count, int) else 0

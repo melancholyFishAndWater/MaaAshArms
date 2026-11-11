@@ -40,6 +40,7 @@ try:
         module_summary,
         release_version_key,
         row_count,
+        task_alias_map,
         version_label,
         write_console_table,
     )
@@ -49,6 +50,7 @@ except ImportError:
         module_summary,
         release_version_key,
         row_count,
+        task_alias_map,
         version_label,
         write_console_table,
     )
@@ -239,7 +241,12 @@ def build_speed_report(
 
     tasks = sorted({task for task, _version in cells})
     if task_filter:
-        wanted = {t.strip() for t in task_filter.split(",") if t.strip()}
+        aliases = task_alias_map()
+        wanted = {
+            aliases.get(item.casefold(), item)
+            for item in (t.strip() for t in task_filter.split(","))
+            if item
+        }
         tasks = [task for task in tasks if task in wanted]
 
     all_versions, skipped = sort_versions(cells)

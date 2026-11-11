@@ -40,11 +40,20 @@ MFA（MFAAvalonia）的实现在 `MFAAvalonia/Helper/TelemetryService.cs`，本�
 | span | 含义 | 关键列 |
 | --- | --- | --- |
 | `mfa.task_run` | 一次完整运行的根 span（op `mfa.run`） | `release` |
-| `mfa.task` | 单个顶层任务，description = `interface.json` 里的任务 **label**（如 `训练所`） | `span.description`、`span.status`（`ok` / `internal_error` / `cancelled`） |
+| `mfa.task` | 单个顶层任务，description = `interface.json` 里的任务 **`name`**（如 `Train`；**不是**面板上的 `label` 如 `武装押运`） | `span.description`、`span.status`（`ok` / `internal_error` / `cancelled`） |
 | `mfa.node` | 失败节点标记，只在失败时上报 | `span.description` |
 
 `config.json` 的 `ignored_prefixes: ["mfa."]` 把 `mfa.task_run` 与 `mfa.node` 从任务表里排掉，
 任务表只留 `mfa.task`；任务 label 不以 `mfa.` 开头，不会误伤。
+
+**任务筛选认三种写法**：`--task Train`（遥测里的 `name`）、`--task 武装押运`（面板 `label`）、
+`--task TaskTrain`（`entry`）等价，由 `report_common.task_alias_map()` 从 `assets/interface.json`
+翻成 `name` 再查（`task-trend` 的查询过滤与行过滤都走它）。不翻就是整列「暂无样本」——
+2026-11-12 实测 `--task 武装押运 --versions 15` 全部 0，翻完 beta.65 是 11 次、beta.71 是 6 次。
+
+**实时查询的行会换成中性字段名**（`span.description` → `description`、`span.status` → `status`、
+`count_unique(trace)` → `_count`），与 `fetch` 工件的行同形：分析函数只认中性名，喂原始键会让
+任务表整片空（`report_common.explore()`）。
 
 **`failure.node` / `failure.stage` 拿不到**：它们只作为 Sentry Issue 事件的 tag 存在，在 spans 上恒为空。
 需要看「失败卡在哪个节点」时走 Issue 通道：

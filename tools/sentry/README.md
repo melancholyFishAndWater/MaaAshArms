@@ -100,9 +100,9 @@ python -m tools.sentry.cli issue-resolve --status   # 额外联网核对一次�
 | --- | --- |
 | `fetch` | `--name` 工件名、`--preset <task-failure\|task-trend\|context\|all>`、`--period`、`--query`、`--field`（可重复）、`--sort`、`-o/--output`、`--target`、`--no-fresh` |
 | `task-failure` | `--limit`、`--sort <failures\|rate\|total\|name>`、`--release`、`--min-users`、`--min-samples`、`--input`、`--format <console\|markdown\|json>`、`--sections` |
-| `task-trend` | `--task`、`--versions N`（看最近几版）、`--sort <runs\|rate\|delta\|name>`、`--stable-only`、`--min-latest-runs`、`--input`、`--format` |
+| `task-trend` | `--task`（`name` / 面板 `label` / `entry` 都认，如 `Train` / `武装押运` / `TaskTrain`）、`--versions N`（看最近几版）、`--sort <runs\|rate\|delta\|name>`、`--stable-only`、`--min-latest-runs`、`--input`、`--format` |
 | `context` | 与 `task-failure` 同一套参数，默认 `--sections runtime`、按运行量排 |
-| `speed` | `--input`（必需，读 `fetch` 工件）、`--last N`、`--task A,B`、`--compare A..B`、`--min-count`、`--compare-min-count`、`--noise-factor`、`--chart <png>`、`--format` |
+| `speed` | `--input`（必需，读 `fetch` 工件）、`--last N`、`--task A,B`（同样认 label / entry）、`--compare A..B`、`--min-count`、`--compare-min-count`、`--noise-factor`、`--chart <png>`、`--format` |
 | `evidence` | `--list` 只报告不下载、`--issue`、`--event`（历史事件，需配 `--issue`）、`--period`、`--limit`、`--max-events`、`--no-images` / `--no-log`、`--force`、`--outdir`、`--sort <newest\|oldest>`、`--keep-duplicates`、`--log-limit` |
 | `explore-csv` | `--log-out`、`--json-out`、`--no-write` |
 | `issue-resolve` | `--install`（写 `.git/hooks/pre-push`，默认 list-only）、`--install --apply`（写远端）、`--uninstall`、`--check`、`--tag NAME`（处理这个本地 tag 自己的提交，可重复；不传且没有 stdin 输入时算最新 tag 之后的提交，tag 后没有提交则算它自己那段）、`--ref LINE`（可重复，模拟 pre-push 输入）、`--stdin-file`、`--issue SHORT-ID`（追加，可重复）、`--only`（只用 `--issue`，不扫提交范围）、`--status`（额外联网核对状态并写回本地记录；默认只读本地记录与本地遥测库）、`--org`、`--base-url`、`--issue-prefix`、`--force` |

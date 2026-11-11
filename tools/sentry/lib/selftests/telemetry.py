@@ -9,7 +9,7 @@ import shutil
 
 
 from .asserts import save_probe_artifact, CheckFailure, _eq, _contains
-from .deps import CONFIG, task_failure_report, task_trend_report, DEFAULT_ARTIFACT_DIR, Artifact, release_version_key, repo_root, version_label, wilson_interval
+from .deps import CONFIG, task_alias_map, task_failure_report, task_trend_report, to_neutral_rows, DEFAULT_ARTIFACT_DIR, Artifact, release_version_key, repo_root, version_label, wilson_interval
 from .fixtures import RELEASE_D38, RELEASE_D37_NEW_MFA, V38, V37, V36, ROWS_TOTAL, ROWS_STATUS, ROWS_RUN_TOTAL, ROWS_RUN_FAILED, ROWS_RELEASE_USERS, ROWS_RUNTIME_OS, ROWS_RUNTIME_ENV, MEASUREMENTS, EXPECTED_BETA37_TOTAL, EXPECTED_BETA37_FAILED, ARTIFACT_FIXTURE_TIME
 def check_release_parsing() -> list[str]:
     """release 解析：双 @ 拼接取资源版本，不能命中前面的 MFA 版本。"""
@@ -613,3 +613,44 @@ def check_telemetry_index() -> list[str]:
     _eq(notes[0][1], "version", "版本注记的颜色")
 
     return ["候选抽取（两种写法）/ release 归一 / 分级匹配 / 注记 各自有断言"]
+
+
+def check_task_aliases() -> list[str]:
+    """任务别名：`interface.json` 的 label / entry → 遥测里 `span.description` 的 `name`。
+
+    2026-11-12 用户报 `task-trend --task 武装押运 --versions 15` 整列「暂无样本」：面板写的是
+    `label`（`武装押运`），遥测记的是 `name`（`Train`），查询过滤直接用原文就查不到行。
+    """
+    aliases = task_alias_map()
+    _eq(aliases.get("武装押运"), "Train", "中文标签翻成任务 name")
+    _eq(aliases.get("tasktrain"), "Train", "入口名也翻成 name")
+
+    # 实时查询回来的行是 `span.*` 原始键，分析函数只认中性名；不转换任务表会整片空
+    rows = to_neutral_rows(
+        [{"span.description": "Train", "span.status": "ok", "count_unique(trace)": 3}],
+        ("span.description", "span.status", "count_unique(trace)"),
+    )
+    _eq(sorted(rows[0]), ["_count", "description", "status"], "实时行换成中性字段名")
+
+    # 筛选解析：别名优先、子串仍可用、都不命中时原样返回（让调用方拿到空表）
+    saved = task_trend_report.task_alias_map
+    task_trend_report.task_alias_map = lambda: {"测试任务": "XTestTask"}
+    try:
+        _eq(
+            task_trend_report.resolve_task_name("测试任务", ["XTestTask", "Other"]),
+            "XTestTask",
+            "标签命中遥测里的 name",
+        )
+        _eq(
+            task_trend_report.resolve_task_name("XTest", ["XTestTask"]),
+            "XTestTask",
+            "没给别名时按子串匹配",
+        )
+        _eq(
+            task_trend_report.resolve_task_name("没这个", ["XTestTask"]),
+            "没这个",
+            "都不命中就原样返回",
+        )
+    finally:
+        task_trend_report.task_alias_map = saved
+    return ["别名映射 / 实时行中性化 / 筛选解析 各自有断言"]
