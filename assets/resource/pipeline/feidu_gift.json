@@ -81,7 +81,7 @@
             ]
         },
         "timeout": 60000, // 比较卡顿的话进去时间长
-        "rate_limit": 5000,
+        "rate_limit": 3000,
         "next": [
             "GiftBranchHome",
             "[JumpBack]GiftEnterRules",
