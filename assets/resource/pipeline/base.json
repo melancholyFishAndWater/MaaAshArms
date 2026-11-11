@@ -49,8 +49,8 @@
     },
     "BaseProbeConfirm": {
         "desc": "[end] 有确认按钮",
-        "recognition": "OCR",
-        "expected": "确认",
+        "recognition": "TemplateMatch",
+        "template": "Base/Confirm.png",
         "roi": [
             320,
             148,
