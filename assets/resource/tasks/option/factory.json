@@ -76,7 +76,7 @@
                 {
                     "name": "No",
                     "pipeline_override": {
-                        "TaskFactory": {
+                        "FactoryProbeDaily": {
                             "custom_recognition_param": {
                                 "enable": false
                             }
