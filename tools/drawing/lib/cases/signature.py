@@ -28,6 +28,8 @@ from .pack import REPO_ROOT
 # 读日志、拼数据的那批模块（改了要读一遍日志重新比数据，不一定重画）
 _PARSE_IMPL_FILES = (
     "tools/drawing/lib/flowlog/logparse.py",
+    "tools/drawing/lib/flowlog/synthesize.py",
+    "tools/drawing/lib/flowlog/agentmark.py",
     "tools/drawing/lib/flowlog/model.py",
     "tools/drawing/lib/flowlog/notes.py",
     "tools/drawing/lib/flowlog/stale.py",

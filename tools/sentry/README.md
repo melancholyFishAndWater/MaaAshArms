@@ -4,6 +4,7 @@
 下载到本地、做统计分析、输出结论。只读已上报的数据，只出表格与结论；采集与上报在 MFA 侧。
 
 - 模块分布、编写约束、该工具的功能取舍：[`AGENTS.md`](AGENTS.md)
+- 流程、入口、数据变换与不变契约：[`docs/flow.md`](docs/flow.md)
 - 统计口径、release/版本口径、证据包与反查、已知坑：[`docs/`](docs/)
 - 改代码前要跑的校验清单：[`tools/validation/README.md`](../validation/README.md)
 

@@ -83,7 +83,7 @@ python tools/drawing/cli.py flow <安装根>/debug/maafw.log --no-overlay
 | `--log-level` / `--log-file` | 工具日志（默认 `temp/logs/flow_from_log_<时间戳>_<pid>.log`；`none` = 只走控制台） |
 
 产物：`temp/flow/<日志名>_<时间戳>.png`；`--out` / `--outdir` 改路径。版面与端口规则见
-[docs/layout.md](./docs/layout.md)；读图前该知道的口径见 [docs/parsing.md](./docs/parsing.md)。
+[docs/layout.md](./docs/layout.md)；读图前该知道的口径见 [docs/parsing.md](./docs/parsing.md)；完整入口→解析→绘制→落盘流程见 [docs/flow.md](./docs/flow.md)。
 
 ## `cases`：证据包 → 图（带 manifest 幂等）
 

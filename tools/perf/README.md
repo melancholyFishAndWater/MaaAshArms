@@ -10,7 +10,7 @@
 判断「改 pipeline 有没有变快」「真机上一轮多久」用 `rounds`；`bench` 的数字不能当成真机一轮的时间
 （为什么见 [`docs/methodology.md`](docs/methodology.md)）。
 
-结构与改法见 [`AGENTS.md`](AGENTS.md)；踩过的坑见 [`docs/pitfalls.md`](docs/pitfalls.md)。
+结构与改法见 [`AGENTS.md`](AGENTS.md)；程序入口、数据流和不变契约见 [`docs/flow.md`](docs/flow.md)；踩过的坑见 [`docs/pitfalls.md`](docs/pitfalls.md)。
 
 ## 真实日志：`rounds`
 
