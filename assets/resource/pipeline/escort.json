@@ -2,14 +2,13 @@
     /*
     INFO 防卫局任务
 
-    使用任务链结构 v3.0 校验年月日 26/10/27
-    使用节点命名与分类 v3.0 校验年月日 26/10/27
+    使用任务链结构 v3.10 校验年月日 26/11/12
+    使用节点命名与分类 v3.3 校验年月日 26/11/12
     */
-    // TODO 判断物品价值、刷新
     "TaskEscort": {
         "desc": "防卫局任务",
         "next": [
-            "BaseErrorNext",
+            "EscortBranchHome",
             "EscortEnterHome",
             "[JumpBack]TrainCloseStatusArrow",
             "[JumpBack]BaseBranchError",
@@ -31,13 +30,13 @@
         "post_wait_freezes": 1000,
         "next": [
             "BaseErrorNext",
-            "TrainCloseStatusArrow",
             "[JumpBack]BaseBranchError",
-            "TrainCloseStatusArrowSuccess"
+            "TrainCloseStatusArrowSuccess",
+            "TrainCloseStatusArrow"
         ]
     },
-    "TrainProbeCloseArrow": {
-        "desc": "[end] 有关闭箭头",
+    "TrainCloseStatusArrowSuccess": {
+        "desc": "[end] 关闭武装押运一览成功",
         "recognition": "TemplateMatch",
         "template": "Train/CloseArrow.png",
         "roi": [
@@ -45,13 +44,6 @@
             191,
             140,
             173
-        ]
-    },
-    "TrainCloseStatusArrowSuccess": {
-        "desc": "[end] 关闭武装押运一览成功",
-        "recognition": "And",
-        "all_of": [
-            "TrainProbeCloseArrow"
         ],
         "inverse": true
     },
@@ -67,8 +59,6 @@
             55
         ]
     },
-    /* -------------------- 就位 -------------------- */
-    // INFO 进入防卫局
     "EscortEnterHome": {
         "desc": "进入防卫局主页面",
         "recognition": "TemplateMatch",
@@ -85,8 +75,8 @@
             "BaseErrorNext",
             "[JumpBack]BaseProbeBlackPage",
             "EscortBranchHome",
-            "EscortEnterHome",
-            "[JumpBack]BaseBranchError"
+            "[JumpBack]BaseBranchError",
+            "EscortEnterHome"
         ],
         "on_error": [
             "EscortClickCancel"
@@ -100,8 +90,7 @@
             "EscortProbeHomeName"
         ],
         "next": [
-            "BaseErrorNext",
-            "[JumpBack]EscortBranchDelivery",
+            "[JumpBack]EscortClickDeliveryButton",
             "[JumpBack]EscortEnterAccept",
             "[JumpBack]BaseBranchError",
             "BaseProbeFreezes",
@@ -111,9 +100,30 @@
             "EscortClickCancel"
         ]
     },
-    /* -------------------- 工作-领取奖励 -------------------- */
-    "EscortBranchDelivery": {
-        "desc": "[jp] 点击一键交付",
+    /* -------------------- 动作-领取奖励 -------------------- */
+    "EscortClickDeliveryButton": {
+        "desc": "点击一键交付按钮",
+        "recognition": "And",
+        "all_of": [
+            "EscortProbeDeliverable",
+            "EscortProbeDeliveryButton"
+        ],
+        "box_index": 1,
+        "action": "Click",
+        "post_wait_freezes": 1000,
+        "next": [
+            "BaseErrorNext",
+            "BaseClickRewardTap",
+            "[JumpBack]BaseBranchError",
+            "EscortClickDeliveryButton"
+        ],
+        "on_error": [
+            "EscortClickCancel"
+        ]
+    },
+    // 可交付任务
+    "EscortProbeDeliverable": {
+        "desc": "[end] 有一键交付奖励",
         "recognition": "OCR",
         "expected": "00:00:00",
         "replace": [
@@ -139,19 +149,11 @@
             464,
             836,
             58
-        ],
-        "next": [
-            "BaseErrorNext",
-            "BaseClickRewardTap",
-            "[JumpBack]EscortClickDeliveryButton",
-            "[JumpBack]BaseBranchError"
-        ],
-        "on_error": [
-            "EscortClickCancel"
         ]
     },
-    "EscortClickDeliveryButton": {
-        "desc": "[jp] 点击一键交付按钮",
+    // 一键交付按钮
+    "EscortProbeDeliveryButton": {
+        "desc": "[end] 有一键交付按钮",
         "recognition": "TemplateMatch",
         "template": "Escort/EscortDelivery.png",
         "method": 10001,
@@ -160,12 +162,9 @@
             599,
             309,
             121
-        ],
-        "action": "Click",
-        "post_wait_freezes": 1000
+        ]
     },
-    /* -------------------- 工作-接取任务 -------------------- */
-    // INFO 进入接取页面
+    /* -------------------- 动作-接取任务 -------------------- */
     "EscortEnterAccept": {
         "desc": "进入接取页面",
         "recognition": "TemplateMatch",
@@ -183,14 +182,14 @@
         "next": [
             "BaseErrorNext",
             "EscortChooseRecommend",
-            "EscortEnterAccept",
-            "[JumpBack]BaseBranchError"
+            "[JumpBack]BaseBranchError",
+            "EscortEnterAccept"
         ],
         "on_error": [
             "EscortClickCancel"
         ]
     },
-    // INFO 动作链 推荐-接取-确认
+    // 一键推荐
     "EscortChooseRecommend": {
         "desc": "点击一键推荐",
         "recognition": "OCR",
@@ -207,13 +206,14 @@
             "BaseErrorNext",
             "EscortClickConfirm",
             "[JumpBack]BaseBranchError",
-            "EscortProbeHomeName" // INFO 防止点到其他区域 窗口消失导致卡死
+            "EscortProbeHomeName", // INFO 防止点到其他区域 窗口消失导致卡死
+            "EscortChooseRecommend"
         ],
         "on_error": [
             "EscortClickCancel"
         ]
     },
-    // INFO 执行任务
+    // 确认
     "EscortClickConfirm": {
         "desc": "点击确认按钮执行任务",
         "recognition": "OCR",
@@ -230,15 +230,16 @@
         "rate_limit": 3000,
         "next": [
             "BaseErrorNext",
+            "EscortProbeHomeName",
             "EscortClickConfirm",
-            "[JumpBack]BaseBranchError",
-            "EscortProbeHomeName"
+            "[JumpBack]BaseBranchError"
         ],
         "on_error": [
             "EscortClickCancel"
         ]
     },
-    /* -------------------- 错误收尾 -------------------- */
+    /* -------------------- 动作-错误收尾 -------------------- */
+    // INFO 取消接取
     "EscortClickCancel": {
         "desc": "接取任务失败 尝试点击取消(防卡死)",
         "recognition": "And",
@@ -246,6 +247,7 @@
             "EscortProbeCancelPage",
             "EscortProbeClickCancel"
         ],
+        "box_index": 1,
         "action": "Click",
         "post_wait_freezes": 1000,
         "next": [
@@ -258,6 +260,7 @@
             "Node.Action.Succeeded": "接取失败 尝试取消接取"
         }
     },
+    // 取消按钮
     "EscortProbeClickCancel": {
         "desc": "[end] 有取消按钮",
         "recognition": "OCR",
@@ -269,6 +272,7 @@
             41
         ]
     },
+    // 取消页面
     "EscortProbeCancelPage": {
         "desc": "[end] 在取消页面",
         "recognition": "OCR",
@@ -280,6 +284,7 @@
             71
         ]
     },
+    // 点击取消
     "EscortClickCancelButton": {
         "desc": "[jp] 点击取消按钮",
         "recognition": "And",
