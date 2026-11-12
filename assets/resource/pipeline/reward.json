@@ -9,13 +9,13 @@
         "desc": "领取奖励任务",
         "timeout": 60000,
         "next": [
-            "BaseProbeFreezes",
             "[JumpBack]EntrustRewardableNow",
             "[JumpBack]ShopEnterHome",
             "[JumpBack]MissionBranchReward",
             "[JumpBack]SikuBranchReward",
             "[JumpBack]BaseBranchError",
-            "[JumpBack]BaseReturnHome"
+            "[JumpBack]BaseReturnHome",
+            "BaseTaskStop"
         ]
     },
     /* -------------------- 探测 -------------------- */
