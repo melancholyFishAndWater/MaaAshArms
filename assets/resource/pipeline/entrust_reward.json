@@ -1,9 +1,9 @@
 {
     /*
     INFO 委派（委托）
-    
-    使用任务链结构 v3.9 校验年月日 26/11/02
-    使用节点命名与分类 v3.9 校验年月日 26/11/02
+
+    使用任务链结构 v3.10 校验年月日 26/11/12
+    使用节点命名与分类 v3.3 校验年月日 26/11/12
     */
     /* -------------------- 动作-等待超时 -------------------- */
     "EntrustStopRewardTimeout": {
@@ -11,8 +11,7 @@
         "action": "Custom",
         "custom_action": "EntrustStopRewardTimeoutAct"
     },
-    /* -------------------- 动作 -------------------- */
-    // 领取大关页面
+    /* -------------------- 动作-点进大关 -------------------- */
     "EntrustEnterRewardStage": {
         "desc": "从主页进入领取奖励大关页面",
         "recognition": "OCR",
@@ -27,12 +26,12 @@
         "post_wait_freezes": 1000,
         "next": [
             "BaseErrorNext",
-            "EntrustClickRewardLevel",
+            "EntrustClickRewardLevel", // INFO 委派完成关卡
             "[JumpBack]BaseBranchError",
             "EntrustEnterRewardStage"
         ]
     },
-    // 领取小关详情页面
+    /* -------------------- 动作-选中小关 -------------------- */
     "EntrustClickRewardLevel": {
         "desc": "点击可领取的关卡",
         "recognition": "OCR",
@@ -58,7 +57,7 @@
             "EntrustClickRewardLevel"
         ]
     },
-    // 领取按钮
+    /* -------------------- 动作-点击领取 -------------------- */
     "EntrustClickRewardButton": {
         "desc": "点击领取按钮",
         "recognition": "And",
@@ -74,9 +73,9 @@
             "EntrustClickRewardButton"
         ]
     },
-    // 战斗胜利
+    /* -------------------- 分支-战斗胜利 -------------------- */
     "EntrustBranchBattleWin": {
-        "desc": "[jp] 战斗胜利 点击tap区域",
+        "desc": "战斗胜利 点击tap区域",
         "recognition": "OCR",
         "expected": "战斗胜利",
         "roi": [
@@ -93,7 +92,7 @@
             "[JumpBack]BaseClickTapBox"
         ]
     },
-    // 点击完成
+    /* -------------------- 动作-领取完成 -------------------- */
     "EntrustClickFinish": {
         "desc": "点击完成",
         "recognition": "OCR",
@@ -108,7 +107,7 @@
         "post_wait_freezes": 1000,
         "next": [
             "BaseErrorNext",
-            "EntrustProbeRewardSuccess",
+            "EntrustProbeRewardSuccess", // INFO 回大关页
             "[JumpBack]BaseBranchError",
             "EntrustClickFinish"
         ]
