@@ -67,10 +67,43 @@
             43
         ],
         "next": [
+            "ExploreProbeNoTimes",
             "ExploreClickStart",
             "[JumpBack]ExploreSwitchLevel",
             "[JumpBack]BaseBranchError"
         ]
+    },
+    "ExploreProbeNoTimes": {
+        "desc": "[end] 没有探索次数",
+        "recognition": "OCR",
+        "expected": "0",
+        "replace": [
+            [
+                "O",
+                "0"
+            ],
+            [
+                "o",
+                "0"
+            ],
+            [
+                "D",
+                "0"
+            ],
+            [
+                "d",
+                "0"
+            ]
+        ],
+        "roi": [
+            1083,
+            626,
+            64,
+            35
+        ],
+        "focus": {
+            "Node.Recognition.Succeeded": "没有探索次数 任务结束"
+        }
     },
     /* -------------------- 动作-切换关卡 -------------------- */
     "ExploreSwitchLevel": {
