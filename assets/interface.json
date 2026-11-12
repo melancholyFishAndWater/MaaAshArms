@@ -64,7 +64,7 @@
             "default_check": true
         },
         {
-            "name": "Reward",
+            "name": "FeiduReward",
             "label": "收取资源",
             "entry": "TaskFeiduReward",
             "group": [

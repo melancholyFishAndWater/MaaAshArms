@@ -26,10 +26,13 @@
                     "name": "Training"
                 },
                 {
+                    "name": "Explore"
+                },
+                {
                     "name": "Entrust"
                 },
                 {
-                    "name": "Reward"
+                    "name": "FeiduReward"
                 },
                 {
                     "name": "Gift"
