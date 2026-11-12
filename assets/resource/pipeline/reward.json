@@ -2,9 +2,10 @@
     /*
     INFO 领取奖励
 
-    使用任务链结构 v1.7 校验年月日 26/10/19
-    使用节点命名与分类 v1.8 校验年月日 26/10/19
+    使用任务链结构 v3.10 校验年月日 26/11/12
+    使用节点命名与分类 v3.3 校验年月日 26/11/12
     */
+    // INFO 任务入口
     "TaskReward": {
         "desc": "领取奖励任务",
         "timeout": 60000,
@@ -18,7 +19,8 @@
             "BaseTaskStop"
         ]
     },
-    /* -------------------- 探测 -------------------- */
+    /* -------------------- 通用探测 -------------------- */
+    // 有任务奖励
     "MissionProbeRewardable": {
         "desc": "[end] 有任务奖励",
         "recognition": "TemplateMatch",
@@ -31,33 +33,9 @@
             60
         ]
     },
-    "MissionProbeUnrewardable": {
-        "desc": "没有任务奖励",
-        "recognition": "And",
-        "all_of": [
-            "MissionProbeRewardable"
-        ],
-        "inverse": true
-    },
-    "MissionProbeHome": {
-        "desc": "[end] 在任务界面",
-        "recognition": "OCR",
-        "expected": "任务",
-        "roi": [
-            108,
-            15,
-            189,
-            44
-        ]
-    },
-    /* -------------------- 工作 -------------------- */
-    // TODO 领取邮箱奖励
-    // "TaskEmail": {
-    //     "desc": "领取邮箱奖励"
-    // },
-    // INFO 任务奖励
+    /* -------------------- 分支-任务奖励 -------------------- */
     "MissionBranchReward": {
-        "desc": "[jp][once] 任务奖励分支",
+        "desc": "[once] 任务奖励分支",
         "max_hit": 1,
         "recognition": "And",
         "all_of": [
@@ -65,14 +43,43 @@
         ],
         "timeout": 30000,
         "next": [
+            "MissionEnterHome",
             "[JumpBack]BaseBranchError",
-            "MissionProbeUnrewardable",
+            "MissionProbeUnrewardable"
+        ]
+    },
+    // 没有任务奖励
+    "MissionProbeUnrewardable": {
+        "desc": "[end] 没有任务奖励",
+        "recognition": "And",
+        "all_of": [
+            "MissionProbeRewardable"
+        ],
+        "inverse": true
+    },
+    /* -------------------- 动作-进入主页 -------------------- */
+    "MissionEnterHome": {
+        "desc": "进入任务奖励页面",
+        "recognition": "And",
+        "all_of": [
+            "MissionProbeTaskText",
+            "MissionProbeRewardable"
+        ],
+        "box_index": 0,
+        "action": "Click",
+        "post_wait_freezes": 1000,
+        "next": [
+            "BaseErrorNext",
+            "[JumpBack]MissionClickGetReward",
+            "[JumpBack]BaseClickRewardTap",
+            "MissionProbeEnd",
+            "[JumpBack]BaseBranchError",
             "MissionEnterHome"
         ]
     },
-    "MissionEnterHome": {
-        "desc": "[max] 进入任务奖励页面",
-        "max_hit": 10,
+    // 任务按钮文字
+    "MissionProbeTaskText": {
+        "desc": "[end] 有任务按钮文字",
         "recognition": "OCR",
         "expected": "任务",
         "roi": [
@@ -80,43 +87,9 @@
             677,
             49,
             32
-        ],
-        "action": "Click",
-        "post_wait_freezes": 1000,
-        "next": [
-            "MissionLoopHome",
-            "[JumpBack]BaseBranchError",
-            "MissionEnterHome"
         ]
     },
-    "MissionLoopHome": {
-        "desc": "[Loop]  循环",
-        "recognition": "And",
-        "all_of": [
-            "MissionProbeHome"
-        ],
-        "rate_limit": 1000,
-        "timeout": 30000,
-        "next": [
-            "MissionEnd",
-            "[JumpBack]MissionClickGetReward",
-            "[JumpBack]BaseClickRewardTap",
-            "[JumpBack]BaseBranchError"
-        ]
-    },
-    "MissionEnd": {
-        "desc": "[end] 领取资源结束标志",
-        "recognition": "TemplateMatch",
-        "template": "Reward/Dart.png",
-        "method": 10001,
-        "threshold": 0.8,
-        "roi": [
-            986,
-            140,
-            195,
-            194
-        ]
-    },
+    // 一键领取
     "MissionClickGetReward": {
         "desc": "[jp] 点击一键领取",
         "recognition": "TemplateMatch",
@@ -129,5 +102,19 @@
             84
         ],
         "post_wait_freezes": 1000
+    },
+    // 领取结束
+    "MissionProbeEnd": {
+        "desc": "[end] 领取资源结束标志",
+        "recognition": "TemplateMatch",
+        "template": "Reward/Dart.png",
+        "method": 10001,
+        "threshold": 0.8,
+        "roi": [
+            986,
+            140,
+            195,
+            194
+        ]
     }
 }
