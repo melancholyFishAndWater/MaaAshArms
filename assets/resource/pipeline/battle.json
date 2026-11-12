@@ -292,7 +292,8 @@
             "BattleStopActionDart",
             "BattleStopReplayLocked",
             "BattleClickReplay",
-            "[JumpBack]BaseBranchError"
+            "[JumpBack]BaseBranchError",
+            "[JumpBack]BaseProbeBlackPage"
             // "[JumpBack]BattleClickReplay", // TODO
         ],
         "focus": {
