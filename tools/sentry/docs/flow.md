@@ -1,5 +1,53 @@
 # tools/sentry 程序流程
 
+## 总流程
+
+```mermaid
+flowchart TD
+    A[启动 tools.sentry.cli] --> B{子命令}
+    B -->|fetch| F1[解析参数] --> F2[生成查询]
+    F2 --> F3[Explore 并发与分页]
+    F3 --> F4[转换中性字段] --> F5[组装 Artifact]
+    F5 --> F6[写入 telemetry]
+    B -->|task-failure/context| R1{数据来源}
+    R1 -->|input| R2[load_artifact]
+    R1 -->|在线| R3[选择 release 并查询]
+    R2 --> R4[build_report]
+    R3 --> R4
+    R4 --> R5[任务/marker/运行/环境聚合]
+    R5 --> R6[console/markdown/json]
+    B -->|task-trend| T1[discover_versions]
+    T1 --> T2[任务别名翻译] --> T3[按 name 查询]
+    T3 --> T4[趋势聚合] --> T5[Delta pp/Wilson]
+    T5 --> T6[输出]
+    B -->|speed| S1[读取工件] --> S2[解析 duration]
+    S2 --> S3[排序截取] --> S4[A..B 比较]
+    S4 --> S5[输出/可选图表]
+    B -->|evidence| E1[调查 issue/event]
+    E1 --> E2[下载附件] --> E3[安全解包]
+    E3 --> E4[拉取 trace logs] --> E5[去重排序]
+    E5 --> E6[写 maafw.log/evidence.json]
+    B -->|issue-resolve| I1[解析 tag/ref]
+    I1 --> I2[提取 issue] --> I3[读取本地状态]
+    I3 --> I4{--status?}
+    I4 -->|是| I5[查询远端]
+    I4 -->|否| I6[分类输出]
+    I5 --> I6
+    I6 --> I7{--apply?}
+    I7 -->|是| I8[PUT 远端]
+    I7 -->|否| Z[结束]
+    I8 --> Z
+    B -->|telemetry| L1[刷新 issue 索引] --> L2[离线匹配] --> Z
+    B -->|flow| D1[转发 drawing] --> Z
+    B -->|selftest| Q1[28 项纯逻辑检查] --> Z
+    F6 --> Z
+    R6 --> Z
+    T6 --> Z
+    S5 --> Z
+    E6 --> Z
+    Z --> X[参数错误=2；运行错误=1]
+```
+
 ## 入口与公共派发
 
 `python -m tools.sentry.cli <子命令>` 进入 `cli.py`。

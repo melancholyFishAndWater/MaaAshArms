@@ -1,5 +1,33 @@
 # tools/perf 程序流程
 
+## 总流程
+
+```mermaid
+flowchart TD
+    A[启动 tools/perf/cli.py] --> B{子命令}
+    B -->|rounds| R1[解析参数]
+    R1 --> R2{--selftest?}
+    R2 -->|是| R3[25 项纯逻辑检查]
+    R2 -->|否| R4[发现日志并去重]
+    R4 --> R5[读取 pipeline 建立模块映射]
+    R5 --> R6[解析事件并配对 Dispatch Window]
+    R6 --> R7[基线/stale/窗口/补齐/分桶]
+    R7 --> R8[文本报告或固定 JSON]
+    R8 --> R9{结果}
+    R9 -->|日志缺失| E2[退出 2]
+    R9 -->|解析/IO 失败| E1[退出 1]
+    R9 -->|成功| Z[结束]
+    R3 --> Z
+    B -->|bench| B1[解析 modes/repeat/延迟]
+    B1 --> B2{--selftest?}
+    B2 -->|是| B3[18 项纯逻辑检查] --> Z
+    B2 -->|否| B4[创建工作目录与合成资源]
+    B4 --> B5[预热并回放空白/命中帧]
+    B5 --> B6[perf_counter 测量 repeat 次]
+    B6 --> B7[中位数/min/max/加权时间]
+    B7 --> B8[报告或 bench.json] --> Z
+```
+
 ## 入口
 
 `python tools/perf/cli.py rounds ...` 和 `python tools/perf/cli.py bench ...`

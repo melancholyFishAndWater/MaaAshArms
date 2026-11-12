@@ -1,5 +1,32 @@
 # tools/drawing 程序流程
 
+## 总流程
+
+```mermaid
+flowchart TD
+    A[启动 tools/drawing/cli.py] --> B{子命令}
+    B -->|flow| F1[解析 FlowOptions]
+    F1 --> F2[遥测注解与默认图片目录]
+    F2 --> F3{增量命中?}
+    F3 -->|是| F4[返回 skipped FlowResult]
+    F3 -->|否| F5[parse_log]
+    F5 --> F6[round_steps / compose_columns / build_notes]
+    F6 --> F7[draw_flow 贴图/画框/连线]
+    F7 --> F8[临时 PNG + os.replace]
+    F8 --> F9[输出 FlowResult]
+    B -->|cases| C1[解析 case/bulk/version/local-release 参数]
+    C1 --> C2[加载遥测并筛选 issue]
+    C2 --> C3[定位 task/日志/证据包]
+    C3 --> C4[统一调用 render_flow]
+    C4 --> C5{绘制成功?}
+    C5 -->|否| C6[退概览卡并计失败]
+    C5 -->|是| C7[manifest 增量记录]
+    C6 --> C8[现场图按失败时刻导出]
+    C7 --> C8
+    C8 --> C9[按 issue/origin 清理并保存 manifest]
+    B -->|whiteboard| W1[扫描图片和引用] --> W2[转换并校验] --> W3[原子替换引用] --> W4[check/dry-run/错误码]
+```
+
 ## 入口与分发
 
 `tools/drawing/cli.py` 只负责 `flow`、`cases`、`whiteboard` 的命令派发和延迟
