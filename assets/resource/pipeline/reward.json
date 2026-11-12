@@ -94,6 +94,7 @@
         "desc": "[jp] 点击一键领取",
         "recognition": "TemplateMatch",
         "template": "Reward/RewardLight.png",
+        "method": 10001,
         "action": "Click",
         "roi": [
             992,
