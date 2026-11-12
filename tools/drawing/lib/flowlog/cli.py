@@ -7,6 +7,7 @@ from __future__ import annotations
 
 
 import argparse
+import io
 import logging
 import os
 import sys
@@ -414,6 +415,11 @@ def create_argument_parser(prog: str | None = None) -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # 保持终端现有编码，无法编码的字符替换，而非让 --list 中途抛 UnicodeEncodeError。
+    # 只处理可重配置的文本流，避免影响库调用或测试注入的 StringIO。
+    for stream in (sys.stdout, sys.stderr):
+        if isinstance(stream, io.TextIOWrapper):
+            stream.reconfigure(errors="replace")
     args = create_argument_parser().parse_args(argv)
     if str(REPO_ROOT) not in sys.path:
         sys.path.insert(0, str(REPO_ROOT))
