@@ -142,6 +142,52 @@ def check_spec_version(ctx: Ctx) -> None:
 # --------------------------------------------------------------------------
 
 
+def check_custom_params(ctx: Ctx, *, pipeline: bool, interface: bool, tasks: bool) -> None:
+    """A32/B9：自定义参数只能写在对应类型为 Custom 的识别/动作上。"""
+    def check(name: str, base: dict, patch: dict, file: Path, label: str, rule: str) -> None:
+        for kind in ("recognition", "action"):
+            key = f"custom_{kind}_param"
+            nested = patch.get(kind)
+            has_flat = key in patch
+            has_nested = isinstance(nested, dict) and isinstance(nested.get("param"), dict) and key in nested["param"]
+            if not (has_flat or has_nested):
+                continue
+            effective = patch.get(kind, base.get(kind))
+            if isinstance(effective, dict) and "type" not in effective and kind in patch:
+                effective = base.get(kind)
+            typ = effective.get("type") if isinstance(effective, dict) else effective
+            if typ == "Custom":
+                continue
+            ctx.add(rule, "error", file, find_line(file, label),
+                    f"{label} 的节点 {name}.{key} 要求 {kind}: Custom；当前为 {typ or '默认 DirectHit/DoNothing'}")
+
+    if pipeline:
+        for name, node in ctx.nodes.items():
+            check(name, {}, node.data, node.file, name, "A32-custom-param-type")
+
+    def visit(value, file: Path, label: str) -> None:
+        if isinstance(value, list):
+            for item in value:
+                visit(item, file, label)
+        elif isinstance(value, dict):
+            for key, child in value.items():
+                if key == "pipeline_override" and isinstance(child, dict):
+                    for target, patch in child.items():
+                        node = ctx.nodes.get(target)
+                        if node is not None and isinstance(patch, dict):
+                            check(target, node.data, patch, file, label, "B9-custom-param-type")
+                else:
+                    visit(child, file, label)
+
+    if interface and ctx.interface_file and ctx.interface:
+        visit(ctx.interface, ctx.interface_file, "interface")
+    if tasks:
+        for name, option in ctx.options.items():
+            visit(option.data, option.file, name)
+        for file, preset in ctx.presets:
+            visit(preset, file, str(preset.get("name") or file.name))
+
+
 def check_override_targets(ctx: Ctx, override, file: Path, label: str) -> None:
     """B 域：interface / tasks 里 pipeline_override 的目标节点必须已在 pipeline 中定义。"""
     if not isinstance(override, dict):

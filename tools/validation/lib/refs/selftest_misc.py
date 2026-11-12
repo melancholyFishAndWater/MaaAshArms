@@ -7,7 +7,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from .model import Ctx, Node, Option, Reg
-from .rules_misc import check_agent, check_option_shape, template_calls_in_source
+from .rules_misc import check_agent, check_custom_params, check_option_shape, template_calls_in_source
 from .rules_pipeline_a import (
     _is_inverse_guard,
     check_a17_guard_in_next,
@@ -32,6 +32,28 @@ from .rules_pipeline_b import (
 from .selftest_pipeline import synth_ctx
 
 def _checks_rest(checks: list[tuple]) -> None:
+    param_ctx = synth_ctx({
+        "TaskFactory": {},
+        "FactoryProbeDaily": {"recognition": "Custom"},
+        "ActionCustom": {"action": "Custom", "custom_action_param": {}},
+        "BadRecognition": {"recognition": "OCR", "custom_recognition_param": {}},
+        "BadAction": {"action": "Click", "custom_action_param": {}},
+        "NestedValid": {"recognition": {"type": "Custom", "param": {"custom_recognition_param": {}}}},
+    })
+    param_ctx.options = {"factory_daily": Option("factory_daily", {"cases": [
+        {"name": "No", "pipeline_override": {"TaskFactory": {"custom_recognition_param": {"enable": False}}}},
+        {"name": "Yes", "pipeline_override": {"FactoryProbeDaily": {"custom_recognition_param": {"enable": True}}}},
+        {"name": "Override", "pipeline_override": {"TaskFactory": {"recognition": "Custom", "custom_recognition_param": {}}}},
+        {"name": "NestedOverride", "pipeline_override": {"FactoryProbeDaily": {"recognition": {"param": {"custom_recognition_param": {}}}}}},
+    ]}, Path("factory.json"))}
+    check_custom_params(param_ctx, pipeline=True, interface=True, tasks=True)
+    param_findings = [f for f in param_ctx.findings if f.id in ("A32-custom-param-type", "B9-custom-param-type")]
+    checks += [
+        (len(param_findings) == 3, "自定义参数仅错误类型报错，覆盖继承及显式 Custom 有效"),
+        (any("TaskFactory.custom_recognition_param" in f.message and f.id == "B9-custom-param-type" for f in param_findings), "工厂开关注入错误节点时报警"),
+        (any("BadAction.custom_action_param" in f.message for f in param_findings), "自定义动作参数检查 action 而非 recognition"),
+    ]
+
     # A17：守卫探针在 next 里重复（pipeline-structure.md §10）
     """后半段用例：A17–A30、A23 临时文件、B7、C6/C7、A2-parse 守卫，追加到 checks。"""
     guard_ctx = synth_ctx(

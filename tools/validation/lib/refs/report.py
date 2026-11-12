@@ -17,6 +17,7 @@ from .model import Ctx, Finding, NAMING_SPEC, NAMING_SPEC_VERSION, to_list
 from .rules_misc import (
     check_agent,
     check_agent_templates,
+    check_custom_params,
     check_images,
     check_interface,
     check_interface_paths,
@@ -363,6 +364,7 @@ def main(argv: list[str] | None = None) -> int:
         check_a29_and_box_index(ctx)
         check_a30_and_inline_sub(ctx)
         check_a31_unreferenced_node(ctx)
+    check_custom_params(ctx, pipeline=domains["pipeline"], interface=domains["interface"], tasks=domains["tasks"])
     # 规范版本与注解新鲜度：不属于任何域，给了 --pipeline 之类也要报
     check_spec_version(ctx)
     if domains["interface"]:

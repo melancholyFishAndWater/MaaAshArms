@@ -181,6 +181,9 @@
 | `B6-bad-preset-task` | `preset` 里引用了不存在的 task |
 | `B7-default-case` | checkbox 的 `default_case` 必须是 `cases[0]` |
 | `B8-bad-path` | `interface` 里引用的资源路径 / `agent.child_args` 不存在 |
+| `B9-custom-param-type`（error） | `pipeline_override` 中的 `custom_recognition_param` / `custom_action_param` 分别要求目标节点的有效识别 / 动作类型为 `Custom`；覆盖未指定类型时继承节点定义。 |
+
+Pipeline 节点直接声明同类参数时由 `A32-custom-param-type` 检查。支持扁平写法及 `recognition` / `action` 对象的嵌套参数；普通 OCR、Click 等内置类型的普通参数不在此规则内。不同选项之间的覆盖组合无法仅凭单个覆盖判定，本规则按该覆盖与基础节点定义核对；动态创建或无法解析的目标不推断。
 
 ## C 系：模板图片（`rules_misc.py`）
 
