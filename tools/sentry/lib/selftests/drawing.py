@@ -228,6 +228,18 @@ def check_flow_diagnostics() -> list[str]:
         "派发链模式的注记",
     )
 
+    bounded_log = "\n".join([
+        nextlist("00:41:00.000", "Starting", "TaskMine", ["Mine"], 100),
+        nextlist("00:41:10.000", "Failed", "Mine", ["Mine"], 100),
+        raw("00:41:10.200", '[msg=Node.PipelineNode.Failed] [details={"name":"Mine","node_id":123,"task_id":100}]'),
+        raw("00:41:10.300", '[msg=Tasker.Task.Failed] [details={"task_id":100}]'),
+        raw("00:42:00.000", "invalid node id, handle error [node.name=Other]"),
+    ])
+    bounded = parse_log(bounded_log, None, None, 100, False)
+    _eq(bounded.span is not None, True, "仅事件日志也有任务窗口")
+    _eq([e.name for e in bounded.events if e.kind == "event"], ["失败 Mine"], "排除后续任务失败")
+    _eq([e.task_id for e in bounded.events if e.kind == "event"], [100], "终止失败保留 task_id")
+
     # 12) 日志里只有别的 task 的记录（`Node.NextList` 带 task_id 却不是它）：
     #     不能把整段识别记录当成这个 task 的步骤，否则同一次运行的每个 issue 都画出同一张混合图
     #     （实测 PYTHON-33/35/36 的包只留了 MFA 面板行）
@@ -280,7 +292,11 @@ def check_flow_diagnostics() -> list[str]:
     )
     _eq(check.synthesized, ["EscortEnterAcceptErrorNext"], "覆写节点记成「合成」")
     _eq(check.missing, [], "覆写节点不再被报成已找不到")
-    _eq([n.name for n in check.nodes], [], "覆写节点不标疑似过时")
+    _eq(
+        "EscortEnterAcceptErrorNext" in {n.name for n in check.nodes},
+        False,
+        "覆写节点不标疑似过时；真实节点可随资源更新而过时",
+    )
     _contains(
         _note_text(build_notes(parsed, FlowOptions(task_id=300, stale=check))),
         "由运行期覆写合成",

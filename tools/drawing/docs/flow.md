@@ -71,7 +71,7 @@ flowchart TD
 
 - `flow_from_log`、`flow_cases` 的公共 re-export、`FlowOptions`、`FlowResult`、
   `render_flow`、`parse_log` 及外部 selftest/import 名保持不变。
-- FlowOptions 默认值、manifest schema 2、分步 trace 阶段和 `RENDERER_VERSION=29`
+- FlowOptions 默认值、manifest schema 2、分步 trace 阶段和 `RENDERER_VERSION=30`
   不因拆分改变；新增模块必须同步 `cases/signature.py`。
 - 日志解析不合成不存在的图片；遥测/git 不可用时仍尽可能绘图。
 - `cases` 不复制渲染逻辑；所有流程图仍调用 `flowlog.render`。

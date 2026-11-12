@@ -38,7 +38,9 @@
   派发记录还原——**一个派发者一步**，按第一次派发排成一条链，图上印「由 NextList 派发记录还原」。
   能还原的只是"依次派发了哪些节点"，不是完整执行顺序；候选表一次都没成功过的那个节点画成
   「未命中」（`kind=miss`），"卡在派发层"的候选表账照常由 `stall_notes` 出。父节点按链上前一步
-  推出来（`parent_source=chain`，单列记账，不算进"父节点没找到"）。
+  推出来（`parent_source=chain`，单列记账，不算进"父节点没找到"）。仅事件日志若没有 node-done，
+  但有本任务的 NextList 和带 task ID 的终止事件，则先以两者建立任务窗口，避免把后续任务的
+  无归属错误事件混入；现场图也按该窗口判定，而不是按合成链中各节点首次出现的时刻判定。
 - **运行期覆写建出来的节点**：`agent/shared/generic.py:BaseErrorNextReco` 在同一个 next 连续
   10 轮没命中时调 `context.override_pipeline()`，建出 `<父节点>ErrorNext`（`DirectHit` +
   `BaseTaskStopErrorAct`）并把父节点的 `next` 改成它。这类节点只存在于运行期，

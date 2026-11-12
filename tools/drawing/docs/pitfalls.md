@@ -49,7 +49,7 @@
   没有这行标注的话读图的人会以为任务从日志第一行开始。
 - **整份日志会读进内存**：为检测时间回跳必须读完（本机 10.9 MB 的 `maafw.log` 约 2.4 s、十几 MB 内存）。
   框架自己会轮转日志（`debug/` 下有 `maafw.bak.<日期>.log`），不需要为它做流式裁剪。
-- **`RENDERER_VERSION`**（定义在 `lib/flowlog/constants.py`，现在是 **29**）：口径变化时 +1，
+- **`RENDERER_VERSION`**（定义在 `lib/flowlog/constants.py`，现在是 **30**）：口径变化时 +1，
   只作为"这批图是哪一版口径画的"记录。**增量正确性不靠它**——`cases` 用分步摘要判重画
   （`flowlog/trace.py`：输入/参数/解析/注记/疑似过时 + 读取实现与绘制实现两段代码摘要），
   所以忘记 +1 也不会留下旧图。改 `layout`/`paint`/`draw`/`media`/`render` 这五个文件会整批重画；

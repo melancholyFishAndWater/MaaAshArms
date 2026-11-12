@@ -769,6 +769,18 @@ def parse_log(
         # 只按 task_id 过滤会漏。
         # 只记"本来会画进图里"的那些（进图的只有失败事件），否则正常窗口也会刷一条提示。
         out.span = task_span(out, task_id)
+        if out.span is None:
+            # 仅事件日志没有 node-done：用本任务 NextList 与带 task_id 的终止事件
+            # 建立有界窗口，不能把后续其他任务的无归属错误纳入。
+            starts = [stat.first_ts for (tid, _), stat in out.nextlist_stats.items()
+                      if tid == task_id and stat.first_ts is not None]
+            ends = [ts for ts, tid in task_failed if tid == task_id]
+            ends += [ts for ts, _entry, tid, _ret in out.task_ends if tid == task_id]
+            if starts:
+                lo = min(starts)
+                valid_ends = [ts for ts in ends if ts >= lo]
+                if valid_ends:
+                    out.span = (lo, min(valid_ends))
         kept: list[Step] = []
         dropped = 0
         for event in out.events:
@@ -835,6 +847,7 @@ def parse_log(
                     best[1],
                     best[2],
                     px=best[3],
+                    task_id=best[2],
                 )
             )
         out.events.sort(key=lambda s: s.ts)
