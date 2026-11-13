@@ -624,6 +624,15 @@ def _checks_rest(checks: list[tuple]) -> None:
         section.unlink(missing_ok=True)
         tmp_dir.rmdir()
 
+    for pattern in (".+", "确认", "[0-9]+", "^abc", "abc$", "^abc$"):
+        verify_ctx = synth_ctx({})
+        data = {"type": "input", "inputs": [{"name": "value", "verify": pattern}]}
+        verify_ctx.options = {"input_option": Option("input_option", data, Path("inputs.json"))}
+        verify_ctx.interface_file = Path("interface.json")
+        verify_ctx.interface = {"option": {"root_input": data}}
+        check_option_shape(verify_ctx)
+        checks.append((not verify_ctx.findings, f"合法 verify 不因缺少锚点报警：{pattern}"))
+
     # B7：checkbox 的 default_case 是数组，不应再按标量比较误报
     opt_ok = Ctx(repo_root=Path("."))
     opt_ok.options = {

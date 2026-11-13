@@ -190,7 +190,7 @@
 | --- | --- |
 | `B1-bad-entry` | `task[].entry` 指向的节点不存在 |
 | `B2-bad-group` | 任务分组结构不对 |
-| `B3-bad-option` | `option` 形状非法（类型、`cases`、`verify` 锚点） |
+| `B3-bad-option` | `option` 引用或形状非法；不检查 `verify` 是否有锚点 |
 | `B4-bad-import` | `import` 片段路径不存在或重复 |
 | `B5-bad-override-target` | `pipeline_override` 的目标节点不在 pipeline 里定义 |
 | `B6-bad-preset-task` | `preset` 里引用了不存在的 task |
@@ -199,6 +199,10 @@
 | `B9-custom-param-type`（error） | `pipeline_override` 中的 `custom_recognition_param` / `custom_action_param` 分别要求目标节点的有效识别 / 动作类型为 `Custom`；覆盖未指定类型时继承节点定义。 |
 
 Pipeline 节点直接声明同类参数时由 `A32-custom-param-type` 检查。支持扁平写法及 `recognition` / `action` 对象的嵌套参数；普通 OCR、Click 等内置类型的普通参数不在此规则内。不同选项之间的覆盖组合无法仅凭单个覆盖判定，本规则按该覆盖与基础节点定义核对；动态创建或无法解析的目标不推断。
+
+`B7-verify-anchor` 已移除：未锚定的 `verify` 不等于无法通过校验，`.+` 等非空/子串约束合法。
+是否要求整串匹配由输入需求决定，不统一要求 `^...$`。本工具不新增 Python `re` 编译校验冒充客户端正则引擎；
+现有 JSON/schema 校验保持不变。
 
 ## C 系：模板图片（`rules_misc.py`）
 

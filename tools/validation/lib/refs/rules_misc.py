@@ -258,20 +258,6 @@ def check_option_shape(ctx: Ctx) -> None:
                         f"option {name} 的 case {case.get('name')!r} 引用了不存在的 option {opt!r}",
                     )
             check_override_targets(ctx, case.get("pipeline_override"), file, name)
-        for item in to_list(data.get("inputs")):
-            if not isinstance(item, dict):
-                continue
-            verify = item.get("verify")
-            if isinstance(verify, str) and not (
-                verify.startswith("^") and verify.endswith("$")
-            ):
-                ctx.add(
-                    "B7-verify-anchor",
-                    "warn",
-                    file,
-                    line,
-                    f"option {name} 的 verify={verify!r} 没有 ^...$ 收尾（编辑器与面板不会提醒，用户可能永远过不了校验）",
-                )
 
     for name, opt in ctx.options.items():
         one(name, opt.data, opt.file)
