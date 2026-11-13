@@ -27,9 +27,11 @@ from tools.drawing.lib.flow_from_log import (
 )
 
 from .evidence import (
+    _case_matches_card,
     _evidence_case,
     _evidence_event_note,
     _evidence_scene,
+    _evidence_on_error_resolver,
     _evidence_task_id,
     _fetch_evidence,
     _has_evidence,
@@ -174,9 +176,12 @@ def _scene_for(
     node = str(getattr(card, "node_name", "") or "")
     entries: list[tuple[MediaEntry, bool]] = [
         (MediaEntry(member=path, path=path), False)
-        for path in _evidence_scene(card.short_id, when, node, max_gap=limit)
+        for path in _evidence_scene(card.short_id, when, node, max_gap=limit, card=card)
     ]
-    if not entries and pack_case is not None:
+    local_matched = bool(options and any(kind == "local" for _text, kind in options.extra_notes))
+    if (not entries and pack_case is not None and
+        (origin == "case" or (local_matched and exact)) and
+        _case_matches_card(pack_case, card) is not False):
         # 补充日志包（`--case` 的 debug 目录 / 导出包）：按失败时刻认"命中图"，
         # 名字带 `_日志包`，与遥测自带的那张分开
         entries = [
@@ -680,6 +685,7 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
     # 现场图来源：问题号 → (遥测卡, 补充日志包)。遥测包没图的 issue 才用得到第二个，
     # 没有日志包命中时是 None（那就只导遥测的那张 / 一张都不导）。
     scene_sources: dict[str, tuple[Any, Case | None, FlowOptions]] = {}
+    scene_invalidated: set[str] = set()
     # 本次保留的产物名（画成功 + 按轨迹跳过的）：批量清理时只有"不在这个集合里"的旧产物会被删。
     # 单包 / --all-tasks 不清理，也就不传它。
     kept: set[str] = set()
@@ -886,6 +892,11 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
             # 版本筛选下，本地包可能是这个 issue 早先那次运行的（issue 跨多个版本）：
             # 包内 release 不符就重拉最新事件，重拉不到才退概览卡（见 `_usable_evidence_case`）
             stale_pack = False
+            if ev_case is not None and _case_matches_card(ev_case, card) is False:
+                log.warning("证据包标题或事件与 %s 不一致，不用于该 issue", card.short_id)
+                scene_invalidated.add(card.short_id)
+                ev_case = None
+                stale_pack = True
             if ev_case is not None and version_filter is not None:
                 ev_case = _usable_evidence_case(
                     card,
@@ -950,7 +961,12 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
                                 force=args.force,
                                 manifest=manifest,
                                 vision_override=None,
-                                on_error_override=None,
+                                on_error_override=(
+                                    render_case.on_error()
+                                    if render_case is not ev_case
+                                    and _case_matches_card(ev_case, card) is True
+                                    else _evidence_on_error_resolver(card.short_id, card)
+                                ),
                                 issue_only=True,
                                 stem_extra=stem_extra,
                                 origin="bulk",
@@ -1065,6 +1081,7 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
                 scene_kept,
                 issues={card.short_id for card in cards},
                 keep_issues=failed_issues,
+                invalidated_issues=scene_invalidated,
             )
             if pruned_scene:
                 log.info(

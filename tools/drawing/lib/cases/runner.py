@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 from dataclasses import replace
@@ -45,6 +46,24 @@ def _has_stale(name: str) -> bool:
 def _target_name(name: str, matched: str) -> str:
     """跳过时要落到哪个名字：沿用旧记录有没有「疑似过时」后缀，只更新标记那一段。"""
     return stale_name(name) if _has_stale(matched) else name
+
+
+def _verified_scene_signature(resolver: Any) -> list[tuple[str, str]]:
+    """批量已核验现场图的来源与内容；迁移前旧轨迹不含此字段。"""
+    result: list[tuple[str, str]] = []
+    for entry in resolver.iter_entries():
+        data = entry.data
+        if entry.path:
+            with open(entry.path, "rb") as handle:
+                blob = handle.read()
+        elif isinstance(data, bytes):
+            blob = data
+        elif hasattr(data, "read"):
+            blob = data.read()
+        else:
+            raise ValueError(f"无法读取现场图 {entry.member}")
+        result.append((entry.member, hashlib.sha256(blob).hexdigest()))
+    return sorted(result)
 
 
 def run_case(
@@ -129,6 +148,8 @@ def run_case(
         # 仓库状态单独一个阶段：它只影响「疑似过时」标记，提交后重新核对一遍，数据没变就不重画
         "repo": repo_state(),
     }
+    if origin == "bulk" and on_error_override is not None:
+        trace_extra["input"]["verified_scene_v1"] = _verified_scene_signature(on_error_override)
     result = render_flow(
         case.log_source(),
         vision=vision,

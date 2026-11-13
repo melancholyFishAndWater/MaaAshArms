@@ -96,7 +96,7 @@ def tasker_observations(case: Case | None, card: Any) -> list[tuple[str, str]]:
     error_stamp, process, thread = next(iter(candidates))
     notes = [
         (f"附近日志：Task{label} 投递时 Tasker not inited", "info"),
-        (f"时刻 {error_stamp:%H:%M:%S}；事件归属尚未确认", "info"),
+        (f"时刻 {error_stamp:%H:%M:%S}；事件归属尚未确认；关联不等于因果", "info"),
     ]
     nearby = [
         line.lower() for line, stamp, px, tx in lines

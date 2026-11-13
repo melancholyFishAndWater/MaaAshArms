@@ -247,6 +247,7 @@ def prune_scene(
     *,
     issues: set[str],
     keep_issues: set[str] | None = None,
+    invalidated_issues: set[str] | None = None,
 ) -> int:
     """清掉不该留着的现场图，返回删掉的张数。
 
@@ -267,14 +268,15 @@ def prune_scene(
         return 0
     target = scene_dir(outdir)
     keep = keep_issues or set()
+    invalidated = invalidated_issues or set()
     confirmed = set(written)
     written_issues = {
         str(records[name].get("issue") or "")
         for name in confirmed
         if isinstance(records.get(name), dict)
     }
-    removed = _prune_recorded(records, target, confirmed, issues, keep, written_issues)
-    removed += _prune_unrecorded(target, records, confirmed, issues, keep, written_issues)
+    removed = _prune_recorded(records, target, confirmed, issues, keep, written_issues, invalidated)
+    removed += _prune_unrecorded(target, records, confirmed, issues, keep, written_issues, invalidated)
     return removed
 
 
@@ -285,6 +287,7 @@ def _prune_recorded(
     issues: set[str],
     keep: set[str],
     written_issues: set[str],
+    invalidated: set[str],
 ) -> int:
     """有记录的那些：按 issue 归属删。"""
     removed = 0
@@ -299,9 +302,14 @@ def _prune_recorded(
             continue
         issue = str(record.get("issue") or "")
         origin = str(record.get("origin") or "")
-        if not issue or issue in keep:
+        if not issue:
             continue
-        if issue not in issues:
+        if (issue in invalidated and issue in written_issues
+                and name not in confirmed and origin == "bulk"):
+            reason = "已被本次确认的现场图取代"
+        elif issue in keep:
+            continue
+        elif issue not in issues:
             reason = "不在本次 issue 集合内"
         elif (
             issue in written_issues
@@ -331,6 +339,7 @@ def _prune_unrecorded(
     issues: set[str],
     keep: set[str],
     written_issues: set[str],
+    invalidated: set[str],
 ) -> int:
     """没有记录、但名字正好是本工具现场图命名的那些（记录丢了 / 并发跑过 / `--clean-flow` 之后
     又被旧图占位）：issue 不在集合内、或已被本次确认的那张取代 → 删；别的文件不碰。
@@ -350,9 +359,13 @@ def _prune_unrecorded(
         if not os.path.isfile(path):
             continue
         issue, _rest = artifact_issue(name)
-        if not issue or issue in keep:
+        if not issue:
             continue
-        if issue not in issues:
+        if issue in invalidated:
+            continue
+        if issue in keep:
+            continue
+        elif issue not in issues:
             reason = "不在本次 issue 集合内"
         elif issue in written_issues:
             reason = "已被本次重画取代"

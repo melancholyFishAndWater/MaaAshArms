@@ -16,7 +16,7 @@ from tools.drawing.lib.flow_from_log import (
     render_overview,
 )
 
-from .evidence import _evidence_case, _evidence_on_error
+from .evidence import _case_matches_card, _evidence_case, _evidence_on_error
 from .output import _own_rest, _safe_part, artifact_issue, find_existing, rename_artifact
 from .pack import _fmt_local, _telemetry_module
 from .release_mark import mark_suffix
@@ -26,8 +26,28 @@ from .tasker_observations import tasker_observations
 log = logging.getLogger("tools.flow_cases")
 
 
+_CATEGORY_CONTROLLER = "设备异常"
+_CATEGORY_TASKER = "疑似设备级联"
+_CATEGORY_MISMATCH = "证据错配"
+
+
+def _overview_category(card: Any, match: bool | None, tasker_notes: list[tuple[str, str]]) -> str:
+    """返回有直接证据支持的概览分类；缺证据时不猜。"""
+    if match is False:
+        return _CATEGORY_MISMATCH
+    if (
+        str(getattr(card, "node_name", "") or "") == "controller_initialization_failed"
+        and str(getattr(card, "stage", "") or "") == "controller"
+    ):
+        return _CATEGORY_CONTROLLER
+    if match is True and any("Tasker not inited" in text for text, _kind in tasker_notes):
+        return _CATEGORY_TASKER
+    return ""
+
+
 def overview_filename(
-    short_id: str, outdir: str, manifest: dict, fingerprint: dict, label: str = ""
+    short_id: str, outdir: str, manifest: dict, fingerprint: dict, label: str = "",
+    category: str = "",
 ) -> str:
     """概览卡文件名：`<SHORT>[_<问题名>][_已修复待发版].png`；被**别的**产物占用时追加指纹短哈希。
 
@@ -45,7 +65,10 @@ def overview_filename(
     import json
 
     safe = _safe_part(label) if label else ""
+    safe_category = _safe_part(category) if category else ""
     stem = f"{short_id}_{safe}" if safe else short_id
+    if safe_category:
+        stem = f"{stem}_{safe_category}"
     base = f"{stem}{mark_suffix(short_id)}.png"
 
     def taken(name: str) -> bool:
@@ -89,6 +112,17 @@ def run_overview(
     """
 
     rel = card.release or ""
+    evidence_case = _evidence_case(card.short_id) if origin == "bulk" else None
+    match = (
+        _case_matches_card(evidence_case, card) if evidence_case is not None else None
+    )
+    validated_case = evidence_case if match is True else None
+    # 严格接口会再次按 issue 的标题与事件身份过滤，未知/错配时不贴现场图。
+    images = _evidence_on_error(card.short_id, card)
+    tasker_notes: list[tuple[str, str]] = []
+    if validated_case is not None:
+        tasker_notes = tasker_observations(validated_case, card)
+    category = _overview_category(card, match, tasker_notes)
     fields = [
         ("问题号", card.short_id),
         ("标题", card.title or "—"),
@@ -99,17 +133,11 @@ def run_overview(
         ("最后出现", _fmt_local(card.last_seen)),
         ("首次收到", _fmt_local(card.received)),
         ("资源版本", rel or "—"),
+        ("分类", category or "—"),
         ("链接", card.permalink or "—"),
     ]
-    images = _evidence_on_error(card.short_id)
     notes = [Note(text, kind) for text, kind in _telemetry_module().card_notes(card, [])]
-    # Tasker 观察只属于批量概览卡；单包流程图/单包调用的概览不读取同 issue 的遥测包。
-    if origin == "bulk":
-        evidence_case = _evidence_case(card.short_id)
-        notes.extend(
-            Note(text, kind)
-            for text, kind in tasker_observations(evidence_case, card)
-        )
+    notes.extend(Note(text, kind) for text, kind in tasker_notes)
     if no_log_hint:
         notes.append(
             Note(
@@ -123,9 +151,10 @@ def run_overview(
         "last_seen": card.last_seen,
         "release": rel,
         "images": len(images),
+        "category": category,
     }
     name = overview_filename(
-        card.short_id, outdir, manifest, fingerprint, label=card.label
+        card.short_id, outdir, manifest, fingerprint, label=card.label, category=category
     )
     target = os.path.join(outdir, name)
     old = None if force else find_existing(outdir, manifest, name, fingerprint)

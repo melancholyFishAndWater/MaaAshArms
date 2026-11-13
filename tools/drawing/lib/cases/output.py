@@ -34,6 +34,16 @@ BULK_STEM_SUFFIXES = frozenset(
         STALE_SUFFIX,
         RELEASE_MARK,
         f"{RELEASE_MARK}_{STALE_SUFFIX}",
+        *(
+            suffix
+            for category in ("设备异常", "疑似设备级联", "证据错配")
+            for suffix in (
+                category,
+                f"{category}_{STALE_SUFFIX}",
+                f"{category}_{RELEASE_MARK}",
+                f"{category}_{RELEASE_MARK}_{STALE_SUFFIX}",
+            )
+        ),
     }
 )
 

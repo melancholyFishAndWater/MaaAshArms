@@ -9,8 +9,9 @@ import logging
 import os
 from datetime import datetime, timedelta
 from typing import Any
+import re
 
-from tools.drawing.lib.flow_from_log import _is_zip, parse_log, scan_tasks
+from tools.drawing.lib.flow_from_log import MediaResolver, _is_zip, parse_log, scan_tasks
 
 from .pack import (
     EVIDENCE_ROOT,
@@ -33,23 +34,94 @@ log = logging.getLogger("tools.flow_cases")
 _EVIDENCE_DIRS: list[str] = [EVIDENCE_ROOT]
 
 
-def _evidence_on_error(short_id: str) -> list[str]:
-    """这个 issue 的失败现场图：证据包 `on_error/` 下的 png（含按 run 分桶的子目录），最多 4 张。
+def _title_task_label(title: str) -> str:
+    """提取标题中的任务 label，不把 node/stage 后缀当成标题身份。"""
+    text = str(title or "").strip()
+    match = re.match(r"^Maa\s+task\s+failed\s*:\s*(.+?)\s*(?:\([^)]*\))?$", text, re.I)
+    if match:
+        return match.group(1).strip()
+    return text
 
-    搜索 `--evidence-dir` 给的每个根；没有现场图就返回空（概览卡纯文字）。
-    """
+
+def _case_matches_card(case: Case, card: Any) -> bool | None:
+    """证据包与卡片身份一致才可用于该 issue；缺失旧字段保守兼容。"""
+    manifest = _evidence_manifest(case)
+    issue = manifest.get("issue") or {}
+    event = manifest.get("event") or {}
+    if not isinstance(issue, dict) or not isinstance(event, dict):
+        return None
+    pack_title = _title_task_label(str(issue.get("title") or ""))
+    card_title = _title_task_label(str(getattr(card, "title", "") or ""))
+    pack_label = str(getattr(card, "label", "") or "").strip()
+    if pack_title and pack_label and pack_title != pack_label:
+        return False
+    if pack_title and card_title and pack_title != card_title:
+        return False
+    event_id = str(event.get("id") or "").strip()
+    card_event_id = str(getattr(card, "event_id", "") or "").strip()
+    if event_id and card_event_id and event_id != card_event_id:
+        return False
+    if not pack_title or not card_title or not event_id or not card_event_id:
+        return None
+    return True
+
+
+def _evidence_on_error(short_id: str, card: Any = None) -> list[str]:
+    """返回能证明属于当前卡片 event 的附件；带卡片时拒绝任意历史图。"""
     for cand in _evidence_candidates(short_id):
-        base = os.path.join(cand, "on_error")
-        pngs: list[str] = []
-        for dirpath, _dirs, files in os.walk(base):
-            pngs.extend(
+        case = Case(label=short_id, root=cand)
+        manifest = _evidence_manifest(case)
+        event = manifest.get("event") or {}
+        if card is None:
+            # 保留无卡片调用的旧行为，仅供显式单包兼容路径使用。
+            base = os.path.join(cand, "on_error")
+            pngs = [
                 os.path.join(dirpath, name)
+                for dirpath, _dirs, files in os.walk(base)
                 for name in files
                 if name.lower().endswith(".png")
-            )
-        if pngs:
-            return sorted(pngs)[:4]
+            ]
+            if pngs:
+                return sorted(pngs)[:4]
+            continue
+        if _case_matches_card(case, card) is not True:
+            continue
+        event_id = str(getattr(card, "event_id", "") or "").strip()
+        if not event_id or not isinstance(event, dict) or str(event.get("id") or "") != event_id:
+            continue
+        events = manifest.get("events")
+        paths: list[str] = []
+        if isinstance(events, list):
+            for item in events:
+                if isinstance(item, dict) and str(item.get("event_id") or "") == event_id:
+                    paths.extend(x for x in item.get("images", []) if isinstance(x, str))
+        # 有卡片但没有 events 清单时，不能把 written.images 中的历史图归给最新事件。
+        if not isinstance(events, list):
+            continue
+        pack_dir = os.path.dirname(cand) if os.path.basename(os.path.normpath(cand)) == "debug" else cand
+        base = os.path.realpath(os.path.join(cand, "on_error"))
+        result: list[str] = []
+        for rel in paths:
+            path = os.path.realpath(os.path.join(pack_dir, rel))
+            try:
+                inside = os.path.commonpath([base, path]) == base
+            except ValueError:
+                inside = False
+            if inside and os.path.isfile(path) and path.lower().endswith(".png"):
+                result.append(path)
+        if result:
+            return sorted(set(result))[:4]
     return []
+
+
+
+def _evidence_on_error_resolver(short_id: str, card: Any) -> MediaResolver:
+    """返回只含当前 event 已核验附件的 resolver；无证据时返回空 resolver。"""
+    members = []
+    for path in _evidence_on_error(short_id, card):
+        with open(path, "rb") as handle:
+            members.append((path, handle.read()))
+    return MediaResolver(members=members)
 
 
 def _evidence_scene(
@@ -57,24 +129,18 @@ def _evidence_scene(
     when: datetime | None = None,
     node_name: str = "",
     max_gap: float | None = None,
+    card: Any = None,
 ) -> list[str]:
-    """这个 issue 的现场图路径，按**失败时刻**挑（离最近的一张 + 同批几张）。
-
-    与 `_evidence_on_error()` 分工不同：那个给概览卡贴图，取的是包里前 4 张、不看时刻；
-    这里给 `temp/flow/images/` 导出，一个包里常躺着这个 issue 历次运行的图，全导出去会让人
-    把旧图当成这次失败的现场。`max_gap` 见 `scene.select_scene`：画的可能是历史那一次运行，
-    离得远的图一律不采用（宁可不导，也不把另一次失败的图当这次）。找不到返回空表。
-    """
-    for cand in _evidence_candidates(short_id):
-        base = os.path.join(cand, "on_error")
-        if not os.path.isdir(base):
-            continue
-        entries = scene_entries(base)
-        if not entries:
-            continue
-        picked = select_scene(entries, when, node_name, max_gap=max_gap)
-        return [entry.path for entry in picked if entry.path]
-    return []
+    """从当前 event 的已证明附件中再按失败时刻挑图。"""
+    paths = _evidence_on_error(short_id, card)
+    if not paths:
+        return []
+    entries: list[tuple[datetime, str, Any]] = []
+    for path in paths:
+        parent = os.path.dirname(path)
+        entries.extend(item for item in scene_entries(parent) if item[2].path == path)
+    picked = select_scene(entries, when, node_name, max_gap=max_gap)
+    return [entry.path for entry in picked if entry.path]
 
 
 def _scene_images_missing(card: Any) -> bool:
@@ -87,7 +153,7 @@ def _scene_images_missing(card: Any) -> bool:
     """
     if str(getattr(card, "attachment_status", "") or "") != "attached":
         return False
-    return not _evidence_on_error(card.short_id)
+    return not _evidence_on_error(card.short_id, card)
 
 
 def set_evidence_dirs(dirs: list[str] | None) -> None:
