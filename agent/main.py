@@ -19,6 +19,10 @@ sys.path.insert(0, os.path.join(_AGENT_DIR, "shared"))
 if _AGENT_DIR not in sys.path:
     sys.path.insert(0, _AGENT_DIR)
 
+from runtime_check import ensure_runtime_ready
+
+ensure_runtime_ready()
+
 # 必须在 import maa 之前：maa 在导入时读 MAAFW_BINARY_PATH 把原生库目录定死
 # （maa/__init__.py:6-9）。发行包里指向客户端那份 runtimes/<os>-<arch>/native，
 # 开发态找不到就不设变量、继续用 wheel 自带的 site-packages/maa/bin。

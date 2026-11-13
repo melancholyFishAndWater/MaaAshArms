@@ -92,6 +92,12 @@ VS Code 的 Python 解释器选择仓库 `.venv`。开发态 agent 由 `assets/i
 无需依赖 `assets/agent` 的目录联接。uv 必须能被 VS Code 的终端从 PATH 找到。
 修改依赖后先更新并提交锁文件，普通任务启动不会自动改锁。
 
+Windows agent 会在加载原生框架前检查临时目录创建能力。失败时报告进程完整性、
+venv 和基础解释器路径；若解释器继承了 Low 标签，请先运行
+`pwsh -File tools/dev/python_integrity.ps1` 只读检查。
+显式修复和恢复步骤见 [开发环境标签工具](../../../tools/dev/README.md)。
+正常开发不需要管理员权限；不要递归修改仓库或系统 Temp。
+
 发布时打包脚本会完整覆盖开发命令：带运行时的包直接用包内 Python，
 不带运行时的资源包使用宿主提供的系统 Python；两者都不需要 uv 或项目锁文件。
 
