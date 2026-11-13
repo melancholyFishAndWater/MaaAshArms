@@ -51,6 +51,7 @@
         "desc": "[end] 有确认按钮",
         "recognition": "TemplateMatch",
         "template": "Base/Confirm.png",
+        "method": 10001,
         "roi": [
             320,
             148,
