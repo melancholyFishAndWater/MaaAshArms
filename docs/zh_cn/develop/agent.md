@@ -40,10 +40,11 @@ _（本篇为编写基础指引，仅介绍 custom recognition 和 custom action
 
 本文将围绕仓库中附带的一个简单的 [demo](/agent) 示例进行讲解。
 
-在开始前，请确保你已经安装了 Python 依赖。
+在开始前，按[Python 开发环境](./how_to_develop.md#python-开发环境)安装 uv，
+并在仓库根同步项目依赖，不要单独安装最新版 MaaFw：
 
 ```bash
-pip install MaaFw
+uv sync --locked
 ```
 
 > [!CAUTION]

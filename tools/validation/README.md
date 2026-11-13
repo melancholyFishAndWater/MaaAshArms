@@ -60,8 +60,9 @@ python -m pytest -q tests       # agent 纯逻辑打桩，不连设备
 不跳过的话本机每次都会多 5 条 "is not of type 'object'" 的假 error。
 
 第 6 步那两条不在本目录，但 CI 的 `check` 工作流会跑，跑不了就照实说明：`npx @nekosu/maa-tools check`
-要先 `npm ci` 且首次要网络；`python -m pytest -q tests` 要装 `pytest`，本机是全局解释器、没装就用
-`uv run --with pytest --no-project python -m pytest -q tests`（`maa` 由 `maafw` 提供，本机已有）。
+要先 `npm ci` 且首次要网络；Python 命令在仓库根使用 `uv run --locked python ...`，
+先执行 `uv sync --locked`，不要依赖全局包或临时 `--with` 安装。
+CI 的 Python 校验和 pytest 同样使用项目锁定环境。
 2026-10-26 本机实测：`npx @nekosu/maa-tools check` 只打 npm notice、exit 1，直接
 `node node_modules/@nekosu/maa-tools/bin/maa-tools check` 也是 exit 1 且没有输出——这一条以 CI 为准。
 
@@ -106,8 +107,8 @@ python tools/perf/cli.py rounds --selftest                    # 性能基准（�
 ## 依赖与前置
 
 - `check-python` / `validate-refs` / `check-sentry-offline`：**零第三方依赖**（纯标准库）。
-- `validate-schema`：需要 `jsonschema==4.26.0` + `referencing==0.37.0`。CI 里现装，本机全局解释器
-  里这两个版本也已就位（2026-10-26 实测）。`referencing` 可选——没有就退回 `jsonschema` 自带的
+- `validate-schema`：需要 `jsonschema==4.26.0` + `referencing==0.37.0`，由项目 `dev` 组
+  统一声明并由 `uv.lock` 锁定；使用 `uv run --locked` 运行。`referencing` 可选——没有就退回 `jsonschema` 自带的
   `RefResolver`。
 - `check_pyright.mjs`：需要 `npx`（首次要网络拉 pyright）。它把 npm 缓存指到 `temp/npm-cache`，
   跑完可删。**刻意不把 pyright 写进 `package.json`**：两份 lockfile（`package-lock.json` 与

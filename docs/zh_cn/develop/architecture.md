@@ -9,11 +9,11 @@
 ## 1. 运行时链路
 
 ```text
-MFAAvalonia v2.16.1（GUI，由 CI 下载进发布包）
+MFAAvalonia v2.16.4（GUI，由 CI 下载进发布包）
     │ 读 assets/interface.json（ProjectInterface V2）
     │ 按 task[].entry 投递任务
     ▼
-MaaFramework v5.12.2（Tasker，执行 pipeline 节点）
+MaaFramework v5.15.0（Tasker，执行 pipeline 节点）
     │ 节点里 recognition/action 为 Custom 时，经 AgentServer 反向请求
     │ socket_id 由 MFA 通过 argv 传入
     ▼
@@ -24,9 +24,10 @@ assets/resource/pipeline/*.json + image/ + model/
 ```
 
 - GUI 与框架的版本由 `.github/workflows/install.yml` 顶部的 `MAAFW_VERSION` /
-  `MFAA_VERSION` 固定，当前为 `v5.12.2` / `v2.16.1`。
-- `assets/interface.json` 的 `agent.child_exec` 是 `python`，`child_args` 是
-  `["./agent/main.py"]`；`controller` 为 `Adb`、`display_short_side: 720`。
+  `MFAA_VERSION` 固定，当前为 `v5.15.0` / `v2.16.4`。
+- 开发态 `assets/interface.json` 使用 `uv run --directory {PROJECT_DIR}/.. --locked python -u ./agent/main.py`；
+  发布态完整覆盖为包内 Python（资源包使用宿主 Python），参数为 `-u ./agent/main.py`。
+  `controller` 为 `Adb`、`display_short_side: 720`。
 - agent 侧把日志目录固定到 `<安装根>/debug/agent`（`agent/main.py` 的 `main()`），
   并做 `pi_log_snapshot()` / `pi_check_maafw_version()` 版本核对。
 - 失败遥测由 MFA 上报 Sentry；`assets/interface.json` 的 `telemetry.sentry` 只有
@@ -54,7 +55,9 @@ assets/resource/pipeline/*.json + image/ + model/
 | `README.md` | 面向用户的介绍、功能列表、下载方式 |
 | `AGENTS.md` | 本仓库工作约定的索引（被 `.gitignore` 忽略，不入库） |
 | `package.json` / `package-lock.json` / `pnpm-lock.yaml` | Node 工具链，钉住 `@nekosu/maa-tools` 1.1.3 |
-| `requirements.in` / `requirements.txt` | Python 依赖，`maafw==5.12.2`（uv 编译产物） |
+| `pyproject.toml` / `uv.lock` | Python 依赖声明与锁定版本，运行依赖和 build/dev 组统一维护 |
+| `requirements.txt` | 从 `uv.lock` 导出的发布运行依赖清单，不含依赖组 |
+| `.python-version` | 开发 Python 版本：3.13 |
 | `maatools.config.mts` | `npx @nekosu/maa-tools check` 的配置，必须在仓库根跑 |
 | `.gitmodules` | `assets/MaaCommonAssets` 子模块指向 MaaXYZ/MaaCommonAssets |
 | `LICENSE` / `logo.png` | MIT 许可与图标 |
@@ -124,6 +127,9 @@ assets/resource/pipeline/*.json + image/ + model/
 - `install` job 下载 MaaFramework 与 MFAAvalonia 的 release、准备随身 Python、
   调 `tools/install.py`；`changelog` 用 `.github/cliff.toml` 生成 CHANGES.md；
   `release` 先建 draft 再用 `gh release edit --draft=false` 发布。
+- `check.yml` 使用 `uv sync --locked` 的开发环境；`install.yml` 使用 `--only-group build`，
+  不向构建解释器安装 agent 依赖。两者固定 uv `0.12.22` 并核对发布清单导出结果。
+  `pyproject.toml`、`uv.lock`、`requirements.txt`、`.python-version` 的变更都会触发对应工作流。
 - `check.yml` 里 `validate-schema` 显式排除 `assets/resource/announcement` 与
   `assets/resource/tasks`（后者是 PI 片段，另用 `--task-dirs` 单查）。
 
@@ -131,8 +137,8 @@ assets/resource/pipeline/*.json + image/ + model/
 
 | 依赖 | 固定方式 |
 | --- | --- |
-| MaaFramework | `requirements.txt` 的 `maafw==5.12.2` + `install.yml` 的 `MAAFW_VERSION` |
-| MFAAvalonia | `install.yml` 的 `MFAA_VERSION: v2.16.1` |
+| Python / MaaFramework | `pyproject.toml` 声明、`uv.lock` 锁定；发布清单导出 `maafw==5.15.0`，与 `install.yml` 的 `MAAFW_VERSION` 一致 |
+| MFAAvalonia | `install.yml` 的 `MFAA_VERSION: v2.16.4` |
 | Node 工具 | `package.json` 的 `@nekosu/maa-tools: 1.1.3` + 两份 lockfile |
 | schema 快照 | `deps/tools/*.schema.json` 与 `schema-manifest.json`，由 `tools/sync-schema.mjs` 手动同步 |
 | 通用资源 | `.gitmodules` 的 `assets/MaaCommonAssets` 子模块 |

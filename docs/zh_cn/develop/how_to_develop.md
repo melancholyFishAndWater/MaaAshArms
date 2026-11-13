@@ -92,6 +92,44 @@ VS Code 的 Python 解释器选择仓库 `.venv`。开发态 agent 由 `assets/i
 无需依赖 `assets/agent` 的目录联接。uv 必须能被 VS Code 的终端从 PATH 找到。
 修改依赖后先更新并提交锁文件，普通任务启动不会自动改锁。
 
+### 依赖来源与更新
+
+- `pyproject.toml` 是唯一手写依赖声明：`project.dependencies` 为 agent 运行依赖，
+  `build` 组为打包脚本依赖，`dev` 组包含 `build` 及测试、校验工具。
+- `uv.lock` 固定全部依赖的解析版本，开发环境与 CI 都使用 `--locked` 检查声明和锁是否一致。
+  不要用 `--frozen` 代替这项检查，它不会检查声明漂移。
+- `requirements.txt` 是从锁文件生成的发布运行依赖清单，不要手工编辑；不包含任何依赖组。
+
+在仓库根修改声明后执行（CI 固定 uv `0.12.22`，本地导出也使用这个版本）：
+
+```bash
+uv lock
+uv sync --locked
+uv export --locked --no-default-groups --no-emit-project --no-hashes --no-header --format requirements-txt --output-file requirements.txt
+uv run --locked python -m pytest -q tests
+```
+
+`uv lock` 默认保留已有锁定版本，不要为了同步声明使用 `--upgrade`。
+若确实要升级指定包，使用 `uv lock --upgrade-package <包名>`，重新导出并检查版本差异。
+升级 MaaFramework 时还必须同步 `.github/workflows/install.yml` 的 `MAAFW_VERSION`；
+发布运行时构建会检查它与导出清单中的 `maafw` 版本一致。
+将声明、锁文件、导出清单作为同一批改动提交；连续执行导出命令应无额外差异。
+`--no-header` 排除包含调用命令的生成头，避免输出路径改变造成无意义差异。
+
+完整开发环境使用前面的 `uv sync --locked`；只运行打包脚本时可以使用：
+
+```bash
+uv run --locked --only-group build python tools/install.py --help
+```
+
+构建组不安装 agent 或测试依赖；该命令会将当前 `.venv` 同步成仅构建环境。
+回到日常开发前重新执行 `uv sync --locked`。
+CI 的检查 job 使用完整开发环境，发布矩阵仅使用构建组，
+agent 运行依赖按导出清单另装进包内解释器，不复制开发 `.venv`。
+两个工作流都会重新导出清单并用 `git diff --exit-code` 检查是否漏提交。
+
+### Windows 启动检查
+
 Windows agent 会在加载原生框架前检查临时目录创建能力。失败时报告进程完整性、
 venv 和基础解释器路径；若解释器继承了 Low 标签，请先运行
 `pwsh -File tools/dev/python_integrity.ps1` 只读检查。
