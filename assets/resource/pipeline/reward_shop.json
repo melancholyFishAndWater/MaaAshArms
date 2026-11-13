@@ -175,6 +175,7 @@
             "[JumpBack]BaseBranchError"
         ]
     },
+    // 进入免费礼包确认购买页面
     "ShopEnterBattleFree": {
         "desc": "[jp] 进入免费礼包购买确认页面",
         "recognition": "And",
@@ -198,7 +199,7 @@
         "action": "Click",
         "post_wait_freezes": 1000
     },
-    // INFO 点击购买
+    // 有购买文字
     "ShopProbeBuyText": {
         "desc": "[end] 有购买文字",
         "recognition": "OCR",
@@ -210,6 +211,7 @@
             79
         ]
     },
+    // 点击购买
     "ShopClickBuy": {
         "desc": "点击购买",
         "recognition": "And",

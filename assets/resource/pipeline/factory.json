@@ -81,7 +81,7 @@
             "FactoryCheckTaskEnd",
             "[JumpBack]FactoryClickSkip",
             "[JumpBack]FactoryGetReward",
-            "[JumpBack]FactoryCreateOrder",
+            "[JumpBack]FactoryClickCreateOrder",
             // TODO 子节点卡住
             "[JumpBack]BaseBranchError",
             "[JumpBack]BaseMoveUpDown"
@@ -234,8 +234,8 @@
         "custom_action": "FactoryGetRewardNextAct"
     },
     /* -------------------- 分支-创建订单 -------------------- */
-    "FactoryCreateOrder": {
-        "desc": "创建新订单",
+    "FactoryClickCreateOrder": {
+        "desc": "点击创建新订单",
         "recognition": "OCR",
         "expected": "创建新的订单",
         "roi": [
@@ -289,8 +289,9 @@
         ],
         "post_wait_freezes": 1000
     },
+    // 点击开始建造
     "FactoryClickStart": {
-        "desc": "选择开始建造按钮",
+        "desc": "选择开始建造",
         "recognition": "OCR",
         "expected": "开始建造",
         "roi": [

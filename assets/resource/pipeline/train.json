@@ -219,7 +219,6 @@
         "all_of": [
             "TrainProbeAcceptInfoButton"
         ],
-        "action": "Click",
         "next": [
             "BaseErrorNext",
             "TrainBranchAcceptPage",
@@ -240,7 +239,7 @@
     "TrainProbeAcceptInfoButton": {
         "desc": "[end] 有目标路线按钮",
         "recognition": "Custom",
-        "custom_recognition": "TrainBranchAcceptInfoReco"
+        "custom_recognition": "TrainProbeAcceptInfoButtonReco"
     },
     // INFO 接取页面
     "TrainBranchAcceptPage": {

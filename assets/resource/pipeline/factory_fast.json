@@ -28,7 +28,7 @@
             "[JumpBack]FactoryClickSkip",
             "[JumpBack]FactoryGetReward",
             "FastFactoryStopOnMaxCount",
-            "[JumpBack]FactoryCreateOrder"
+            "[JumpBack]FactoryClickCreateOrder"
         ]
     },
     "FastFactoryStopOnMaxCount": {

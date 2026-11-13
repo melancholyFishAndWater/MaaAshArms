@@ -578,8 +578,8 @@ class TrainBranchAcceptableReco(CustomRecognition):
 
 # 返回目标路线名称box 或 None
 # 候选词数小于2则按解锁状态返回返回 优先最新路线
-@AgentServer.custom_recognition("TrainBranchAcceptInfoReco")
-class TrainBranchAcceptInfoReco(CustomRecognition):
+@AgentServer.custom_recognition("TrainProbeAcceptInfoButtonReco")
+class TrainProbeAcceptInfoButtonReco(CustomRecognition):
     # 路线解锁状态
     route_status: dict[str, bool] = {}
 
