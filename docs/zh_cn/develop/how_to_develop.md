@@ -77,6 +77,24 @@
 
    _如果想要使用别的 [通用 UI](https://github.com/MaaXYZ/MaaFramework/#%E9%80%9A%E7%94%A8-ui)，请自行修改工作流的 [配置文件](/.github/workflows/install.yml)。_
 
+## Python 开发环境
+
+安装 uv 后，在仓库根执行：
+
+```bash
+uv sync --locked
+uv run --locked python -m pytest -q tests
+```
+
+VS Code 的 Python 解释器选择仓库 `.venv`。开发态 agent 由 `assets/interface.json`
+启动：`uv run --directory {PROJECT_DIR}/.. --locked python -u ./agent/main.py`。
+这里 `{PROJECT_DIR}` 是 `assets/`，先切回仓库根，再使用项目锁文件与虚拟环境；
+无需依赖 `assets/agent` 的目录联接。uv 必须能被 VS Code 的终端从 PATH 找到。
+修改依赖后先更新并提交锁文件，普通任务启动不会自动改锁。
+
+发布时打包脚本会完整覆盖开发命令：带运行时的包直接用包内 Python，
+不带运行时的资源包使用宿主提供的系统 Python；两者都不需要 uv 或项目锁文件。
+
 ## 常见问题
 
 请参考 [FAQ](./faq.md)。

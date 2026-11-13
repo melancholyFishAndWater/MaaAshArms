@@ -1,8 +1,14 @@
 # ruff: noqa: F401 —— 下面这批 import 是**注册入口**（装饰器在 import 时执行），
 # 名字一个都不在本文件里用；删掉任何一个都会让对应模块的自定义识别/动作静默消失。
+import io
 import os
 import sys
 from pathlib import Path
+
+# Client 按 UTF-8 读取 agent 日志；uv 不会自动替 Python 设置输出编码。
+for _stream in (sys.stdout, sys.stderr):
+    if isinstance(_stream, io.TextIOWrapper):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
 
 # 兄弟式 import：agent/ 与 agent/shared/ 都进 sys.path，两个目录下的模块都按顶层名导入
 # （`from rect import ...`）。**只加 agent/ 不够**：shared/ 下的模块不在 agent/ 目录里。

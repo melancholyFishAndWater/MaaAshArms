@@ -187,23 +187,20 @@ def install_deps():
 
 
 def rewrite_agent(interface: dict, python_runtime: Path | None) -> None:
-    """把包内 interface.json 的 agent 指向包内解释器。
+    """发布配置不继承开发态 uv 的参数，也不依赖项目锁文件。
 
-    开发态（assets/interface.json）保持 "child_exec": "python"：包内路径在开发机上不存在，
-    改了本地就没法用系统 Python 跑 agent（VSCode / maa-tools 调试都受影响）。
-    MFA 按 AppPaths.DataRoot 解析 child_exec（AgentHelper.cs:219，`ReplacePlaceholder(..., DataRoot, true)`），
-    DataRoot 就是安装根，所以 "python/python.exe" 这种相对路径能落到包内。
-    `-u` 关掉 stdout 缓冲，agent 的 print 才会实时出现在 MFA 面板里。
+    带运行时用包内解释器；资源包（含 Android）仍由宿主提供 Python。
+    MFA 按 DataRoot 解析包内相对路径。-u 保证面板输出及时刷新。
     """
-    if python_runtime is None:
-        return
-
     agents = interface.get("agent")
     if agents is None:
         print("interface.json has no 'agent' field, skipping rewrite.")
         return
 
-    child_exec = "python/python.exe" if os_name == "win" else "python/bin/python3"
+    child_exec = (
+        "python" if python_runtime is None
+        else "python/python.exe" if os_name == "win" else "python/bin/python3"
+    )
     items = (
         agents if isinstance(agents, list) else [agents]
     )  # schema 里 agent 是 oneOf 对象/数组
@@ -211,8 +208,7 @@ def rewrite_agent(interface: dict, python_runtime: Path | None) -> None:
         if not isinstance(agent, dict):
             continue
         agent["child_exec"] = child_exec
-        args = [item for item in (agent.get("child_args") or []) if item != "-u"]
-        agent["child_args"] = ["-u", *args]
+        agent["child_args"] = ["-u", "./agent/main.py"]
         print(f"agent: child_exec={child_exec}, child_args={agent['child_args']}")
 
 
@@ -384,14 +380,20 @@ def smoke_check(python_runtime: Path | None) -> None:
                 f"install/python 下仍有重复原生库：{leftover[0].relative_to(install_path)}"
             )
 
-        expected = "python/python.exe" if os_name == "win" else "python/bin/python3"
-        agents = interface.get("agent")
-        items = agents if isinstance(agents, list) else [agents]
-        actual = [item.get("child_exec") for item in items if isinstance(item, dict)]
-        if not actual or any(value != expected for value in actual):
-            problems.append(
-                f"包内 interface.json 的 agent.child_exec 应为 {expected}，实际 {actual}"
-            )
+    expected = (
+        "python" if python_runtime is None
+        else "python/python.exe" if os_name == "win" else "python/bin/python3"
+    )
+    agents = interface.get("agent")
+    items = agents if isinstance(agents, list) else [agents]
+    actual = [item.get("child_exec") for item in items if isinstance(item, dict)]
+    if not actual or any(value != expected for value in actual):
+        problems.append(
+            f"包内 interface.json 的 agent.child_exec 应为 {expected}，实际 {actual}"
+        )
+    actual_args = [item.get("child_args") for item in items if isinstance(item, dict)]
+    if not actual_args or any(value != ["-u", "./agent/main.py"] for value in actual_args):
+        problems.append(f"包内 agent.child_args 应为 ['-u', './agent/main.py']，实际 {actual_args}")
 
     if problems:
         for problem in problems:
