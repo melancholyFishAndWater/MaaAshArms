@@ -187,8 +187,9 @@
     // INFO 点确认
     "GiftClickSortConfirm": {
         "desc": "点击确认按钮",
-        "recognition": "OCR",
-        "expected": "确认",
+        "recognition": "TemplateMatch",
+        "template": "Base/Confirm.png",
+        "method": 10001,
         "roi": [
             699,
             524,
