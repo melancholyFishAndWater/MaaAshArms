@@ -27,6 +27,10 @@
 
 - `uvx ruff check tools --select F401,F841,E722,FURB162,S110,PLW1510,BLE001,RUF100`（`UV_CACHE_DIR=temp/uv-cache`）：无法打开工作区外 `uv/tools/.lock`，系统拒绝访问，lint 未执行；未绕过文件权限。
 
+## uv 开发环境第一阶段验收
+
+- `node tools/validation/check_pyright.mjs`：接入根目录 `.venv` 后为 0 errors、74 warnings；警告为 `tools.*`、`lib.*`、`configure` 等仓库模块导入未解析。未修改工具脚本或扩大路径修复范围。
+
 ---
 
 有新问题时一行一条追加，写清**什么命令、什么报错、怎么绕过的**；处理完就删掉那一条——已修的不留历史

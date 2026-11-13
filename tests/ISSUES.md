@@ -2,3 +2,5 @@
 
 有新问题时一行一条追加，写清**什么命令、什么报错、怎么绕过的**；处理完就删掉那一条——已修的不留历史
 （改了哪个函数、为什么这么改写在代码注释里）。`tests/` 没有 README，「决定不做」的取舍写进 `tests/conftest.py` 的说明。
+
+- `uv run --locked python -m pytest -q tests`：33 passed，但写 `.pytest_cache` 时出现 `PytestCacheWarning: [WinError 5]`；测试断言全部通过，缓存权限问题尚未处理。

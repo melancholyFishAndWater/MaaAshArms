@@ -1,0 +1,27 @@
+[project]
+name = "maaasharms"
+version = "0.0.0"
+description = "MaaAshArms agent and development environment"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "maafw==5.12.2",
+]
+
+[dependency-groups]
+dev = [
+    "json-with-comments",
+    "jsonschema==4.26.0",
+    "pillow",
+    "pytest",
+    "referencing==0.37.0",
+    "ruff",
+]
+
+[tool.uv]
+package = false
+# Keep the existing release dependency baseline during the environment migration.
+constraint-dependencies = [
+    "maaagentbinary==1.0.1",
+    "numpy==2.5.3",
+    "strenum==0.4.15",
+]

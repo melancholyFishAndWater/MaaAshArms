@@ -449,6 +449,7 @@ deps/tools/*
 build
 install
 .python-runtime*/
+.venv/
 
 # Tools
 tools/ImageCropper/**/*.png
