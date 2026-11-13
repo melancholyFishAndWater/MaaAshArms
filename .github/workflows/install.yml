@@ -18,6 +18,9 @@ on:
       - "assets/**"
       - "**.py"
       - "requirements.txt"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".python-version"
   pull_request:
     branches:
       - "**"
@@ -26,6 +29,9 @@ on:
       - "assets/**"
       - "**.py"
       - "requirements.txt"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".python-version"
   workflow_dispatch:
 
 jobs:
@@ -105,6 +111,18 @@ jobs:
         with:
           python-version: "3.13"   # 只给构建脚本用；打进包的那份由 setup_python_runtime.py 另下
 
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.12.22"
+
+      - name: Check release requirements export
+        shell: bash
+        run: |
+          uv export --locked --no-default-groups --no-emit-project --no-hashes --no-header --format requirements-txt --output-file requirements.txt
+          git diff --exit-code -- requirements.txt
+          uv sync --locked --only-group build
+
       - name: Download MaaFramework
         uses: robinraju/release-downloader@v1
         with:
@@ -142,8 +160,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}   # 拉 python-build-standalone 的 release 元数据，避免 API 限流
         run: |
-          python -m pip install --disable-pip-version-check uv
-          python tools/ci/setup_python_runtime.py \
+          uv run --locked --only-group build python tools/ci/setup_python_runtime.py \
             --platform "${{ matrix.runtime_platform }}" \
             --dest .python-runtime \
             --requirements requirements.txt \
@@ -152,19 +169,18 @@ jobs:
       - name: Install
         shell: bash
         run: |
-          python -m pip install --disable-pip-version-check -r tools/requirements.txt
           args=()
           if [ -n "${{ matrix.runtime_platform }}" ]; then
             args+=(--python-runtime .python-runtime)
           fi
           # --mfa-dir 可以无条件传：android 档没有 MFA/，install.py 会打印跳过
-          python tools/install.py "${{ needs.meta.outputs.tag }}" "${{ matrix.artifact_os }}" "${{ matrix.arch }}" \
+          uv run --locked --only-group build python tools/install.py "${{ needs.meta.outputs.tag }}" "${{ matrix.artifact_os }}" "${{ matrix.arch }}" \
             --mfa-dir MFA "${args[@]}"
 
       - name: Smoke test packaged agent
         if: matrix.runtime_platform != ''
         shell: bash
-        run: python tools/ci/smoke_packaged_agent.py
+        run: uv run --locked --only-group build python tools/ci/smoke_packaged_agent.py
 
       - name: Clean up smoke leftovers
         shell: bash
