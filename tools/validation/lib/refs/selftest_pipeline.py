@@ -397,10 +397,34 @@ def _checks_core() -> list[tuple]:
             "TaskClaimFirst": {"next": ["ClickConfirmX", "[JumpBack]BaseBranchError"]},
         }
     )
+    confirm_cases = {
+        "NamedConfirm": {"action": "Click"},
+        "TemplateButton": {"recognition": "TemplateMatch", "template": "Base/Confirm.png", "action": "Click"},
+        "NestedButton": {"recognition": {"type": "TemplateMatch", "param": {"template": ["Base/Confirm.png"]}}, "action": "Click"},
+        "WrappedButton": {"recognition": "And", "all_of": ["ProbeConfirmX"], "action": "Click"},
+        "InlineButton": {"recognition": "And", "all_of": [{"recognition": "TemplateMatch", "template": "Base/Confirm.png"}], "action": "Click"},
+        "NestedGroup": {"recognition": {"type": "Or", "param": {"any_of": [{"recognition": {"type": "OCR", "param": {"expected": "确认"}}}]}}, "action": "Click"},
+        "PureConfirm": {"recognition": "TemplateMatch", "template": "Base/Confirm.png"},
+        "PlainButton": {"recognition": "OCR", "expected": "主页", "action": "Click"},
+        "CycleButton": {"recognition": "And", "all_of": ["CycleButton"], "action": "Click"},
+        "MissingButton": {"recognition": "And", "all_of": ["MissingProbe"], "action": "Click"},
+        "DisabledButton": {"recognition": "And", "all_of": [{"name": "ProbeConfirmX", "enabled": False}], "action": "Click"},
+    }
+    for name, data in confirm_cases.items():
+        a15_ctx.nodes[name] = Node(name, data, Path("a15.json"))
+        for first in (False, True):
+            candidates = [name, "[JumpBack]BaseBranchError"] if first else ["[JumpBack]BaseBranchError", name]
+            parent = f"TaskCase{name}{first}"
+            a15_ctx.nodes[parent] = Node(parent, {"next": candidates}, Path("a15.json"))
     check_a15_error_branch(a15_ctx)
 
     def a15_ids(node_name: str) -> set[str]:
         return {f.id for f in a15_ctx.findings if f.message.startswith(node_name + ".")}
+
+    positives = {"NamedConfirm", "TemplateButton", "NestedButton", "WrappedButton", "InlineButton", "NestedGroup"}
+    for name in confirm_cases:
+        checks.append((("A15-error-branch-conflict" in a15_ids(f"TaskCase{name}False")) == (name in positives), f"A15 确认候选识别：{name}"))
+        checks.append((not a15_ids(f"TaskCase{name}True"), f"A15 正常确认优先不误报：{name}"))
 
     checks += [
         (not a15_ids("TaskOnlyError"), "只挂 [JumpBack]BaseBranchError → 不报 A15"),

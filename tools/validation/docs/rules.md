@@ -76,6 +76,9 @@
 `[JumpBack]`；不能排在取反守卫（顶层 `inverse: true`，或识别配置里带 `inverse`）之后——弹窗挡住页面时那些守卫必然命中，错误分支
 永远轮不到；也不能排在自己会点「确认」的候选之前——同一个确认会被当成错误弹窗点掉（v3.2 起这条按 **error** 报）。只判同一列表内的先后，
 "哪个模板在弹窗下仍会命中"静态判不了，按人工。判据见 `docs/zh_cn/develop/pipeline-structure.md` §9。
+确认候选由外层 `action` + 确认标记判定：`*Confirm` 名字、`Base/Confirm.png` 模板或 OCR `expected` 含“确认”；
+支持平铺与 `recognition.type/param`、And/Or 的引用和内联子识别。子探针不要求 `action`，引用按路径防环，
+不再以固定三层截断；不存在/停用的引用不参与。此判定不依赖 A33 通过，漏写 `method` 等字段仍会报告位次冲突。
 
 `A19-desc-marker-*` 管 `desc` 里的方括号标记（`node-naming.md` §6：一共五个，含义固定）：
 

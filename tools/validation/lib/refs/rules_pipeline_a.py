@@ -626,14 +626,19 @@ def _resolve_candidate(item, nodes: dict[str, Node]) -> tuple[str, dict] | None:
 
 
 def _has_confirm_mark(name: str | None, data: dict) -> bool:
-    """这个候选自身是不是「确认按钮」：名字是通用确认节点，或 expected 里含「确认」。"""
-    if name in CONFIRM_NODE_NAMES:
+    """识别自身的确认标记；不要求通过 A33，配置不完整仍可能抢点。"""
+    if name in CONFIRM_NODE_NAMES or (name is not None and name.endswith("Confirm")):
         return True
-    for _path, value in walk_key(data, "expected"):
-        for pattern in to_list(value):
-            if isinstance(pattern, str) and any(w in pattern for w in CONFIRM_WORDS):
-                return True
-    return False
+    recognition = data.get("recognition")
+    params = recognition.get("param", {}) if isinstance(recognition, dict) else data
+    if not isinstance(params, dict):
+        return False
+    if "Base/Confirm.png" in to_list(params.get("template")):
+        return True
+    return any(
+        isinstance(pattern, str) and any(word in pattern for word in CONFIRM_WORDS)
+        for pattern in to_list(params.get("expected"))
+    )
 
 
 def _is_inverse_guard(data: dict) -> bool:
@@ -649,21 +654,32 @@ def _is_inverse_guard(data: dict) -> bool:
 
 
 def _clicks_confirm(
-    name: str | None, data: dict, nodes: dict[str, Node], depth: int = 3
+    name: str | None, data: dict, nodes: dict[str, Node]
 ) -> bool:
-    """这个候选会不会把「确认」点掉：自己有 `action`，且自身或引用的子识别里出现确认按钮。"""
+    """外层候选有动作且自身/子识别含确认标记；子探针不要求动作，引用按路径防环。"""
     if "action" not in data:
         return False
-    if _has_confirm_mark(name, data):
-        return True
-    if depth <= 0:
+
+    def contains_confirm(current_name: str | None, current: dict, seen: frozenset[str]) -> bool:
+        if _has_confirm_mark(current_name, current):
+            return True
+        recognition = current.get("recognition")
+        typ = recognition.get("type") if isinstance(recognition, dict) else recognition
+        params = recognition.get("param", {}) if isinstance(recognition, dict) else current
+        if typ not in ("And", "Or") or not isinstance(params, dict):
+            return False
+        key = "all_of" if typ == "And" else "any_of"
+        for item in to_list(params.get(key)):
+            if isinstance(item, dict):
+                if contains_confirm(None, item, seen):
+                    return True
+            elif isinstance(item, str):
+                sub = _resolve_candidate(item, nodes)
+                if sub and sub[0] not in seen and contains_confirm(sub[0], sub[1], seen | {sub[0]}):
+                    return True
         return False
-    for key in ("all_of", "any_of"):
-        for item in to_list(data.get(key)):
-            sub = _resolve_candidate(item, nodes)
-            if sub and _clicks_confirm(sub[0], sub[1], nodes, depth - 1):
-                return True
-    return False
+
+    return contains_confirm(name, data, frozenset({name}) if name else frozenset())
 
 
 def check_a15_error_branch(ctx: Ctx) -> None:
