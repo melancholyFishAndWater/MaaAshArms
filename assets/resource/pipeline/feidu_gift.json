@@ -149,13 +149,15 @@
     /* -------------------- 动作-排序 -------------------- */
     "GiftEnterRules": {
         "desc": "进入排序规则选择页面",
-        "recognition": "OCR",
-        "expected": "排序",
+        "recognition": "TemplateMatch",
+        "template": "Feidu/Sort.png",
+        "method": 10001,
+        "threshold": 0.9,
         "roi": [
-            703,
-            15,
-            131,
-            54
+            645,
+            0,
+            243,
+            116
         ],
         "action": "Click",
         "post_wait_freezes": 1000,
@@ -181,7 +183,8 @@
         "post_wait_freezes": 1000,
         "next": [
             "GiftClickSortConfirm",
-            "[JumpBack]BaseBranchError"
+            "[JumpBack]BaseBranchError",
+            "GiftEnterRules" // INFO 防止扫描过快 点击排序把模态窗口点掉了
         ]
     },
     // INFO 点确认
