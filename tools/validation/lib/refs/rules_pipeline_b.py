@@ -25,6 +25,56 @@ from .model import (
 
 
 
+def check_a33_confirm_template(ctx: Ctx) -> None:
+    """确认按钮须使用抗遮挡模板匹配；And/Or 沿子识别检查，循环引用不算有效。"""
+    def valid(data: dict, seen: frozenset[str]) -> bool:
+        recognition = data.get("recognition")
+        typ = recognition.get("type") if isinstance(recognition, dict) else recognition
+        params = recognition.get("param", {}) if isinstance(recognition, dict) else data
+        if not isinstance(params, dict):
+            return False
+        if typ == "TemplateMatch":
+            roi = params.get("roi")
+            return (
+                params.get("template") in ("Base/Confirm.png", ["Base/Confirm.png"])
+                and type(params.get("method")) is int and params["method"] == 10001
+                and isinstance(roi, list) and len(roi) == 4
+                and all(type(value) is int for value in roi)
+                and roi[0] >= 0 and roi[1] >= 0 and roi[2] > 0 and roi[3] > 0
+                and not data.get("inverse", False) and not params.get("inverse", False)
+            )
+        if typ not in ("And", "Or") or data.get("inverse") or params.get("inverse"):
+            return False
+        items = to_list(params.get("all_of" if typ == "And" else "any_of"))
+        results: list[bool] = []
+        for item in items:
+            if isinstance(item, str):
+                node = ctx.nodes.get(item)
+                results.append(node is not None and item not in seen and valid(node.data, seen | {item}))
+            elif isinstance(item, dict):
+                results.append(valid(item, seen))
+            else:
+                results.append(False)
+        # And 的任一必选条件能保证确认按钮存在；Or 的每条成功路径都必须保证。
+        return bool(results) and (any(results) if typ == "And" else all(results))
+
+    for name, node in ctx.nodes.items():
+        if not name.endswith("Confirm"):
+            continue
+        recognition = node.data.get("recognition")
+        typ = recognition.get("type") if isinstance(recognition, dict) else recognition
+        # 无动作的 Custom 仅负责日志/诊断，不是确认按钮识别（如 BaseProbeErrorConfirm）。
+        if typ == "Custom" and "action" not in node.data:
+            continue
+        if not valid(node.data, frozenset({name})):
+            ctx.add(
+                "A33-confirm-template", "error", node.file, find_line(node.file, name),
+                f"{name} 必须使用 recognition: TemplateMatch、template: Base/Confirm.png、"
+                "method: 10001 和显式 roi: [x, y, w, h]（w/h > 0）；"
+                "And/Or 的确认条件也必须满足，减少模态窗口遮挡导致的误识别/点击异常",
+            )
+
+
 def check_a28_next_list_cap(ctx: Ctx) -> None:
     """非任务入口的 `next` 不得超过 5 项（pipeline-structure.md §10，v3.10；v3.3 起为 7 项）。
 

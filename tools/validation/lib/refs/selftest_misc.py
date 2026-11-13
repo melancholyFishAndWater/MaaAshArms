@@ -28,10 +28,36 @@ from .rules_pipeline_b import (
     check_a29_and_box_index,
     check_a30_and_inline_sub,
     check_a31_unreferenced_node,
+    check_a33_confirm_template,
 )
 from .selftest_pipeline import synth_ctx
 
 def _checks_rest(checks: list[tuple]) -> None:
+    confirm = {"recognition": "TemplateMatch", "template": "Base/Confirm.png", "method": 10001, "roi": [10, 20, 100, 50]}
+    confirm_ctx = synth_ctx({
+        "GoodConfirm": confirm,
+        "NestedConfirm": {"recognition": {"type": "TemplateMatch", "param": {k: v for k, v in confirm.items() if k != "recognition"}}},
+        "WrappedConfirm": {"recognition": "And", "all_of": ["GoodConfirm", "LogConfirm"], "action": "Click"},
+        "InlineConfirm": {"recognition": "And", "all_of": [confirm]},
+        "LogConfirm": {"recognition": "Custom"},
+        "OtherNode": {"recognition": "OCR"},
+        "OcrConfirm": {"recognition": "OCR", "expected": "确认"},
+        "NoMethodConfirm": {k: v for k, v in confirm.items() if k != "method"},
+        "NoRoiConfirm": {k: v for k, v in confirm.items() if k != "roi"},
+        "WrongTemplateConfirm": {**confirm, "template": "Other.png"},
+        "BadRoiConfirm": {**confirm, "roi": [0, 0, 0, 50]},
+        "InverseConfirm": {**confirm, "inverse": True},
+        "OrConfirm": {"recognition": "Or", "any_of": ["GoodConfirm", "OtherNode"]},
+        "CycleConfirm": {"recognition": "And", "all_of": ["CycleConfirm"]},
+        "CustomClickConfirm": {"recognition": "Custom", "action": "Click"},
+    })
+    check_a33_confirm_template(confirm_ctx)
+    confirm_hits = {f.message.split(" ")[0] for f in confirm_ctx.findings}
+    for name in ("GoodConfirm", "NestedConfirm", "WrappedConfirm", "InlineConfirm", "LogConfirm", "OtherNode"):
+        checks.append((name not in confirm_hits, f"Confirm 合法配置或非按钮不误报：{name}"))
+    for name in ("OcrConfirm", "NoMethodConfirm", "NoRoiConfirm", "WrongTemplateConfirm", "BadRoiConfirm", "InverseConfirm", "OrConfirm", "CycleConfirm", "CustomClickConfirm"):
+        checks.append((name in confirm_hits, f"Confirm 不安全配置报错：{name}"))
+
     param_ctx = synth_ctx({
         "TaskFactory": {},
         "FactoryProbeDaily": {"recognition": "Custom"},

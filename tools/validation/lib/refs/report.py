@@ -56,6 +56,7 @@ from .rules_pipeline_b import (
     check_a29_and_box_index,
     check_a30_and_inline_sub,
     check_a31_unreferenced_node,
+    check_a33_confirm_template,
 )
 from .selftest import self_test
 
@@ -364,6 +365,7 @@ def main(argv: list[str] | None = None) -> int:
         check_a29_and_box_index(ctx)
         check_a30_and_inline_sub(ctx)
         check_a31_unreferenced_node(ctx)
+        check_a33_confirm_template(ctx)
     check_custom_params(ctx, pipeline=domains["pipeline"], interface=domains["interface"], tasks=domains["tasks"])
     # 规范版本与注解新鲜度：不属于任何域，给了 --pipeline 之类也要报
     check_spec_version(ctx)

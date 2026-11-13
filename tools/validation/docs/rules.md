@@ -54,6 +54,18 @@
 | 停用与内联 | `A25-ensure-banned`、`A26-single-consumer-probe`、`A30-and-inline-sub` | `Ensure` 类别停用；单探针内联；多条件 `And` 内联子识别 |
 | 识别预算 | `A29-and-box-index`、`A30` | `And` 组合多条件要显式 `box_index`（只报带 `action` 的节点） |
 
+### Confirm 按钮识别（A33）
+
+`A33-confirm-template`（error）：名字以 `Confirm` 结尾的节点必须使用
+`recognition: TemplateMatch`、`template: "Base/Confirm.png"`、`method: 10001`，
+并显式填写整数矩形 `roi: [x, y, w, h]`（x/y ≥ 0、w/h > 0），减少模态窗口遮挡导致的误识别与点击异常。
+单元素模板列表 `["Base/Confirm.png"]` 也有效；识别配置支持平铺字段和 `recognition.type/param`。
+
+- `And` 可以引用公共探针或内联识别：至少一个必选条件满足上述配置即可；`Or` 的每个分支都必须满足。
+- 取反的确认条件不算满足；循环引用、悬空引用也不算满足。
+- 无 `action` 的 `Custom` 节点只用于日志/诊断（如 `BaseProbeErrorConfirm`），不按确认按钮检查；有动作则仍检查。
+- 本规则只检查 pipeline 定义，不推演 interface/tasks 覆盖后的最终状态；不修改现有任务数据。
+
 ### 分组细则（判据原文与实测）
 
 `A13-*` 里属于**护栏**（今天一条都不报，为的是以后别写错）的几条：探测节点不该有 `next`、

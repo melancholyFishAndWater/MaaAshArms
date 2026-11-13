@@ -23,6 +23,11 @@
 - 绕过：节点与引用要人删（`A25` 只负责点名）；删完用 `A1-dangling-node` 当回归判据。
 - 出处：本会话用户裁定"不允许 `Ensure`，其将在未来删除"（2026-10-30）；分布为 `validate_refs.py` 按名扫描的结果。
 
+## Confirm 规则验收记录
+
+- `uvx ruff check tools --select F401,F841,E722,FURB162,S110,PLW1510,BLE001,RUF100`（`UV_CACHE_DIR=temp/uv-cache`）：无法打开工作区外 `uv/tools/.lock`，系统拒绝访问，lint 未执行；未绕过文件权限。
+- `python tools/validation/cli.py validate-refs`：新增 `A33-confirm-template` 命中 7 个存量节点（公共探针缺少 method，3 个调用者继承该问题，另 3 个节点仍用 OCR）；本轮仅新增校验，未授权修改 pipeline 数据，因此保留报错，不降低规则等级。
+
 ---
 
 有新问题时一行一条追加，写清**什么命令、什么报错、怎么绕过的**；处理完就删掉那一条——已修的不留历史
