@@ -83,15 +83,7 @@
             ],
             "option": [
                 "gift_daily"
-            ],
-            "pipeline_override": {
-                "FeiduEnterHome": {
-                    "next": [
-                        "GiftEnterTavern",
-                        "[JumpBack]BaseBranchError"
-                    ]
-                }
-            }
+            ]
         },
         {
             "name": "Entrust",
@@ -227,6 +219,7 @@
             "group": [
                 "metal"
             ],
+            // PERF 简化
             "pipeline_override": {
                 "StartUpClickLogin": {
                     "next": [

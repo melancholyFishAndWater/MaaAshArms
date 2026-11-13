@@ -11,8 +11,8 @@
             "[JumpBack]GiftProbeDaily",
             // INFO 候选
             "GiftBranchHome",
-            "FeiduEnterHome",
             "GiftEnterTavern",
+            "GiftEnterFeidu",
             // INFO 错误
             "[JumpBack]BaseBranchError",
             "[JumpBack]BaseReturnHome"
@@ -40,7 +40,27 @@
             40
         ]
     },
-    /* -------------------- 动作-进入 -------------------- */
+    /* -------------------- 动作-废都 -------------------- 
+    INFO 其余参数见 FeiduEnterHome
+    */
+    "GiftEnterFeidu": {
+        "desc": "进入废都",
+        "recognition": "And",
+        "all_of": [
+            "FeiduProbeHomeButtom"
+        ],
+        "action": "Click",
+        "post_wait_freezes": 2000,
+        "timeout": 60000,
+        "rate_limit": 3000,
+        "next": [
+            "BaseErrorNext",
+            "GiftEnterTavern",
+            "GiftEnterFeidu",
+            "[JumpBack]BaseBranchError"
+        ]
+    },
+    /* -------------------- 动作-酒馆 -------------------- */
     // INFO 进入酒馆
     "GiftEnterTavern": {
         "desc": "从废都进入酒馆",

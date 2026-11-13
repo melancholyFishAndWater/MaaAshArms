@@ -34,18 +34,25 @@
             45
         ]
     },
-    /* -------------------- 动作-进入废都 -------------------- */
-    "FeiduEnterHome": {
-        "desc": "从主页进入废都",
+    "FeiduProbeHomeButtom": {
+        "desc": "[end] 有进入废都按钮",
         "recognition": "OCR",
         "expected": "废都重建",
-        "action": "Click",
         "roi": [
             1137,
             674,
             115,
             39
+        ]
+    },
+    /* -------------------- 动作-进入废都 -------------------- */
+    "FeiduEnterHome": {
+        "desc": "从主页进入废都",
+        "recognition": "And",
+        "all_of": [
+            "FeiduProbeHomeButtom"
         ],
+        "action": "Click",
         "post_wait_freezes": 2000,
         "timeout": 60000,
         "rate_limit": 3000,
