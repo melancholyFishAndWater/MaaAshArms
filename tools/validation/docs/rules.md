@@ -209,7 +209,7 @@ Pipeline 节点直接声明同类参数时由 `A32-custom-param-type` 检查。�
 | 规则 | 管什么 |
 | --- | --- |
 | `C1-missing-template`（error） | pipeline `template` 引用的图片不存在（含 agent 里不在 `JTemplateMatch(...)` 内的字面量） |
-| `C2-unused-image`（info） | 没被任何 pipeline/agent 引用的图片 |
+| `C2-unused-image`（warn） | 没被任何 pipeline/agent 引用的图片 |
 | `C3-non-png`（warn） | image 目录下有非 png 文件 |
 | `C4-empty-folder-template`（error） | 目录模板（`xxx/`）里没有图片 |
 | `C5-image-name`（warn） | 模板元素名不是英文 CamelCase |

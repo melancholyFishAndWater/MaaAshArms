@@ -556,7 +556,7 @@ def check_images(ctx: Ctx) -> None:
         if not is_used(path):
             ctx.add(
                 "C2-unused-image",
-                "info",
+                "warn",
                 path,
                 None,
                 f"没有被任何 pipeline/agent 引用的图片：{rel}",
