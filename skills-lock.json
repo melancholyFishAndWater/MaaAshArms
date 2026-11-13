@@ -1,36 +1,36 @@
 {
-  "version": 1,
+  "version": 2,
   "skills": {
     "maafw-custom": {
       "source": "Windsland52/MaaTutorial",
       "sourceType": "github",
       "skillPath": "skills/maafw-custom/SKILL.md",
-      "computedHash": "bbf7bf3ba7f988359439ebf5bb1a00d97c68d6b20a78f46ab3d0b8d6c4f9e6ff"
+      "computedHash": "835d096f3f1c7ef54c511819683f2593501022f1a74bd7dbcbc309070dfadf97"
     },
     "maafw-debug": {
       "source": "Windsland52/MaaTutorial",
       "sourceType": "github",
       "skillPath": "skills/maafw-debug/SKILL.md",
-      "computedHash": "5f8edafadfb67166dc1ee4852c5ec329bafd23fcb181eaeb17c3c1b6460d76db"
+      "computedHash": "86109f9adb69d04f8071deb06041a99e775763caff943e24e76bdb1c8103d61a"
     },
     "maafw-interface": {
       "source": "Windsland52/MaaTutorial",
       "sourceType": "github",
       "skillPath": "skills/maafw-interface/SKILL.md",
-      "computedHash": "f3a92e408c9af97dc952f36fefe46093faff416938bdf72b67a1dd1264258a1f"
+      "computedHash": "4a02f13fd4444247f4d3adfd40f262aefad126e1ef7f0c7228cdbd0b6d8db1b0"
     },
     "maafw-pipeline": {
       "source": "Windsland52/MaaTutorial",
       "sourceType": "github",
       "skillPath": "skills/maafw-pipeline/SKILL.md",
-      "computedHash": "1000c7fea73e3c0ce6c0cb5cb05e62ec15e89b2b2cd73459400a292f8d333910"
+      "computedHash": "52c8ea30395295440215a2a428ad25b7d29fe91e04c53f4ab375a495cf331e42"
     },
     "sentry-cli": {
       "source": "cli.sentry.dev",
       "sourceUrl": "https://cli.sentry.dev",
       "sourceType": "well-known",
-      "computedHash": "5c4ad508ccc3d980158604271847da68c00f832d02a48688ffcfb342f6888db9",
-      "wellKnownDigest": "sha256:51cf883c6b5bab2e089db992c3f3b999a6b0e50a4df05e5097de9288d6e86b5e"
+      "computedHash": "68223d92c72c46d60c4af88a4d94483832f175f63115f321ee013ac679d8f91c",
+      "wellKnownDigest": "sha256:4f58eeb2804e095c500cc9ade9d362e4b10f9ccf50e8f50507a5794bb51d0adc"
     }
   }
 }
