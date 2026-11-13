@@ -4,7 +4,7 @@ version = "0.0.0"
 description = "MaaAshArms agent and development environment"
 requires-python = ">=3.13,<3.14"
 dependencies = [
-    "maafw==5.12.2",
+    "maafw==5.15.0",
 ]
 
 [dependency-groups]
