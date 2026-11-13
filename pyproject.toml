@@ -8,8 +8,11 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = [
+build = [
     "json-with-comments",
+]
+dev = [
+    { include-group = "build" },
     "jsonschema==4.26.0",
     "pillow",
     "pytest",

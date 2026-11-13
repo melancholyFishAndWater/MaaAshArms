@@ -89,6 +89,9 @@ dependencies = [
 ]
 
 [package.dev-dependencies]
+build = [
+    { name = "json-with-comments" },
+]
 dev = [
     { name = "json-with-comments" },
     { name = "jsonschema" },
@@ -102,6 +105,7 @@ dev = [
 requires-dist = [{ name = "maafw", specifier = "==5.15.0" }]
 
 [package.metadata.requires-dev]
+build = [{ name = "json-with-comments" }]
 dev = [
     { name = "json-with-comments" },
     { name = "jsonschema", specifier = "==4.26.0" },
