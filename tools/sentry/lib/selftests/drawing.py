@@ -85,7 +85,7 @@ def check_flow_diagnostics() -> list[str]:
     parsed = parse_log(truncated, None, None, None, False)
     _eq(
         [e.name for e in parsed.events],
-        ["Task timeout EntrustMoveToFind"],
+        ["识别超时 EntrustMoveToFind"],
         "截断超时事件",
     )
     _contains(parsed.events[0].action, "行尾被截断", "截断超时的说明")
@@ -237,7 +237,7 @@ def check_flow_diagnostics() -> list[str]:
     ])
     bounded = parse_log(bounded_log, None, None, 100, False)
     _eq(bounded.span is not None, True, "仅事件日志也有任务窗口")
-    _eq([e.name for e in bounded.events if e.kind == "event"], ["失败 Mine"], "排除后续任务失败")
+    _eq([e.name for e in bounded.events if e.kind == "event"], ["节点失败（原因未知） Mine"], "排除后续任务失败")
     _eq([e.task_id for e in bounded.events if e.kind == "event"], [100], "终止失败保留 task_id")
 
     # 12) 日志里只有别的 task 的记录（`Node.NextList` 带 task_id 却不是它）：

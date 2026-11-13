@@ -737,7 +737,7 @@ def parse_log(
             out.events.append(
                 event_step(
                     ts,
-                    f"Task timeout {mt.group('name')}",
+                    f"识别超时 {mt.group('name')}",
                     detail,
                     mt.group("name"),
                     px=line_px,
@@ -839,11 +839,34 @@ def parse_log(
                 for e in out.events
             ):
                 continue
+            # 只检查本次终止前最后一段派发记录，不拿整任务历史累计 miss 推断原因。
+            recent = sorted(
+                (d for d in nextlists if d.task_id == best[2] and d.px == best[3] and d.ts <= best[0]),
+                key=lambda d: d.ts,
+            )
+            misses: list[Dispatcher] = []
+            for dispatch in reversed(recent):
+                if dispatch.name != best[1] or dispatch.kind == "succeeded":
+                    break
+                if dispatch.kind == "failed":
+                    if misses and dispatch.candidates != misses[0].candidates:
+                        break
+                    misses.append(dispatch)
+            suspected_timeout = (
+                len(misses) >= 2
+                and (best[0] - misses[0].ts).total_seconds() <= 3.0
+                and (misses[0].ts - misses[-1].ts).total_seconds() >= 1.0
+            )
+            label = "疑似识别超时" if suspected_timeout else "节点失败（原因未知）"
+            reason = (
+                f"候选全未命中 ×{len(misses)}，持续 {(misses[0].ts - misses[-1].ts).total_seconds():.1f}s；缺少明确超时日志"
+                if suspected_timeout else "仅有 PipelineNode.Failed；缺少具体失败原因"
+            )
             out.events.append(
                 event_step(
                     best[0],
-                    f"失败 {best[1]}",
-                    "PipelineNode.Failed",
+                    f"{label} {best[1]}",
+                    reason,
                     best[1],
                     best[2],
                     px=best[3],

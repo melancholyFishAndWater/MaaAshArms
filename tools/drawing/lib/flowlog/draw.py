@@ -33,7 +33,7 @@ from .media import (
     member_clock,
 )
 
-from .paint import NOTE_COLORS, PALETTE, PARENT_COLORS, _note_lines, load_font
+from .paint import NOTE_COLORS, PALETTE, PARENT_COLORS, _note_lines, load_font, text_width
 
 from .stale import stale_label
 
@@ -648,14 +648,38 @@ def draw_flow(parsed: ParsedLog, options: FlowOptions, out_path: str) -> DrawRes
                 fill=(126, 132, 148),
             )
             label = st.name if st.run_len <= 1 else f"{st.name}  ×{st.run_len}"
-            d.text(
-                (x + pad, y + int(22 * options.scale)),
-                fit_text(stale_label(label), f_name, text_w),
-                font=f_name,
-                fill=ink,
-            )
+            if st.kind == "event":
+                # 原因与节点名都要读得到；缩略图仍保留右槽，不用一行 fit_text 吞掉诊断。
+                def wrapped(text: str) -> list[str]:
+                    rows: list[str] = []
+                    row = ""
+                    for char in text:
+                        if row and text_width(f_det, row + char) > text_w:
+                            rows.append(row)
+                            row = ""
+                        row += char
+                    if row:
+                        rows.append(row)
+                    return rows
+
+                lines = wrapped(label) + wrapped(st.detail)
+                top = y + int(22 * options.scale)
+                bottom = y + h - parent_h - int(3 * options.scale)
+                line_h = int((options.font_size - 3) * options.scale)
+                capacity = max(1, int((bottom - top) // line_h))
+                for index, row in enumerate(lines[:capacity]):
+                    if index == capacity - 1 and len(lines) > capacity:
+                        row = fit_text(row + "…", f_det, text_w)
+                    d.text((x + pad, top + index * line_h), row, font=f_det, fill=ink)
+            else:
+                d.text(
+                    (x + pad, y + int(22 * options.scale)),
+                    fit_text(stale_label(label), f_name, text_w),
+                    font=f_name,
+                    fill=ink,
+                )
             det = st.detail
-            if det:
+            if det and st.kind != "event":
                 d.text(
                     (
                         x + pad,
