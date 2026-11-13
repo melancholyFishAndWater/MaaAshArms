@@ -393,6 +393,8 @@ def _checks_core() -> list[tuple]:
             "TaskEnsureNoInverse": {
                 "next": ["EnsureNoInverseX", "[JumpBack]BaseBranchError"]
             },
+            "TaskLimitedInverse": {"next": ["LimitedInverseX", "[JumpBack]BaseBranchError"]},
+            "LimitedInverseX": {"recognition": "OCR", "inverse": True, "max_hit": 1},
             "TaskConflict": {"next": ["[JumpBack]BaseBranchError", "ClickConfirmX"]},
             "TaskClaimFirst": {"next": ["ClickConfirmX", "[JumpBack]BaseBranchError"]},
         }
@@ -427,6 +429,19 @@ def _checks_core() -> list[tuple]:
         checks.append((not a15_ids(f"TaskCase{name}True"), f"A15 正常确认优先不误报：{name}"))
 
     checks += [
+        (
+            all(
+                any(
+                    f.id == "A15-error-branch-shadowed" and f.severity == "warn"
+                    and f.message.startswith(name + ".") and "可能先命中" in f.message
+                    and "候选额度与业务优先级" in f.message
+                    and "必然" not in f.message and "永远" not in f.message
+                    for f in a15_ctx.findings
+                )
+                for name in ("TaskShadowed", "TaskLimitedInverse")
+            ),
+            "A15-shadowed 保留取反在前的 warn，额度不自动豁免，不断言必然遮蔽",
+        ),
         (not a15_ids("TaskOnlyError"), "只挂 [JumpBack]BaseBranchError → 不报 A15"),
         (not a15_ids("TaskOk"), "错误分支排在取反守卫之前 → 不报 A15"),
         (

@@ -47,9 +47,9 @@
 | 引用 | `A1-dangling-node`、`A2-unknown-custom` / `A2-unused-registration`、`A3-custom-name-mapping`、`A31-unreferenced-node` | `next` / `on_error` 悬空引用；自定义识别/动作没被任何节点引用或 agent 侧没有；注册名 = 节点名 + `Reco`/`Act`；节点自己没人引用（探针 warn、动作/分支 error、`base.json` 一律 warn） |
 | 结构 | `A4-shadowed-candidate`、`A5-spin-trap`、`A6-complement-unreachable`、`A7-jumpback-target`、`A8-loop-guard`、`A10-maxhit-in-loop`、`A11-bad-regex` / `A11-bounded-quantifier`、`A12-bad-focus-key` | 必然命中挡路、`[JumpBack]` 空转陷阱、取反 cut 不可达、`[JumpBack]` 落点、`Loop` 写法、`max_hit` 预算、`expected` 正则质量、`focus` 键名 |
 | 命名 | `A13-*`（`branch-action` / `branch-next` / `branch-recognition` / `click-synonym` / `legacy-prefix` / `loop-next` / `missing-prefix` / `probe-action` / `probe-next` / `verb` / `file-case` / `key-case`）、`A27-click-ok-banned` | 节点命名与分类、同义写法、参数键 snake_case、片段文件名；`Ok` 结尾禁用（确认统一 `*Confirm`） |
-| 语义 | `A14-fallback-same-probe`、`A15-error-branch-jumpback` / `A15-error-branch-shadowed` / `A15-error-branch-conflict`、`A17-guard-in-next`、`A18-next-length`、`A28-next-list-cap` | `Loop` 末尾兜底同探针；通用错误分支位次（含 conflict 为 error）；守卫探针重复识别；`next` 长度上限 |
+| 语义 | `A14-fallback-same-probe`、`A15-error-branch-jumpback` / `A15-error-branch-shadowed` / `A15-error-branch-conflict`、`A17-guard-in-next`、`A18-next-length`、`A28-next-list-cap` | `Loop` 末尾兜底同探针；通用错误分支位次（shadowed 提示潜在遮蔽，conflict 为 error）；守卫探针重复识别；候选数量复核 |
 | `desc` 标记 | `A19-desc-marker-unknown` / `A19-desc-marker-mismatch` / `A19-desc-marker-end` | 方括号标记（`[end]` / `[jp]` / `[once]` / `[max]` / `[Loop]`）与字段对不上 |
-| 自环与兜底 | `A20-jp-self-loop`（error）、`A21-self-loop-without-error-next`（warn）、`A22-error-next-not-first`（warn） | `[jp]` 不许自环；自环必须配 `BaseErrorNext` 且排 `next[0]` |
+| 自环与兜底 | `A20-jp-self-loop`（error）、`A21-self-loop-without-error-next`（warn）、`A22-error-next-not-first`（warn） | `[jp]` 不许自环；自环默认配 `BaseErrorNext`（A21 查项目约定，不证明无限循环），引用时仍须排 `next[0]`（A22） |
 | 可读性 | `A23-section-comment-probe`、`A24-node-comment-missing` | 分节注释下紧跟的节点类型；主干节点缺注释 |
 | 停用与内联 | `A25-ensure-banned`、`A26-single-consumer-probe`、`A30-and-inline-sub` | `Ensure` 类别停用；单探针内联；多条件 `And` 内联子识别 |
 | 识别预算 | `A29-and-box-index`、`A30` | `And` 组合多条件要显式 `box_index`（只报带 `action` 的节点） |
@@ -72,10 +72,12 @@
 工作循环必须有 `next`、参数键 snake_case、pipeline 片段文件名 snake_case、不用 `ClickYes` 这类同义写法。
 （v3.1 起 `Ensure` 停用，原来两条按 `Ensure` 名判的护栏随 `A13-ensure-*` 一起删掉。）
 
-`A15-error-branch-*` 是同一类护栏，管通用错误分支 `BaseBranchError`（`base.json`）挂在哪：引用必须带
-`[JumpBack]`；不能排在取反守卫（顶层 `inverse: true`，或识别配置里带 `inverse`）之后——弹窗挡住页面时那些守卫必然命中，错误分支
-永远轮不到；也不能排在自己会点「确认」的候选之前——同一个确认会被当成错误弹窗点掉（v3.2 起这条按 **error** 报）。只判同一列表内的先后，
-"哪个模板在弹窗下仍会命中"静态判不了，按人工。判据见 `docs/zh_cn/develop/pipeline-structure.md` §9。
+`A15-error-branch-*` 管通用错误分支 `BaseBranchError`（`base.json`）的引用与位次：引用必须带 `[JumpBack]`；
+排在取反守卫（顶层 `inverse: true`，或识别配置里带 `inverse`）之后时，`A15-error-branch-shadowed` 按 **warn** 提示潜在遮蔽。
+只有原识别受遮挡而失败时，取反候选才可能先命中；须实测遮挡对原识别的影响，并确认额度耗尽后的接管与业务优先级，不能据列表顺序断言永久不可达或批量前移错误分支。
+排在自己会点「确认」的候选之前仍由 conflict 按 **error** 报——同一个确认会被当成错误弹窗点掉（v3.2 起）。
+只判同一列表内的先后，不推演现场画面；「压暗后哪个模板仍会命中」静态判不了，按人工。
+结构规范 v3.11 只澄清提示与复核边界，触发条件和级别均不变；见 `docs/zh_cn/develop/pipeline-structure.md` §9。
 确认候选由外层 `action` + 确认标记判定：`*Confirm` 名字、`Base/Confirm.png` 模板或 OCR `expected` 含“确认”；
 支持平铺与 `recognition.type/param`、And/Or 的引用和内联子识别。子探针不要求 `action`，引用按路径防环，
 不再以固定三层截断；不存在/停用的引用不参与。此判定不依赖 A33 通过，漏写 `method` 等字段仍会报告位次冲突。
@@ -97,13 +99,17 @@
 | 规则 | 级别 | 判据 | 2026-10-31 实测 |
 | --- | --- | --- | --- |
 | `A20-jp-self-loop` | error | `desc` 带 `[jp]`（只补一次）的节点，`next` 里含自己 | 0（已清零：`TrainingEnterHome`、`TrainCloseStatusArrow` 两处已按 v3.0 改写） |
-| `A21-self-loop-without-error-next` | warn | `next` 含自己的节点没有引用 `BaseErrorNext` | 15（存量，逐个确认后补齐） |
+| `A21-self-loop-without-error-next` | warn | `next` 含自己的节点没有引用 `BaseErrorNext`；只查项目约定，不自动推演替代保障 | 15（当日存量） |
 | `A22-error-next-not-first` | warn | 引用了 `BaseErrorNext` 但不在 `next[0]` | 0（护栏） |
 
-为什么必须有 `BaseErrorNext`：框架的 `timeout` 只限制「`next` 里一直找不到命中」的轮询，
-自环动作每轮都命中自己、`[JumpBack]` 弹回的 jp 节点反复命中时同样不触发，于是任务既不失败也不结束。
-`BaseErrorNext`（`LoopErrorByTimes` 改名而来）数的是「这张表连续几轮没有别的节点成功」，满 10 轮就
-`BaseTaskStopError`。`A22` 要求它排 `next[0]`：排到后面会被"总会命中"的候选挡住，计数走不到上限。
+A21 查**项目默认约定**，不是完整终止性分析。框架的 `timeout` 只限制当前一次 `next` 轮询一直找不到命中的等待；
+自环或 `[JumpBack]` 子链持续命中时，不能靠它限制循环总时长，但缺少 `BaseErrorNext` 不足以证明无限循环。
+替代限次（包括 `max_hit`）须确认额度耗尽后由哪个候选接管、如何到达终态；Agent 预算或显式持续任务须人工评审范围、停止条件与业务意图。
+这些机制不自动豁免 A21，触发条件与 warn 级别不变，也不放宽其他预算规则。
+
+`BaseErrorNext` 按派发者节点名计数，由 Agent 识别事件策略清零；满 10 轮合成 `<父节点名>ErrorNext`，覆写父节点的 `next` 后由合成节点执行失败动作，保留父节点名供故障定位与 Sentry 归组。
+不是 `BaseErrorNext` 自己命中后失败；见 `agent/shared/generic.py` 的 `BaseErrorNextReco` 与 `_BaseErrorNextSink`。
+默认仍配 `BaseErrorNext`；`A22` 仍要求它排 `next[0]`：每轮先参与计数，再由后续命中事件决定是否清零，避免前面的持续命中候选阻止其被评估。
 
 `A23-section-comment-probe` 管**分节注释的可读性**（warn）：`/* ---- 探测 ---- */` 这种分节注释下面
 **必须是动作 / 分支 / 任务入口**；`/* ---- 通用探测 ---- */` 下面允许是 `Probe`；非通用 `Probe` 要放到
@@ -171,6 +177,9 @@
 | 规则 | 级别 | 判据 |
 | --- | --- | --- |
 | `A28-next-list-cap` | warn | 非任务入口的 `next` > 5 项（v3.10 起；v3.3–v3.9 为 7 项）；计长度时**不计** `BaseBranchError` / `BaseErrorNext`。`Task*` 入口完全不判（v3.8，也不归 `A18` 管了） |
+
+结构规范 v3.11 明确：5 项是**人工复核阈值，不是性能分界或强制拆分条件**；触发条件与 warn 级别不变。
+须结合日志评估候选识别成本、实际命中顺序与失败次数，并比较拆分后新增守卫、截图和调度轮次的开销；不能只为消除告警而拆 `Branch`。
 
 `A29` 是 v3.5 新增的一条（`pipeline-structure.md` 第十一节），**warn**：
 

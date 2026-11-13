@@ -1,6 +1,9 @@
 # 任务链结构
 
-版本号: v3.10
+版本号: v3.11
+
+**v3.11 变更**：澄清 A21 的项目约定与终止性边界、A15-shadowed 的潜在遮蔽风险、A28 的人工复核阈值；
+三条规则的触发条件与 warn 级别不变。修正 `BaseErrorNext` 按派发者计数、合成带父节点名的失败节点的说明。见「〇」「九」「十」节。
 
 **v3.10 变更**：非任务入口的 `next` 长度上限由 7 项下调到 5 项（`A28-next-list-cap` 仍 **warn**；计长度时照旧
 不计 `BaseBranchError` / `BaseErrorNext`）。见「十」节。
@@ -60,20 +63,26 @@
 | 动作 | 有 `action`、有 `next` | 做这一步，做完看结果 | 无；`next` 含自己时是**自环动作** |
 | 兜底 | `BaseErrorNext`（`base.json`，全局唯一一份） | 这张 `next` 表是不是一直没人接得住 | `[end]` |
 
-### 为什么自环动作必须配 `BaseErrorNext`
+### 自环动作的默认兜底约定
 
 框架的 `timeout` 只限制「`next` 里**一直找不到命中**」的轮询（`.agents/maaframework.md` 的 `next 分发与 JumpBack` 节）：
-候选只要还在命中——包括 `[JumpBack]` 弹回的 jp 节点反复命中——**`timeout` 就永远不触发**，任务既不失败也不结束。
+自环动作或 `[JumpBack]` 子链持续命中时，不能靠 `timeout` 限制循环总时长；但仅凭 `next` 含自己，不能证明它会持续命中或无限循环。
 
-所以自环动作有两个出口，缺一不可：
+本项目默认要求自环动作同时具备正常出口与 `BaseErrorNext` 无进展兜底：
 
 | 出口 | 谁负责 | 什么时候生效 |
 | --- | --- | --- |
-| 动作自己不再命中（按钮消失、弹窗关掉、按钮变暗） | 自环节点自己的 `recognition` | 正常情况 |
-| 同一张 `next` 表连续 N 轮没有别的节点命中 | `BaseErrorNext` | 识别一直命中但页面没变化、或 jp 节点反复被弹回时 |
+| 动作自己不再命中（按钮消失、弹窗关掉、按钮变暗）或下一步成立 | 自环节点的识别与后续候选 | 正常情况 |
+| 同一派发者的无进展计数达到上限 | `BaseErrorNext` 与 Agent 事件清零策略 | 自环或 jp 子链反复执行但未达到清零条件时 |
 
-`BaseErrorNext` 计数的是「**某个节点的 `next` 表连续被评估了多少轮、期间没有别的节点成功**」，满 10 轮就命中 → `next` 指向 `BaseTaskStopError` → 任务报错结束。
-它**不替代 `timeout`**：`timeout` 管「全都不命中」，它管「一直在命中但没进展」。
+`BaseErrorNext` 按**派发者节点名**累计评估轮数，由 Agent 的识别事件策略判断何时清零；并非所有命中都算进展。
+满 10 轮时，Agent 合成 `<父节点名>ErrorNext` 并覆写该父节点的 `next`，由合成节点执行失败动作，保留父节点名供失败定位与 Sentry 归组。
+**不是 `BaseErrorNext` 自己命中后沿静态 `next` 失败。** 实现见 `agent/shared/generic.py` 的 `BaseErrorNextReco` 与 `_BaseErrorNextSink`。
+它不替代 `timeout`：后者限制单次候选轮询一直无命中的等待，不是整个循环的墙钟预算。
+
+`A21-self-loop-without-error-next` 是**项目约定检查**：只查自引用且缺少 `BaseErrorNext`，不能据此证明无限循环。
+如有替代限次（包括 `max_hit`），须确认额度耗尽后的候选接管与终态；Agent 预算或显式持续任务也须人工评审其范围、停止条件与业务意图。
+这些机制不产生自动豁免，A21 仍按原条件报 warn；默认 `BaseErrorNext` 约定和其他预算规则不变。
 
 ### 自环动作的写法
 
@@ -96,8 +105,8 @@
 
 三条要求：
 
-1. **`next` 必须含 `BaseErrorNext`**，且放在能及时评估的位置（不排在"永远命中"的候选之后）。
-2. **`next` 里必须有一条"离开这个动作"的判据**（下一步节点或成功判据），否则自环就是无限点同一个按钮。
+1. **默认 `next` 必须含 `BaseErrorNext`，并排在 `next[0]`**（A22）；替代保障只作人工评审，不自动豁免 A21。
+2. **`next` 里必须有一条正常离开这个动作的判据**（下一步节点或成功判据）；缺失时须检查失败兜底与任务意图，不能仅凭结构断言无限循环。
 3. **`next` 含自己的节点，`desc` 不许带 `[jp]`**：`[jp]` 的语义是"补一刀就结束"，与"反复重试"冲突。见下一条。
 
 ### `[jp]` 节点不许自环
@@ -112,7 +121,8 @@
 ### 与 `BaseBranchError` 的关系
 
 `BaseErrorNext` 管「这张表一直没进展」，`BaseBranchError` 管「挡路的弹窗」。两者判据不同，位次互不冲突：
-`BaseBranchError` 按第九节的位次规则排（正向探针之后、取反守卫之前），`BaseErrorNext` 排在该表最前（它只在别人都 miss 时才轮到）。
+`BaseBranchError` 按第九节的位次规则排（正向探针之后、可能被遮挡影响的取反守卫之前，具体风险由实测判断）；
+`BaseErrorNext` 必须排在 `next[0]`（A22），每轮先参与计数，再由后续命中事件决定是否清零。
 
 ### 本仓库现状
 
@@ -181,14 +191,15 @@ TaskX            入口：门控、初始化、选择"去哪"
 + **点完它自己就不再命中**：按钮消失、弹窗关掉、按钮变暗。
 + **不需要"卡在哪个页面"这个信息**。
 
-自环的出口有两个，**两个都要有**（v3.0）：
+自环默认同时具备两类出口（v3.0 约定；人工复核边界见「〇」节）：
 
-+ **自己不再命中**：`recognition` 不再成立（按钮消失、弹窗关掉、按钮变暗）。正常情况靠它。
-+ **`BaseErrorNext`**：这张 `next` 表连续 N 轮没有别的节点成功时命中 → `BaseTaskStopError`。**`timeout` 顶不上**——候选一直在命中（含 `[JumpBack]` 弹回的 jp 节点反复命中）时 `timeout` 永远不触发，见「〇」节。
++ **正常出口**：自己不再命中（按钮消失、弹窗关掉、按钮变暗），或后续候选识别到下一步。
++ **`BaseErrorNext`**：按派发者累计无进展轮数，满 10 轮合成 `<父节点名>ErrorNext` 执行失败动作，保留失败归组；不是自己命中后失败。持续命中的循环不能靠 `timeout` 限总时长。
 
-所以自环动作的 `next` 必须含 `BaseErrorNext`；同时禁止 `timeout: -1`，有限 `timeout` 留着管"全都不命中"那条路，`on_error` 只放必须的收尾。
+自环动作默认 `next` 含 `BaseErrorNext` 且排 `next[0]`；替代限次、Agent 预算或显式持续任务须人工评审，不自动豁免 A21。
+同时禁止 `timeout: -1`，有限 `timeout` 留着管"全都不命中"那条路，`on_error` 只放必须的收尾。
 
-点完那个东西还在（切页签、开关、按住、状态变了框还在），自环会一直点下去：这种情况只能写守卫。守卫段要自停，候选里不能再放"自己还会往下走"的转发节点——它的 `next` 跑完就重来一轮，守卫永远等不到画面变化。
+点完那个东西还在（切页签、开关、按住、状态变了框还在），自环可能重复执行：这类场景按本项目约定写守卫，并确认停止条件。守卫段要自停，候选里不能再放"自己还会往下走"的转发节点，否则其子链反复执行时，守卫可能没有重新评估画面变化的机会。
 
 **什么时候才写 `Loop`（废弃）**：新代码用 `Branch` 代替。既有 `Loop` 的判据：父级守卫不能自己重跑（它是入口或终局），或者这一段有自己的固定出口（守卫失效、有限 `timeout`）。单独成页、父级又能重试的活，直接排在父级候选里。
 
@@ -242,10 +253,10 @@ v3.1 起末尾兜底写 `[JumpBack]BaseBranchError`，不再放 `Ensure`：`Ensu
   + **明确的限次**：这次任务本来就只该做 N 次，且 N 次用尽后链上有别的候选接管，不会留成"静默跳过"。现存样例 `TrainClickGoButtonLight`：`desc` 是 `[max] 点击亮的出发按钮`、`max_hit: 10`、自环 `next = [BaseErrorNext, TrainGoSuccess, 自己]`——10 次用尽后由 `BaseErrorNext` 收口。
 + 循环内需要重复做的事，出口有三条：
   + **守卫失效**：`recognition` 不再命中 → 该节点判失败、弹回调用方，等于替调用方做了一次探测。这是首选出口，页面上"已经做完/已经离开"的判据都该做成守卫或候选。
-  + **`BaseErrorNext`**（v3.0）：这张 `next` 表连续 N 轮没有别的节点成功 → `BaseTaskStopError`。它管的是「一直在命中但没进展」，`timeout` 管不到这类情况（见下一条）。
+  + **`BaseErrorNext`**（v3.0）：按派发者累计无进展轮数，满 10 轮合成 `<父节点名>ErrorNext` 执行失败动作并保留失败归组（机制见「〇」节）。它用于持续命中但无进展的情况，不能用 `timeout` 替代。
   + **有限 `timeout`**：到点判失败，框架报 `Task timeout [pretask.name=<节点名>]`。`on_error` 只放**必须做的收尾**（松手、关弹窗、复位状态），这一层不需要收尾就不要写——失败本身就是合法出口，补一条 `focus` 把原因说清楚即可。
-+ **`timeout` 有个管不到的盲区**：它只限制「`next` 里一直找不到命中」的轮询。候选还在命中——尤其是 `[JumpBack]` 弹回的 jp 节点反复命中——`timeout` 永远不触发，任务既不失败也不结束。这就是 `BaseErrorNext` 存在的理由，也是它在**非大循环**的链上仍然必需的原因（v3.0）。实测样本：`EscortClickConfirm` 用同一个 `box=[1005,522,64,37]` 连点 8 次、26.9 s 而任务既不失败也不结束。
-+ `BaseErrorNext` 与 `timeout` 的分工不能互相替代：前者数「连续几轮没进展」，后者数「墙钟」。
++ **`timeout` 有个管不到的盲区**：它只限制「`next` 里一直找不到命中」的轮询。自环或 `[JumpBack]` 子链持续命中时，不能靠它限制循环总时长；是否最终结束仍取决于业务出口、限次与停止机制。缺少 `BaseErrorNext` 只触发项目约定复核，不足以证明无限循环。实测样本：`EscortClickConfirm` 用同一个 `box=[1005,522,64,37]` 连点 8 次、26.9 s 而任务既不失败也不结束。
++ `BaseErrorNext` 与 `timeout` 的分工不能互相替代：前者按派发者统计无进展轮数，后者限制当前一次候选轮询无命中的等待，不是整个任务或循环的墙钟预算。
 + `timeout` 按**当前节点自己**算，入口节点的大 `timeout` 管不到下游。进入型节点按实际耗时收敛；循环节点用 `timeout: 30000` 一类的有限值，`-1` 只留给"守卫本身会在结束时失效"的等待型循环（例如"在战斗中"），并在节点注释里写明出口是守卫而不是超时。
 
 ## 六、命名对应
@@ -304,7 +315,7 @@ v3.1 起末尾兜底写 `[JumpBack]BaseBranchError`，不再放 `Ensure`：`Ensu
 | --- | --- |
 | 自家流程会点「确认」的候选排在它**前面** | 同一个「确认」也会命中 `BaseProbeConfirm`；排在前面会抢点，并把正常流程记成"错误弹窗"（例：领奖流程里的"确认转换为零件"） |
 | 会把"被压暗"读成状态的候选排在它**后面** | 模态弹窗下按钮模板常常仍命中、只是分数降低；"开始行动变暗＝合金不足"这类判据会被弹窗冒充 |
-| 全取反守卫（顶层 `inverse: true` 的节点与取反终点探针）排在它**后面** | 弹窗挡住页面时取反守卫必然命中，会把"看不见"当成"不在页面"，带着弹窗去点入口或按钮 |
+| 取反守卫（顶层 `inverse: true` 的节点与取反终点探针）默认排在它**后面** | 原识别若受弹窗遮挡而失败，取反候选可能先命中，将"看不见"误读为"不在页面"；须实测原识别是否受遮挡，并确认候选额度及业务优先级，不是必然永久遮蔽 |
 | 目标页的正向探针排在它**前面** | 页面正常就直接往下走，不必付这次识别 |
 
 第一条（自己会点「确认」的候选排在 `BaseBranchError` 前面，即 `*Confirm` 在前）v3.2 起由 `A15-error-branch-conflict` 按 **error** 报：确认按钮排到 `BaseBranchError` 之后即违规。
@@ -321,13 +332,17 @@ v3.1 起末尾兜底写 `[JumpBack]BaseBranchError`，不再放 `Ensure`：`Ensu
 
 ### 校验器能查的
 
-`A15-error-branch-jumpback`（引用不带 `[JumpBack]`）、`A15-error-branch-shadowed`（排在取反守卫之后）、`A15-error-branch-conflict`（排在自己会点「确认」的候选之前，v3.2 起 **error**）。"压暗被误读"那条判不了——哪个模板在弹窗下仍会命中，静态看不出来，按人工。
+`A15-error-branch-jumpback`（引用不带 `[JumpBack]`）、`A15-error-branch-shadowed`（排在取反守卫之后，warn，提示潜在遮蔽而非证明永久不可达）、`A15-error-branch-conflict`（排在自己会点「确认」的候选之前，v3.2 起 **error**）。
+shadowed 只查同一候选列表的顺序，不推演截图、额度耗尽后的接管或业务优先级；须用现场图与日志判断，不能批量前移错误分支。
+"压暗被误读"那条判不了——哪个模板在弹窗下仍会命中，静态看不出来，按人工。三条触发条件与级别均不变。
 
 ## 十、识别预算
 
 一次派发的成本 = **守卫识别**（本节点的 `recognition`）+ **候选识别**（`next` 里被依次评估的项）。失败也要付钱，所以 `next` 的顺序与长度就是预算。
 
-**长度上限（v3.10）**：`Task*` 入口**不判**（入口的候选表由人工把关）；其余节点一律 ≤ 5 项（`A28`；v3.3–v3.9 为 7 项），计长度时不计 `BaseBranchError` / `BaseErrorNext`——这两项是每张表都该留的框架兜底，算进去会把正常表逼到超限。超限通常说明"把好几件事塞进一个列表"，该拆 `Branch`。存量 `*Loop`（废弃）另有 `A18` 的 5 项档，随节点退役一起消失。
+**候选数复核阈值（v3.11 澄清）**：`Task*` 入口**不判**（入口的候选表由人工把关）；其余节点的 `next` > 5 项时报 `A28` warn（v3.10 起；v3.3–v3.9 为 7 项），计长度时不计 `BaseBranchError` / `BaseErrorNext`。
+5 项是人工复核阈值，**不是性能分界，也不要求超限就拆 `Branch`**。应结合日志检查各候选的识别成本、实际命中顺序与失败次数，并比较新增守卫、截图及调度轮次的开销；平铺可能比拆分更便宜、更清楚。
+触发条件与 warn 级别不变。存量 `*Loop`（废弃）另有 `A18` 的 5 项档，随节点退役一起消失。
 
 ### 一次派发付几次识别
 
@@ -403,7 +418,7 @@ v3.1 起末尾兜底写 `[JumpBack]BaseBranchError`，不再放 `Ensure`：`Ensu
 | `A17-guard-in-next` | info | 节点的 `next` 里含本节点 `recognition` 用到的同一个探针（重复识别） |
 | `A18-next-length` | warn | `Loop`（废弃）的 `next` > 5 项；`Task*` 入口不判（v3.8） |
 | `A20-jp-self-loop` | error | `desc` 带 `[jp]` 的节点，`next` 里含自己（见「〇」节） |
-| `A21-self-loop-without-error-next` | warn | `next` 含自己的节点没有引用 `BaseErrorNext`（见「〇」节） |
+| `A21-self-loop-without-error-next` | warn | `next` 含自己的节点没有引用 `BaseErrorNext`；项目约定复核，不证明无限循环，也不自动识别替代保障（见「〇」节） |
 | `A22-error-next-not-first` | warn | 引用了 `BaseErrorNext` 但不在 `next[0]`（见「〇」节） |
 | `A23-section-comment-probe` | warn | 分节注释下面紧跟非通用 `Probe`（见「〇」节「注释口径」） |
 | `A24-node-comment-missing` | warn | 主干节点（有 `next`）前面没有紧挨着的注释；纯辅助节点不要求 |
@@ -411,7 +426,7 @@ v3.1 起末尾兜底写 `[JumpBack]BaseBranchError`，不再放 `Ensure`：`Ensu
 | `A26-single-consumer-probe` | info | 纯探针只被一处引用、且那处是**单探针包装**（`And all_of` 恰好一项）或纯路由：可内联进引用它的节点 `recognition` |
 | `A30-and-inline-sub` | warn | 多条件 `And` 的 `all_of` 里出现内联对象：改成独立 `Probe` 节点按名字引用（见「十」节「单探针内联」） |
 | `A27-click-ok-banned` | error | 节点名以 `Ok` 结尾：确认按钮统一 `*Confirm`，不许 `ClickOk`（见 [节点命名](./node-naming.md) §6） |
-| `A28-next-list-cap` | warn | 非任务入口的 `next` > 5 项（`BaseBranchError` / `BaseErrorNext` 不计入）；任务入口由 `A18` 管 |
+| `A28-next-list-cap` | warn | 非任务入口的 `next` > 5 项（`BaseBranchError` / `BaseErrorNext` 不计入）；人工复核阈值，不强制拆分；`Task*` 入口不判 |
 | `A29-and-box-index` | warn | 带 `action` 的节点：`recognition: And` 且 `all_of` > 1 项却没写 `box_index`（取框默认 `all_of[0]`，见「十一」节） |
 
 判不了的：救回率、动画实际时长、哪个候选命中率最高——都要日志实测（`debug/maafw.log` 里的 `Node.NextList.*` / `Node.Recognition.*` / `Node.WaitFreezes.*` 事件流）。

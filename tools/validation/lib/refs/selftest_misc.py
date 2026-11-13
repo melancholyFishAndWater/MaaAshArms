@@ -252,7 +252,16 @@ def _checks_rest(checks: list[tuple]) -> None:
             "XFiveFallback" not in cap_hit,
             "5 项 + BaseErrorNext + BaseBranchError → 不计入、不报 A28",
         ),
-        ("TaskNine" not in cap_hit, "任务入口不报 A28（由 A18 管）"),
+        ("TaskNine" not in cap_hit, "任务入口不报 A28（A18 同样跳过入口）"),
+        (
+            any(
+                f.id == "A28-next-list-cap" and f.severity == "warn"
+                and "复核阈值 5" in f.message and "数量不等于耗时" in f.message
+                and "不要求仅为项数拆分" in f.message
+                for f in cap_ctx.findings
+            ),
+            "A28 保留 warn 与阈值，提示实测成本而非强制拆分",
+        ),
     ]
 
     # A29：And 组合多个子识别要写 box_index（v3.5；v3.6 起只管有 action 的节点）
@@ -392,6 +401,9 @@ def _checks_rest(checks: list[tuple]) -> None:
                 "action": "Click",
                 "next": ["XOther", "BaseErrorNext"],
             },
+            "XSelfLimited": {"action": "Click", "max_hit": 2, "next": ["XSelfLimited", "XOther"]},
+            "XSelfAgentBudget": {"recognition": "Custom", "next": ["XSelfAgentBudget"]},
+            "XSelfContinuous": {"desc": "显式持续运行，由用户停止", "next": ["XSelfContinuous"]},
             "XOther": {"desc": "[end] 别的", "action": "Click"},
             "XJpNoLoop": {"desc": "[jp] 只补一次", "action": "Click"},
             "BaseErrorNext": {
@@ -406,6 +418,19 @@ def _checks_rest(checks: list[tuple]) -> None:
     check_a22_error_next_first(loop_ctx)
     loop_ids = {(f.id, f.message.split(".")[0]) for f in loop_ctx.findings}
     checks += [
+        (
+            all(
+                any(
+                    f.id == "A21-self-loop-without-error-next" and f.severity == "warn"
+                    and f.message.startswith(name + ".")
+                    and "持续命中时" in f.message and "人工确认" in f.message
+                    and "不能仅据此判定无限循环" in f.message
+                    for f in loop_ctx.findings
+                )
+                for name in ("XSelfNoErr", "XSelfLimited", "XSelfAgentBudget", "XSelfContinuous")
+            ),
+            "A21 不自动豁免替代机制，保留人工复核且不断言无限循环",
+        ),
         (("A20-jp-self-loop", "XJpLoop") in loop_ids, "[jp] 自环会被拦（A20，error）"),
         (
             ("A21-self-loop-without-error-next", "XSelfNoErr") in loop_ids,

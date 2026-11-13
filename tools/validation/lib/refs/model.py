@@ -113,9 +113,10 @@ NEXT_CAP_EXCLUDED = frozenset({"BaseBranchError", "BaseErrorNext"})
 # v3.9：A26 口径收窄为「单探针包装」（`all_of` 恰好一项）；新增 A30（多条件 `And` 里写内联
 #   子识别对象 → warn，改独立 `Probe` 节点）。命名规范同步 v3.3。
 # v3.10：A28 的列表长度上限由 7 项下调到 5 项（结构文档 §10，作者裁定；不计入项不变）。
+# v3.11：A21/A15-shadowed/A28 明确为结构复核提示；触发条件、warn 级别与阈值不变。
 NAMING_SPEC_VERSION = "v3.3"
 NAMING_SPEC = Path("docs/zh_cn/develop/node-naming.md")
-STRUCT_SPEC_VERSION = "v3.10"
+STRUCT_SPEC_VERSION = "v3.11"
 STRUCT_SPEC = Path("docs/zh_cn/develop/pipeline-structure.md")
 
 

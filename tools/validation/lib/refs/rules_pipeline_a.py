@@ -685,14 +685,10 @@ def _clicks_confirm(
 def check_a15_error_branch(ctx: Ctx) -> None:
     """通用错误分支的引用写法与位次（pipeline-structure.md §9）。
 
-    三条都是**今天一条都不报**的护栏：写它们是为了接线时别挂错位置，不是为了现在挑错。
-
-    - 引用必须带 `[JumpBack]`（候选位，"办完弹回我这里继续"）。
-    - 排在取反守卫（顶层 `inverse: true`，或识别配置里带 `inverse`）之后等于没接：弹窗挡住页面时那个守卫必然命中。
-    - 排在自己会点「确认」的候选之前会抢点，把正常流程记成"错误弹窗"。v3.2 起这条按 **error** 报
-      （`*Confirm` 必须排在 `BaseBranchError` 之前）。
-
-    只判同一个 next/on_error 列表内的先后；跨列表的冲突、"哪个模板在弹窗下仍会命中"判不了。
+    引用缺少 `[JumpBack]` 报 warn；前面存在取反候选时提示潜在遮蔽，不推断
+    实际弹窗会使哪个识别失败、候选额度何时耗尽或业务终态优先级。
+    排在自己会点「确认」的候选之前仍按 A15-error-branch-conflict 报 error。
+    只判同一个 next/on_error 列表内的结构与先后，不替代截图和日志复核。
     """
     for node in ctx.nodes.values():
         for key, items in ref_lists(node.data):
@@ -727,8 +723,9 @@ def check_a15_error_branch(ctx: Ctx) -> None:
                         "warn",
                         node.file,
                         line,
-                        f"{node.name}.{key} 里 {GENERIC_ERROR_BRANCH} 排在取反守卫 {cand[0]} 之后："
-                        f"弹窗挡住页面时那个守卫必然命中，错误分支永远轮不到（结构文档 §9）",
+                        f"{node.name}.{key} 里 {GENERIC_ERROR_BRANCH} 前存在取反候选 {cand[0]}："
+                        f"遮挡使原识别失败时，该候选可能先命中；请结合截图/日志核对候选额度与业务优先级，"
+                        f"不要仅凭位次调整顺序（结构文档 §9）",
                     )
                     break
             for _item, cand in resolved[first + 1 :]:

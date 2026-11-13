@@ -76,11 +76,10 @@ def check_a33_confirm_template(ctx: Ctx) -> None:
 
 
 def check_a28_next_list_cap(ctx: Ctx) -> None:
-    """非任务入口的 `next` 不得超过 5 项（pipeline-structure.md §10，v3.10；v3.3 起为 7 项）。
+    """非任务入口的 `next` 超过 5 项时提示复核（pipeline-structure.md §10）。
 
-    与 `A18` 分工：任务入口（`Task*`）由 `A18` 管（更严的 4 项），本规则跳过入口、管其余节点。
-    计长度时**不计** `BaseBranchError` / `BaseErrorNext`——这两项是每张表都该留的框架兜底，
-    不是"业务候选"，算进去会把正常表逼到超限。
+    Task* 入口不判；计数不含 BaseBranchError / BaseErrorNext，阈值保持 v3.10 的 5 项。
+    候选数量不等于耗时；是否拆 Branch 由实际命中顺序、识别成本及新增截图/调度开销决定。
     """
     for node in ctx.nodes.values():
         if node.name.startswith("Task"):
@@ -100,9 +99,9 @@ def check_a28_next_list_cap(ctx: Ctx) -> None:
             "warn",
             node.file,
             find_line(node.file, node.name),
-            f"{node.name}.next 有 {len(counted)} 项（上限 {NEXT_LIST_CAP}，"
-            f"不计 BaseBranchError / BaseErrorNext）：每项失败也要付识别；"
-            f"结构文档 §10 建议拆 Branch",
+            f"{node.name}.next 有 {len(counted)} 项（复核阈值 {NEXT_LIST_CAP}，"
+            f"不计 BaseBranchError / BaseErrorNext）：数量不等于耗时；请按日志核对命中顺序与识别成本，"
+            f"评估拆 Branch 新增的守卫、截图和调度开销，不要求仅为项数拆分（结构文档 §10）",
         )
 
 
@@ -289,13 +288,11 @@ def check_a20_jp_self_loop(ctx: Ctx) -> None:
 
 
 def check_a21_self_loop_error_next(ctx: Ctx) -> None:
-    """自环动作必须引用 `BaseErrorNext`（pipeline-structure.md §0、§3、§5）。
+    """自环缺少约定的 BaseErrorNext 时提示复核（pipeline-structure.md §0）。
 
-    框架的 `timeout` 只限制「`next` 里一直找不到命中」的轮询。自环动作每轮都命中自己，
-    `timeout` 永远不触发；`[JumpBack]` 弹回的 jp 节点反复命中也一样。所以自环必须另有一个
-    "连续几轮没进展就报错"的出口，就是 `BaseErrorNext`（`LoopErrorByTimes` 改名而来）。
-
-    实测样本：`EscortClickConfirm` 用同一个 box 连点 8 次、26.9 s，任务既不失败也不结束。
+    timeout 只限制候选全未命中的轮询，持续命中的自环不受它限次。
+    本规则仅检查自身引用与 BaseErrorNext 是否存在，不推导实际无限循环，
+    也不自动豁免 max_hit、Agent 预算或显式持续任务；替代保护及耗尽后的接管需人工确认。
     """
     for node in ctx.nodes.values():
         names = [parse_ref(item)[0] for item in to_list(node.data.get("next"))]
@@ -306,8 +303,9 @@ def check_a21_self_loop_error_next(ctx: Ctx) -> None:
             "warn",
             node.file,
             find_line(node.file, node.name),
-            f"{node.name}.next 含自己（自环动作）但没有 {ERROR_NEXT}："
-            f"自环每轮都命中自己，timeout 永远不会触发（结构文档 §0）",
+            f"{node.name}.next 含自己但没有约定的 {ERROR_NEXT}：持续命中时 timeout 不限制循环；"
+            f"请人工确认限次耗尽后的接管、Agent 预算或显式持续运行意图，"
+            f"不能仅据此判定无限循环，也不要机械补节点（结构文档 §0）",
         )
 
 
