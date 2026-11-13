@@ -132,6 +132,7 @@ class FactoryChooseCharacterReco(CustomRecognition):
         self, context: Context, argv: CustomRecognition.AnalyzeArg
     ) -> tuple[int, int, int, int] | None:
         # 常量
+        node_name = argv.node_name
         PAGE = (235, 157, 140, 230)
         HORIZONTAL = 22 + PAGE[2]
         VERTICAL = 26 + PAGE[3]
@@ -143,6 +144,7 @@ class FactoryChooseCharacterReco(CustomRecognition):
             argv.image,
         )
         if not result or not result.hit:
+            log.debug(f"{node_name} 不在选择建造页面 不选择")
             return
 
         # 遍历识别找到不处于正在建造的角色的box
@@ -161,6 +163,8 @@ class FactoryChooseCharacterReco(CustomRecognition):
                 )
                 if not result2 or not result2.hit:
                     return roi
+        else:
+            log.warn(f"{node_name} 识别可选择角色失败")
 
 
 # 检测任务是否满足结束条件 目前 满足建造次数则结束 全忙碌则结束

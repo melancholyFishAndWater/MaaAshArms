@@ -82,6 +82,7 @@
             "[JumpBack]FactoryClickSkip",
             "[JumpBack]FactoryGetReward",
             "[JumpBack]FactoryClickCreateOrder",
+            "[JumpBack]FactoryChooseCharacter",
             // TODO 子节点卡住
             "[JumpBack]BaseBranchError",
             "[JumpBack]BaseMoveUpDown"
