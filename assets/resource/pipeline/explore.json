@@ -69,8 +69,8 @@
         "next": [
             "ExploreProbeNoTimes",
             "ExploreClickStart",
-            "[JumpBack]ExploreSwitchLevel",
-            "[JumpBack]BaseBranchError"
+            "[JumpBack]BaseBranchError",
+            "[JumpBack]ExploreClickSwitchLevel"
         ]
     },
     "ExploreProbeNoTimes": {
@@ -106,8 +106,8 @@
         }
     },
     /* -------------------- 动作-切换关卡 -------------------- */
-    "ExploreSwitchLevel": {
-        "desc": "[jp][max] 切换关卡",
+    "ExploreClickSwitchLevel": {
+        "desc": "[jp][max] 点击切换关卡",
         "max_hit": 14, // 两轮预算
         "recognition": "And",
         "all_of": [
