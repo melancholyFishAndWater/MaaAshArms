@@ -115,15 +115,20 @@ def pi_resource_paths() -> list[str]:
 def pi_check_maafw_version() -> bool:
     """比对客户端链接的框架版本与本包 MaaFw 版本；不一致只警告（握手会给出更准确的报错）。
 
-    两处来源的写法不同：PI_CLIENT_MAAFW_VERSION 形如 v5.12.2，包元数据是 5.12.2。
+    两处来源的写法不一定一致：PI_CLIENT_MAAFW_VERSION 可能带 v（v5.12.2），maafw 5.15.0
+    的 wheel 元数据也把 Version 写成 v5.15.0；两边都先去掉 v 再比，否则 5.15.0 与
+    v5.15.0 会被判成不一致（2026-11-13 在本仓库打出的 5.15.0 包上实测到这条假警告）。
     """
     from importlib.metadata import PackageNotFoundError, version
 
-    client = pi_env()["PI_CLIENT_MAAFW_VERSION"].lstrip("v")
+    def _norm(raw: str) -> str:
+        return raw.strip().lstrip("vV")
+
+    client = _norm(pi_env()["PI_CLIENT_MAAFW_VERSION"])
     if not client:
         return True  # 不是 MFA 拉起的（VS Code 调试 / 本机冒烟），不判
     try:
-        ours = version("maafw")
+        ours = _norm(version("maafw"))
     except PackageNotFoundError:
         return True
     if client != ours:
