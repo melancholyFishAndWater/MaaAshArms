@@ -46,7 +46,7 @@ function Assert-Record($Record, $Current, [string]$ExpectedPath) {
 }
 if ($SelfTest) {
     $count = 0
-    foreach ($pair in @(@('S:(ML;ID;NW;;;LW)',4096),@('S:(ML;;NW;;;UN)',0),@('S:(ML;;NW;;;ME)',8192),@('S:AI(ML;ID;NW;;;LW)',4096))) {
+    foreach ($pair in @(@('S:(ML;ID;NW;;;LW)',4096),@('S:(ML;;NW;;;UN)',0),@('S:(ML;;NW;;;ME)',8192),@('S:AI(ML;ID;NW;;;LW)',4096),@('S:AI(ML;;NW;;;ME)',8192))) {
         if ((Get-LabelRid $pair[0]) -ne $pair[1]) { throw '标签解析自检失败' }; $count++
     }
     foreach ($bad in @('D:(A;;FA;;;WD)','S:(ML;;NW;;;HI)','S:(ML;;NW;;;LW)(AU;;FA;;;WD)')) {
