@@ -216,8 +216,9 @@
     // 确认
     "EscortClickConfirm": {
         "desc": "点击确认按钮执行任务",
-        "recognition": "OCR",
-        "expected": "确认",
+        "recognition": "TemplateMatch",
+        "template": "Base/Confirm.png",
+        "method": 10001,
         "roi": [
             964,
             504,
