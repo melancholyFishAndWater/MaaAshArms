@@ -661,6 +661,79 @@ def check_overview_render() -> list[str]:
     ]
 
 
+def check_tasker_observations() -> list[str]:
+    """概览卡的 Tasker 观察：合成边界 + 三个现有证据包的真实校验。"""
+    import json as _json
+    import shutil as _shutil
+    from pathlib import Path as _Path
+
+    root = _Path(__file__).resolve().parents[4]
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    from tools.drawing.lib.cases.pack import load_case
+    from tools.drawing.lib.cases.tasker_observations import tasker_observations
+    from tools.sentry.lib.telemetry_index import IssueCard
+
+    tmp = root / "temp" / "flow" / "_selftest_tasker_observations"
+    _shutil.rmtree(tmp, ignore_errors=True)
+    debug = tmp / "PYTHON-SYN" / "debug"
+    debug.mkdir(parents=True)
+    event_id = "event-synthetic"
+    (tmp / "PYTHON-SYN" / "evidence.json").write_text(
+        _json.dumps({"event": {"id": event_id, "received": "2026-11-13T11:30:20.236000Z"}, "trace": {"markers": ["2026-11-13 19:30:19.903 TaskExplore"]}}),
+        encoding="utf-8",
+    )
+
+    def raw(stamp: str, process: str, thread: str, message: str) -> str:
+        return f"[{stamp}][ERR][{process}][{thread}][Tasker.cpp][L1][MaaNS::Tasker::post_task] {message}"
+
+    (debug / "maafw.log").write_text(
+        "\n".join(
+            [
+                raw("2026-11-13 19:30:19.900", "Px1", "Tx1", "[entry=TaskExplore]"),
+                raw("2026-11-13 19:30:19.901", "Px1", "Tx1", "Tasker not inited"),
+                raw("2026-11-13 19:30:19.902", "Px2", "Tx2", "screencap failed"),
+                raw("2026-11-13 19:30:19.903", "Px1", "Tx1", "re-connect failed [i=0]"),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    card = IssueCard(
+        "PYTHON-SYN",
+        "Maa task failed: Explore",
+        event_id=event_id,
+        received="2026-11-13T11:30:20.236000Z",
+    )
+    synthetic = tasker_observations(load_case([str(debug)]), card)
+    _eq(len(synthetic), 3, "合成日志保留 Tasker 与同线程重连观察")
+    _contains(synthetic[0][0], "TaskExplore", "合成日志绑定同进程同线程入口")
+    _contains(synthetic[0][0], "Tasker not inited", "保留框架错误")
+    _contains(synthetic[1][0], "事件归属尚未确认", "不将时间相近断言为事件归属")
+    _contains(synthetic[2][0], "重连失败", "只陈述同线程重连观察")
+    _eq(
+        tasker_observations(
+            load_case([str(debug)]),
+            IssueCard("PYTHON-SYN", "Maa task failed: Explore", event_id="wrong", received=card.received),
+        ),
+        [],
+        "event.id 不等于 card.event_id 时不产出观察",
+    )
+    original = (debug / "maafw.log").read_text(encoding="utf-8")
+    (debug / "maafw.log").write_text(
+        original
+        + raw("2026-11-13 19:30:20.000", "Px1", "Tx1", "[entry=TaskExplore]") + "\n"
+        + raw("2026-11-13 19:30:20.001", "Px1", "Tx1", "Tasker not inited") + "\n",
+        encoding="utf-8",
+    )
+    ambiguous = tasker_observations(load_case([str(debug)]), card)
+    _contains(ambiguous[0][0], "多个投递候选", "重复投递时不猜")
+    _eq(ambiguous[0][1], "info", "重复投递为中性观察")
+    _shutil.rmtree(tmp, ignore_errors=True)
+
+    return ["事件 ID 闸门、日志 marker、跨进程隔离与重复投递均有断言"]
+
+
 def check_evidence_pack_gate() -> list[str]:
     """证据包的版本门控与失败 task 定位（`--telemetry-version` 下老证据包怎么处理）。
 

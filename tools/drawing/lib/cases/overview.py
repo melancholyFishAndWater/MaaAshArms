@@ -16,11 +16,12 @@ from tools.drawing.lib.flow_from_log import (
     render_overview,
 )
 
-from .evidence import _evidence_on_error
+from .evidence import _evidence_case, _evidence_on_error
 from .output import _own_rest, _safe_part, artifact_issue, find_existing, rename_artifact
 from .pack import _fmt_local, _telemetry_module
 from .release_mark import mark_suffix
 from .signature import code_stages
+from .tasker_observations import tasker_observations
 
 log = logging.getLogger("tools.flow_cases")
 
@@ -102,6 +103,13 @@ def run_overview(
     ]
     images = _evidence_on_error(card.short_id)
     notes = [Note(text, kind) for text, kind in _telemetry_module().card_notes(card, [])]
+    # Tasker 观察只属于批量概览卡；单包流程图/单包调用的概览不读取同 issue 的遥测包。
+    if origin == "bulk":
+        evidence_case = _evidence_case(card.short_id)
+        notes.extend(
+            Note(text, kind)
+            for text, kind in tasker_observations(evidence_case, card)
+        )
     if no_log_hint:
         notes.append(
             Note(

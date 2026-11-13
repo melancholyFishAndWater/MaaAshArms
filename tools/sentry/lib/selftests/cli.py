@@ -17,6 +17,7 @@ from .drawing import (
     check_local_release_assist,
     check_overview_render,
     check_scene_images,
+    check_tasker_observations,
 )
 from .evidence import (
     check_evidence,
@@ -71,6 +72,7 @@ CHECKS: tuple[tuple[str, Callable[[], list[str]]], ...] = (
     ("证据包版本门控与失败 task 定位", check_evidence_pack_gate),
     ("本地 release 辅助（按内容认运行）", check_local_release_assist),
     ("现场图导出（命名/挑图/增量/清理）", check_scene_images),
+    ("Tasker 投递失败观察（事件闸门/同进程关联）", check_tasker_observations),
     ("跨版本耗时报告", check_speed_report),
 )
 
