@@ -27,7 +27,7 @@ log = logging.getLogger("tools.flow_cases")
 
 
 _CATEGORY_CONTROLLER = "设备异常"
-_CATEGORY_TASKER = "疑似设备级联"
+_CATEGORY_TASKER = "疑似设备断连"
 _CATEGORY_MISMATCH = "证据错配"
 
 

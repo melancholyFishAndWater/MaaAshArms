@@ -14,7 +14,7 @@ from tools.drawing.lib.cases.pack import Case
     [
         (False, "controller_initialization_failed", "controller", [], "证据错配"),
         (True, "controller_initialization_failed", "controller", [], "设备异常"),
-        (True, "node", "action", [("Tasker not inited", "fail")], "疑似设备级联"),
+        (True, "node", "action", [("Tasker not inited", "fail")], "疑似设备断连"),
         (None, "node", "action", [("Tasker not inited", "fail")], ""),
         (True, "node", "action", [], ""),
     ],
