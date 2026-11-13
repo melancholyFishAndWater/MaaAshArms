@@ -26,7 +26,6 @@
 ## Confirm 规则验收记录
 
 - `uvx ruff check tools --select F401,F841,E722,FURB162,S110,PLW1510,BLE001,RUF100`（`UV_CACHE_DIR=temp/uv-cache`）：无法打开工作区外 `uv/tools/.lock`，系统拒绝访问，lint 未执行；未绕过文件权限。
-- `python tools/validation/cli.py validate-refs`：A15 修复后全量仍有 4 条 `A33-confirm-template`（`BaseProbeConfirm` 缺少 method，以及 `BaseClickErrorConfirm`、`BaseClickConfirm`、`ExploreClickConfirm` 继承该问题），无 A15 error。用户已另行更新工厂、赠礼和维修会配置；本轮只改校验，不修改任务数据，也不降低规则等级。
 
 ---
 

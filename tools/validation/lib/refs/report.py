@@ -212,8 +212,8 @@ def domain_enabled(args) -> dict[str, bool]:
     return given
 
 
-def report(ctx: Ctx, fmt: str, fail_on: str, ignores: set[str]) -> int:
-    """按 --ignore 过滤后输出 findings（text / github / json），并返回退出码。"""
+def report(ctx: Ctx, fmt: str, fail_on: str, ignores: set[str], severity: str | None = None) -> int:
+    """按路径/ignore 判退出码；severity 仅过滤显示及统计，不隐藏失败。"""
     def in_scope(f: Finding) -> bool:
         """显式给了某域的路径时，只报落在这些路径里的发现（扫描范围仍是全树，保证引用可解析）。"""
         dom = {"A": "pipeline", "C": "image", "D": "agent"}.get(f.id[:1])
@@ -232,7 +232,8 @@ def report(ctx: Ctx, fmt: str, fail_on: str, ignores: set[str]) -> int:
                 return True
         return False
 
-    findings = [f for f in ctx.findings if f.id not in ignores and in_scope(f)]
+    evaluated = [f for f in ctx.findings if f.id not in ignores and in_scope(f)]
+    findings = [f for f in evaluated if severity is None or f.severity == severity]
     findings.sort(
         key=lambda f: (f.file, f.line or 0, SEVERITY_ORDER.get(f.severity, 9), f.id)
     )
@@ -281,8 +282,8 @@ def report(ctx: Ctx, fmt: str, fail_on: str, ignores: set[str]) -> int:
         )
 
     threshold = {"error": 0, "warn": 1, "info": 2, "none": 99}.get(fail_on, 0)
-    worst = min((SEVERITY_ORDER.get(f.severity, 9) for f in findings), default=99)
-    return 1 if worst <= threshold else 0
+    worst = min((SEVERITY_ORDER.get(f.severity, 9) for f in evaluated), default=99)
+    return 1 if fail_on != "none" and worst <= threshold else 0
 
 
 def _ensure_printable_stdout() -> None:
@@ -319,6 +320,7 @@ def main(argv: list[str] | None = None) -> int:
         "--agent", action="append", help="agent 目录（可重复；目录递归扫描）"
     )
     parser.add_argument("--image", action="append", help="image 根目录（可重复）")
+    parser.add_argument("--severity", choices=["error", "warn", "info"], help="只显示指定级别（不影响 --fail-on 退出码判定）")
     parser.add_argument("--format", choices=["text", "github", "json"], default="text")
     parser.add_argument(
         "--fail-on", choices=["error", "warn", "info", "none"], default="error"
@@ -384,4 +386,4 @@ def main(argv: list[str] | None = None) -> int:
     ignores = {
         i.strip() for group in args.ignore for i in group.split(",") if i.strip()
     }
-    return report(ctx, args.format, args.fail_on, ignores)
+    return report(ctx, args.format, args.fail_on, ignores, args.severity)

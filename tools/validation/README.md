@@ -21,6 +21,7 @@ python tools/validation/cli.py check-python --root agent        # 只查某个�
 
 # 2. 跨文件名字与约定（纯标准库）—— 不传域参数就是全量
 python tools/validation/cli.py validate-refs
+python tools/validation/cli.py validate-refs --severity error  # 只显示 error；另可选 warn / info
 python tools/validation/cli.py validate-refs --format github
 python tools/validation/cli.py validate-refs --pipeline assets/resource/pipeline   # 只查某一域，路径可重复
 python tools/validation/cli.py validate-refs --tasks assets/resource/tasks         # 另有 --agent / --image / --interface
@@ -49,6 +50,7 @@ python -m pytest -q tests       # agent 纯逻辑打桩，不连设备
 
 - **域参数都带路径**：`--pipeline` / `--tasks` / `--agent` / `--image` / `--interface` 各收一个路径、可重复，
   漏写路径 argparse 直接报 `expected one argument`。`E` 类判据（文档版本、文件头注解）不分域，每次都会一起报。
+- **级别过滤**：`--severity error|warn|info` 精确显示一个级别，不传则全部显示；text/github/json 的发现列表与 counts 都按过滤结果输出。过滤仅影响显示，退出码仍按路径范围内、经 `--ignore` 排除后的全部问题及 `--fail-on` 判断；只看 warn 时隐藏的 error 仍会使默认退出码为 1。
 - **放宽或放行**：`--fail-on warn` 把 warn 也算失败（默认只算 error）；`--ignore <id>` 放行单条判据，可重复、逗号分隔。
 - **快捷方式只覆盖 agent 域**：`npm run check:refs` / `check:refs:github` 就是 `--agent agent`
   （agent 域 + `E` 类注解），不是全量；要全量直接跑第 2 步第一条。
