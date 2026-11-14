@@ -107,13 +107,12 @@
         "next": [
             "BaseErrorNext",
             "GiftBranchHome",
-            "[JumpBack]GiftEnterRules",
+            "[JumpBack]GiftClickRules",
             "GiftEnterHome",
             "[JumpBack]BaseBranchError"
         ]
     },
     /* -------------------- 分支-角色页面 -------------------- */
-    // INFO 角色页两个出口
     "GiftBranchHome": {
         "desc": "主页面分支",
         "recognition": "And",
@@ -121,14 +120,13 @@
             "GiftProbeHome"
         ],
         "next": [
-            "GiftEnterGifts", // INFO 赠礼
-            "[JumpBack]GiftEnterCharacters", // INFO 换人
+            "GiftEnterGifts",
+            "[JumpBack]GiftClickCharacters",
             "[JumpBack]BaseBranchError"
         ]
     },
-    /* -------------------- 动作-换人 -------------------- */
-    // INFO 切换角色
-    "GiftEnterCharacters": {
+    /* -------------------- 动作-选择页面 -------------------- */
+    "GiftClickCharacters": {
         "desc": "进入角色选择页面",
         "recognition": "And",
         "all_of": [
@@ -140,7 +138,7 @@
         "action": "Click",
         "post_wait_freezes": 1000,
         "next": [
-            "GiftEnterRules",
+            "GiftClickRules",
             "[JumpBack]BaseBranchError"
         ]
     },
@@ -167,7 +165,7 @@
         ]
     },
     /* -------------------- 动作-排序 -------------------- */
-    "GiftEnterRules": {
+    "GiftClickRules": {
         "desc": "进入排序规则选择页面",
         "recognition": "TemplateMatch",
         "template": "Feidu/Sort.png",
@@ -184,8 +182,9 @@
         "next": [
             "BaseErrorNext",
             "GiftChooseFavorability",
+            "GiftClickRules",
             "[JumpBack]BaseBranchError",
-            "GiftEnterRules"
+            "GiftProbeHome"
         ]
     },
     // INFO 点好感度
@@ -204,7 +203,8 @@
         "next": [
             "GiftClickSortConfirm",
             "[JumpBack]BaseBranchError",
-            "GiftEnterRules" // INFO 防止扫描过快 点击排序把模态窗口点掉了
+            "GiftClickRules", // INFO 防止扫描过快 点击排序把模态窗口点掉了
+            "GiftProbeHome"
         ]
     },
     // INFO 点确认
@@ -227,8 +227,8 @@
             "BaseErrorNext",
             "GiftClickSortConfirm", // 先于反转 保证没有确认按钮 会有点到角色的风险
             "GiftChooseReverse",
-            "GiftProbeHome",
-            "[JumpBack]BaseBranchError"
+            "[JumpBack]BaseBranchError",
+            "GiftProbeHome"
         ]
     },
     // INFO 点反转
@@ -248,7 +248,8 @@
         "post_wait_freezes": 3000,
         "next": [
             "GiftClickFirstcharacter",
-            "[JumpBack]BaseBranchError"
+            "[JumpBack]BaseBranchError",
+            "GiftProbeHome"
         ]
     },
     // INFO 点第一个角色
@@ -274,7 +275,6 @@
         ]
     },
     /* -------------------- 动作-赠礼 -------------------- */
-    // INFO 点赠礼
     "GiftEnterGifts": {
         "desc": "进入选择礼物页面",
         "recognition": "And",
@@ -309,7 +309,7 @@
             29
         ]
     },
-    // INFO 选第一个礼物
+    /* -------------------- 动作-选礼物 -------------------- */
     // TODO 找到最喜欢的礼物
     "GiftChooseFirstGift": {
         "desc": "点击当前页面可送的礼物",
@@ -336,8 +336,8 @@
             "GiftChooseFirstGift"
         ]
     },
-    // INFO 赠送三次
-    // XXX 没有验证是否赠送成功/够
+    /* -------------------- 动作-赠送三次 -------------------- */
+    // TODO 没有验证是否赠送成功/够
     "GiftClickGiveThriceButton": {
         "desc": "赠送三次礼物",
         "recognition": "OCR",
