@@ -221,6 +221,7 @@
         ],
         "next": [
             "BaseErrorNext",
+            "TrainBranchAcceptPage",
             "[JumpBack]TrainClickAcceptInfo",
             "[JumpBack]BaseBranchError",
             "[JumpBack]TrainInfoMover"
