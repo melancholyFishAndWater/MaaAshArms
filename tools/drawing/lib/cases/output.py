@@ -14,7 +14,7 @@ from dataclasses import asdict
 
 from tools.drawing.lib.flow_from_log import FlowOptions
 
-from .pack import ISSUE_RE, Case, issue_name_of, log_digest, log_stamp, task_name_of
+from .pack import ISSUE_RE, Case, _evidence_manifest, issue_name_of, log_digest, log_stamp, task_name_of
 from .release_mark import RELEASE_MARK, mark_suffix, unmarked_name
 
 MANIFEST_NAME = "manifest.json"
@@ -103,6 +103,8 @@ def base_filename(
     if options.px:
         # 多进程日志里同号任务会出现多次，进程号必须进名字，否则两次运行互相覆盖
         parts.append(_safe_part(options.px).lower())
+    if any(kind == "local" for _text, kind in options.extra_notes) or not _evidence_manifest(case):
+        parts.append("命中日志")
     mark = mark_suffix(issue or "")
     if mark:
         parts.append(mark.lstrip("_"))
@@ -359,6 +361,8 @@ def prune_artifacts(
         if name in kept or os.path.basename(name) != name:
             continue
         record = records[name]
+        if "命中日志" in os.path.splitext(name)[0].split("_"):
+            continue  # 本地日志诊断产物不随遥测 issue 集合清理。
         issue = str(record.get("issue") or "")
         # 名字里那段后缀**总是**要从文件名算出来：单包画的产物也带 `<问题号>_task<id>`，
         # 只按记录里的 issue 判断会让 rest 一直是空串，`_own_rest("")` 又恒为真——于是

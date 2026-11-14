@@ -221,6 +221,7 @@ Pipeline 节点直接声明同类参数时由 `A32-custom-param-type` 检查。�
 | `C2-unused-image`（warn） | 没被任何 pipeline/agent 引用的图片 |
 | `C3-non-png`（warn） | image 目录下有非 png 文件 |
 | `C4-empty-folder-template`（error） | 目录模板（`xxx/`）里没有图片 |
+| `C8-template-larger-than-roi`（error） | pipeline TemplateMatch 的 PNG 模板宽/高超过固定 ROI（含 roi_offset 后的尺寸），模板匹配无法执行；支持模板列表、目录、嵌套及内联 And/Or。动态/引用 ROI、非 PNG、宽高非正的框架边界语义不推断；不读取图片内容，仅使用 PNG IHDR。 |
 | `C5-image-name`（warn） | 模板元素名不是英文 CamelCase |
 | `C6-agent-template-missing`（error） | agent 里 `JTemplateMatch(...)` 的字面量模板在 `image/` 下不存在（消息带 `类.方法` 与行号） |
 | `C7-agent-template-dynamic`（info） | 模板实参是变量 / f-string，静态查不出指向 |

@@ -500,10 +500,57 @@ def collect_template_refs(
     return refs
 
 
+def check_template_roi(ctx: Ctx) -> None:
+    """C8：固定 ROI 必须容得下每张 PNG 模板；动态 ROI 和未支持图像格式不猜。"""
+    def visit(data: dict, file: Path, owner: str) -> None:
+        recognition = data.get("recognition")
+        typ = recognition.get("type") if isinstance(recognition, dict) else recognition
+        params = recognition.get("param", {}) if isinstance(recognition, dict) else data
+        if not isinstance(params, dict):
+            return
+        if typ == "TemplateMatch":
+            roi = params.get("roi")
+            offset = params.get("roi_offset", [0, 0, 0, 0])
+            if (isinstance(roi, list) and len(roi) == 4 and all(type(v) is int for v in roi)
+                    and isinstance(offset, list) and len(offset) == 4 and all(type(v) is int for v in offset)):
+                width, height = roi[2] + offset[2], roi[3] + offset[3]
+                # 0/负值的框架边界语义不在这里推算，避免误报全屏或动态范围。
+                if width > 0 and height > 0:
+                    for value in to_list(params.get("template")):
+                        if not isinstance(value, str):
+                            continue
+                        target = find_image(ctx.image_roots, value)
+                        if target is None:
+                            continue
+                        paths = sorted(target.rglob("*.png")) if target.is_dir() else [target]
+                        for path in paths:
+                            try:
+                                with path.open("rb") as handle:
+                                    header = handle.read(24)
+                            except OSError:
+                                continue
+                            if len(header) != 24 or header[:8] != b"\x89PNG\r\n\x1a\n" or header[12:16] != b"IHDR":
+                                continue
+                            tw = int.from_bytes(header[16:20], "big")
+                            th = int.from_bytes(header[20:24], "big")
+                            if tw > width or th > height:
+                                ctx.add("C8-template-larger-than-roi", "error", file, find_line(file, owner),
+                                        f"{owner} 的模板 {value!r}（{path.name}）尺寸 {tw}×{th} 超过有效 ROI {width}×{height}；"
+                                        "模板匹配无法执行，请扩大 ROI 或核对模板裁剪")
+        if typ in ("And", "Or"):
+            for item in to_list(params.get("all_of" if typ == "And" else "any_of")):
+                if isinstance(item, dict):
+                    visit(item, file, owner)
+
+    for node in ctx.nodes.values():
+        visit(node.data, node.file, node.name)
+
+
 def check_images(ctx: Ctx) -> None:
     """C 域：模板引用是否存在、有没有没被引用的图、扩展名与元素命名（C1–C5）。"""
     if not ctx.image_roots:
         return
+    check_template_roi(ctx)
     refs = collect_template_refs(ctx)
     used: set[Path] = set()
     used_dirs: set[Path] = set()
