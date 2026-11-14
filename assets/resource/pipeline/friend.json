@@ -26,6 +26,12 @@
             162,
             91
         ],
+        "target_offset": [
+            0,
+            -36,
+            0,
+            1
+        ],
         "action": "Click",
         "next": [
             "BaseErrorNext",

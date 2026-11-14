@@ -52,6 +52,12 @@
             103,
             70
         ],
+        "target_offset": [
+            0,
+            -36,
+            0,
+            1
+        ],
         "action": "Click",
         "post_wait_freezes": 1000,
         "next": [
