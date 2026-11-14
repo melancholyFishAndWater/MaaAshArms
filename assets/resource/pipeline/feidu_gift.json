@@ -214,10 +214,10 @@
         "template": "Base/Confirm.png",
         "method": 10001,
         "roi": [
-            699,
-            524,
-            105,
-            46
+            676,
+            511,
+            199,
+            73
         ],
         "action": "Click",
         "post_wait_freezes": 3000,
