@@ -24,6 +24,7 @@
 from __future__ import annotations
 
 import logging
+import json
 import os
 import re
 from dataclasses import dataclass, field
@@ -305,6 +306,53 @@ class LocalRelease:
             panel_log=hint[1] if hint is not None else "",
         )
 
+    def find_event(self, event_id: str, entry: str) -> tuple[LocalRun, int, datetime, str] | None:
+        """坏/缺遥测包时独立核验：本机面板 event_id + 同入口唯一失败收尾（10 秒内）。"""
+        hint = self.panel_event(event_id)
+        if hint is None or hint[0] is None or not entry:
+            return None
+        from tools.drawing.lib.flowlog.constants import LINE_RE, TASK_END_RE, TASKER_TASK_RE
+
+        hits: dict[tuple[datetime, int, str], str] = {}
+        for path in self.logs():
+            lo, hi = self.time_range(path)
+            if (lo and lo > hint[0]) or (hi and (hint[0] - hi).total_seconds() > 10):
+                continue
+            with open(path, encoding="utf-8", errors="replace") as handle:
+                for raw in handle:
+                    line = LINE_RE.match(raw)
+                    if line is None:
+                        continue
+                    stamp = _parse_ts(line.group("ts"))
+                    if stamp is None or not 0 <= (hint[0] - stamp).total_seconds() <= 10:
+                        continue
+                    msg = line.group("msg")
+                    end = TASK_END_RE.search(msg)
+                    task = TASKER_TASK_RE.search(msg)
+                    payload = None
+                    if end and end.group(2) == "false":
+                        payload = end.group(1)
+                    elif task and task.group(1) == "Failed":
+                        payload = task.group(2)
+                    if payload is None:
+                        continue
+                    try:
+                        data = json.loads(payload)
+                    except json.JSONDecodeError:
+                        continue
+                    tid = data.get("task_id")
+                    if data.get("entry") == entry and type(tid) is int:
+                        hits[(stamp, tid, line.group("px"))] = path
+        identities = {(tid, px) for _ts, tid, px in hits}
+        if len(identities) != 1:
+            return None
+        stamp, tid, px = max(hits)
+        path = hits[(stamp, tid, px)]
+        debug = os.path.dirname(path)
+        run = LocalRun(path, debug, os.path.join(debug, "vision"), os.path.join(debug, "on_error"),
+                       f"本机事件 {event_id}；{entry} 失败收尾已核验、task {tid}", 0, hint[1])
+        return run, tid, stamp, px
+
     def panel_event(self, event_id: str) -> tuple[datetime | None, str] | None:
         """本机面板日志（`logs/log-*.log`）里记着这个 event_id 吗？返回 `(时刻, 文件名)`。
 
@@ -376,6 +424,14 @@ class LocalReleases:
     def logs(self) -> list[str]:
         """所有根的日志（按根的顺序拼接）。"""
         return [path for one in self.releases for path in one.logs()]
+
+    def find_event(self, event_id: str, entry: str) -> tuple[LocalRun, int, datetime, str] | None:
+        """独立于遥测包查当前事件；不同根的身份必须一致。"""
+        hits = [hit for one in self.releases if (hit := one.find_event(event_id, entry)) is not None]
+        identities = {(tid, stamp, px) for _run, tid, stamp, px in hits}
+        if len(identities) != 1:
+            return None
+        return hits[0]
 
     def describe(self) -> str:
         return "、".join(one.root for one in self.releases)

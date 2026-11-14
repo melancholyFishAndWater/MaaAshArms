@@ -221,6 +221,21 @@ def _assist_pack(
     if run is None:
         return None
     version = options.version or _pack_version(case)
+    local_case = Case(label=case.label, log_path=run.log_path)
+    from tools.drawing.lib.flowlog.logparse import parse_log
+
+    def completeness(candidate: Case) -> tuple[int, int, int]:
+        try:
+            parsed = parse_log(candidate.log_source(), options.t_from, options.t_to, task_id, False, px=options.px)
+        except (OSError, ValueError, TypeError):
+            return (-1, -1, -1)
+        # node-done 是真实执行记录；其次比较步骤/事件覆盖，截断记录越少越好。
+        return (sum(step.kind == "hit" for step in parsed.steps) if not parsed.derived_from else 0,
+                len(parsed.steps) + len(parsed.events), -parsed.stats.truncated_skipped)
+
+    if completeness(local_case) <= completeness(case):
+        log.info("本地日志未比证据包更完整，保留原来源：%s", label or case.label)
+        return None
     notes = list(options.extra_notes)
     event_note = _evidence_event_note(case)
     if event_note is not None:
@@ -909,6 +924,34 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
                     ),
                 )
                 stale_pack = ev_case is None
+            # 遥测包损坏不能阻断独立本地取证；不使用错配包的 task/version/图片。
+            if local is not None and ev_case is None:
+                current_event = str(getattr(card, "event_id", "") or "")
+                current_label = str(getattr(card, "label", "") or "")
+                local_event = local.find_event(current_event, f"Task{current_label}" if current_label else "")
+                if local_event is not None:
+                    run, local_tid, fail_stamp, local_px = local_event
+                    local_case = Case(label=card.short_id, log_path=run.log_path)
+                    local_options = replace(
+                        options, issue=card.short_id, task_id=local_tid, px=local_px,
+                        t_from=None, t_to=fail_stamp,
+                        version=None, version_source="",
+                        extra_notes=[*options.extra_notes, *((text, "local") for text in run.note_lines())],
+                    )
+                    try:
+                        local_result = run_case(
+                            local_case, local_options, outdir=args.outdir, mermaid=args.mermaid,
+                            force=args.force, manifest=manifest, issue_only=True,
+                            stem_extra=f"task{local_tid}", origin="bulk", kept=kept,
+                            issue_label=current_label,
+                        )
+                    except (FileNotFoundError, ValueError, OSError) as exc:
+                        log.warning("当前事件本地日志画不出流程（%s）：%s", card.short_id, exc)
+                    else:
+                        evidence_drawn += local_result is not None
+                        evidence_skipped += local_result is None
+                        scene_sources[card.short_id] = (card, local_case, local_options)
+                        continue
             if ev_case is not None:
                 task_id, task_count = _evidence_task_id(ev_case, card)
                 if task_id is None and task_count > 1:
