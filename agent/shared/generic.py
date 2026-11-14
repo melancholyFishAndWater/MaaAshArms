@@ -130,7 +130,7 @@ class BaseTaskStopErrorAct(CustomAction):
         return False
 
 
-#
+# 捕获错误，并执行命中的节点的 action，然后清空 BaseErrorNext 累积的父节点次数
 @AgentServer.custom_action("BaseBranchErrorAct")
 class BaseBranchErrorAct(CustomAction):
     def run(
@@ -146,13 +146,6 @@ class BaseBranchErrorAct(CustomAction):
         r = context.run_action(hit.name, box=hit.box or (0, 0, 0, 0))
         if not bool(r and r.success):
             log.ferror(f"{argv.node_name} 执行动作 {hit.name} 失败")
-            return False
-
-        r2 = context.override_next(
-            argv.node_name, (context.get_node_data(hit.name) or {}).get("next", [])
-        )
-        if not r2:
-            log.warn(f"{argv.node_name} 覆盖 next 失败")
             return False
 
         reset_error_next_father(
