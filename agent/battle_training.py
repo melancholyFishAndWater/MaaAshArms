@@ -156,9 +156,6 @@ class TrainingCheckEndReco(CustomRecognition):
 # 识别关卡名 返回还有挑战次数的关卡名字box
 @AgentServer.custom_recognition("TrainingEnterOneReco")
 class TrainingEnterOneReco(CustomRecognition):
-    # TODO 当前已有难度
-    # _level = ["一", "二", "三", "四", "五", "六"]
-
     def analyze(
         self, context: Context, argv: CustomRecognition.AnalyzeArg
     ) -> Rect | None:

@@ -12,7 +12,6 @@ from maa.custom_action import CustomAction
 from maa.custom_recognition import CustomRecognition
 
 
-# TODO 全部替换
 def parse_params(raw: str | None, *required_keys: str) -> dict[str, Any]:
     """解析 MaaFW 传入的 JSON 参数字符串。
 

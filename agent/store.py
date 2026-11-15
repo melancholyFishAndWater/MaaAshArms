@@ -164,13 +164,6 @@ class Store(Generic[T]):
         self._data[key] = value
         self._save()
 
-    # TODO
-    # def delete(self, key):
-    #     self._ensure_today()
-    #     if key in self._data:
-    #         del self._data[key]
-    #         self._save()
-
     def reco(self, context: Context, argv: CustomRecognition.AnalyzeArg) -> list[int]:
         """若今日执行过，则结束任务
 

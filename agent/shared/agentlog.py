@@ -1,12 +1,12 @@
 """agent 的日志设施：面板一级、文件一级。
 
 面板可见性由前缀决定：MFA 只放行以 trace: / debug: / info: / success: / critical: /
-warn: / error: 开头的行（Extensions/MaaFW/MaaProcessor.cs:251-297），面板自身没有等级过滤。
-所以照 M9A 的做法分两个 handler（agent/utils/logger.py:131-181）：
+warn: / error: 开头的行，面板自身没有等级过滤。
+所以照 M9A 的做法分两个 handler：
   console → INFO 及以上，带 level 前缀 → 进面板
   file    → TRACE 及以上全量       → 落 <安装根>/debug/agent/agent.log
 
-放在 agent/shared/ 下靠 agent/main.py 把它注入 sys.path 后按顶层名导入（`from agentlog import log`）。
+放在 agent/shared/ 下靠 agent/main.py 把它注入 sys.path 后按顶层名导入。
 模块名不叫 logging：那会遮蔽标准库，本模块自己要用它。
 """
 
@@ -15,7 +15,6 @@ import sys
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 
-# PERF 待拆分
 TRACE = 5
 SUCCESS = 25
 logging.addLevelName(TRACE, "TRACE")
