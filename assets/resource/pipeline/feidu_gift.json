@@ -138,7 +138,9 @@
         "action": "Click",
         "post_wait_freezes": 1000,
         "next": [
+            "BaseErrorNext",
             "GiftClickRules",
+            "GiftClickCharacters",
             "[JumpBack]BaseBranchError"
         ]
     },
