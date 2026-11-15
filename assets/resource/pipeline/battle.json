@@ -319,8 +319,7 @@
             "[JumpBack]BaseBranchError"
         ]
     },
-    /* -------------------- 分支-代理作战就绪 -------------------- */
-    // INFO 代理作战 出发
+    /* -------------------- 动作-代理出击 -------------------- */
     "BattleClickReplayAttack": {
         "desc": "代理-点击出击",
         "recognition": "And",
@@ -330,7 +329,9 @@
         ],
         "box_index": 1,
         "action": "Click",
-        "post_wait_freezes": 2000,
+        "post_wait_freezes": 3000,
+        "timeout": 60000,
+        "rate_limit": 5000,
         "next": [
             "BattleBranchBattle",
             "[JumpBack]BaseBranchError"
@@ -340,7 +341,6 @@
         }
     },
     /* -------------------- 分支-战斗中 -------------------- */
-    // INFO 战斗
     "BattleBranchBattle": {
         "desc": "等待战斗直到结束",
         "recognition": "Or",
