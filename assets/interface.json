@@ -56,7 +56,7 @@
             "entry": "TaskStartUp",
             "default_check": true,
             "pipeline_override": {
-                "StartUpClickLogin": {
+                "StartUpEnterLogin": {
                     "focus": {
                         "Node.Recognition.Succeeded": "点击b站账号登录按钮"
                     }
@@ -227,12 +227,12 @@
             ],
             // PERF 简化
             "pipeline_override": {
-                "StartUpClickSignIn": {
+                "StartUpEnterSignIn": {
                     "next": [
                         "ReplaysStopConnect",
                         "[JumpBack]BaseClickRewardTap",
                         "[JumpBack]StartUpClickNoticeDisable",
-                        "StartUpClickSignIn"
+                        "StartUpEnterSignIn"
                     ]
                 }
             }

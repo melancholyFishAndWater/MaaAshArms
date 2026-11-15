@@ -1,13 +1,16 @@
 {
     /*
     INFO 启动游戏
+
+    使用任务链结构 v3.11 校验年月日 26/11/15
+    使用节点命名与分类 v3.3 校验年月日 26/11/15
     */
     "TaskStartUp": {
         "desc": "启动游戏任务",
         "next": [
             "StartUpStopInGame",
-            "StartUpClickIcon",
-            "StartUpAshArms"
+            "StartUpEnterIcon",
+            "StartUpEnterPackageBlibili"
         ]
     },
     /* -------------------- 动作-主页内 停止 -------------------- */
@@ -25,7 +28,7 @@
     b服
     */
     // 点击启动 
-    "StartUpClickIcon": {
+    "StartUpEnterIcon": {
         "desc": "点击游戏图标",
         "recognition": "TemplateMatch",
         "template": [
@@ -57,7 +60,7 @@
         }
     },
     // 安装包启动
-    "StartUpAshArms": {
+    "StartUpEnterPackageBlibili": {
         "desc": "使用安装包启动",
         "action": "StartApp",
         "package": "com.asharmdolls.bilibili",
@@ -113,8 +116,8 @@
         "next": [
             "StartUpBranchLoading",
             "BaseStopServerMaintenance",
-            "StartUpClickLogin",
-            "StartUpClickSignIn",
+            "StartUpEnterLogin",
+            "StartUpEnterSignIn",
             "[JumpBack]StartUpClickUpdate",
             "[JumpBack]BaseClickErrorConfirm"
         ],
@@ -148,7 +151,7 @@
     },
     /* -------------------- 动作-登录(含公告和签到) -------------------- */
     // 蓝色的登录按钮
-    "StartUpClickLogin": {
+    "StartUpEnterLogin": {
         "desc": "点击登录按钮",
         "recognition": "OCR",
         "expected": "登录",
@@ -165,7 +168,7 @@
             "[JumpBack]BaseClickRewardTap",
             "[JumpBack]StartUpClickNoticeDisable",
             "[JumpBack]BaseClickBackButton",
-            "StartUpClickLogin"
+            "StartUpEnterLogin"
         ],
         "post_wait_freezes": 3000,
         "focus": {
@@ -173,7 +176,7 @@
         }
     },
     // 点击进入游戏
-    "StartUpClickSignIn": {
+    "StartUpEnterSignIn": {
         "desc": "点击进入游戏",
         "recognition": "TemplateMatch",
         "template": [
@@ -191,7 +194,7 @@
             "[JumpBack]BaseClickRewardTap",
             "[JumpBack]StartUpClickNoticeDisable",
             "[JumpBack]BaseClickBackButton",
-            "StartUpClickSignIn"
+            "StartUpEnterSignIn"
         ],
         "post_wait_freezes": 3000,
         "focus": {
