@@ -95,6 +95,33 @@
     /* -------------------- 动作-领取完成 -------------------- */
     "EntrustClickFinish": {
         "desc": "点击完成",
+        "recognition": "And",
+        "all_of": [
+            "EntrustProbeFinishButton"
+        ],
+        "action": "Click",
+        "post_wait_freezes": 1000,
+        "next": [
+            "BaseErrorNext",
+            "EntrustClickFinish",
+            "[JumpBack]BaseBranchError",
+            "EntrustProbeRewardSuccess"
+        ]
+    },
+    // 领取成功
+    "EntrustProbeRewardSuccess": {
+        "desc": "[end] 领取奖励成功",
+        "recognition": "And",
+        "all_of": [
+            "EntrustProbeFinishButton"
+        ],
+        "inverse": true,
+        "focus": {
+            "Node.PipelineNode.Succeeded": "领取委派奖励成功"
+        }
+    },
+    "EntrustProbeFinishButton": {
+        "desc": "[end] 有完成按钮",
         "recognition": "OCR",
         "expected": "完成",
         "roi": [
@@ -102,26 +129,6 @@
             639,
             73,
             40
-        ],
-        "action": "Click",
-        "post_wait_freezes": 1000,
-        "next": [
-            "BaseErrorNext",
-            "EntrustProbeRewardSuccess", // INFO 回大关页
-            "[JumpBack]BaseBranchError",
-            "EntrustClickFinish"
         ]
-    },
-    // 领取成功
-    "EntrustProbeRewardSuccess": {
-        "desc": "[end] 领取奖励成功",
-        "recognition": "Or",
-        "any_of": [
-            "EntrustProbeStageText",
-            "EntrustProbeMapText"
-        ],
-        "focus": {
-            "Node.PipelineNode.Succeeded": "领取委派奖励成功"
-        }
     }
 }
