@@ -34,7 +34,7 @@ def _argv(entry="TaskGift"):
     return SimpleNamespace(
         custom_recognition_param=None,
         task_detail=SimpleNamespace(entry=entry),
-        node_name="GiftProbeDaily",
+        node_name="GiftStopDaily",
     )
 
 
@@ -57,45 +57,31 @@ def test_cross_day_resets(daily):
     assert daily.get("TaskGift") is False
 
 
-def test_reco_always_hits_but_stops_when_done(daily):
-    """reco 恒命中（返回 DEFAULT_HIT_BOX）；今日已做时额外跑 BaseTaskStop 结束任务。
-
-    跳过不再用"返回 None"表达：识别恒命中，结束只由 BaseTaskStop 负责——
-    未命中会让 `[once]` 探测节点静默失败，任务收不到明确的停止指令。
-    """
+def test_reco_hits_until_done_then_disables_node(daily):
+    """今日未做返回命中；已做则禁用本节点并返回 None，不直接执行停止动作。"""
     calls = []
-    ctx = SimpleNamespace(
-        run_action=lambda name, pipeline_override=None: (
-            calls.append(name) or SimpleNamespace(success=True)
-        )
-    )
-
-    # 今日未做 → 命中，不跑 BaseTaskStop
+    ctx = SimpleNamespace(override_pipeline=lambda patch: calls.append(patch) or True)
     assert daily.reco(ctx, _argv()) is DEFAULT_HIT_BOX
     assert calls == []
-
-    # 今日已做 → 仍命中（恒返回 box），但已跑 BaseTaskStop
     daily.set("TaskGift", True)
-    assert daily.reco(ctx, _argv()) is DEFAULT_HIT_BOX
-    assert calls == ["BaseTaskStop"]
+    assert daily.reco(ctx, _argv()) is None
+    assert calls == [{"GiftStopDaily": {"enabled": False}}]
 
 
-def test_reco_still_stops_when_taskstop_fails(daily):
-    """BaseTaskStop 跑失败也要返回命中：识别结果与收尾动作互不牵连。"""
-    ctx = SimpleNamespace(run_action=lambda name, pipeline_override=None: None)
-
+@pytest.mark.parametrize("result", [False, None])
+def test_reco_returns_miss_when_disable_fails(daily, result):
+    """禁用失败不恢复旧命中语义，仍返回 None，且尝试禁用的是 argv 的节点。"""
+    calls = []
+    ctx = SimpleNamespace(override_pipeline=lambda patch: calls.append(patch) or result)
     daily.set("TaskGift", True)
-    assert daily.reco(ctx, _argv()) is DEFAULT_HIT_BOX
+    assert daily.reco(ctx, _argv()) is None
+    assert calls == [{"GiftStopDaily": {"enabled": False}}]
 
 
 def test_reco_skipped_entirely_when_disabled(daily):
     """`enable: false`（任务选项关掉每日一次）时不做跳过判定。"""
     calls = []
-    ctx = SimpleNamespace(
-        run_action=lambda name, pipeline_override=None: (
-            calls.append(name) or SimpleNamespace(success=True)
-        )
-    )
+    ctx = SimpleNamespace(override_pipeline=lambda patch: calls.append(patch) or True)
     argv = _argv()
     argv.custom_recognition_param = '{"enable": false}'
 
