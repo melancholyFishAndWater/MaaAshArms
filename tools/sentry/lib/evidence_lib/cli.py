@@ -106,9 +106,16 @@ def main(argv: Sequence[str] | None = None, prog: str | None = None) -> int:
         if isinstance(stream, io.TextIOWrapper):
             stream.reconfigure(errors="replace")
 
-    arguments = create_argument_parser(prog).parse_args(argv)
-    if arguments.no_images and arguments.no_log:
-        raise ValueError("--no-images 与 --no-log 一起给就没有任何东西可拉。")
+    parser = create_argument_parser(prog)
+    explicit = list(sys.argv[1:] if argv is None else argv)
+    arguments = parser.parse_args(explicit)
+    from tools._cli_args import check_explicit_args
+
+    check_explicit_args(parser, explicit, conflicts=(
+        ("--no-images", "--no-log"),
+        ("--list", "--force"),
+        *(("--no-log", flag) for flag in ("--log-limit", "--sort", "--keep-duplicates")),
+    ))
 
     sentry = report_common.resolve_sentry_command()
     try:

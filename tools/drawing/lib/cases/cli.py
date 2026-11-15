@@ -482,7 +482,23 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
             stream.reconfigure(errors="replace")
 
     parser = create_argument_parser(prog)
-    args = parser.parse_args(argv)
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    args = parser.parse_args(arguments)
+    from tools._cli_args import check_explicit_args
+
+    check_explicit_args(parser, arguments, conflicts=(
+        ("--telemetry", "--no-telemetry"),
+        ("--fetch-evidence", "--no-fetch-evidence"),
+        ("--telemetry-bulk", "--no-telemetry"),
+        ("--telemetry-refresh", "--telemetry-offline"),
+        ("--local-release", "--no-local-release"),
+        ("--list-cases", "--telemetry-only"),
+        ("--all-tasks", "--task-id"),
+        ("--no-overlay", "--overlay-min"),
+        *(("--no-telemetry", flag) for flag in ("--telemetry-only", "--telemetry-version", "--telemetry-issue", "--telemetry-refresh")),
+    ), requires=(("--clean-flow", "--telemetry-bulk"),))
+    if args.telemetry_only and not args.case:
+        parser.error("--telemetry-only 需要 --case <日志/证据包> 才能反查")
     filters = [
         flag for flag, value in (
             ("--telemetry-version", args.telemetry_version),

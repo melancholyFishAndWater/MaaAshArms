@@ -420,9 +420,21 @@ def main(argv: list[str] | None = None) -> int:
     for stream in (sys.stdout, sys.stderr):
         if isinstance(stream, io.TextIOWrapper):
             stream.reconfigure(errors="replace")
-    args = create_argument_parser().parse_args(argv)
+    parser = create_argument_parser()
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    args = parser.parse_args(arguments)
     if str(REPO_ROOT) not in sys.path:
         sys.path.insert(0, str(REPO_ROOT))
+    from tools._cli_args import check_explicit_args
+
+    check_explicit_args(parser, arguments, conflicts=(
+        ("--telemetry", "--no-telemetry"),
+        ("--telemetry-refresh", "--telemetry-offline"),
+        ("--list", "--list-tasks", "--telemetry-only"),
+        ("--no-overlay", "--overlay-min"),
+        ("--no-stale-check", "--version"),
+        *(("--no-telemetry", flag) for flag in ("--telemetry-only", "--telemetry-issue", "--telemetry-refresh")),
+    ))
     from tools._logging import configure_tool_logging
 
     _, log_path = configure_tool_logging(

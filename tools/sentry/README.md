@@ -11,6 +11,8 @@
 
 ## 前置条件
 
+参数组合的互斥与依赖见[联动工作流的参数检查](../drawing/docs/workflows.md#参数冲突与前置检查)；冲突返回 2，且不会开始取证或绘图。
+
 1. **Sentry CLI**（[cli.sentry.dev](https://cli.sentry.dev/)，命令名 `sentry`，不是旧版 `sentry-cli`）：
 
    ```bash

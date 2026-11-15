@@ -180,6 +180,19 @@ python -m tools.sentry.cli issue-resolve --status
 6. 查看工具运行日志与 manifest，确认实际采用的来源、步骤数、截断提示、回退原因和清理结果。
 7. 调查请求只给结论与建议，不修改脚本、任务或用户原始证据；修复与重画按用户授权另行执行。
 
+## 参数冲突与前置检查
+
+冲突在联网、工具日志写入、目录创建和清理之前以参数错误退出（exit 2），不再按参数顺序静默覆盖。
+
+- `flow` / `cases`：`--telemetry` 与 `--no-telemetry`、`--telemetry-refresh` 与 `--telemetry-offline` 互斥；关闭遥测不能同时指定仅匹配、问题号或刷新。
+- `cases`：批量模式与关闭遥测互斥；显式添加本地辅助与禁用本地辅助互斥；下载证据的正反开关互斥；全部任务与指定 task_id 互斥；两种预览互斥。
+- `flow`：`--list`、`--list-tasks`、`--telemetry-only` 三种输出模式互斥；关闭疑似过时检查不能同时指定其版本。
+- `flow` / `cases`：关闭重复轮合并与显式配置 `--overlay-min` 互斥。
+- `cases`：`--clean-flow` 必须配合 `--telemetry-bulk`；保留、清空与过滤/预览的限制见工作流 C。
+- `evidence`：`--no-images` 与 `--no-log`、`--list` 与 `--force` 互斥；不取日志时不能显式给日志条数、排序或保留重复行参数。
+
+依赖型规则只检查显式传入的参数（支持 `--key=value`），不因程序默认值报冲突。
+
 ## 实现入口索引
 
 | 职责 | 入口 |
