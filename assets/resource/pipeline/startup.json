@@ -5,14 +5,26 @@
     "TaskStartUp": {
         "desc": "启动游戏任务",
         "next": [
-            "StartUpInGame",
-            "BaseProbeHome",
+            "StartUpStopInGame",
             "StartUpClickIcon",
             "StartUpAshArms"
         ]
     },
-    // PERF 待优化 启动后立马结束并启动，post_wait_freezes过久导致启动失败且显示所有任务失败
-    // INFO 启动的两条路径 b服
+    /* -------------------- 动作-主页内 停止 -------------------- */
+    "StartUpStopInGame": {
+        "desc": "在游戏中，任务停止",
+        "recognition": "Or",
+        "any_of": [
+            "BaseClickBackButton",
+            "BaseClickHomeButton",
+            "BaseProbeHome"
+        ],
+        "action": "StopTask"
+    },
+    /* -------------------- 动作-启动游戏 --------------------
+    b服
+    */
+    // 点击启动 
     "StartUpClickIcon": {
         "desc": "点击游戏图标",
         "recognition": "TemplateMatch",
@@ -24,62 +36,18 @@
         "action": "Click",
         "order_by": "Score",
         "threshold": 0.8,
+        "timeout": 36000,
+        "rate_limit": 3000,
         "next": [
             "BaseProbeHome",
-            "StartUpClickIcon",
-            "[JumpBack]StartUpDisclaimer",
-            "[JumpBack]StartUpInLoding",
-            "BaseStopServerMaintenance",
-            "[JumpBack]StartUpGameUpdate",
-            "[JumpBack]StartUpGameUpdateError",
-            "[JumpBack]StartUpGameUpdateNow",
-            "[JumpBack]StartUpClickLogin",
-            "StartUpClickSignIn"
+            "[JumpBack]BaseProbeBlackPage",
+            "[JumpBack]StartUpClickDisclaimer",
+            "StartUpBranchLoading",
+            "[JumpBack]BaseClickErrorConfirm"
         ],
-        "post_wait_freezes": 5000,
-        "timeout": 300000,
-        "on_error": [
-            "StartUpFailed"
-        ]
-    },
-    // 安装包启动
-    "StartUpAshArms": {
-        "desc": "使用安装包启动",
-        "action": "StartApp",
-        "package": "com.asharmdolls.bilibili",
-        "next": [
-            "BaseProbeHome",
-            "[JumpBack]StartUpDisclaimer",
-            "[JumpBack]StartUpInLoding",
-            "BaseStopServerMaintenance",
-            "[JumpBack]StartUpGameUpdate",
-            "[JumpBack]StartUpGameUpdateError",
-            "[JumpBack]StartUpGameUpdateNow",
-            "[JumpBack]StartUpClickLogin",
-            "StartUpClickSignIn"
-        ],
-        "post_wait_freezes": 5000,
-        "timeout": 300000,
-        "on_error": [
-            "StartUpFailed"
-        ]
-    },
-    "StartUpInGame": {
-        "desc": "在游戏中",
-        "recognition": "Or",
-        "any_of": [
-            "BaseClickBackButton",
-            "BaseClickHomeButton"
-        ]
-    },
-    "StartUpFailed": {
-        "desc": "游戏启动失败：禁用启动节点并提示用户",
-        "action": "Custom",
-        "custom_action": "StartUpFailedAct",
-        "custom_action_param": {}, // 键名与默认值由 agent 侧决定
         "focus": {
-            "Node.Action.Succeeded": {
-                "content": "<span style=\"color:crimson;\">启动游戏失败，请检查是否正确选择游戏资源</span>",
+            "Node.PipelineNode.Failed": {
+                "content": "使用图标启动游戏失败",
                 "display": [
                     "log",
                     "notification",
@@ -88,7 +56,33 @@
             }
         }
     },
-    "StartUpDisclaimer": {
+    // 安装包启动
+    "StartUpAshArms": {
+        "desc": "使用安装包启动",
+        "action": "StartApp",
+        "package": "com.asharmdolls.bilibili",
+        "timeout": 36000,
+        "rate_limit": 3000,
+        "next": [
+            "BaseProbeHome",
+            "[JumpBack]BaseProbeBlackPage",
+            "[JumpBack]StartUpClickDisclaimer",
+            "StartUpBranchLoading",
+            "[JumpBack]BaseClickErrorConfirm"
+        ],
+        "focus": {
+            "Node.PipelineNode.Failed": {
+                "content": "使用安装包启动游戏失败",
+                "display": [
+                    "log",
+                    "notification",
+                    "modal"
+                ]
+            }
+        }
+    },
+    /* -------------------- jp动作-隐私策略 -------------------- */
+    "StartUpClickDisclaimer": {
         "desc": "隐私策略",
         "recognition": "OCR",
         "expected": "同意",
@@ -104,18 +98,56 @@
             "Node.Recognition.Succeeded": "点击同意隐私策略"
         }
     },
-    "StartUpInLoding": {
-        "desc": "正在加载游戏",
-        "recognition": "TemplateMatch",
-        "template": [
-            "StartUp/SignInLoadingFlag/"
+    /* -------------------- 分支-加载中 -------------------- */
+    "StartUpBranchLoading": {
+        "desc": "游戏加载中",
+        "recognition": "OCR",
+        "expected": "\\d",
+        "roi": [
+            1096,
+            576,
+            164,
+            117
         ],
-        "post_wait_freezes": 5000,
+        "rate_limit": 5000,
+        "next": [
+            "StartUpBranchLoading",
+            "BaseStopServerMaintenance",
+            "StartUpClickLogin",
+            "StartUpClickSignIn",
+            "[JumpBack]StartUpClickUpdate",
+            "[JumpBack]BaseClickErrorConfirm"
+        ],
         "focus": {
             "Node.Recognition.Succeeded": "等待游戏加载中"
         }
     },
-    // 点击进入游戏的两个分支
+    /* -------------------- jp动作-点击更新 -------------------- */
+    "StartUpClickUpdate": {
+        "desc": "[jp] 点击更新游戏",
+        "recognition": "And",
+        "all_of": [
+            "StartUpProbeDownloadText",
+            "BaseProbeConfirm"
+        ],
+        "action": "Click",
+        "focus": {
+            "Node.Recognition.Succeeded": "游戏更新"
+        }
+    },
+    "StartUpProbeDownloadText": {
+        "desc": "[end] 有下载文字",
+        "recognition": "OCR",
+        "expected": "下载",
+        "roi": [
+            320,
+            148,
+            636,
+            423
+        ]
+    },
+    /* -------------------- 动作-登录(含公告和签到) -------------------- */
+    // 蓝色的登录按钮
     "StartUpClickLogin": {
         "desc": "点击登录按钮",
         "recognition": "OCR",
@@ -128,9 +160,11 @@
         ],
         "action": "Click",
         "next": [
+            "BaseErrorNext",
             "BaseProbeHome",
             "[JumpBack]BaseClickRewardTap",
-            "[JumpBack]NoticeClickDisable",
+            "[JumpBack]StartUpClickNoticeDisable",
+            "[JumpBack]BaseClickBackButton",
             "StartUpClickLogin"
         ],
         "post_wait_freezes": 3000,
@@ -138,50 +172,54 @@
             "Node.Recognition.Succeeded": "游戏掉线，尝试重连"
         }
     },
-    // 进入游戏界面
+    // 点击进入游戏
     "StartUpClickSignIn": {
-        "desc": "点击进入游戏界面",
+        "desc": "点击进入游戏",
         "recognition": "TemplateMatch",
         "template": [
             "StartUp/TouchSignInPage.png"
         ],
-        "timeout": 60000,
-        "action": "Click",
         "green_mask": true,
+        "action": "Click",
         "target": [
             630,
             540
         ],
         "next": [
+            "BaseErrorNext",
             "BaseProbeHome",
             "[JumpBack]BaseClickRewardTap",
-            "[JumpBack]NoticeClickDisable",
+            "[JumpBack]StartUpClickNoticeDisable",
             "[JumpBack]BaseClickBackButton",
             "StartUpClickSignIn"
         ],
         "post_wait_freezes": 3000,
         "focus": {
             "Node.Recognition.Succeeded": "点击进入游戏"
-        },
-        "on_error": [
-            "StartUpFailed"
-        ]
+        }
     },
-    // 点今日不再提示
-    "NoticeClickDisable": {
-        "desc": "点击公告不再提示",
+    /* -------------------- jp动作-今日不再提示 -------------------- */
+    "StartUpClickNoticeDisable": {
+        "desc": "[jp] 点击公告不再提示",
         "recognition": "OCR",
         "expected": "今日不再提示",
         "action": "Click",
+        "roi": [
+            307,
+            95,
+            246,
+            50
+        ],
         "next": [
-            "NoticeClose"
+            "StartUpClickNoticeClose"
         ],
         "post_wait_freezes": 1000,
         "focus": {
             "Node.Recognition.Succeeded": "点击公告不再提示"
         }
     },
-    "NoticeClose": {
+    // 关闭公告
+    "StartUpClickNoticeClose": {
         "desc": "点击其他区域关闭公告页面",
         "action": "Click",
         "target": [
@@ -191,58 +229,6 @@
         "post_wait_freezes": 1000,
         "focus": {
             "Node.Recognition.Succeeded": "关闭公告页面"
-        }
-    },
-    // 检测到游戏更新
-    "StartUpGameUpdate": {
-        "desc": "提示更新",
-        "recognition": "OCR",
-        "expected": "下载更新",
-        "roi": [
-            406,
-            238,
-            120,
-            45
-        ],
-        "next": [
-            "BaseClickConfirm"
-        ],
-        "focus": {
-            "Node.Recognition.Succeeded": "检测到游戏更新"
-        }
-    },
-    // 更新失败弹窗
-    "StartUpGameUpdateError": {
-        "desc": "更新失败",
-        "recognition": "OCR",
-        "expected": ".+失败",
-        "max_hit": 3,
-        "roi": [
-            984,
-            431,
-            796,
-            72
-        ],
-        "next": [
-            "BaseClickConfirm"
-        ],
-        "focus": {
-            "Node.Recognition.Succeeded": "更新失败，尝试重新更新"
-        }
-    },
-    "StartUpGameUpdateNow": {
-        "desc": "正在更新",
-        "recognition": "OCR",
-        "expected": "下载更新",
-        "roi": [
-            852,
-            614,
-            89,
-            22
-        ],
-        "post_wait_freezes": 5000,
-        "focus": {
-            "Node.Recognition.Succeeded": "等待游戏更新中"
         }
     }
 }

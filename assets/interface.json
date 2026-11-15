@@ -227,12 +227,12 @@
             ],
             // PERF 简化
             "pipeline_override": {
-                "StartUpClickLogin": {
+                "StartUpClickSignIn": {
                     "next": [
                         "ReplaysStopConnect",
                         "[JumpBack]BaseClickRewardTap",
-                        "[JumpBack]NoticeClickDisable",
-                        "StartUpClickLogin"
+                        "[JumpBack]StartUpClickNoticeDisable",
+                        "StartUpClickSignIn"
                     ]
                 }
             }
