@@ -8,21 +8,21 @@
     "TaskFactory": {
         "desc": "订单工厂任务",
         "next": [
-            "[JumpBack]FactoryProbeDaily",
+            "FactoryStopDaily",
             "FactoryBranchHome",
             "FactoryEnterHome",
             "[JumpBack]BaseBranchError",
             "[JumpBack]BaseReturnHome"
         ]
     },
-    "FactoryProbeDaily": {
-        "desc": "[jp][once] 检查每日一次",
-        "max_hit": 1,
+    "FactoryStopDaily": {
+        "desc": "任务停止，今日执行过",
         "recognition": "Custom",
-        "custom_recognition": "FactoryProbeDailyReco",
+        "custom_recognition": "FactoryStopDailyReco",
         "custom_recognition_param": {
-            "enable": true // 每日一次开关 覆写关闭
-        }
+            "enable": true
+        },
+        "action": "StopTask"
     },
     /* -------------------- 通用探测 -------------------- */
     "FactoryProbeHome": {

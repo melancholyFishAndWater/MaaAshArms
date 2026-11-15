@@ -9,7 +9,7 @@
     "TaskTraining": {
         "desc": "训练所任务",
         "next": [
-            "[JumpBack]TrainingProbeDaily",
+            "TrainingStopDaily",
             "[JumpBack]EntrustRewardableLate",
             "[JumpBack]TrainingInit",
             // INFO 遍历候选位置
@@ -21,14 +21,14 @@
             "[JumpBack]BaseReturnHome"
         ]
     },
-    "TrainingProbeDaily": {
-        "desc": "[once][jp] 检测每日一次",
-        "max_hit": 1,
+    "TrainingStopDaily": {
+        "desc": "任务停止，今日执行过",
         "recognition": "Custom",
-        "custom_recognition": "TrainingProbeDailyReco",
+        "custom_recognition": "TrainingStopDailyReco",
         "custom_recognition_param": {
             "enable": true // 每日一次开关 覆写关闭
-        }
+        },
+        "action": "StopTask"
     },
     // INFO 读取关卡选项
     "TrainingInit": {

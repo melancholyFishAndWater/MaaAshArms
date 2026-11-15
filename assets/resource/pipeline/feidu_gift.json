@@ -8,7 +8,7 @@
     "TaskGift": {
         "desc": "赠礼任务",
         "next": [
-            "[JumpBack]GiftProbeDaily",
+            "GiftStopDaily",
             // INFO 候选
             "GiftBranchHome",
             "GiftEnterTavern",
@@ -19,14 +19,14 @@
         ]
     },
     // INFO 每日一次
-    "GiftProbeDaily": {
-        "desc": "[once][jp] 检查每日一次",
-        "max_hit": 1,
+    "GiftStopDaily": {
+        "desc": "任务停止，今日执行过",
         "recognition": "Custom",
-        "custom_recognition": "GiftProbeDailyReco",
+        "custom_recognition": "GiftStopDailyReco",
         "custom_recognition_param": {
             "enable": true
-        }
+        },
+        "action": "StopTask"
     },
     /* -------------------- 通用探测 -------------------- */
     "GiftProbeHome": {

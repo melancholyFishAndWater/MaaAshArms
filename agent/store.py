@@ -7,7 +7,7 @@ import os
 import tempfile
 from pathlib import Path
 from datetime import timedelta, datetime
-from typing import Callable, Generic, TypeVar
+from typing import Callable, Generic, Optional, TypeVar
 
 from maa.agent.agent_server import AgentServer
 from maa.custom_recognition import CustomRecognition
@@ -36,19 +36,29 @@ def _data_dir() -> Path:
 class Store(Generic[T]):
     def __init__(
         self,
-        state: str = "store.json",
+        state: str,
         default: T = False,
         func: Callable[[T], bool] = lambda x: bool(x),
     ):
         """
-        存储实例
+        持久化管理一个数据
+
+        对外主要功能分为两部分:
+
+        ### Reco:
+            使用 _func 判断是否命中节点
+            可通过 custom_recognition_param.enable = false 强制触发此节点（取消每日一次）
+            返回是否命中节点（是否继续），否则禁用此节点
+
+        ### Act:
+            将数据存入 _data 并持久化
 
         Args:
             state (str, optional): 存储文件名. Defaults to "store.json".
-            default (T, optional): 读取数据默认值. Defaults to False.
-            func (Callable[[T], bool], optional): 判断函数. Defaults to lambda x: bool(x).
+            default (T, optional): 数据默认值. Defaults to False.
+            func (Callable[[T], bool], optional): 传入数据，并判断是否符合不命中条件（今日进行次数达标）. Defaults to lambda x: bool(x).
         """
-        # 任务名: 数据
+        # 持久化的数据 dict[任务名, 数据]
         self._data: dict[str, T] = {}
         self._state = state
         self._today = self._today_str()
@@ -155,20 +165,23 @@ class Store(Generic[T]):
             self._data = {}
             self._save()
 
-    def get(self, key) -> T:
+    def get(self, key: str) -> T:
         self._ensure_today()
         return self._data.get(key, self._default)
 
-    def set(self, key, value: T):
+    def set(self, key: str, value: T):
         self._ensure_today()
         self._data[key] = value
         self._save()
 
-    def reco(self, context: Context, argv: CustomRecognition.AnalyzeArg) -> list[int]:
-        """若今日执行过，则结束任务
+    def reco(
+        self, context: Context, argv: CustomRecognition.AnalyzeArg
+    ) -> Optional[list[int]]:
+        """
+        若今日没执行过，则返回 box
 
         Returns:
-            list[int]: 识别成功标志
+            Optional[list[int]]: 节点可继续执行标志
         """
 
         # 校验日期
@@ -185,17 +198,13 @@ class Store(Generic[T]):
 
         # 判断是否跳过此次任务
         if bool_ and self._func(self._data.get(argv.task_detail.entry, self._default)):
-            b = context.run_action(
-                "BaseTaskStop",
-                pipeline_override={
-                    "BaseTaskStop": {
-                        "focus": {"Node.Action.Succeeded": "今日已执行过，跳过"}
-                    }
-                },
-            )
-            if b is None or not b.success:
-                log.error(f"结束任务失败")
-        return DEFAULT_HIT_BOX
+            b = context.override_pipeline({argv.node_name: {"enabled": False}})
+            log.info("今日已执行过，跳过")
+            if b is None or not b:
+                log.debug(f"禁用节点 {argv.node_name} 失败")
+            return
+        else:
+            return DEFAULT_HIT_BOX
 
     def act(self, argv: CustomAction.RunArg, value: T) -> CustomAction.RunResult | bool:
         try:
@@ -211,8 +220,8 @@ class Store(Generic[T]):
 _gift = Store[bool]("daily_gift.json")
 
 
-@AgentServer.custom_recognition("GiftProbeDailyReco")
-class GiftProbeDailyReco(CustomRecognition):
+@AgentServer.custom_recognition("GiftStopDailyReco")
+class GiftStopDailyReco(CustomRecognition):
     def analyze(
         self, context: Context, argv: CustomRecognition.AnalyzeArg
     ) -> list[int] | None:
@@ -232,8 +241,8 @@ class GiftDailyUpdateAct(CustomAction):
 _factory = Store[int]("daily_factory.json", default=0, func=lambda x: x >= 3)
 
 
-@AgentServer.custom_recognition("FactoryProbeDailyReco")
-class FactoryProbeDailyReco(CustomRecognition):
+@AgentServer.custom_recognition("FactoryStopDailyReco")
+class FactoryStopDailyReco(CustomRecognition):
     def analyze(
         self, context: Context, argv: CustomRecognition.AnalyzeArg
     ) -> list[int] | None:
@@ -260,8 +269,8 @@ def _training_func(x: list[str]) -> bool:
 _training = Store[list[str]]("daily_training.json", default=[], func=_training_func)
 
 
-@AgentServer.custom_recognition("TrainingProbeDailyReco")
-class TrainingProbeDailyReco(CustomRecognition):
+@AgentServer.custom_recognition("TrainingStopDailyReco")
+class TrainingStopDailyReco(CustomRecognition):
     def analyze(
         self, context: Context, argv: CustomRecognition.AnalyzeArg
     ) -> list[int] | None:
@@ -294,8 +303,8 @@ class TrainingDailyUpdateAct(CustomAction):
 _entrust = Store[bool]("daily_entrust.json")
 
 
-@AgentServer.custom_recognition("EntrustProbeDailyReco")
-class EntrustProbeDailyReco(CustomRecognition):
+@AgentServer.custom_recognition("EntrustStopDailyReco")
+class EntrustStopDailyReco(CustomRecognition):
     def analyze(
         self, context: Context, argv: CustomRecognition.AnalyzeArg
     ) -> list[int] | None:

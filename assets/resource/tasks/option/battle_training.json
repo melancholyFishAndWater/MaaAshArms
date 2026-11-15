@@ -13,7 +13,7 @@
                 {
                     "name": "No",
                     "pipeline_override": {
-                        "TrainingProbeDaily": {
+                        "TrainingStopDaily": {
                             "custom_recognition_param": {
                                 "enable": false
                             }

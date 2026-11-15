@@ -10,7 +10,7 @@
                 {
                     "name": "No",
                     "pipeline_override": {
-                        "EntrustProbeDaily": {
+                        "EntrustStopDaily": {
                             "custom_recognition_param": {
                                 "enable": false
                             }

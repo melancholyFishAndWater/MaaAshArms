@@ -8,7 +8,7 @@
     "TaskEntrust": {
         "desc": "委派作战任务",
         "next": [
-            "[JumpBack]EntrustProbeDaily",
+            "EntrustStopDaily",
             "[JumpBack]EntrustInit",
             "[JumpBack]BattleEnterHome",
             "EntrustBranchStage",
@@ -18,14 +18,14 @@
         ]
     },
     // 每日一次
-    "EntrustProbeDaily": {
-        "desc": "[once] 检测每日一次",
-        "max_hit": 1,
+    "EntrustStopDaily": {
+        "desc": "任务停止，今日执行过",
         "recognition": "Custom",
-        "custom_recognition": "EntrustProbeDailyReco",
+        "custom_recognition": "EntrustStopDailyReco",
         "custom_recognition_param": {
             "enable": true
-        }
+        },
+        "action": "StopTask"
     },
     // 初始化
     "EntrustInit": {

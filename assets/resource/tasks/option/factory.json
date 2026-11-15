@@ -76,7 +76,7 @@
                 {
                     "name": "No",
                     "pipeline_override": {
-                        "FactoryProbeDaily": {
+                        "FactoryStopDaily": {
                             "custom_recognition_param": {
                                 "enable": false
                             }
