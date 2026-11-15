@@ -193,6 +193,8 @@ print(res.path, res.width, res.height, res.steps)
 
 ## 更多
 
+- **按场景选择绘图与遥测工作流（AI / 人工共用）**：[联动工作流](./docs/workflows.md)
+
 - 模块分布、编写约束、本工具的功能取舍：[AGENTS.md](./AGENTS.md)
 - 版面与端口：[docs/layout.md](./docs/layout.md)
 - 解析口径（读图前先看）：[docs/parsing.md](./docs/parsing.md)

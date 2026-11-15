@@ -3,6 +3,7 @@
 把 `assets/interface.json` 里配置的 Sentry 项目（`telemetry.sentry`）中**已经上报**的遥测数据
 下载到本地、做统计分析、输出结论。只读已上报的数据，只出表格与结论；采集与上报在 MFA 侧。
 
+- **按场景选择绘图与遥测工作流（AI / 人工共用）**：[联动工作流](../drawing/docs/workflows.md)
 - 模块分布、编写约束、该工具的功能取舍：[`AGENTS.md`](AGENTS.md)
 - 流程、入口、数据变换与不变契约：[`docs/flow.md`](docs/flow.md)
 - 统计口径、release/版本口径、证据包与反查、已知坑：[`docs/`](docs/)
