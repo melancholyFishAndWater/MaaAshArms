@@ -400,7 +400,7 @@ def create_argument_parser(prog: str | None = None) -> argparse.ArgumentParser:
         "--no-prune",
         dest="prune",
         action="store_false",
-        help="增量出图，但不删任何旧产物（目录里会留着上次的图、以及版本筛选范围外的图）",
+        help="增量出图但保留旧产物；与版本/issue/task/进程/时间窗过滤及 --clean-flow 互斥",
     )
     ap.add_argument(
         "--evidence-dir",
@@ -481,7 +481,24 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
         if isinstance(stream, io.TextIOWrapper):
             stream.reconfigure(errors="replace")
 
-    args = create_argument_parser(prog).parse_args(argv)
+    parser = create_argument_parser(prog)
+    args = parser.parse_args(argv)
+    filters = [
+        flag for flag, value in (
+            ("--telemetry-version", args.telemetry_version),
+            ("--telemetry-issue", args.telemetry_issue),
+            ("--task-id", args.task_id),
+            ("--pid", args.pid),
+            ("--from", args.t_from),
+            ("--to", args.t_to),
+        ) if value is not None
+    ]
+    if not args.prune and filters:
+        parser.error("--no-prune 与范围过滤参数互斥：" + "、".join(filters))
+    if args.clean_flow and not args.prune:
+        parser.error("--clean-flow 与 --no-prune 互斥：不能同时清空并保留旧产物")
+    if args.clean_flow and (args.telemetry_only or args.list_cases):
+        parser.error("--clean-flow 与只读预览 --telemetry-only / --list-cases 互斥")
     set_evidence_dirs(args.evidence_dir)
     _, log_path = configure_tool_logging(
         "flow_cases", log_file=args.log_file, level=args.log_level

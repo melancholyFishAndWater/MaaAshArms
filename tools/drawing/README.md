@@ -131,7 +131,7 @@ python tools/drawing/cli.py cases --telemetry-bulk --telemetry-version "==v1.0.0
 | `--no-local-release` | 不让本地 release 参与，只用证据包自己的文件 |
 | `--force` | 忽略 manifest，强制重画。默认不需要使用，脚本会自行识别重画范围 |
 | `--clean-flow` | 批量出图（`--telemetry-bulk`）前先清空输出目录里的 `png`/`mmd`、`images/` 与 `manifest.json`，再整批重画；同目录下 `explore-csv` 的 `.log` 与其它子目录不动 |
-| `--no-prune` | 增量出图，但不删任何旧产物（目录里会留着上次的图、以及版本筛选范围外的图） |
+| `--no-prune` | 增量出图并保留旧产物；与 `--telemetry-version` / `--telemetry-issue` / `--task-id` / `--pid` / `--from` / `--to` 及 `--clean-flow` 互斥，冲突在任何副作用前以参数错误退出 |
 | `--no-release-mark` | 不给产物名加「`_已修复待发版`」。默认会看 git：issue 的修复提交已经在最新 tag 之后（还没发版）时追加这段，见 [docs/packs.md](./docs/packs.md#已修复待发版改了但还没发版的-issue)；只改名、不重画 |
 | `--evidence-dir DIR` | 批量模式找证据包的根目录（可重复，先给的先找；`temp/evidence` 永远兜底） |
 | `--telemetry-bulk` | 批量出图：遍历本地遥测库所有未解决 issue，每个尽量出一张。**默认增量**：分步摘要（输入/参数/解析/注记/疑似过时 + 两段代码摘要）一致就跳过，见 [docs/packs.md](./docs/packs.md#增量绘制与旧产物清理) |

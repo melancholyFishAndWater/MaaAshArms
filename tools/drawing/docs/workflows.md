@@ -113,7 +113,7 @@ python -m tools.sentry.cli flow --telemetry-bulk --telemetry-offline --no-fetch-
 - `--telemetry-offline` 固定的是当前本地快照，不代表最新线上状态。
 - 这是一组 issue 的图，不是所有执行任务的图。成功、取消、未上报业务异常可能不在集合内。
 - 批量清理会删除不属于本次 issue 集合的旧批量产物；版本筛选也影响清理范围。
-- 需要保留某次调查成果时另用 `--outdir`，或明确使用 `--no-prune`，不要把用户诊断图与滚动 issue 图集混放。
+- 需要保留某次调查成果时另用 `--outdir`，不要把用户诊断图与滚动 issue 图集混放。无范围过滤时可用 `--no-prune`；它与版本/issue/task/进程/时间窗过滤及 `--clean-flow` 互斥。`--clean-flow` 也不能与 `--telemetry-only` / `--list-cases` 预览组合。
 - 无可画节点、无法定位任务、身份错配时可退概览卡。概览卡不等于完整执行证据。
 
 ## D：本地辅助与更完整来源选择
