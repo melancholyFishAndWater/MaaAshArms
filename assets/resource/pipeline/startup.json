@@ -9,6 +9,8 @@
         "desc": "启动游戏任务",
         "next": [
             "StartUpStopInGame",
+            "[JumpBack]BaseProbeBlackPage",
+            "[JumpBack]BaseBranchError",
             "StartUpEnterIcon",
             "StartUpEnterPackageBlibili"
         ]
@@ -39,14 +41,15 @@
         "action": "Click",
         "order_by": "Score",
         "threshold": 0.8,
-        "timeout": 36000,
+        "timeout": 60000,
         "rate_limit": 3000,
         "next": [
-            "BaseProbeHome",
             "[JumpBack]BaseProbeBlackPage",
             "[JumpBack]StartUpClickDisclaimer",
             "StartUpBranchLoading",
-            "[JumpBack]BaseClickErrorConfirm"
+            "[JumpBack]BaseClickErrorConfirm",
+            "StartUpEnterSignIn",
+            "StartUpEnterLogin"
         ],
         "focus": {
             "Node.PipelineNode.Failed": {
@@ -64,14 +67,15 @@
         "desc": "使用安装包启动",
         "action": "StartApp",
         "package": "com.asharmdolls.bilibili",
-        "timeout": 36000,
+        "timeout": 60000,
         "rate_limit": 3000,
         "next": [
-            "BaseProbeHome",
             "[JumpBack]BaseProbeBlackPage",
             "[JumpBack]StartUpClickDisclaimer",
             "StartUpBranchLoading",
-            "[JumpBack]BaseClickErrorConfirm"
+            "[JumpBack]BaseClickErrorConfirm",
+            "StartUpEnterSignIn",
+            "StartUpEnterLogin"
         ],
         "focus": {
             "Node.PipelineNode.Failed": {
@@ -112,7 +116,8 @@
             164,
             117
         ],
-        "rate_limit": 5000,
+        "timeout": 60000,
+        "rate_limit": 3000,
         "next": [
             "StartUpBranchLoading",
             "BaseStopServerMaintenance",
