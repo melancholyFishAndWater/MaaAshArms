@@ -33,6 +33,7 @@ _PARSE_IMPL_FILES = (
     "tools/drawing/lib/flowlog/model.py",
     "tools/drawing/lib/flowlog/notes.py",
     "tools/drawing/lib/flowlog/stale.py",
+    "tools/logs/lib/formats.py",
     "tools/drawing/lib/flowlog/constants.py",
     "tools/drawing/lib/flowlog/paths.py",
     # 「疑似过时」的节点 → 模块对照与 git 查询都在这里，它变了标记就可能变

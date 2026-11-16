@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from tools.drawing.lib.log_inspect import main
+from tools.logs.lib.inspect import main
 
 
 def invoke(capsys, *args):

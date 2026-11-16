@@ -1,6 +1,8 @@
 # 本地日志筛选（面向 AI 调用）
 
-入口是 `python tools/drawing/cli.py inspect PATH [PATH ...]`。只读已解压目录或单份 `.log`；不解压归档、不联网、不驱动设备、不产生缓存。
+入口是 `python tools/logs/cli.py inspect PATH [PATH ...]`，必须写 `inspect` 子命令，不支持在 CLI 后直接传裸路径。只读已解压目录或单份 `.log`；不解压归档、不联网、不驱动设备、不产生缓存。
+
+`logs` 只读本地数据，不依赖 drawing 或 sentry。需要绘图时，由 drawing 消费日志规则并绘图；现有 `flow` / `cases` / `whiteboard` 行为不变。本次职责拆分未将历史 cases 遥测编排全部迁移。
 
 ## 推荐调用顺序
 
@@ -10,13 +12,13 @@
 4. 依据任务清单选中单份框架日志，交给 `flow --task-id ... --pid ... --list --no-telemetry` 获取结构化执行经过或绘图。
 
 ```powershell
-python tools/drawing/cli.py inspect D:/Downloads/logs D:/Downloads/debug
-python tools/drawing/cli.py inspect D:/Downloads/debug --view tasks --limit 30
-python tools/drawing/cli.py inspect D:/Downloads/logs --view search --contains "event_id=" --context 2
-python tools/drawing/cli.py inspect D:/Downloads/debug --view search --node StartUpEnterLogin --limit 10
-python tools/drawing/cli.py inspect D:/Downloads/debug --view search --level ERR --from "2026-11-16 19:45:00" --to "2026-11-16 20:00:00"
+python tools/logs/cli.py inspect D:/Downloads/logs D:/Downloads/debug
+python tools/logs/cli.py inspect D:/Downloads/debug --view tasks --limit 30
+python tools/logs/cli.py inspect D:/Downloads/logs --view search --contains "event_id=" --context 2
+python tools/logs/cli.py inspect D:/Downloads/debug --view search --node StartUpEnterLogin --limit 10
+python tools/logs/cli.py inspect D:/Downloads/debug --view search --level ERR --from "2026-11-16 19:45:00" --to "2026-11-16 20:00:00"
 # 下一页；offset 是命中记录序号，不是原文行号
-python tools/drawing/cli.py inspect D:/Downloads/debug --view search --level ERR --limit 10 --offset 10
+python tools/logs/cli.py inspect D:/Downloads/debug --view search --level ERR --limit 10 --offset 10
 ```
 
 ## 输出与筛选
@@ -39,4 +41,4 @@ python tools/drawing/cli.py inspect D:/Downloads/debug --view search --level ERR
 - `framework_ret=true` 只是框架返回，不等于业务完成；停止任务也可能返回 true。业务结论还要核对面板停止记录、完成节点与截图。
 - Node 事件、底层 reco 记录与 agent 转发可能是同一次操作的多份记录。搜索的 `total` 是原文命中行数，不是识别次数或失败次数；任务的节点数只统计现有解析器定义的 node-done 行。
 - 面板日志通常没有原生任务号，按 `--task-id` 搜不到它是正常的。应另用文本和时间检索，并保留它自己的来源；时间相近不构成身份确认。
-- 本工具帮助定位日志，不代替绘图器的任务窗口、候选表、识别去重或终止失败判断。证据包是否属于同一运行，继续按 [本地辅助的身份核验](packs.md#本地-release-辅助默认开) 处理。
+- 本工具帮助定位日志，不代替绘图器的任务窗口、候选表、识别去重或终止失败判断。证据包是否属于同一运行，继续按 [本地辅助的身份核验](../../drawing/docs/packs.md#本地-release-辅助默认开) 处理。

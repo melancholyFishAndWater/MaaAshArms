@@ -1,12 +1,11 @@
 #!/usr/bin/env python
 """tools/drawing 的统一入口：日志 → 流程图、证据包批量出图、白板图片。
 
-    python tools/drawing/cli.py inspect <日志目录> [--view tasks|search] …
     python tools/drawing/cli.py flow <日志> [--vision ...] …
     python tools/drawing/cli.py cases --case <证据包> …
     python tools/drawing/cli.py whiteboard …
 
-inspect 提供只读日志 JSON 筛选；其余子命令分别对应 `flow_from_log.py` / `flow_cases.py` / `whiteboard_images.py`，
+三个子命令分别对应 `flow_from_log.py` / `flow_cases.py` / `whiteboard_images.py`，
 参数、帮助文本与退出码原样转发（实现都在 `lib/` 下）。不带子命令或 `-h` 时只打印这份总览。
 """
 
@@ -25,10 +24,6 @@ if str(_REPO_ROOT) not in sys.path:
 # 子命令 → (一句话说明, 实现模块:main)。用字符串延迟导入：`bench` 这类依赖 maafw/numpy 的
 # 模块只在真正用到时才 import，`--help` 不会因为它们缺库而失败。
 COMMANDS: dict[str, tuple[str, str]] = {
-    "inspect": (
-        "只读筛选本地日志：文件概览、任务清单、带行号原文（JSON）",
-        "tools.drawing.lib.log_inspect:main",
-    ),
     "flow": (
         "把 maafw.log 还原成执行流程图（原 flow_from_log.py）",
         "tools.drawing.lib.flow_from_log:main",

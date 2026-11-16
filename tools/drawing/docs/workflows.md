@@ -3,6 +3,8 @@
 面向维护者、日志分析人员与 AI 助手。所有命令从仓库根执行；示例中的问题号、任务号和目录须换成实际值。
 本页描述已有能力，不自动下载数据、不执行设备任务、不修改任务配置。
 
+本地数据检索使用 logs，logs 不依赖 drawing / sentry；drawing 消费日志规则并绘图。现有 `flow` / `cases` / `whiteboard` 行为不变，本次职责拆分未将历史 cases 遥测编排全部迁移。
+
 - 绘图参数：[drawing README](../README.md)
 - 遥测命令：[sentry README](../../sentry/README.md)
 - 取证细节：[evidence](../../sentry/docs/evidence.md)
@@ -45,12 +47,12 @@
 
 ### 2. 列任务，再精确选择运行
 
-多个本地目录先用 [inspect](inspect.md) 一次扫描全部轮转与 agent 日志，再从输出中选择实际源文件：
+多个本地目录先用 [inspect](../../logs/docs/inspect.md) 一次扫描全部轮转与 agent 日志，再从输出中选择实际源文件：
 
 ```powershell
-python tools/drawing/cli.py inspect D:/Downloads/logs D:/Downloads/debug
-python tools/drawing/cli.py inspect D:/Downloads/debug --view tasks
-python tools/drawing/cli.py inspect D:/Downloads/logs --view search --contains "任务失败" --context 2
+python tools/logs/cli.py inspect D:/Downloads/logs D:/Downloads/debug
+python tools/logs/cli.py inspect D:/Downloads/debug --view tasks
+python tools/logs/cli.py inspect D:/Downloads/logs --view search --contains "任务失败" --context 2
 ```
 
 ```powershell

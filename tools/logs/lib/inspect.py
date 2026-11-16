@@ -11,7 +11,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Sequence
 
-from tools.drawing.lib.flowlog.constants import (
+from tools.logs.lib.formats import (
     LINE_RE, NODE_DONE_RE, TASK_END_RE, TASK_START_RE,
 )
 

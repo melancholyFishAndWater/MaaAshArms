@@ -9,6 +9,14 @@ from __future__ import annotations
 
 import re
 
+# 兼容已有导入面；格式定义由日志层拥有。
+from ....logs.lib.formats import (
+    LINE_RE as LINE_RE,
+    NODE_DONE_RE as NODE_DONE_RE,
+    TASK_START_RE as TASK_START_RE,
+    TASK_END_RE as TASK_END_RE,
+)
+
 
 # 渲染器版本：只要改动会影响产物内容（版面、注记、解析口径）就 +1。
 # flow_cases 把它写进 manifest 指纹——不 bump 的话同一个证据包会命中旧记录直接"跳过（已画过）"，
@@ -78,20 +86,9 @@ NEXTLIST_MAX_GAP_SECONDS = 1800.0
 # 日志解析
 # --------------------------------------------------------------------------- #
 
-LINE_RE = re.compile(
-    r"^\[(?P<ts>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3,6})\]"
-    r"\[(?P<lvl>[A-Z]{3})\]"
-    r"\[(?P<px>Px\d+)\]\[Tx\d+\]"
-    r"\[(?P<src>[^\]]+)\]\[L\d+\]\[(?P<func>[^\]]*)\]\s?(?P<msg>.*)$"
-)
 JSON_TAIL_RE = re.compile(r"(\{.*\})\s*$")
 RECO_RE = re.compile(r"reco \[result=(\{.*\})\]\s*$")
 ACTION_RE = re.compile(r"action \[i=\d+\] \[data\.repeat=\d+\] \[result=(\{.*\})\]\s*$")
-NODE_DONE_RE = re.compile(
-    r"PipelineTask node done \[result=(\{.*\})\] \[task_id_=(\d+)\]\s*$"
-)
-TASK_START_RE = re.compile(r"task start: \[cb_detail=(\{.*\})\]\s*$")
-TASK_END_RE = re.compile(r"task end: \[cb_detail=(\{.*\})\] \[ret=(\w+)\]\s*$")
 JUMPBACK_RE = re.compile(r"(push|pop) jumpback_stack: (\S+)\s*$")
 WALK_RE = re.compile(r"\[cur_node_=([^\]]+)\] \[list=(\[.*\])\]")
 # `name` = 正在评估 next 表的节点 = **父节点**，`list` = 它那一刻排着的候选。
