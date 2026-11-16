@@ -8,14 +8,31 @@ PNG；也能把白板目录里的图片统一成 png 并改写引用。
 入口只有一个：
 
 ```bash
-python tools/drawing/cli.py <flow|cases|whiteboard> [参数...]
+python tools/drawing/cli.py <inspect|flow|cases|whiteboard> [参数...]
 ```
 
 | 子命令 | 干什么 | 典型输入 |
 | --- | --- | --- |
+| `inspect` | 本地日志概览、任务索引、带行号的精确检索（JSON） | 多个日志目录或单份日志 |
 | `flow` | 一段日志 → 一张图（每次运行单独画） | `maafw.log`、MFA 导出 zip 里的那份 |
 | `cases` | 一个证据包 → 图，带 `manifest.json` 幂等；也能按遥测库批量出图 | `debug/` 目录、导出包（可多卷）、单份日志 |
 | `whiteboard` | 白板图片统一成 png 并改写 `.canvas` / `.md` 里的引用 | `docs/白板/` |
+
+## `inspect`：AI 只读筛选日志
+
+对本地目录或单份日志输出 JSON，不联网、不写缓存，也不修改原始日志。目录会递归扫描全部 `.log`，包括轮转与 agent 日志；重叠输入路径会去重。
+完整参数与证据边界见 [本地日志筛选](docs/inspect.md)。
+
+```powershell
+# 先确认包里有哪些文件、内容时间范围与日志级别
+python tools/drawing/cli.py inspect D:/Downloads/logs D:/Downloads/debug
+# 再列框架任务（包括没有执行节点的任务）
+python tools/drawing/cli.py inspect D:/Downloads/debug --view tasks --limit 30
+# 面板回显可能是 INF，不能只查 ERR
+python tools/drawing/cli.py inspect D:/Downloads/logs --view search --contains "任务失败" --context 2
+# 精确任务号 + 进程，保留源文件和行号
+python tools/drawing/cli.py inspect D:/Downloads/debug --view search --task-id 200000052 --pid Px25000 --limit 20
+```
 
 ## `flow`：一段日志 → 一张图
 

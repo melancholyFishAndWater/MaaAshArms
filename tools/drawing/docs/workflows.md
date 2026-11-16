@@ -45,6 +45,14 @@
 
 ### 2. 列任务，再精确选择运行
 
+多个本地目录先用 [inspect](inspect.md) 一次扫描全部轮转与 agent 日志，再从输出中选择实际源文件：
+
+```powershell
+python tools/drawing/cli.py inspect D:/Downloads/logs D:/Downloads/debug
+python tools/drawing/cli.py inspect D:/Downloads/debug --view tasks
+python tools/drawing/cli.py inspect D:/Downloads/logs --view search --contains "任务失败" --context 2
+```
+
 ```powershell
 python tools/drawing/cli.py flow D:/Downloads/debug/maafw.log --list-tasks
 python tools/drawing/cli.py flow D:/Downloads/debug/maafw.log --task-id 200000096 --pid Px7192 --list --no-telemetry
