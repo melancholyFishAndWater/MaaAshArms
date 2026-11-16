@@ -13,7 +13,13 @@ def startup():
 
 
 def test_startup_entry_and_in_game_stop(startup):
-    assert startup["TaskStartUp"]["next"] == ["StartUpStopInGame", "StartUpEnterIcon", "StartUpEnterPackageBlibili"]
+    assert startup["TaskStartUp"]["next"] == [
+        "StartUpStopInGame",
+        "[JumpBack]BaseProbeBlackPage",
+        "[JumpBack]BaseBranchError",
+        "StartUpEnterIcon",
+        "StartUpEnterPackageBlibili",
+    ]
     stop = startup["StartUpStopInGame"]
     assert stop["recognition"] == "Or" and stop["action"] == "StopTask"
     assert "BaseProbeHome" in stop["any_of"]

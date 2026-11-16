@@ -34,7 +34,7 @@ import factory
 import battle_training
 
 
-def __data_dir() -> Path:
+def _data_dir() -> Path:
     """状态文件目录，与框架的 log_dir 同一基准。
 
     抽成函数只为让测试能重定向；生产路径不变。
@@ -95,7 +95,7 @@ class Store(Generic[JSON_VAR]):
         """
         加载数据
         """
-        path = __data_dir() / self.__state
+        path = _data_dir() / self.__state
         try:
             data_ = (
                 json.loads(path.read_text(encoding="utf-8"))
@@ -131,7 +131,7 @@ class Store(Generic[JSON_VAR]):
                 - 写入临时文件失败
                 - 原子替换失败
         """
-        path = __data_dir() / self.__state
+        path = _data_dir() / self.__state
         path.parent.mkdir(parents=True, exist_ok=True)
 
         payload = json.dumps(self.__value, allow_nan=False)
