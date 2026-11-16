@@ -1,5 +1,7 @@
 #!/usr/bin/env python
-"""tools/validation 的统一入口：四个校验脚本。
+"""tools/validation 的统一入口：独立校验与本地完整工作流。
+
+    python tools/validation/cli.py preflight [--list]
 
     python tools/validation/cli.py check-python [--root tools] …
     python tools/validation/cli.py validate-refs [--self-test] …
@@ -25,6 +27,10 @@ if str(_REPO_ROOT) not in sys.path:
 
 # 子命令 → (一句话说明, 实现模块:main)。`validate-schema` 依赖 jsonschema，延迟到用到时再 import。
 COMMANDS: dict[str, tuple[str, str]] = {
+    "preflight": (
+        "本地完整校验工作流（CI 检查 + 工具门禁）",
+        "tools.validation.lib.preflight:main",
+    ),
     "check-python": (
         "Python 源码规范检查（原 check_python.py）",
         "tools.validation.lib.check_python:main",

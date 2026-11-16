@@ -1,6 +1,6 @@
 # tools/validation —— 校验工具
 
-本仓库所有"只读、判对错"的脚本：读文件、报问题、给退出码，**不改文件、不格式化、不产生产物**。
+本仓库的校验脚本与本地校验编排入口：读文件、报问题、给退出码，**不自动修改业务源码、不格式化**。独立检查不产生产物；`preflight` 会同步依赖并调用现有检查，其临时文件与工具日志遵循各子工具规则。
 与 `tools/drawing/`（产出图片）、`tools/sentry/`（遥测分析）分开归置；构建与发布链路用的脚本
 仍在 `tools/` 根与 `tools/ci/`。
 
@@ -8,6 +8,30 @@
 模块分布与改法见 [`AGENTS.md`](AGENTS.md)。
 
 **改完 `tools/` 下的脚本要按下面「[改完脚本的验收](#改完脚本的验收)」跑一遍并修到没报错才结束。**
+
+## 一次跑完本地校验
+
+提交或推送前，从仓库根执行：
+
+```powershell
+python tools/validation/cli.py preflight
+# 同一入口的 npm 快捷方式
+npm run check:all
+# 只列清单，不安装依赖、不执行检查
+python tools/validation/cli.py preflight --list
+```
+
+需要 Git、uv、Node.js/npm；CI 使用 Node 22、Python 3.13 与 uv 0.12.22，本地 Python 环境由 `uv sync --locked` 按项目锁文件准备。工作流会执行 `npm ci`，重建本地 Node 依赖目录；首次安装和 pyright/Markdown 工具下载需要网络。外网环境需要代理时，在调用前设置 `HTTP_PROXY` / `HTTPS_PROXY`，工作流不修改系统代理。
+
+覆盖范围：
+
+- CI 的 requirements 导出一致性、全目录 Python 静态检查、maa-tools、JSON Schema、全量引用检查、**全部 pytest**。
+- 工具门禁：引用自检、锁定版本 ruff、pyright、Sentry 自检与离线检查、性能工具两套自检、绘图/日志入口帮助、Markdown 校验、`git diff --check`。
+- requirements 导出到临时目录后比较，不覆盖仓库的依赖清单；没有过滤失败测试或仅检查修改文件的捷径。
+
+步骤顺序执行，失败后继续执行能够独立运行的检查，末尾汇总 PASS / FAIL / SKIP 与耗时。Python 静态检查和引用检查仅依赖标准库，使用启动工作流的解释器；pytest、Schema、ruff 与工具自检使用 `uv run --locked`。若希望所有 Python 检查都使用项目解释器，可用 `uv run --locked python tools/validation/cli.py preflight` 启动。依赖准备失败时，依赖它的步骤标 SKIP，**整体仍失败**；只有所有步骤通过才返回 0。不会执行 commit、push、Sentry 远端操作或设备任务。Markdown 检查仍按现有命令只覆盖根 `docs/**/*.md`。
+
+这是本地提交前工作流，不替代 Linux CI、发布包构建或真机验收；操作系统、原生库、包内运行时问题仍需对应环境验证。maa-tools 使用本地锁定安装中的 Node 实现入口，避免 Windows 上 npx 的全局命令劫持。
 
 ## 怎么跑
 
