@@ -98,6 +98,19 @@
         ],
         "post_wait_freezes": 3000
     },
+    "BaseProbeBackButton": {
+        "desc": "[end] 有返回按钮",
+        "recognition": "TemplateMatch",
+        "template": [
+            "StartUp/BackButton.png"
+        ],
+        "roi": [
+            0,
+            0,
+            154,
+            130
+        ]
+    },
     /* -------------------- 分支 -------------------- */
     // INFO 错误弹窗
     "BaseBranchError": {
@@ -267,15 +280,9 @@
     },
     "BaseClickBackButton": {
         "desc": "点击返回按钮",
-        "recognition": "TemplateMatch",
-        "template": [
-            "StartUp/BackButton.png"
-        ],
-        "roi": [
-            0,
-            0,
-            154,
-            130
+        "recognition": "And",
+        "all_of": [
+            "BaseProbeBackButton"
         ],
         "action": "Click",
         "post_wait_freezes": 1000

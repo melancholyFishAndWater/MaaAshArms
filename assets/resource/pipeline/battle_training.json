@@ -106,8 +106,10 @@
             "TrainingGetStatus" // INFO 读取完成状态
         ],
         "next": [
+            "BaseErrorNext",
             "TrainingCheckEnd",
-            "[JumpBack]TrainingEnterOne", // INFO 选择关卡
+            "[JumpBack]TrainingEnterOne",
+            "[JumpBack]TrainingBranchBack",
             "[JumpBack]BaseBranchError"
         ]
     },
@@ -121,6 +123,47 @@
         "desc": "[end] 已无战斗次数",
         "recognition": "Custom",
         "custom_recognition": "TrainingCheckEndReco"
+    },
+    /* -------------------- 动作-返回 -------------------- */
+    "TrainingBranchBack": {
+        "desc": "[jp] 从关卡内返回",
+        "recognition": "And",
+        "all_of": [
+            "TrainingProbeBack",
+            "BaseProbeBackButton"
+        ],
+        "box_index": 1,
+        "action": "Click",
+        "post_wait_freezes": 1000
+    },
+    "TrainingProbeBack": {
+        "desc": "[end] 符合返回条件",
+        "recognition": "OCR",
+        "expected": "0",
+        "replace": [
+            [
+                "O",
+                "0"
+            ],
+            [
+                "o",
+                "0"
+            ],
+            [
+                "D",
+                "0"
+            ],
+            [
+                "d",
+                "0"
+            ]
+        ],
+        "roi": [
+            104,
+            442,
+            59,
+            39
+        ]
     },
     /* -------------------- 动作-进入关卡 -------------------- */
     "TrainingEnterOne": {
@@ -168,19 +211,6 @@
         "custom_action": "TrainingDailyUpdateAct",
         "custom_action_param": {
             "name": [] // 覆写传递关卡名 list
-        },
-        "next": [
-            "TrainingBranchBack",
-            "[JumpBack]BaseBranchError"
-        ]
-    },
-    /* -------------------- 动作-返回 -------------------- */
-    "TrainingBranchBack": {
-        "desc": "从关卡内返回",
-        "recognition": "Custom",
-        "custom_recognition": "TrainingBranchBackReco",
-        "next": [
-            "BaseClickBackButton"
-        ]
+        }
     }
 }
