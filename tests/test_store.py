@@ -1,11 +1,10 @@
-"""Store 持久化与 Daily 每日门控的离线回归。"""
+"""第一层：持久化与每日门控的业务契约，不断言框架调用时机。"""
 from datetime import datetime
 from types import SimpleNamespace
 
 import pytest
 
 import store
-from rect import DEFAULT_HIT_BOX
 
 
 @pytest.fixture
@@ -52,33 +51,32 @@ def test_cross_day_resets(daily, monkeypatch):
     assert daily.value is False
 
 
-def test_reco_hits_when_done_and_disables_node(daily):
-    calls = []
-    ctx = SimpleNamespace(override_pipeline=lambda patch: calls.append(patch) or True)
-    assert daily.reco(ctx, _argv()) is None
-    assert calls == []
-    daily.act(_argv(), True)
-    assert daily.reco(ctx, _argv()) is DEFAULT_HIT_BOX
-    assert calls == [{"GiftStopDaily": {"enabled": False}}]
-
-
-@pytest.mark.parametrize("result", [False, None])
-def test_reco_keeps_hit_when_disable_fails(daily, result):
-    calls = []
-    ctx = SimpleNamespace(override_pipeline=lambda patch: calls.append(patch) or result)
-    daily.act(_argv(), True)
-    assert daily.reco(ctx, _argv()) is DEFAULT_HIT_BOX
-    assert calls == [{"GiftStopDaily": {"enabled": False}}]
-
-
-def test_reco_skipped_entirely_when_disabled(daily):
-    calls = []
-    ctx = SimpleNamespace(override_pipeline=lambda patch: calls.append(patch) or True)
+@pytest.mark.parametrize("params,done,expected_hit", [
+    (None, False, False),
+    (None, True, True),
+    ('{"enable": true}', False, False),
+    ('{"enable": true}', True, True),
+    ('{"enable": false}', False, False),
+    ('{"enable": false}', True, False),
+])
+def test_daily_gate_business_contract(daily, params, done, expected_hit):
+    """只约束是否跳过业务任务，不约束通过哪次框架调用优化扫描。"""
+    if done:
+        daily.act(_argv(), True)
     argv = _argv()
-    argv.custom_recognition_param = '{"enable": false}'
-    daily.act(argv, True)
-    assert daily.reco(ctx, argv) is None
-    assert calls == []
+    argv.custom_recognition_param = params
+    ctx = SimpleNamespace(override_pipeline=lambda patch: True)
+    result = daily.reco(ctx, argv)
+    assert (result is not None) == expected_hit
+
+
+def test_daily_gate_uses_custom_completion_policy(data_dir):
+    daily = store.Daily[int]("count.json", 0)
+    ctx = SimpleNamespace(override_pipeline=lambda patch: True)
+    daily.act(_argv(), 2)
+    assert daily.reco(ctx, _argv(), func=lambda value: value >= 3) is None
+    daily.act(_argv(), 3)
+    assert daily.reco(ctx, _argv(), func=lambda value: value >= 3) is not None
 
 
 def test_failed_replace_restores_value_and_cleans_temp(data_dir, monkeypatch):
