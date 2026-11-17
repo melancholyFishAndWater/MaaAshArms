@@ -298,11 +298,13 @@ class Daily(Generic[JSON_VAR]):
 
         # 判断是否跳过此次任务
         if bool_ and func(self.value):
+            log.info("今日已执行过")
+            return DEFAULT_HIT_BOX
+        else:
             b = context.override_pipeline({argv.node_name: {"enabled": False}})
-            log.info("今日已执行过，跳过")
             if b is None or not b:
                 log.debug(f"禁用节点 {argv.node_name} 失败")
-            return DEFAULT_HIT_BOX
+            return None
 
     def act(self, argv: CustomAction.RunArg, value: JSON_VAR) -> bool:
         """
