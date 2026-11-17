@@ -88,7 +88,7 @@
             "[JumpBack]FactoryClickSkip",
             "[JumpBack]FactoryGetReward",
             "[JumpBack]FactoryClickCreateOrder",
-            "[JumpBack]FactoryChooseCharacter",
+            "[JumpBack]FactoryClickCharacter",
             // TODO 子节点卡住
             "[JumpBack]BaseBranchError",
             "[JumpBack]BaseMoveUpDown"
@@ -256,21 +256,23 @@
         "timeout": 60000,
         "rate_limit": 3000,
         "next": [
-            "FactoryChooseCharacter",
+            "FactoryClickCharacter",
             "[JumpBack]BaseBranchError"
         ]
     },
-    // 点击角色
-    "FactoryChooseCharacter": {
+    /* -------------------- 动作-点击角色 -------------------- */
+    "FactoryClickCharacter": {
         "desc": "选择角色",
         "recognition": "Custom",
-        "custom_recognition": "FactoryChooseCharacterReco",
+        "custom_recognition": "FactoryClickCharacterReco",
         "action": "Click",
         "post_wait_freezes": 1000,
         "timeout": 60000,
         "rate_limit": 3000,
         "next": [
+            "BaseErrorNext",
             "FactoryChooseNumber",
+            "FactoryClickCharacter",
             "[JumpBack]BaseBranchError"
         ]
     },
