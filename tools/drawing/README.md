@@ -130,7 +130,9 @@ python tools/drawing/cli.py cases --telemetry-bulk --telemetry-version "==v1.0.0
 | 遥测组（`--telemetry` … `--telemetry-only`） | 同 `flow` |
 | `--telemetry-version SPEC` | 只画版本满足条件的 issue，`>=` / `<=` / `==`（运算符可省，默认 `==`），版本写 `v1.0.0-beta.61` 或整串 release；可重复，多条按「且」叠加。口径与边界见 [docs/telemetry.md](./docs/telemetry.md) |
 | `--local-release DIR` | 本地 release 安装目录（**可重复**；默认根 `D:/MaaAshArms`，环境变量 `MAA_DRAWING_LOCAL_ROOT` 可改，给的是**叠加**在默认根之上）：画证据包时用它的完整日志与 `vision/`、`on_error/` 辅助，**按内容认运行**（本机面板日志的 `event_id` + 证据包日志行在本地日志里逐字相同 + 同 task），认不出就不用。见 [docs/packs.md](./docs/packs.md) |
-| `--no-local-release` | 不让本地 release 参与，只用证据包自己的文件 |
+| `--local-log PATH ...` | 独立面板 log/logs 目录或单份 `.log`；支持多个路径、重复参数，可不传 debug |
+| `--local-debug PATH ...` | 独立 debug 目录或单份框架日志；支持多个路径、重复参数，包含直属全部轮转日志，可不传 log；无需安装根。显式输入的配合与边界见 [辅助日志](docs/packs.md#本地-release-辅助默认开) |
+| `--no-local-release` | 关闭所有本地辅助，只用证据包自己的文件；与显式 local-release/local-log/local-debug 互斥 |
 | `--force` | 忽略 manifest，强制重画。默认不需要使用，脚本会自行识别重画范围 |
 | `--clean-flow` | 批量出图（`--telemetry-bulk`）前先清空输出目录里的 `png`/`mmd`、`images/` 与 `manifest.json`，再整批重画；同目录下 `explore-csv` 的 `.log` 与其它子目录不动 |
 | `--no-prune` | 增量出图并保留旧产物；与 `--telemetry-version` / `--telemetry-issue` / `--task-id` / `--pid` / `--from` / `--to` 及 `--clean-flow` 互斥，冲突在任何副作用前以参数错误退出 |

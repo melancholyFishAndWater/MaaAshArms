@@ -445,6 +445,14 @@ def create_argument_parser(prog: str | None = None) -> argparse.ArgumentParser:
         "（不按时间猜——本地日志名是轮转时刻，不是内容区间）",
     )
     ap.add_argument(
+        "--local-log", nargs="+", action="extend", default=None, metavar="PATH",
+        help="辅助面板 log/logs 目录或单份日志；可传多个、可重复，不要求安装根",
+    )
+    ap.add_argument(
+        "--local-debug", nargs="+", action="extend", default=None, metavar="PATH",
+        help="辅助 debug 目录或单份框架日志；可传多个、可重复，包含全部轮转日志",
+    )
+    ap.add_argument(
         "--no-local-release",
         dest="no_local_release",
         action="store_true",
@@ -492,6 +500,8 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
         ("--telemetry-bulk", "--no-telemetry"),
         ("--telemetry-refresh", "--telemetry-offline"),
         ("--local-release", "--no-local-release"),
+        ("--local-log", "--no-local-release"),
+        ("--local-debug", "--no-local-release"),
         ("--list-cases", "--telemetry-only"),
         ("--all-tasks", "--task-id"),
         ("--no-overlay", "--overlay-min"),
@@ -634,7 +644,12 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
         log.info("本地 release 辅助：--no-local-release，只用证据包自己的文件")
     else:
         roots: list[str] = [*(args.local_release or []), default_root()]
-        local = LocalReleases.discover(roots)
+        try:
+            local = LocalReleases.discover(
+                roots, log_paths=args.local_log, debug_paths=args.local_debug,
+            )
+        except ValueError as exc:
+            parser.error(str(exc))
         if local is None:
             log.info(
                 "提示：本地 release 不可用（%s 的 debug/ 下都没有日志），本次只用证据包自己的文件",

@@ -108,6 +108,8 @@ class LocalRelease:
         default_factory=dict, repr=False
     )
 
+    _panel_logs: list[str] | None = field(default=None, repr=False)
+
     @classmethod
     def discover(cls, root: str | None = None) -> LocalRelease | None:
         """按目录建一个；`debug/` 不存在或没有日志时返回 None（静默关闭）。"""
@@ -366,29 +368,31 @@ class LocalRelease:
         if wanted in self._events:
             return self._events[wanted]
         found: tuple[datetime | None, str] | None = None
-        panel_dir = os.path.join(self.root, "logs")
-        try:
-            names = sorted(os.listdir(panel_dir))
-        except OSError:
-            names = []
-        for name in names:
-            if not name.lower().endswith(".log"):
-                continue
-            path = os.path.join(panel_dir, name)
+        if self._panel_logs is None:
+            panel_dir = os.path.join(self.root, "logs")
+            try:
+                paths = [os.path.join(panel_dir, name) for name in sorted(os.listdir(panel_dir))
+                         if name.lower().endswith(".log") and os.path.isfile(os.path.join(panel_dir, name))]
+            except OSError:
+                paths = []
+        else:
+            paths = self._panel_logs
+        marker = re.compile(r"event_id=" + re.escape(wanted) + r"(?![0-9a-z])", re.IGNORECASE)
+        for path in paths:
             try:
                 with open(path, encoding="utf-8", errors="replace") as fh:
                     for raw in fh:
-                        if "event_id=" not in raw:
-                            continue
-                        if f"event_id={wanted}" not in raw.lower():
+                        if marker.search(raw) is None:
                             continue
                         m = LINE_TS_RE.match(raw)
-                        found = (_parse_ts(m.group(1)) if m else None, name)
-                        break
+                        hit = (_parse_ts(m.group(1)) if m else None, os.path.basename(path))
+                        if found is not None and found[0] != hit[0]:
+                            self._events[wanted] = None
+                            return None
+                        if found is None:
+                            found = hit
             except OSError:
                 continue
-            if found is not None:
-                break
         self._events[wanted] = found
         return found
 
@@ -405,8 +409,15 @@ class LocalReleases:
     releases: list[LocalRelease] = field(default_factory=list)
 
     @classmethod
-    def discover(cls, roots: list[str]) -> LocalReleases | None:
-        """按给的根建一组；一个可用的都没有就返回 None（静默关闭）。"""
+    def discover(
+        cls, roots: list[str], *, log_paths: list[str] | None = None,
+        debug_paths: list[str] | None = None,
+    ) -> LocalReleases | None:
+        """根各自独立；显式面板/原生日志组成一个用户指定池，不猜目录配对。
+
+        显式路径错误抛 ValueError；空目录仅告警。只有面板文件也保留池，
+        以便 panel_event 查询身份，但没有原生日志就无法提供 LocalRun。
+        """
         found: list[LocalRelease] = []
         for root in roots:
             one = LocalRelease.discover(root)
@@ -414,16 +425,22 @@ class LocalReleases:
                 log.info("提示：本地 release 根 %s 没有 debug/ 日志，跳过", root)
                 continue
             if any(
-                os.path.normcase(one.root) == os.path.normcase(item.root)
+                _path_key(one.root) == _path_key(item.root)
                 for item in found
             ):
                 continue
             found.append(one)
+        panels = _explicit_logs(log_paths or [], native=False)
+        natives = _explicit_logs(debug_paths or [], native=True)
+        if panels or natives:
+            found.append(LocalRelease(
+                root="显式辅助日志池", _logs=natives, _panel_logs=panels,
+            ))
         return cls(releases=found) if found else None
 
     def logs(self) -> list[str]:
         """所有根的日志（按根的顺序拼接）。"""
-        return [path for one in self.releases for path in one.logs()]
+        return _unique_paths([path for one in self.releases for path in one.logs()])
 
     def find_event(self, event_id: str, entry: str) -> tuple[LocalRun, int, datetime, str] | None:
         """独立于遥测包查当前事件；不同根的身份必须一致。"""
@@ -458,7 +475,7 @@ class LocalReleases:
             run = one.find(
                 case, task_id, label=label, event_id=event_id, quiet=True
             )
-            if run is not None:
+            if run is not None and not any(_path_key(run.log_path) == _path_key(old.log_path) for old in runs):
                 runs.append(run)
         if not runs:
             log.info(
@@ -481,6 +498,40 @@ class LocalReleases:
                 )
                 return None
         return runs[0]
+
+
+def _path_key(path: str) -> str:
+    """解析相对路径、用户目录和符号链接，供发现及聚合去重。"""
+    return os.path.normcase(os.path.realpath(os.path.abspath(os.path.expanduser(path))))
+
+
+def _unique_paths(paths: list[str]) -> list[str]:
+    found: dict[str, str] = {}
+    for path in paths:
+        normalized = os.path.realpath(os.path.abspath(os.path.expanduser(path)))
+        found.setdefault(_path_key(normalized), normalized)
+    return list(found.values())
+
+
+def _explicit_logs(paths: list[str], *, native: bool) -> list[str]:
+    """显式目录只扫描直属文件，绝不递归进入 agent 或猜 sibling 目录。"""
+    found: list[str] = []
+    for path in _unique_paths(paths):
+        if os.path.isdir(path):
+            try:
+                candidates = [os.path.join(path, name) for name in sorted(os.listdir(path))
+                              if (LOCAL_LOG_RE.match(name) if native else name.lower().endswith(".log"))
+                              and os.path.isfile(os.path.join(path, name))]
+            except OSError as error:
+                raise ValueError(f"无法读取辅助日志目录 {path}: {error}") from error
+            if not candidates:
+                log.warning("显式%s日志目录 %s 没有可用的直属日志，跳过", "原生" if native else "面板", path)
+            found.extend(candidates)
+        elif os.path.isfile(path) and path.lower().endswith(".log"):
+            found.append(path)
+        else:
+            raise ValueError(f"辅助日志路径不存在或类型不支持（须为目录或 .log 文件）：{path}")
+    return _unique_paths(found)
 
 
 def _parse_ts(text: str) -> datetime | None:

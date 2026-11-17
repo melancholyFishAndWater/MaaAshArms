@@ -248,6 +248,18 @@ Sentry 证据包是别人那次运行的**截断切片**（`vision/` 被 MFA 跳
 的信息量大得多。默认就去找，认不出就不用。给的 `--local-release` **叠加**在默认根之上（可重复）：
 一个根只装得下一台机器的 `debug/`，几次导出的 `debug/` 分开放时，就把它们都传进来。
 
+也可以不整理安装根，直接指定分离的面板 `log/logs` 与框架 `debug`：
+
+```powershell
+python tools/drawing/cli.py cases --telemetry-bulk --local-log D:/Downloads/logs E:/exports/logs --local-debug D:/Downloads/debug E:/exports/debug
+# 单份日志和重复参数同样支持；只提供 debug 也能按证据包原文对账
+python tools/drawing/cli.py cases --case temp/evidence/PYTHON-XX/debug --local-debug D:/Downloads/debug/maafw.log --local-debug E:/exports/debug
+```
+
+`--local-log` 与 `--local-debug` 各接受多个路径、可重复；可以只传其中一类。所有显式 log/debug 合成一个辅助池，不要求共同父目录，也不按输入顺序一一配对。只传 log 时只能提供面板事件证据，不能凭空还原框架流程；只传 debug 时可逐字内容匹配，但不能走缺失遥测包的事件取证。显式池不会借用其他安装根的面板事件，防止跨来源仅按时间关联。目录只扫直属日志、不递归纳入 agent 子目录；框架图片从命中日志旁的 `vision/`、`on_error/` 取。
+
+显式路径不存在或不是受支持的日志输入时报错；空目录提示无可用日志。它们与 `--no-local-release` 互斥；旧安装根与默认根行为保持不变。
+
 **只按内容认，不按时间**：同一个时刻可能有好几个用户都在跑同一个任务，按时间挑就会把别人的运行
 当成这次；本地轮转日志的文件名又是"轮转时刻"、不是内容区间。所以认身份只用下面三条：
 
@@ -287,8 +299,9 @@ Sentry 证据包是别人那次运行的**截断切片**（`vision/` 被 MFA 跳
 | --- | --- |
 | 默认 | 读 `D:/MaaAshArms`；目录不在就只用证据包，不报错 |
 | `--local-release DIR` | 再叠一个安装目录（**可重复**）：一个根只装得下一台机器的 `debug/`，用户把几次导出的 `debug/` 各放一处时，用多个 `--local-release` 一起参与对账。根之间没有先后，仍只按内容认；两个根装着同一份运行（文件名与对上的行数都一样）算同一份，各装一份不同的运行则都不采用 |
-| `--no-local-release` | 完全不用本地文件 |
-| 环境变量 `MAA_DRAWING_LOCAL_ROOT` | 换默认根，但只在没给 `--local-release` 时生效 |
+| `--local-log PATH ...` / `--local-debug PATH ...` | 独立面板/框架日志目录或文件，各可多个、可重复；显式输入联合成池，不要求共同父目录 |
+| `--no-local-release` | 完全不用本地辅助；与三个显式辅助参数互斥 |
+| 环境变量 `MAA_DRAWING_LOCAL_ROOT` | 替换默认安装根；仍与显式 `--local-release` 及独立辅助池叠加 |
 
 **产物名不变**（同一个 issue 只该有一张图）。用了本地日志后输入变了，`manifest` 的指纹不同：
 同名文件会被判成"另一份输入"，于是追加日志时间/短路哈希另存一张——旧的证据包版本不会被覆盖。
