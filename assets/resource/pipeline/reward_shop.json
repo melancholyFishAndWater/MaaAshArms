@@ -17,7 +17,7 @@
             68
         ]
     },
-    // INFO 售罄文字
+    // 售罄文字
     "ShopProbeBought": {
         "desc": "[end] 有售罄文字",
         "recognition": "OCR",
@@ -30,19 +30,7 @@
             200
         ]
     },
-    /* -------------------- 就位 -------------------- */
-    // INFO 采购中心
-    "ShopProbeEnterText": {
-        "desc": "[end] 有采购中心文字",
-        "recognition": "OCR",
-        "expected": "采购中心",
-        "roi": [
-            549,
-            670,
-            81,
-            38
-        ]
-    },
+    /* -------------------- 动作-主页面 -------------------- */
     "ShopEnterHome": {
         "desc": "[jp][once] 领取采购中心奖励",
         "max_hit": 1,
@@ -67,6 +55,18 @@
             "[JumpBack]BaseBranchError"
         ]
     },
+    // 有采购中心文字
+    "ShopProbeEnterText": {
+        "desc": "[end] 有采购中心文字",
+        "recognition": "OCR",
+        "expected": "采购中心",
+        "roi": [
+            549,
+            670,
+            81,
+            38
+        ]
+    },
     "ShopClickHomeButton": {
         "desc": "[jp] 点击采购中心按钮",
         "recognition": "And",
@@ -76,18 +76,7 @@
         "action": "Click",
         "post_wait_freezes": 1000
     },
-    // INFO 主页面
-    "ShopProbeHome": {
-        "desc": "[end] 在主页面",
-        "recognition": "OCR",
-        "expected": "物资采购中心",
-        "roi": [
-            939,
-            589,
-            320,
-            79
-        ]
-    },
+    /* -------------------- 分支-主页面 -------------------- */
     "ShopBranchHome": {
         "desc": "主页面分支",
         "recognition": "And",
@@ -101,6 +90,18 @@
             "ShopProbeHome"
         ]
     },
+    "ShopProbeHome": {
+        "desc": "[end] 在主页面",
+        "recognition": "OCR",
+        "expected": "物资采购中心",
+        "roi": [
+            939,
+            589,
+            320,
+            79
+        ]
+    },
+    // 条件点击返回按钮
     "ShopBranchBack": {
         "desc": "[jp] 条件点击返回按钮",
         "recognition": "Or",

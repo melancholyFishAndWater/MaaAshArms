@@ -59,6 +59,7 @@
             55
         ]
     },
+    /* -------------------- 动作-主页面 -------------------- */
     "EscortEnterHome": {
         "desc": "进入防卫局主页面",
         "recognition": "TemplateMatch",
