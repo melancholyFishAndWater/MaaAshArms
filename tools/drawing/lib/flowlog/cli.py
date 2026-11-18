@@ -159,8 +159,7 @@ def _telemetry_module():
 def apply_telemetry(args, options: FlowOptions) -> bool:
     """按 CLI 开关把遥测关联灌进 `options`；返回 False = `--telemetry-only` 已处理完、不该再画图。
 
-    只在开关打开时联网（`--telemetry-offline` 除外）。刷新失败只打提示，不影响画图——
-    遥测是"加分项"，不是画图的前提。
+    只在开关打开时联网（`--telemetry-offline` 除外）。刷新失败向上传播并阻止绘图。
     """
     module = _telemetry_module()
     annotation = module.annotate(
@@ -447,8 +446,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.telemetry_only and not args.telemetry:
         log.error("--telemetry-only 要开着遥测（别同时给 --no-telemetry）。")
         return 1
-    if args.telemetry and not apply_telemetry(args, options):
-        return 0
+    if args.telemetry:
+        try:
+            if not apply_telemetry(args, options):
+                return 0
+        except (RuntimeError, OSError, ImportError) as exc:
+            log.error("遥测刷新失败，已停止绘图（未使用旧库回退）：%s", exc)
+            return 1
 
     if args.list_tasks:
         tasks = scan_tasks(args.log, options.t_from, options.t_to)

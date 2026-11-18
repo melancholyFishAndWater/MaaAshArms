@@ -29,6 +29,11 @@
 from __future__ import annotations
 
 import json
+import copy
+import shutil
+import tempfile
+import time
+import uuid
 import logging
 import os
 import re
@@ -67,6 +72,9 @@ DEFAULT_GAP_DAYS = 3
 # `--telemetry-max-age` 的默认值：这么多秒内刷新过就直接读本地库，不再起 sentry 子进程。
 # 5 分钟足够"调一张图连跑几条命令"的场景，又不会让人对着隔夜的库当最新数据用。
 DEFAULT_MAX_AGE = 300.0
+DEFAULT_ATTEMPTS = 3
+DEFAULT_TIMEOUT = 8.0
+RETRY_DELAY = 0.2
 # 匹配级别：越小越强。排序与展示都用它
 TIER_RANK = {"high": 0, "mid": 1, "low": 2}
 TIER_LABEL = {"high": "高", "mid": "中", "low": "低"}
@@ -207,41 +215,71 @@ def index_path() -> Path:
     return store_dir() / INDEX_NAME
 
 
-def card_path(short_id: str) -> Path:
+def card_path(short_id: str, index: dict | None = None) -> Path:
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]*", short_id):
+        raise RuntimeError(f"非法 issue ID：{short_id!r}")
+    selected = load_index() if index is None else index
+    snapshot = selected.get("snapshot")
+    if snapshot is not None:
+        if not isinstance(snapshot, str) or not re.fullmatch(r"[0-9a-f]{32}", snapshot):
+            raise RuntimeError("本地遥测库 snapshot 非法，拒绝读取")
+        return store_dir() / "_snapshots" / snapshot / f"{short_id}.json"
     return store_dir() / f"{short_id}.json"
 
 
-def load_index() -> dict:
+def load_index(*, strict: bool = False) -> dict:
     path = index_path()
     if not path.is_file():
         return {"schema": SCHEMA, "issues": {}}
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+        if not isinstance(data, dict) or not isinstance(data.get("issues"), dict):
+            raise ValueError("索引必须含 issues 对象")
+        if any(not isinstance(key, str) or not isinstance(value, dict) for key, value in data["issues"].items()):
+            raise ValueError("issues 条目必须为对象")
+        snapshot = data.get("snapshot")
+        if snapshot is not None and (not isinstance(snapshot, str) or not re.fullmatch(r"[0-9a-f]{32}", snapshot)):
+            raise ValueError("snapshot 必须为生成代 ID")
+        return data
+    except (OSError, ValueError) as error:
+        if strict:
+            raise RuntimeError(f"本地遥测索引不可读：{path}: {error}") from error
         return {"schema": SCHEMA, "issues": {}}
-    if not isinstance(data, dict) or not isinstance(data.get("issues"), dict):
-        return {"schema": SCHEMA, "issues": {}}
-    return data
+
+
+def _atomic_json(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8", newline="\n",
+                                         dir=path.parent, prefix=path.name + ".", suffix=".tmp", delete=False) as handle:
+            temporary = Path(handle.name)
+            json.dump(payload, handle, ensure_ascii=False, indent=2)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    finally:
+        if temporary is not None and temporary.exists():
+            temporary.unlink()
 
 
 def save_index(index: dict) -> None:
-    store_dir().mkdir(parents=True, exist_ok=True)
-    with open(index_path(), "w", encoding="utf-8", newline="\n") as handle:
-        json.dump(index, handle, ensure_ascii=False, indent=2)
-        handle.write("\n")
+    """固定 index.json 是快照发布的唯一提交点，同目录原子替换。"""
+    _atomic_json(index_path(), index)
 
 
-def read_card(short_id: str) -> IssueCard | None:
-    path = card_path(short_id)
-    if not path.is_file():
-        return None
+def read_card(short_id: str, index: dict | None = None) -> IssueCard | None:
     try:
+        path = card_path(short_id, index)
         data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+        if not isinstance(data, dict) or data.get("short_id") != short_id:
+            return None
+        if not isinstance(data.get("title"), str) or not data["title"].strip():
+            return None
+        return IssueCard(**{k: v for k, v in data.items() if k in IssueCard.__dataclass_fields__})
+    except (OSError, ValueError, TypeError, RuntimeError):
         return None
-    if not isinstance(data, dict) or not data.get("short_id"):
-        return None
-    return IssueCard(**{k: v for k, v in data.items() if k in IssueCard.__dataclass_fields__})
 
 
 def _drop(
@@ -277,10 +315,8 @@ def _drop(
 
 
 def write_card(card: IssueCard) -> None:
-    store_dir().mkdir(parents=True, exist_ok=True)
-    with open(card_path(card.short_id), "w", encoding="utf-8", newline="\n") as handle:
-        json.dump(card.to_json(), handle, ensure_ascii=False, indent=2)
-        handle.write("\n")
+    """兼容单卡写入 API；刷新批次不调用它，以免改动当前快照。"""
+    _atomic_json(card_path(card.short_id), card.to_json())
 
 
 # --------------------------------------------------------------------------- #
@@ -288,52 +324,71 @@ def write_card(card: IssueCard) -> None:
 # --------------------------------------------------------------------------- #
 
 
-def list_issues(
-    sentry: str,
-    target: str,
-    *,
-    period: str,
-    limit: int,
-    verbose: bool,
-    timeout: float,
-    query: str | None = None,
-) -> list[dict]:
-    """`sentry issue list` → 清单（shortId/title/count/lastSeen/status）。
+def _unsupported_query(error: BaseException) -> bool:
+    message = str(error).lower()
+    return "query" in message and any(token in message for token in (
+        "unknown option", "unrecognized option", "unrecognised option", "unexpected argument",
+    ))
 
-    `query` 走 Sentry 的搜索语法（`is:unresolved` 这类）。服务端过滤比在本地猜 `status`
-    可靠——`issue list --json` 不一定回 `status` 字段。
-    """
-    arguments = [
-        "issue",
-        "list",
-        target,
-        "--period",
-        period,
-        "--limit",
-        str(limit),
-        "--json",
-    ]
+
+def _request(sentry: str, arguments: list[str], *, verbose: bool, timeout: float, validate):
+    operation = " ".join(arguments[:3])
+    for attempt in range(1, DEFAULT_ATTEMPTS + 1):
+        log.info("遥测请求 %s attempt %d/%d", operation, attempt, DEFAULT_ATTEMPTS)
+        try:
+            payload = report_common.run_sentry_json_value(
+                sentry, arguments, verbose=verbose, timeout_seconds=timeout,
+            )
+            return validate(payload)
+        except (RuntimeError, OSError) as error:
+            if "--query" in arguments and _unsupported_query(error):
+                raise
+            if attempt == DEFAULT_ATTEMPTS:
+                raise RuntimeError(f"遥测请求 {operation} 在 {DEFAULT_ATTEMPTS} 次尝试后失败：{error}") from error
+            log.warning("遥测请求 %s attempt %d/%d 失败：%s", operation, attempt, DEFAULT_ATTEMPTS, error)
+            time.sleep(RETRY_DELAY)
+    raise AssertionError("unreachable")
+
+
+def list_issues(sentry: str, target: str, *, period: str, limit: int,
+                verbose: bool, timeout: float, query: str | None = None) -> list[dict]:
+    arguments = ["issue", "list", target, "--period", period, "--limit", str(limit), "--json"]
     if query:
         arguments += ["--query", query]
-    payload = report_common.run_sentry_json_value(
-        sentry, arguments, verbose=verbose, timeout_seconds=timeout
-    )
-    rows = payload.get("data") if isinstance(payload, dict) else payload
-    return [row for row in rows or [] if isinstance(row, dict)]
+
+    def validate(payload):
+        rows = payload.get("data") if isinstance(payload, dict) else payload
+        if not isinstance(rows, list):
+            raise RuntimeError("issue list 响应必须是数组或含 data 数组的对象")
+        seen = set()
+        for row in rows:
+            if not isinstance(row, dict) or not isinstance(row.get("shortId"), str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]*", row["shortId"]):
+                raise RuntimeError("issue list 含缺少有效 shortId 的记录")
+            short = row["shortId"]
+            if short in seen:
+                raise RuntimeError(f"issue list 含重复 shortId：{short}")
+            seen.add(short)
+        return rows
+
+    return _request(sentry, arguments, verbose=verbose, timeout=timeout, validate=validate)
 
 
-def issue_view(
-    sentry: str, short_id: str, *, verbose: bool, timeout: float
-) -> dict:
-    raw = report_common.run_sentry_json_value(
-        sentry,
-        ["issue", "view", short_id, "--json"],
-        verbose=verbose,
-        timeout_seconds=timeout,
-    )
-    if not isinstance(raw, dict):
-        raise RuntimeError(f"sentry issue view {short_id} 返回了非对象 JSON。")
-    return raw
+def issue_view(sentry: str, short_id: str, *, verbose: bool, timeout: float) -> dict:
+    def validate(raw):
+        if not isinstance(raw, dict) or raw.get("shortId") != short_id:
+            raise RuntimeError(f"issue view {short_id} 身份缺失或不一致")
+        if not isinstance(raw.get("title"), str) or not raw["title"].strip():
+            raise RuntimeError(f"issue view {short_id} 缺少 title")
+        event = raw.get("event")
+        if not isinstance(event, dict) or not event:
+            raise RuntimeError(f"issue view {short_id} 缺少 event 对象")
+        event_id = event.get("id") or event.get("eventID") or event.get("eventId")
+        if not isinstance(event_id, str) or not event_id.strip():
+            raise RuntimeError(f"issue view {short_id} 缺少事件 ID")
+        return raw
+
+    return _request(sentry, ["issue", "view", short_id, "--json"],
+                    verbose=verbose, timeout=timeout, validate=validate)
 
 
 def parse_issue_view(raw: dict, short_id: str) -> IssueCard:
@@ -357,125 +412,87 @@ def parse_issue_view(raw: dict, short_id: str) -> IssueCard:
         failure_message=ctx.get("failure_message"),
         attachment_status=ctx.get("attachment_status"),
         logs_status=ctx.get("logs_status"),
-        event_id=str(event.get("id") or ""),
+        event_id=str(event.get("id") or event.get("eventID") or event.get("eventId") or ""),
         permalink=str(raw.get("permalink") or ""),
     )
 
 
 def refresh(
-    sentry: str,
-    target: str,
-    *,
-    verbose: bool = False,
-    timeout: float = 180.0,
-    days: int = DEFAULT_DAYS,
-    keep_resolved: bool = False,
-    period: str = "30d",
-    limit: int = 200,
+    sentry: str, target: str, *, verbose: bool = False, timeout: float = DEFAULT_TIMEOUT,
+    days: int = DEFAULT_DAYS, keep_resolved: bool = False, period: str = "30d",
+    limit: int = 200, full_details: bool = False,
 ) -> tuple[dict, list[str]]:
-    """把本地遥测库补到最新，顺手清理过时/已解决的。返回 (index, 变化说明)。"""
+    """所有请求及校验成功后发布完整代；失败不改当前索引或任何旧卡片。"""
+    if limit <= 0 or timeout <= 0:
+        raise RuntimeError("遥测 limit 和 timeout 必须大于 0")
+    previous = load_index(strict=True)
     notes: list[str] = []
-    index = load_index()
-    if index.get("schema") != SCHEMA:
-        notes.append(f"本地遥测库 schema {index.get('schema')} ≠ {SCHEMA}，整库重建")
-        for old in list(index.get("issues", {})):
-            _drop(old, notes, index, reason="schema 变了，整库重建")
-        index = {"schema": SCHEMA, "issues": {}}
-
-    # 先让服务端只回未解决的（本地 `status` 字段不一定有）；老 CLI 不认 `--query` 就退回全量
-    rows: list[dict] = []
-    server_filtered = False
     if not keep_resolved:
         try:
-            rows = list_issues(
-                sentry,
-                target,
-                period=period,
-                limit=limit,
-                verbose=verbose,
-                timeout=timeout,
-                query="is:unresolved",
-            )
-            server_filtered = True
-        except RuntimeError:
-            server_filtered = False
-    if not server_filtered:
-        rows = list_issues(
-            sentry, target, period=period, limit=limit, verbose=verbose, timeout=timeout
-        )
-        if not keep_resolved:
-            notes.append(
-                "这个 sentry CLI 不认 `--query is:unresolved`，已解决的 issue 只能靠 status/时间清"
-            )
+            rows = list_issues(sentry, target, period=period, limit=limit, verbose=verbose,
+                               timeout=timeout, query="is:unresolved")
+        except RuntimeError as error:
+            if not _unsupported_query(error):
+                raise
+            notes.append("sentry CLI 明确不支持 --query，兼容使用未过滤列表")
+            rows = list_issues(sentry, target, period=period, limit=limit, verbose=verbose, timeout=timeout)
+    else:
+        rows = list_issues(sentry, target, period=period, limit=limit, verbose=verbose, timeout=timeout)
+    if len(rows) >= limit:
+        raise RuntimeError(f"issue list 返回 {len(rows)} 条达到 --limit {limit}，可能截断；拒绝发布不完整快照")
     now = datetime.now(timezone.utc)
     cutoff = now - timedelta(days=days)
-    live: dict[str, dict] = {}
+    index: dict[str, Any] = copy.deepcopy(previous) if previous.get("schema") == SCHEMA else {"schema": SCHEMA}
+    index["issues"] = {}
+    cards: dict[str, IssueCard] = {}
+    fetched: list[str] = []
     for row in rows:
-        short = str(row.get("shortId") or "")
-        if not short:
-            continue
+        short = row["shortId"]
         status = str(row.get("status") or "").lower()
         last_seen_raw = str(row.get("lastSeen") or row.get("lastEvent") or "")
         last_seen = _parse_time(last_seen_raw)
-        # 已解决/已忽略：默认清掉（它不再代表"当前问题"，留着会让匹配误命中）
-        if status in ISSUE_CLOSED_STATUSES and not keep_resolved:
-            _drop(short, notes, index, reason=f"status={status}")
+        if (status in ISSUE_CLOSED_STATUSES and not keep_resolved) or (last_seen is not None and last_seen < cutoff):
             continue
-        # 过时：最后事件早于保留期
-        if last_seen is not None and last_seen < cutoff:
-            age = (now - last_seen).days
-            _drop(
-                short,
-                notes,
-                index,
-                reason=f"lastSeen {age} 天前，超过 --telemetry-days {days}",
-            )
-            continue
-        live[short] = {"status": status, "lastSeen": last_seen_raw}
-
-    # 服务器上已经没了 → 清掉；但列表到了 --limit 时可能只是被截断，没出现在里面的先留着
-    truncated = len(rows) >= limit
-    kept_truncated = 0
-    for short in list(index.get("issues", {})):
-        if short in live:
-            continue
-        if truncated:
-            kept_truncated += 1
-            continue
-        _drop(short, notes, index, reason=f"服务端 {period} 的列表里已经没有它")
-    if kept_truncated:
-        notes.append(
-            f"服务端列表到了 --limit {limit}（可能被截断），{kept_truncated} 个不在列表里的 "
-            "issue 先留着"
-        )
-
-    fetched = 0
-    fetched_ids: list[str] = []
-    for short, meta in live.items():
-        cached = index["issues"].get(short) or {}
-        if (
-            cached.get("lastSeen") == meta["lastSeen"]
-            and card_path(short).is_file()
-        ):
-            continue  # 增量：没变就不重下
-        raw = issue_view(sentry, short, verbose=verbose, timeout=timeout)
-        card = parse_issue_view(raw, short)
-        write_card(card)
-        index["issues"][short] = {
-            "status": meta["status"],
-            "lastSeen": meta["lastSeen"],
-            "fetched_at": now.isoformat(),
-        }
-        fetched += 1
-        fetched_ids.append(short)
-    if fetched:
-        # 名字要列出来：批量出图的张数会随之变化，只报个数字没法判断是"新问题"还是"库被清了"
-        shown = "、".join(sorted(fetched_ids)[:10])
-        more = f" 等 {fetched} 个" if len(fetched_ids) > 10 else ""
-        notes.append(f"本地遥测库新增/更新 {fetched} 个 issue：{shown}{more}")
-    index["refreshed_at"] = now.isoformat()
-    save_index(index)
+        meta = {"status": status, "lastSeen": last_seen_raw}
+        cached = previous.get("issues", {}).get(short) or {}
+        card = None
+        if not full_details and previous.get("schema") == SCHEMA and all(cached.get(k) == v for k, v in meta.items()):
+            card = read_card(short, previous)
+        if card is None:
+            card = parse_issue_view(issue_view(sentry, short, verbose=verbose, timeout=timeout), short)
+            fetched.append(short)
+            cached = {"fetched_at": now.isoformat()}
+        cards[short] = card
+        index["issues"][short] = {**meta, "fetched_at": cached.get("fetched_at", now.isoformat())}
+    removed = set(previous.get("issues", {})) - set(index["issues"])
+    if removed:
+        notes.append("本地遥测库移出当前快照：" + "、".join(sorted(removed)))
+    generation = uuid.uuid4().hex
+    stage = store_dir() / "_snapshots" / generation
+    try:
+        stage.mkdir(parents=True, exist_ok=False)
+        for short, card in cards.items():
+            _atomic_json(stage / f"{short}.json", card.to_json())
+        index["snapshot"] = generation
+        index["refreshed_at"] = datetime.now(timezone.utc).isoformat()
+        save_index(index)
+    except (OSError, RuntimeError, ValueError, TypeError):
+        # 只删本次未发布目录；旧代保留，已持有旧 index 的读者仍可一致读取。
+        if stage.exists():
+            try:
+                shutil.rmtree(stage)
+            except OSError as cleanup_error:
+                log.warning("未发布快照清理失败 %s：%s", stage, cleanup_error)
+        raise
+    notes.append(f"本地遥测库完整快照 {generation} 已发布：{len(cards)} 个 issue，重取详情 {len(fetched)} 个")
     return index, notes
+
+
+def _snapshot_intact(index: dict) -> bool:
+    try:
+        return index.get("schema") == SCHEMA and all(read_card(short, index) is not None for short in index.get("issues", {}))
+    except RuntimeError:
+        return False
 
 
 def index_age() -> float | None:
@@ -506,12 +523,14 @@ def load_or_refresh(
     """
     if offline:
         return load_index(), []
+    selected = load_index(strict=True)
     age = index_age()
-    if not force and max_age > 0 and age is not None and age <= max_age:
-        return load_index(), [
+    if not force and max_age > 0 and age is not None and age <= max_age and _snapshot_intact(selected):
+        return selected, [
             f"本地遥测库 {int(age)} 秒前刷新过（--telemetry-max-age {max_age:g} 内直接复用；"
             "要最新数据加 --telemetry-refresh）"
         ]
+    kwargs["full_details"] = force or bool(kwargs.get("full_details", False))
     return refresh_default(**kwargs)
 
 
@@ -525,7 +544,7 @@ def load_cards(index: dict, *, short_ids: list[str] | None = None) -> list[Issue
     out: list[IssueCard] = []
     missing: list[str] = []
     for short in keys:
-        card = read_card(short)
+        card = read_card(short, index)
         if card is not None:
             out.append(card)
         else:
@@ -737,7 +756,7 @@ def annotate(
     gap: int = DEFAULT_GAP_DAYS,
     keep_resolved: bool = False,
     verbose: bool = False,
-    timeout: float = 180.0,
+    timeout: float = DEFAULT_TIMEOUT,
     max_age: float = DEFAULT_MAX_AGE,
     force: bool = False,
 ) -> Annotation:
@@ -746,29 +765,18 @@ def annotate(
     `index` 给了就不再刷新（调用方已刷过一次）；`offline=True` 只读本地库、不联网。
     `max_age` 秒内刷新过就直接用本地库（`force=True` 强制刷新）——每次 `flow` 都跑一遍
     `sentry issue list` 要 5.7 s，调图时一分钟跑一条命令全是白等。
-    刷新失败（没装 sentry CLI / 没登录 / 网络不通）只记一条警告，**不影响画图**。
+    刷新失败直接抛错；调用方不得回退旧库并报告绘图成功。
     """
     out = Annotation()
     if index is None:
         if offline:
             index = load_index()
         else:
-            try:
-                index, notes = load_or_refresh(
-                    max_age=max_age,
-                    force=force,
-                    verbose=verbose,
-                    timeout=timeout,
-                    days=days,
-                    keep_resolved=keep_resolved,
-                )
-                # 注意：本函数的参数叫 `log`（日志正文），不能用模块级的 `log` logger——
-                # 那会变成 `str.info`（实测 AttributeError）。刷新的说明走 warnings，
-                # 调用方本来就把 warnings 打成「提示：…」。
-                out.warnings.extend(notes)
-            except (RuntimeError, OSError) as exc:
-                out.warnings.append(f"遥测库没刷新成（{exc}），本次用本地已有数据")
-                index = load_index()
+            index, notes = load_or_refresh(
+                max_age=max_age, force=force, verbose=verbose, timeout=timeout,
+                days=days, keep_resolved=keep_resolved,
+            )
+            out.warnings.extend(notes)
 
     cards = load_cards(index, short_ids=[issue] if issue else None)
     if not cards:
@@ -866,7 +874,7 @@ def create_argument_parser(prog: str | None = None):
     parser.add_argument("--keep-resolved", action="store_true", help="保留已解决/已忽略的 issue")
     parser.add_argument("--period", default="30d", help="列表窗口（默认 30d）")
     parser.add_argument("--limit", type=int, default=200, help="列表上限（默认 200）")
-    parser.add_argument("--timeout", type=float, default=180.0, help="单次调用超时秒数")
+    parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT, help="单次调用超时秒数（默认 8，最多尝试 3 次）")
     parser.add_argument("--verbose", action="store_true")
     parser.add_argument(
         "--log-level",
@@ -891,8 +899,8 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
     )
     if log_path:
         log.info("日志 → %s", log_path)
-    sentry = report_common.resolve_sentry_command()
     try:
+        sentry = report_common.resolve_sentry_command()
         index, notes = refresh(
             sentry,
             CONFIG.target,
@@ -902,8 +910,9 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
             keep_resolved=args.keep_resolved,
             period=args.period,
             limit=args.limit,
+            full_details=args.refresh,
         )
-    except RuntimeError as exc:
+    except (RuntimeError, OSError) as exc:
         log.error(
             "刷新本地遥测库失败：%s；若报「unable to open database file」，"
             "把 SENTRY_CONFIG_DIR 指到含可写 cli.db 的目录",
@@ -918,7 +927,7 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
         return 0
 
     if args.issue:
-        card = read_card(args.issue)
+        card = read_card(args.issue, index)
         if card is None:
             log.error("%s 不在本地遥测库里。", args.issue)
             return 1

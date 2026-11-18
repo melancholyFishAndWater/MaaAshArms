@@ -13,16 +13,16 @@
 | --- | --- |
 | 默认 | 联网刷新本地库（只补新增/`lastSeen` 变了的 issue），再在本地查 |
 | `--telemetry-max-age 300` | 库在这么多秒内刷新过就直接复用、**不起 sentry 子进程**（默认 300；0 = 每次刷新）。本机实测一次刷新 3~5 s（`sentry issue list` + 逐 issue `issue view`），调图时一分钟跑一条命令全是白等 |
-| `--telemetry-refresh` | 忽略 `--telemetry-max-age`，强制刷新 |
+| `--telemetry-refresh` | 忽略缓存年龄，强制重新获取所有当前 issue 详情并校验后发布完整快照 |
 | `--telemetry-offline` | 只读本地库，不联网 |
 | `--no-telemetry` | 完全不做这层关联 |
 | `--telemetry-issue PYTHON-2X` | 指定问题号，不自动反查 |
 | `--telemetry-only` | 只打印候选问题，不画图 |
 | `--telemetry-days N` / `--telemetry-gap N` | 反查的保留天数 / 时间窗天数 |
 
-刷新时刻记在 `temp/telemetry/index.json` 的顶层 `refreshed_at`（UTC ISO）；旧库没有这个字段时
-第一次照常刷新，之后就有了。库里的数据仍是"刷新那一刻"的快照：要看线上最新状态就
-`--telemetry-refresh` 或把 `--telemetry-max-age` 调小。
+完整刷新成功时刻记在 `temp/telemetry/issues/index.json` 的顶层 `refreshed_at`（UTC ISO）；`snapshot` 指向 `_snapshots/` 中的完整一代卡片。只有全部请求、校验和暂存写入成功后才原子切换索引；失败保留上一代，不更新成功时间。旧平铺卡片库可读取，下一次成功刷新转换为快照。旧代暂不自动删除，避免其他读者仍在使用它。
+
+在线请求每项最多尝试 3 次，默认单次超时 8 秒、重试间隔 0.2 秒。列表格式异常、详情缺失、列表达到上限可能截断均不能被标记为完整成功。坏卡片不能命中 300 秒缓存；普通增量刷新会修复，`--telemetry-refresh` 则全量重取当前详情。
 
 **反查给候选、不给唯一答案**：一次运行常有多个失败事件，同一个包可能对应好几个 issue。
 只有"恰好一个 `task_id` + `node_id` 全等"时才自动采用，否则取时间最近的并打提示。中/低置信的匹配
@@ -30,9 +30,7 @@
 两行注记——它们只说明"节点名撞上了"，可能是别的任务、甚至别的用户在同名节点上的失败（实测
 `PYTHON-2Y`：3 天前 beta.68 的低置信匹配被当成基线，把当次 beta.73 的 3 个节点标成「疑似过时」，
 还挂上不相干的「遥测失败 GiftEnterHome」）。判据在 `telemetry_index.usable_match()`。
-刷新失败（没装 `sentry` CLI / 没登录）只提示一次，照常画图。**没登录时还会明确指路并跳过逐 issue
-拉证据包**：终端打 `Sentry 没登录：先执行一次 sentry auth login…`，之后缺包的 issue 直接出概览卡，
-不会每个 issue 再白跑一趟联网子进程（判断在 `lib/cases/cli.py:_sentry_failure_hint`）。
+**在线刷新最终失败就报错并返回非零，停止绘图与本轮产物清理，不静默使用旧库。** 认证失败也不能以概览卡冒充刷新成功。确实需要使用已有快照时，必须显式指定 `--telemetry-offline`；完全不需要遥测关联则指定 `--no-telemetry`。
 
 ## 按版本筛（`--telemetry-version`）
 

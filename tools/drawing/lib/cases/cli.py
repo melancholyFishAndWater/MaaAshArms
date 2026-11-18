@@ -582,7 +582,7 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
     )
 
     # 遥测（默认开）：先刷新一次本地库，之后每个包都只在本地查。
-    # 刷新失败只提示，不影响画图——遥测是加分项，不是画图的前提。
+    # 刷新失败直接停止；只有显式 offline 才读取旧库。
     telemetry = _telemetry_module()
     telemetry_data: dict | None = None
     # Sentry CLI 不可用（没登录 / 凭据打不开）：刷新失败后不再逐 issue 重试拉包
@@ -601,16 +601,11 @@ def main(argv: list[str] | None = None, prog: str | None = None) -> int:
                 for change in changes:
                     log.info("提示：%s", change)
             except (RuntimeError, OSError, ImportError) as exc:
-                log.warning(
-                    "遥测库没刷新成（%s），用本地已有数据；若报「unable to open database file」，"
-                    "把 SENTRY_CONFIG_DIR 指到含可写 cli.db 的目录",
-                    exc,
-                )
-                telemetry_data = telemetry.load_index()
+                log.error("遥测刷新失败，已停止绘图（未使用旧库回退）：%s", exc)
                 hint = _sentry_failure_hint(exc)
                 if hint:
-                    log.warning("%s", hint)
-                    sentry_down = True
+                    log.error("%s", hint)
+                return 1
     cards = telemetry.load_cards(telemetry_data) if telemetry_data else []
     # 问题名（遥测卡上的 `Reward` / `Factory`…）：进产物名，清理时也用它认
     # `PYTHON-3B_Reward.png` 这类带问题名的名字（版本筛掉的也要留着 label，否则清不掉）

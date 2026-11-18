@@ -106,8 +106,8 @@ temp/evidence/PYTHON-14/
 所以先把 issue 详情**增量**落一份本地库，画图时在库里查。
 
 ```text
-temp/telemetry/issues/<SHORT-ID>.json   ← 每个 issue 一份（title/count/lastSeen/release/failure.*）
-temp/telemetry/issues/index.json        ← {schema, issues: {<SHORT>: {status, lastSeen, fetched_at}}}
+temp/telemetry/issues/_snapshots/<代号>/<SHORT-ID>.json  ← 完整一代卡片
+ temp/telemetry/issues/index.json                       ← {schema, snapshot, refreshed_at, issues: {...}}
 ```
 
 画图默认就带这层关联（`flow_cases` / `flow_from_log` 的 `--telemetry` 默认开）：
@@ -135,7 +135,7 @@ temp/telemetry/issues/index.json        ← {schema, issues: {<SHORT>: {status, 
 
 - `status` 是 resolved / ignored / archived → **删**（`--telemetry-keep-resolved` 才留）；
 - `lastSeen` 早于 `--telemetry-days`（默认 14 天）→ 删；
-- 不在最近一次 `issue list` 里 → 删；但列表条数到了 `--limit`（可能被截断）时**先留着**，不按缺席删；
+- 不在最近一次完整 `issue list` 里 → 从新快照移除；列表条数达到 `--limit`（可能截断）则本轮直接失败，不发布、不按缺席删除；
 - `index.json` 的 `schema` 变了 → 整库重建，不做迁移。
 
 每一条清除都会在提示里带**原因**（`status=resolved` / `lastSeen 27 天前，超过 --telemetry-days 14` /
@@ -144,10 +144,13 @@ temp/telemetry/issues/index.json        ← {schema, issues: {<SHORT>: {status, 
 
 不清理的后果很直接：一个已解决的旧 issue 留在库里，就会凭节点名抢走本该属于新 issue 的匹配。
 
-### 默认开、失败不影响画图
+### 默认开、在线失败阻止绘图
 
-刷新失败（没装 `sentry` CLI / 没登录 / 网络不通）只打一条提示，然后用本地已有数据；
-本地库为空时再补一条"先跑 `telemetry --refresh`"。**遥测是加分项，不是画图的前提**。
+列表与详情请求自动最多尝试 3 次，默认单次超时 8 秒，重试间隔 0.2 秒。仅在全部请求、身份与卡片完整性校验、暂存写入成功后，原子发布完整快照；成功时间只在发布时更新。中途失败不删除或覆盖上一代。
+
+最终失败直接报错并返回非零，在线绘图不得回退旧库继续画图或清理旧产物。显式 `--telemetry-offline` 才允许使用已有本地库；`--no-telemetry` 则完全关闭关联。`--telemetry-refresh` 以及 `telemetry --refresh` 强制重取当前详情，不仅检查列表的 lastSeen。
+
+固定索引在 `temp/telemetry/issues/index.json`，`snapshot` 指向 `_snapshots/<代号>/`。旧平铺库仍可读取，首次成功刷新后转为快照；旧代暂不自动清理。缓存年龄未过期也会核对卡片能否读取，损坏时重新刷新，不能仅凭文件存在判成功。
 
 ## `explore-csv`：浏览器导出的那份怎么用
 

@@ -124,7 +124,7 @@ python -m tools.sentry.cli issue-resolve --status   # 额外联网核对一次�
 | 路径 | 内容 | 谁产生 |
 | --- | --- | --- |
 | `temp/telemetry/<project>-<period>-<UTC时间戳>.json` | `fetch` 的遥测工件（自描述，带 `schema`） | `fetch` |
-| `temp/telemetry/issues/<SHORT-ID>.json`、`index.json` | 本地遥测库（issue 详情与索引） | `telemetry --refresh` |
+| `temp/telemetry/issues/index.json`、`_snapshots/<代号>/<SHORT-ID>.json` | 本地遥测库完整快照（索引原子发布；旧平铺库仍可读） | `telemetry --refresh` |
 | `temp/evidence/<issue>/debug/maafw.log` | 那次运行的 trace logs 拼出的日志 | `evidence` |
 | `temp/evidence/<issue>/debug/on_error/<run_id>/*.png` | 失败现场图（按失败事件分目录） | `evidence` |
 | `temp/evidence/<issue>/evidence.json` | 证据清单（闸门状态、失败字段、写了什么、可复制命令） | `evidence` |
