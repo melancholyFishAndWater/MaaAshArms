@@ -204,8 +204,8 @@
         "next": [
             "BaseErrorNext",
             "TrainBranchAcceptInfo",
-            "[JumpBack]TrainInfoMover",
-            "[JumpBack]BaseBranchError"
+            "[JumpBack]BaseBranchError",
+            "[JumpBack]TrainInfoMover"
         ]
     },
     /* -------------------- 动作-目标路线 -------------------- 

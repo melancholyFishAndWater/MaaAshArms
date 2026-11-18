@@ -123,8 +123,7 @@
             "BaseStopServerMaintenance"
         ],
         "action": "Custom",
-        "custom_action": "BaseBranchErrorAct",
-        "next": [] // agent 侧覆写
+        "custom_action": "BaseBranchErrorAct"
     },
     // 点击确认弹窗
     "BaseClickErrorConfirm": {
