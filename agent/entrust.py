@@ -62,7 +62,18 @@ def get_level_ocr(
     """
     return context.run_recognition_direct(
         JRecognitionType.OCR,
-        JOCR([r"-\d{1,2}"], roi=(158, 290, 991, 346), replace=[["o", "0"], ["O", "0"]]),
+        JOCR(
+            [r"-\d{1,2}"],
+            roi=(158, 290, 991, 346),
+            replace=[
+                ["O", "0"],
+                ["o", "0"],
+                ["D", "0"],
+                ["d", "0"],
+                ["c", "0"],
+                ["C", "0"],
+            ],
+        ),
         argv.image,
     )
 
@@ -114,7 +125,18 @@ def get_ocr_level_times(
     # 识别当前次数
     r2 = context.run_recognition_direct(
         JRecognitionType.OCR,
-        JOCR([r"\d{1,2}"], roi=(375, 640, 56, 33), replace=[["o", "0"], ["O", "0"]]),
+        JOCR(
+            [r"\d{1,2}"],
+            roi=(375, 640, 56, 33),
+            replace=[
+                ["O", "0"],
+                ["o", "0"],
+                ["D", "0"],
+                ["d", "0"],
+                ["c", "0"],
+                ["C", "0"],
+            ],
+        ),
         argv.image,
     )
     if r2 is None or not r2.hit:

@@ -53,7 +53,14 @@ class TrainingGetStatusReco(CustomRecognition):
             JOCR(
                 ["0", "0/1"],
                 roi=(192, 524, 900, 68),
-                replace=[["O", "0"], ["o", "0"], ["D", "0"], ["d", "0"]],
+                replace=[
+                    ["O", "0"],
+                    ["o", "0"],
+                    ["D", "0"],
+                    ["d", "0"],
+                    ["c", "0"],
+                    ["C", "0"],
+                ],
             ),
             argv.image,
         )
@@ -151,7 +158,14 @@ class TrainingEnterOneReco(CustomRecognition):
             JOCR(
                 ["0", "0/1", "1", "1/1"],
                 roi=(192, 524, 900, 68),
-                replace=[["O", "0"], ["o", "0"], ["D", "0"], ["d", "0"]],
+                replace=[
+                    ["O", "0"],
+                    ["o", "0"],
+                    ["D", "0"],
+                    ["d", "0"],
+                    ["c", "0"],
+                    ["C", "0"],
+                ],
             ),
             argv.image,
         )
