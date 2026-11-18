@@ -361,8 +361,11 @@ def prune_artifacts(
         if name in kept or os.path.basename(name) != name:
             continue
         record = records[name]
-        if "命中日志" in os.path.splitext(name)[0].split("_"):
-            continue  # 本地日志诊断产物不随遥测 issue 集合清理。
+        origin = str(record.get("origin") or "")
+        if origin and origin != "bulk":
+            continue  # 独立诊断或未知归属不属于本次批量任务；来源后缀不决定保留。
+        if not origin and "命中日志" in os.path.splitext(name)[0].split("_"):
+            continue  # 老记录无法区分独立诊断与批量辅助，保守保留。
         issue = str(record.get("issue") or "")
         # 名字里那段后缀**总是**要从文件名算出来：单包画的产物也带 `<问题号>_task<id>`，
         # 只按记录里的 issue 判断会让 rest 一直是空串，`_own_rest("")` 又恒为真——于是
@@ -372,7 +375,6 @@ def prune_artifacts(
             issue = issue_from_name
         if not issue or issue in failed:
             continue
-        origin = str(record.get("origin") or "")
         if issue not in issues:
             reason = "不在本次 issue 集合内"
         elif origin == "bulk" or (

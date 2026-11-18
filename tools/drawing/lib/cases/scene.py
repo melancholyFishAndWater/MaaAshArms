@@ -302,7 +302,7 @@ def _prune_recorded(
             continue
         issue = str(record.get("issue") or "")
         origin = str(record.get("origin") or "")
-        if not issue:
+        if not issue or (origin and origin != "bulk"):
             continue
         if (issue in invalidated and issue in written_issues
                 and name not in confirmed and origin == "bulk"):

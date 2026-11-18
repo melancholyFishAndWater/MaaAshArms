@@ -37,6 +37,6 @@ def test_local_log_filename_and_pruning(tmp_path):
     assert stem.startswith("PYTHON-99_Gift_命中日志")
     name = stem + ".png"
     (tmp_path / name).write_bytes(b"test")
-    manifest = {"cases": {name: {"issue": "PYTHON-99", "origin": "bulk"}}}
+    manifest = {"cases": {name: {"issue": "PYTHON-99", "origin": "case"}}}
     assert prune_artifacts(str(tmp_path), manifest, set(), issues=set()) == 0
     assert (tmp_path / name).is_file()
