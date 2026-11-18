@@ -114,17 +114,17 @@
             1096,
             576,
             164,
-            117
+            108
         ],
         "timeout": 60000,
         "rate_limit": 3000,
         "next": [
-            "StartUpBranchLoading",
-            "BaseStopServerMaintenance",
             "StartUpEnterLogin",
             "StartUpEnterSignIn",
+            "BaseStopServerMaintenance",
             "[JumpBack]StartUpClickUpdate",
-            "[JumpBack]BaseClickErrorConfirm"
+            "[JumpBack]BaseClickErrorConfirm",
+            "StartUpBranchLoading"
         ],
         "focus": {
             "Node.Recognition.Succeeded": "等待游戏加载中"
