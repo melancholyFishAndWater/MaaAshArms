@@ -197,14 +197,15 @@
             "BaseErrorNext",
             "BaseProbeHome",
             "[JumpBack]BaseClickRewardTap",
-            "[JumpBack]StartUpClickNoticeDisable",
-            "[JumpBack]BaseClickBackButton",
+            "StartUpClickNoticeDisable",
+            "StartUpClickActivityClose",
+            "[JumpBack]BaseClickErrorConfirm",
             "StartUpEnterSignIn"
         ]
     },
-    /* -------------------- jp动作-今日不再提示 -------------------- */
+    /* -------------------- 动作-今日不再提示 -------------------- */
     "StartUpClickNoticeDisable": {
-        "desc": "[jp] 点击公告不再提示",
+        "desc": "点击公告不再提示",
         "recognition": "OCR",
         "expected": "今日不再提示",
         "action": "Click",
@@ -215,6 +216,7 @@
             50
         ],
         "next": [
+            "[JumpBack]BaseClickErrorConfirm",
             "StartUpClickNoticeClose"
         ],
         "post_wait_freezes": 1000,
@@ -225,14 +227,43 @@
     // 关闭公告
     "StartUpClickNoticeClose": {
         "desc": "点击其他区域关闭公告页面",
+        "recognition": "OCR",
+        "expected": "今日不再提示",
         "action": "Click",
         "target": [
             0,
             -1
         ],
         "post_wait_freezes": 1000,
-        "focus": {
-            "Node.Recognition.Succeeded": "关闭公告页面"
-        }
+        "next": [
+            "BaseClickRewardTap",
+            "[JumpBack]BaseClickErrorConfirm",
+            "StartUpClickNoticeClose",
+            "StartUpClickActivityClose"
+        ]
+    },
+    /* -------------------- 动作-关闭活动一览 -------------------- */
+    "StartUpClickActivityClose": {
+        "desc": "点击活动一览关闭按钮",
+        "recognition": "OCR",
+        "expected": "登录",
+        "roi": [
+            138,
+            15,
+            73,
+            41
+        ],
+        "target": [
+            57,
+            41
+        ],
+        "action": "Click",
+        "post_wait_freezes": 1000,
+        "next": [
+            "BaseErrorNext",
+            "BaseProbeHome",
+            "[JumpBack]BaseClickErrorConfirm",
+            "StartUpClickActivityClose"
+        ]
     }
 }
