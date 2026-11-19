@@ -102,13 +102,13 @@
         "desc": "[end] 有返回按钮",
         "recognition": "TemplateMatch",
         "template": [
-            "StartUp/BackButton.png"
+            "Base/BackButton.png"
         ],
         "roi": [
             0,
             0,
-            154,
-            130
+            106,
+            90
         ]
     },
     /* -------------------- 分支 -------------------- */
