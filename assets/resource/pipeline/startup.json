@@ -151,7 +151,7 @@
             423
         ]
     },
-    /* -------------------- 动作-登录(含公告和签到) -------------------- */
+    /* -------------------- 动作-登录 -------------------- */
     // 蓝色的登录按钮
     "StartUpEnterLogin": {
         "desc": "点击登录按钮",
@@ -196,8 +196,8 @@
         "next": [
             "BaseErrorNext",
             "BaseProbeHome",
-            "[JumpBack]BaseClickRewardTap",
             "StartUpClickNoticeDisable",
+            "StartUpClickNoticeClose",
             "StartUpClickActivityClose",
             "[JumpBack]BaseClickErrorConfirm",
             "StartUpEnterSignIn"
@@ -206,20 +206,24 @@
     /* -------------------- 动作-今日不再提示 -------------------- */
     "StartUpClickNoticeDisable": {
         "desc": "点击公告不再提示",
-        "recognition": "OCR",
-        "expected": "今日不再提示",
-        "action": "Click",
+        "recognition": "TemplateMatch",
+        "template": "StartUp/NoticeDartGreen.png",
+        "green_mask": true,
+        "threshold": 0.93,
         "roi": [
             307,
             95,
             246,
             50
         ],
-        "next": [
-            "[JumpBack]BaseClickErrorConfirm",
-            "StartUpClickNoticeClose"
-        ],
+        "action": "Click",
         "post_wait_freezes": 1000,
+        "next": [
+            "BaseErrorNext",
+            "[JumpBack]BaseClickErrorConfirm",
+            "StartUpClickNoticeClose",
+            "StartUpClickNoticeDisable"
+        ],
         "focus": {
             "Node.Recognition.Succeeded": "点击公告不再提示"
         }
@@ -227,19 +231,27 @@
     // 关闭公告
     "StartUpClickNoticeClose": {
         "desc": "点击其他区域关闭公告页面",
-        "recognition": "OCR",
-        "expected": "今日不再提示",
-        "action": "Click",
+        "recognition": "TemplateMatch",
+        "template": "StartUp/NoticeLightGreen.png",
+        "green_mask": true,
+        "threshold": 0.93,
+        "roi": [
+            307,
+            95,
+            246,
+            50
+        ],
         "target": [
             0,
             -1
         ],
+        "action": "Click",
         "post_wait_freezes": 1000,
         "next": [
-            "BaseClickRewardTap",
+            "[JumpBack]BaseClickRewardTap",
             "[JumpBack]BaseClickErrorConfirm",
-            "StartUpClickNoticeClose",
-            "StartUpClickActivityClose"
+            "StartUpClickActivityClose",
+            "StartUpClickNoticeClose"
         ]
     },
     /* -------------------- 动作-关闭活动一览 -------------------- */
