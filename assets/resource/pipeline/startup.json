@@ -178,11 +178,14 @@
     // 点击进入游戏
     "StartUpEnterSignIn": {
         "desc": "点击进入游戏",
-        "recognition": "TemplateMatch",
-        "template": [
-            "StartUp/TouchSignInPage.png"
+        "recognition": "OCR",
+        "expected": "用户",
+        "roi": [
+            1114,
+            676,
+            61,
+            32
         ],
-        "green_mask": true,
         "target": [
             630,
             540
