@@ -125,10 +125,7 @@
             "[JumpBack]StartUpClickUpdate",
             "[JumpBack]BaseClickErrorConfirm",
             "StartUpBranchLoading"
-        ],
-        "focus": {
-            "Node.Recognition.Succeeded": "等待游戏加载中"
-        }
+        ]
     },
     /* -------------------- jp动作-点击更新 -------------------- */
     "StartUpClickUpdate": {
@@ -167,6 +164,8 @@
             46
         ],
         "action": "Click",
+        "post_wait_freezes": 3000,
+        "timeout": 60000,
         "next": [
             "BaseErrorNext",
             "BaseProbeHome",
@@ -174,11 +173,7 @@
             "[JumpBack]StartUpClickNoticeDisable",
             "[JumpBack]BaseClickBackButton",
             "StartUpEnterLogin"
-        ],
-        "post_wait_freezes": 3000,
-        "focus": {
-            "Node.Recognition.Succeeded": "游戏掉线，尝试重连"
-        }
+        ]
     },
     // 点击进入游戏
     "StartUpEnterSignIn": {
@@ -188,11 +183,13 @@
             "StartUp/TouchSignInPage.png"
         ],
         "green_mask": true,
-        "action": "Click",
         "target": [
             630,
             540
         ],
+        "action": "Click",
+        "post_wait_freezes": 3000,
+        "timeout": 60000,
         "next": [
             "BaseErrorNext",
             "BaseProbeHome",
@@ -200,11 +197,7 @@
             "[JumpBack]StartUpClickNoticeDisable",
             "[JumpBack]BaseClickBackButton",
             "StartUpEnterSignIn"
-        ],
-        "post_wait_freezes": 3000,
-        "focus": {
-            "Node.Recognition.Succeeded": "点击进入游戏"
-        }
+        ]
     },
     /* -------------------- jp动作-今日不再提示 -------------------- */
     "StartUpClickNoticeDisable": {
