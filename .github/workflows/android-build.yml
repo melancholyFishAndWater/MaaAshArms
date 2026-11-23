@@ -31,7 +31,7 @@ jobs:
         with:
           packages: platform-tools
       - name: Install compile SDK
-        run: sdkmanager --install "platforms;android-37" "build-tools;36.0.0"
+        run: sdkmanager --install "platforms;android-37.0" "build-tools;36.0.0"
       - uses: actions/cache@v4
         with:
           path: |
@@ -91,7 +91,7 @@ jobs:
         with:
           packages: platform-tools
       - name: Install NDK and CMake
-        run: sdkmanager --install "platforms;android-37" "build-tools;36.0.0" "ndk;29.0.13113456" "cmake;3.22.1"
+        run: sdkmanager --install "platforms;android-37.0" "build-tools;36.0.0" "ndk;29.0.13113456" "cmake;3.22.1"
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
