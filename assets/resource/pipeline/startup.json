@@ -165,7 +165,7 @@
             46
         ],
         "action": "Click",
-        "post_wait_freezes": 3000,
+        "post_wait_freezes": 6000,
         "timeout": 60000,
         "next": [
             "BaseErrorNext",
@@ -192,7 +192,7 @@
             540
         ],
         "action": "Click",
-        "post_wait_freezes": 3000,
+        "post_wait_freezes": 6000,
         "timeout": 60000,
         "next": [
             "BaseErrorNext",
