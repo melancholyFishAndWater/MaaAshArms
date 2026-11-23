@@ -57,19 +57,16 @@
     /* -------------------- 动作-进入司库部 -------------------- */
     "SikuEnterHome": {
         "desc": "进入司库部主页",
-        "recognition": "OCR",
-        "expected": "司库部",
+        "recognition": "TemplateMatch",
+        "template": "Reward/SikuHomeButtonGreen.png",
+        "green_mask": true,
+        "method": 10001,
+        "threshold": 0.95,
         "roi": [
             947,
-            675,
-            65,
-            34
-        ],
-        "target_offset": [
-            0,
-            -36,
-            0,
-            1
+            633,
+            66,
+            78
         ],
         "action": "Click",
         "post_wait_freezes": 1000,

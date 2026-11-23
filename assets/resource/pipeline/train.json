@@ -19,6 +19,8 @@
         "desc": "进入武装押运一览",
         "recognition": "TemplateMatch",
         "template": "Train/TrainButton.png",
+        "method": 10001,
+        "threshold": 0.95,
         "roi": [
             0,
             122,

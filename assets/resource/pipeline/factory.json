@@ -39,24 +39,16 @@
     /* -------------------- 动作-进入主页 -------------------- */
     "FactoryEnterHome": {
         "desc": "从主页进入订单工厂",
-        "recognition": "OCR",
-        "expected": [
-            "订",
-            "单",
-            "工",
-            "厂"
-        ],
+        "recognition": "TemplateMatch",
+        "template": "Factory/HomeButtonGreen.png",
+        "green_mask": true,
+        "method": 10001,
+        "threshold": 0.95,
         "roi": [
-            637,
-            650,
-            103,
-            70
-        ],
-        "target_offset": [
-            0,
-            -36,
-            0,
-            1
+            649,
+            632,
+            80,
+            76
         ],
         "action": "Click",
         "post_wait_freezes": 6000,

@@ -62,7 +62,7 @@
         "desc": "进入任务奖励页面",
         "recognition": "And",
         "all_of": [
-            "MissionProbeTaskText",
+            "MissionProbeTaskButton",
             "MissionProbeRewardable"
         ],
         "box_index": 0,
@@ -84,15 +84,18 @@
         ]
     },
     // 任务按钮文字
-    "MissionProbeTaskText": {
-        "desc": "[end] 有任务按钮文字",
-        "recognition": "OCR",
-        "expected": "任务",
+    "MissionProbeTaskButton": {
+        "desc": "[end] 有任务按钮",
+        "recognition": "TemplateMatch",
+        "template": "Reward/MissionHomeButtonGreen.png",
+        "green_mask": true,
+        "method": 10001,
+        "threshold": 0.95,
         "roi": [
             857,
-            677,
-            49,
-            32
+            631,
+            50,
+            78
         ]
     },
     // 一键领取

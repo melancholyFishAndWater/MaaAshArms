@@ -63,7 +63,10 @@
     "EscortEnterHome": {
         "desc": "进入防卫局主页面",
         "recognition": "TemplateMatch",
-        "template": "Escort/EnterButton.png",
+        "template": "Escort/EnterButtonGreen.png",
+        "green_mask": true,
+        "method": 10001,
+        "threshold": 0.95,
         "roi": [
             0,
             192,

@@ -18,19 +18,16 @@
     // INFO 进入联络人
     "FriendEnterHome": {
         "desc": "进入联络人页面",
-        "recognition": "OCR",
-        "expected": "联络人",
+        "recognition": "TemplateMatch",
+        "template": "Friend/HomeButtonGreen.png",
+        "green_mask": true,
+        "method": 10001,
+        "threshold": 0.95,
         "roi": [
-            998,
-            629,
-            162,
-            91
-        ],
-        "target_offset": [
-            0,
-            -36,
-            0,
-            1
+            1047,
+            634,
+            67,
+            77
         ],
         "action": "Click",
         "next": [

@@ -35,46 +35,25 @@
         "desc": "[jp][once] 领取采购中心奖励",
         "max_hit": 1,
         "enabled": false, // INFO 测试时要注释掉
-        "recognition": "And",
-        "all_of": [
-            "ShopProbeEnterText",
-            "BaseProbeHome"
-        ],
-        "box_index": 0,
-        "target_offset": [
-            0,
-            -36,
-            0,
-            1
-        ],
-        "action": "Click",
-        "post_wait_freezes": 1000,
-        "next": [
-            "ShopBranchHome",
-            "[JumpBack]ShopClickHomeButton",
-            "[JumpBack]BaseBranchError"
-        ]
-    },
-    // 有采购中心文字
-    "ShopProbeEnterText": {
-        "desc": "[end] 有采购中心文字",
-        "recognition": "OCR",
-        "expected": "采购中心",
+        "recognition": "TemplateMatch",
+        "template": "Reward/ShopHomeButtonGreen.png",
+        "green_mask": true,
+        "method": 10001,
+        "threshold": 0.95,
         "roi": [
-            549,
-            670,
-            81,
-            38
-        ]
-    },
-    "ShopClickHomeButton": {
-        "desc": "[jp] 点击采购中心按钮",
-        "recognition": "And",
-        "all_of": [
-            "ShopProbeEnterText"
+            545,
+            625,
+            89,
+            85
         ],
         "action": "Click",
-        "post_wait_freezes": 1000
+        "post_wait_freezes": 6000,
+        "next": [
+            "BaseErrorNext",
+            "ShopBranchHome",
+            "[JumpBack]BaseBranchError",
+            "ShopEnterHome"
+        ]
     },
     /* -------------------- 分支-主页面 -------------------- */
     "ShopBranchHome": {
