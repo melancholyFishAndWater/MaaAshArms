@@ -36,13 +36,16 @@
     },
     "FeiduProbeHomeButtom": {
         "desc": "[end] 有进入废都按钮",
-        "recognition": "OCR",
-        "expected": "废都重建",
+        "recognition": "TemplateMatch",
+        "template": "Feidu/HomeButtonGreen.png",
+        "green_mask": true,
+        "method": 10001,
+        "threshold": 0.95,
         "roi": [
-            1137,
-            674,
-            115,
-            39
+            1128,
+            601,
+            131,
+            115
         ]
     },
     /* -------------------- 动作-进入废都 -------------------- */
