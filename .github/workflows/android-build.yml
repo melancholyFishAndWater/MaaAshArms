@@ -1,0 +1,224 @@
+name: Build Android APK
+
+on:
+  workflow_call:
+    inputs:
+      assemble:
+        type: string
+        required: true
+      version:
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  library-resources:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          java-version: "25"
+          distribution: temurin
+      - uses: android-actions/setup-android@v3
+      - name: Install compile SDK
+        run: sdkmanager --install "platforms;android-37" "build-tools;36.0.0"
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-libres-${{ hashFiles('Android/MaaFwApp/**/*.gradle.kts', 'Android/MaaFwApp/gradle/libs.versions.toml', 'Android/MaaFwApp/gradle/wrapper/gradle-wrapper.properties') }}
+      - name: Verify library resources
+        working-directory: Android/MaaFwApp
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon verifyReleaseResources
+
+  build:
+    needs: library-resources
+    runs-on: macos-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(inputs.assemble == 'release' && '[{"label":"universal","abis":"arm64-v8a,x86_64"},{"label":"arm64-v8a","abis":"arm64-v8a"},{"label":"x86_64","abis":"x86_64"}]' || '[{"label":"arm64-v8a","abis":"arm64-v8a"}]') }}
+    env:
+      PI_PROFILE: ${{ github.workspace }}/Android/profile.yaml
+      ASSEMBLE: ${{ inputs.assemble }}
+      PACKAGE_VERSION: ${{ inputs.version }}
+      ABIS: ${{ matrix.abis }}
+      LABEL: ${{ matrix.label }}
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+          persist-credentials: false
+      - name: Validate build inputs
+        run: |
+          case "$ASSEMBLE" in debug|release) ;; *) echo 'Invalid assemble type'; exit 1;; esac
+          [[ "$PACKAGE_VERSION" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]*$ ]] || exit 1
+      - name: Check release signing material
+        if: inputs.assemble == 'release' && startsWith(github.ref, 'refs/tags/v')
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          for key in KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            if [ -z "${!key}" ]; then
+              echo "::error::tag release requires $key"
+              exit 1
+            fi
+          done
+      - uses: actions/setup-java@v4
+        with:
+          java-version: "25"
+          distribution: temurin
+      - uses: android-actions/setup-android@v3
+      - name: Install NDK and CMake
+        run: sdkmanager --install "platforms;android-37" "build-tools;36.0.0" "ndk;29.0.13113456" "cmake;3.22.1"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.12.22"
+      - name: Check locked requirements
+        run: |
+          uv export --locked --no-default-groups --no-emit-project --no-hashes --no-header --format requirements-txt --output-file requirements.txt
+          git diff --exit-code -- requirements.txt
+          uv sync --locked --only-group build
+      - name: Test Android packaging tools
+        run: node --test tests/android-packaging.test.mjs
+      - name: Resolve matching Android core and framework
+        id: maafw
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node tools/android-packaging.mjs
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ matrix.label }}-${{ hashFiles('Android/MaaFwApp/**/*.gradle.kts', 'Android/MaaFwApp/gradle/libs.versions.toml', 'Android/MaaFwApp/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: gradle-${{ runner.os }}-${{ matrix.label }}-
+      - name: Cache matched agent core
+        uses: actions/cache@v4
+        with:
+          path: Android/MaaFwApp/.maafw
+          key: android-core-${{ runner.os }}-${{ matrix.label }}-${{ steps.maafw.outputs.core_tag }}-${{ hashFiles('Android/MaaFwApp/scripts/build_agent_bundle.py') }}
+      # Framework archives are not cached: upstream deploys all cached MAA zip files.
+      - name: Deploy matching native framework
+        working-directory: Android/MaaFwApp
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          MAAFW_TAG: ${{ steps.maafw.outputs.maafw_tag }}
+        run: |
+          IFS=',' read -ra abis <<< "$ABIS"
+          for abi in "${abis[@]}"; do
+            python scripts/setup_maa_framework.py --abi "$abi" --tag "$MAAFW_TAG"
+          done
+      - name: Build Android Python bundle
+        working-directory: Android/MaaFwApp
+        env:
+          CORE_TAG: ${{ steps.maafw.outputs.core_tag }}
+          CHAQUOPY_PINS: ${{ steps.maafw.outputs.chaquopy_pins }}
+          CHAQUOPY_INDEX: ${{ steps.maafw.outputs.chaquopy_index }}
+        run: |
+          IFS=',' read -ra abis <<< "$ABIS"
+          args=()
+          for abi in "${abis[@]}"; do args+=(--abi "$abi"); done
+          # Resolver emits only validated package pins; no eval or shell code execution.
+          read -ra pins <<< "$CHAQUOPY_PINS"
+          python scripts/build_agent_bundle.py \
+            --out "$GITHUB_WORKSPACE/Android/agent-dist" \
+            --core-tag "$CORE_TAG" "${args[@]}" "${pins[@]}" \
+            --requirements "$GITHUB_WORKSPACE/requirements.txt" \
+            --extra-index-url "$CHAQUOPY_INDEX"
+      - name: Stage project resources and OCR
+        run: uv run --locked --only-group build python Android/package.py stage --version "$PACKAGE_VERSION"
+      - name: Configure Android build
+        working-directory: Android/MaaFwApp
+        run: |
+          {
+            echo "sdk.dir=$ANDROID_HOME"
+            echo "pi.profile=$PI_PROFILE"
+            echo "build.debugAbi=$ABIS"
+            echo "build.releaseAbi=$ABIS"
+            echo "build.versionName=$PACKAGE_VERSION"
+          } > local.properties
+      - name: Decode release keystore
+        id: keystore
+        if: inputs.assemble == 'release'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo '::warning::No signing key: manual release artifact will be unsigned and cannot be installed.'
+            exit 0
+          fi
+          path="$RUNNER_TEMP/android-release.jks"
+          python -c 'import base64, os, pathlib; pathlib.Path(os.environ["RUNNER_TEMP"], "android-release.jks").write_bytes(base64.b64decode(os.environ["KEYSTORE_BASE64"], validate=True))'
+          echo "path=$path" >> "$GITHUB_OUTPUT"
+      - name: Assemble APK
+        working-directory: Android/MaaFwApp
+        env:
+          KEYSTORE_PATH: ${{ steps.keystore.outputs.path }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          chmod +x gradlew
+          if [ "$ASSEMBLE" = release ]; then task=assembleRelease; else task=assembleDebug; fi
+          ./gradlew --no-daemon clean "$task"
+      - name: Verify and name APK
+        env:
+          SIGNED_RELEASE: ${{ steps.keystore.outputs.path != '' }}
+        run: |
+          shopt -s nullglob
+          apks=(Android/MaaFwApp/app/build/outputs/apk/"$ASSEMBLE"/*.apk)
+          [ "${#apks[@]}" -eq 1 ] || { echo 'Expected exactly one APK'; exit 1; }
+          IFS=',' read -ra abis <<< "$ABIS"
+          args=()
+          for abi in "${abis[@]}"; do args+=(--abi "$abi"); done
+          python Android/verify_apk.py "${apks[0]}" "${args[@]}"
+          if [ "$ASSEMBLE" = debug ] || [ "$SIGNED_RELEASE" = true ]; then
+            signer=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort | tail -n 1)
+            "$signer" verify --verbose "${apks[0]}"
+          fi
+          mkdir -p android-artifacts
+          suffix=""
+          if [ "$ASSEMBLE" = debug ]; then suffix=-debug; fi
+          if [ "$ASSEMBLE" = release ] && [ "$SIGNED_RELEASE" != true ]; then suffix=-unsigned; fi
+          cp "${apks[0]}" "android-artifacts/MaaAshArms-android-${LABEL}-${PACKAGE_VERSION}${suffix}.apk"
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk-${{ inputs.assemble }}-${{ matrix.label }}
+          path: android-artifacts/*.apk
+          if-no-files-found: error
+          compression-level: 0
+      - name: Upload R8 mapping
+        if: inputs.assemble == 'release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-mapping-${{ matrix.label }}
+          path: Android/MaaFwApp/app/build/outputs/mapping/release/mapping.txt
+          if-no-files-found: error
+      - name: Remove signing material
+        if: always()
+        run: rm -f "$RUNNER_TEMP/android-release.jks"

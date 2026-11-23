@@ -55,6 +55,12 @@
 
 推荐使用MuMu模拟器12运行游戏，[模拟器支持情况](https://maa.plus/docs/zh-cn/manual/device/windows.html)请查看官方文档。
 
+### Android（实验性）
+
+Android 构建改为 MaaFwApp APK，不再将 Android 原生库 ZIP 当作可安装客户端发布。支持范围为 Android 10+、灰烬战线 B 服、Shizuku 或 root、1280×720 后台虚拟屏幕；首次正式使用前仍需手机端验收。普通 ARM64 手机选择 `android-arm64-v8a` APK。
+
+构建方式、签名 Secrets 与验收限制见 [Android 说明](Android/README.md)。Android GUI 使用 AGPL v3，原有任务资源和 agent 继续使用 MIT；组合分发及对应源码要求见 [Android 许可说明](Android/NOTICE.md)。
+
 ## 功能列表
 
 - 启动游戏
@@ -86,6 +92,8 @@
 
 - [MFAAvalonia](https://github.com/SweetSmellFox/MFAAvalonia)  
   基于 Avalonia UI 构建的 MaaFramework 通用 GUI 解决方案
+- [MaaFwApp](https://github.com/Aliothmoon/MaaFwApp)
+  MaaFramework Android GUI；Android 构建与 Python agent 接入参考 [M9A](https://github.com/MAA1999/M9A)。
 
 感谢以下开发者对本项目作出的贡献:
 

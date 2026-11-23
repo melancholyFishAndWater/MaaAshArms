@@ -15,6 +15,9 @@ on:
       - "**"
     paths:
       - ".github/workflows/install.yml"
+      - ".github/workflows/android-build.yml"
+      - "Android/**"
+      - "tools/android-packaging.mjs"
       - "assets/**"
       - "**.py"
       - "requirements.txt"
@@ -26,6 +29,9 @@ on:
       - "**"
     paths:
       - ".github/workflows/install.yml"
+      - ".github/workflows/android-build.yml"
+      - "Android/**"
+      - "tools/android-packaging.mjs"
       - "assets/**"
       - "**.py"
       - "requirements.txt"
@@ -75,6 +81,15 @@ jobs:
       is_release: ${{ steps.set_tag.outputs.is_release }}
       is_prerelease: ${{ steps.set_tag.outputs.is_prerelease }}
 
+  android:
+    needs: meta
+    if: needs.meta.outputs.is_release == 'true'
+    uses: ./.github/workflows/android-build.yml
+    with:
+      assemble: release
+      version: ${{ needs.meta.outputs.tag }}
+    secrets: inherit
+
   install:
     needs: meta
     runs-on: ${{ matrix.runner }}
@@ -89,7 +104,7 @@ jobs:
         # 一档 = 一个"原生 runner + 目标平台/架构"。必须原生：
         #   * aarch64 的解释器和它的 wheel 不能在 x86_64 宿主上安装/校验；
         #   * macOS 的 wheel 必须在 macOS 宿主上解析，否则会静默装成别的平台。
-        # runtime_platform 为空表示这一档不打包 Python 运行时（android 没有 CPython）。
+        # Android 由独立 android-build.yml 构建 APK，不再发布资源 ZIP。
         # mfa_os / mfa_arch 是 MFAAvalonia 资产名里的平台段（注意 macOS 用 osx）。
         include:
           - { runner: windows-latest,   artifact_os: win,     arch: x86_64,  mfa_os: win,   mfa_arch: x64,   runtime_platform: win-x64 }
@@ -98,8 +113,6 @@ jobs:
           - { runner: ubuntu-24.04-arm, artifact_os: linux,   arch: aarch64, mfa_os: linux, mfa_arch: arm64, runtime_platform: linux-arm64 }
           - { runner: macos-15-intel,   artifact_os: macos,   arch: x86_64,  mfa_os: osx,   mfa_arch: x64,   runtime_platform: osx-x64 }
           - { runner: macos-latest,     artifact_os: macos,   arch: aarch64, mfa_os: osx,   mfa_arch: arm64, runtime_platform: osx-arm64 }
-          - { runner: ubuntu-latest,    artifact_os: android, arch: x86_64,  mfa_os: "",    mfa_arch: "",    runtime_platform: "" }
-          - { runner: ubuntu-latest,    artifact_os: android, arch: aarch64, mfa_os: "",    mfa_arch: "",    runtime_platform: "" }
 
     steps:
       - uses: actions/checkout@v4
@@ -247,7 +260,7 @@ jobs:
 
   release:
     if: ${{ needs.meta.outputs.is_release == 'true' }}
-    needs: [meta, install, changelog]
+    needs: [meta, install, android, changelog]
     runs-on: ubuntu-latest
     concurrency:
       group: release-${{ github.ref_name }}
@@ -255,11 +268,21 @@ jobs:
       contents: write          # 现在 install.yml 整个文件没有 permissions 块；gh 步骤需要写权限
     steps:
       - uses: actions/download-artifact@v4
-        with: { path: assets, merge-multiple: true }
+        with:
+          path: assets
+          pattern: MaaAshArms-*
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          path: assets
+          pattern: android-apk-release-*
+          merge-multiple: true
 
       - uses: softprops/action-gh-release@v2
         with:
-          files: assets/*
+          files: |
+            assets/*.zip
+            assets/*.apk
           tag_name: ${{ needs.meta.outputs.tag }}
           body: ${{ needs.changelog.outputs.release_body }}
           draft: true                                   # ← 只改这一行

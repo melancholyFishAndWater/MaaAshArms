@@ -6,6 +6,9 @@ on:
       - "**"
     paths:
       - ".github/workflows/check.yml"
+      - "Android/**"
+      - "tools/android-packaging.mjs"
+      - "tests/android-packaging.test.mjs"
       - "assets/**"
       - "**.py"
       - "pyproject.toml"
@@ -17,6 +20,9 @@ on:
       - "**"
     paths:
       - ".github/workflows/check.yml"
+      - "Android/**"
+      - "tools/android-packaging.mjs"
+      - "tests/android-packaging.test.mjs"
       - "assets/**"
       - "**.py"
       - "pyproject.toml"
@@ -68,6 +74,9 @@ jobs:
       # error 才算失败。
       - name: Validate references and conventions
         run: uv run --locked python tools/validation/cli.py validate-refs --format github
+
+      - name: Test Android version pairing
+        run: node --test tests/android-packaging.test.mjs
 
       # agent 纯逻辑打桩测试：不连设备、不起 MFA，只断言决策分支。
       # 与发布依赖使用同一锁定版本，不安装最新预发布 maafw。
