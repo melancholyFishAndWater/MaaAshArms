@@ -1,0 +1,5 @@
+# Android 生成目录与本地密钥不入库
+/staging/
+/agent-dist/
+*.jks
+*.keystore

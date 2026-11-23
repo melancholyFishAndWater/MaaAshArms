@@ -1,0 +1,39 @@
+# 路径相对本文件；staging 由 package.py 生成，不直接指 assets/（缺少 agent）。
+assets: staging
+include:
+  - interface.json
+  - resource/**
+  - agent/**
+  - logo.png
+  - LICENSE
+  - LICENSE-MaaFwApp
+  - NOTICE-Android.md
+  - README.md
+exclude: []
+agent:
+  sourceDir: agent-dist
+  # ABI 由构建任务选定；各包的 runtime 和 native libs 必须同集合。
+  runtimes:
+    - location: bundle
+      executable: bin/python3
+      args: [-u, agent/main.py]
+      env:
+        PYTHONHOME: "{bundle}/prefix"
+        PYTHONPATH: "{bundle}/site-packages/pure.zip:{bundle}/site-packages"
+        LD_LIBRARY_PATH: "{bundle}/prefix/lib:{bundle}/site-packages/chaquopy/lib:{nativeLibs}"
+        MAAFW_BINARY_PATH: "{nativeLibs}"
+logs:
+  include:
+    - debug/**/*.log
+    - agent/debug/**/*.log
+display:
+  foreground: false
+  presets:
+    - label: 720P
+      width: 1280
+      height: 720
+      dpi: 240
+app:
+  id: maaasharms
+  label: MaaAshArms
+  icon: ../logo.png
