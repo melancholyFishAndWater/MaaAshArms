@@ -93,8 +93,17 @@ Android 构建改为 MaaFwApp APK，不再将 Android 原生库 ZIP 当作可安
 - [MFAAvalonia](https://github.com/SweetSmellFox/MFAAvalonia)  
   基于 Avalonia UI 构建的 MaaFramework 通用 GUI 解决方案
 - [MaaFwApp](https://github.com/Aliothmoon/MaaFwApp)
-  MaaFramework Android GUI；Android 构建与 Python agent 接入参考 [M9A](https://github.com/MAA1999/M9A)。
+  MaaFramework Android GUI；
 
-感谢以下开发者对本项目作出的贡献:
+### 项目借鉴
+
+- [M9A](https://github.com/MAA1999/M9A)
+  Android 构建与 Python agent 接入参考
+
+### 参与早期测试的群友（不分先后）
+
+HZCK、浮mo、wert、文浩、文梓II、竹和枫_Warspite、23457
+
+### 开发者贡献
 
 [![Contributors](https://contrib.rocks/image?repo=melancholyFishAndWater/MaaAshArms&max=1000)](https://github.com/melancholyFishAndWater/MaaAshArms/graphs/contributors)
