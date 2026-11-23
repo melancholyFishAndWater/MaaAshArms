@@ -31,7 +31,7 @@ Android agent 使用 [MaaAgentCoreAndroid](https://github.com/Aliothmoon/MaaAgen
 
 ## CI 与签名
 
-- `android.yml`：分支 push / PR 出 ARM64 debug 工件；手动可以选 release，但不创建 GitHub Release。
+- `android.yml`：分支 push / PR 分别出 ARM64 与 x86_64 debug 工件；手动可以选 release，但不创建 GitHub Release。普通 ARM64 真机选 `android-apk-debug-arm64-v8a`，x86_64 MuMu 选 `android-apk-debug-x86_64`。模拟器能通过翻译层打开 ARM64 界面，不代表 x86_64 Shizuku 特权进程能加载 ARM64 原生库。
 - `android-build.yml`：可复用 APK 流程。当前固定外壳采用 JDK 25、Android SDK（compile SDK 37）、NDK 29.0.13113456、CMake 3.22.1、Python 3.13；参考 M9A 使用 macOS runner 构建 APK，另用 Ubuntu 检查库模块资源。
 - `install.yml`：正式 `v*` tag 同时调用桌面和 APK 构建，全部就绪后统一发到同一个 Release；R8 mapping 保留为 Actions 工件，不混进下载附件。
 

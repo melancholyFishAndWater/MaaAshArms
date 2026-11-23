@@ -51,7 +51,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(inputs.assemble == 'release' && '[{"label":"universal","abis":"arm64-v8a,x86_64"},{"label":"arm64-v8a","abis":"arm64-v8a"},{"label":"x86_64","abis":"x86_64"}]' || '[{"label":"arm64-v8a","abis":"arm64-v8a"}]') }}
+        include: ${{ fromJSON(inputs.assemble == 'release' && '[{"label":"universal","abis":"arm64-v8a,x86_64"},{"label":"arm64-v8a","abis":"arm64-v8a"},{"label":"x86_64","abis":"x86_64"}]' || '[{"label":"arm64-v8a","abis":"arm64-v8a"},{"label":"x86_64","abis":"x86_64"}]') }}
     env:
       PI_PROFILE: ${{ github.workspace }}/Android/profile.yaml
       ASSEMBLE: ${{ inputs.assemble }}
