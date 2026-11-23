@@ -38,9 +38,9 @@
         ],
         "method": 10001,
         "green_mask": true,
-        "action": "Click",
         "order_by": "Score",
         "threshold": 0.8,
+        "action": "Click",
         "timeout": 60000,
         "rate_limit": 3000,
         "next": [
@@ -49,7 +49,8 @@
             "StartUpBranchLoading",
             "[JumpBack]BaseClickErrorConfirm",
             "StartUpEnterSignIn",
-            "StartUpEnterLogin"
+            "StartUpEnterLogin",
+            "StartUpEnterIcon" // 可能点击时间过长 变成长按图标
         ],
         "focus": {
             "Node.PipelineNode.Failed": {
