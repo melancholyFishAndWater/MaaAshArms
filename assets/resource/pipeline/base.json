@@ -301,6 +301,81 @@
             130
         ]
     },
+    /* -------------------- 动作-今日不再提示 -------------------- */
+    "BaseClickNoticeDisable": {
+        "desc": "点击公告不再提示",
+        "recognition": "TemplateMatch",
+        "template": "StartUp/NoticeDartGreen.png",
+        "green_mask": true,
+        "threshold": 0.93,
+        "roi": [
+            307,
+            95,
+            246,
+            50
+        ],
+        "action": "Click",
+        "post_wait_freezes": 1000,
+        "next": [
+            "BaseErrorNext",
+            "[JumpBack]BaseClickErrorConfirm",
+            "BaseClickNoticeClose",
+            "BaseClickNoticeDisable"
+        ],
+        "focus": {
+            "Node.Recognition.Succeeded": "点击公告不再提示"
+        }
+    },
+    // 关闭公告
+    "BaseClickNoticeClose": {
+        "desc": "点击其他区域关闭公告页面",
+        "recognition": "TemplateMatch",
+        "template": "StartUp/NoticeLightGreen.png",
+        "green_mask": true,
+        "threshold": 0.93,
+        "roi": [
+            307,
+            95,
+            246,
+            50
+        ],
+        "target": [
+            0,
+            -1
+        ],
+        "action": "Click",
+        "post_wait_freezes": 1000,
+        "next": [
+            "[JumpBack]BaseClickRewardTap",
+            "[JumpBack]BaseClickErrorConfirm",
+            "BaseClickActivityClose",
+            "BaseClickNoticeClose"
+        ]
+    },
+    /* -------------------- 动作-关闭活动一览 -------------------- */
+    "BaseClickActivityClose": {
+        "desc": "点击活动一览关闭按钮",
+        "recognition": "OCR",
+        "expected": "登录",
+        "roi": [
+            138,
+            15,
+            73,
+            41
+        ],
+        "target": [
+            57,
+            41
+        ],
+        "action": "Click",
+        "post_wait_freezes": 1000,
+        "next": [
+            "BaseErrorNext",
+            "BaseProbeHome",
+            "[JumpBack]BaseClickErrorConfirm",
+            "BaseClickActivityClose"
+        ]
+    },
     /* -------------------- 就位 -------------------- */
     "BaseReturnHome": {
         "desc": "确保在主页面",
@@ -315,7 +390,7 @@
             "BaseProbeHome",
             "[JumpBack]BaseClickHomeButton",
             "[JumpBack]BaseClickBackButton",
-            "[JumpBack]BaseClickUpperRight"
+            "[JumpBack]BaseClickNoticeDisable" // 防止没点今日不提示
         ],
         "focus": {
             "Node.PipelineNode.Failed": {

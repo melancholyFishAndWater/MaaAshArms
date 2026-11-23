@@ -1,4 +1,5 @@
 """启动链的必要能力与优先级契约；不是完整配置快照，也不模拟 MaaFW。"""
+
 from copy import deepcopy
 from pathlib import Path
 import re
@@ -44,7 +45,11 @@ def _assert_entry_contract(pipeline):
 
 def _assert_launch_contract(pipeline, name):
     node = pipeline[name]
-    for target in ("StartUpBranchLoading", "StartUpClickDisclaimer", "BaseClickErrorConfirm"):
+    for target in (
+        "StartUpBranchLoading",
+        "StartUpClickDisclaimer",
+        "BaseClickErrorConfirm",
+    ):
         assert _reachable(pipeline, name, target), (name, target)
     assert node["timeout"] > 0
     failure = node["focus"]["Node.PipelineNode.Failed"]
@@ -59,7 +64,7 @@ def _assert_login_contract(pipeline, name):
     assert node["action"] == "Click"
     assert "BaseErrorNext" in choices
     assert choices.index("BaseProbeHome") < choices.index(name)
-    assert _reachable(pipeline, name, "StartUpClickNoticeDisable")
+    assert _reachable(pipeline, name, "BaseClickNoticeDisable")
 
 
 def _assert_update_notice_contract(pipeline):
@@ -68,14 +73,22 @@ def _assert_update_notice_contract(pipeline):
     update = pipeline["StartUpClickUpdate"]
     assert update["recognition"] == "And" and update["action"] == "Click"
     assert {"StartUpProbeDownloadText", "BaseProbeConfirm"} <= set(update["all_of"])
-    assert _reachable(pipeline, "StartUpClickNoticeDisable", "StartUpClickNoticeClose")
-    assert pipeline["StartUpClickNoticeDisable"]["action"] == "Click"
-    assert pipeline["StartUpClickNoticeClose"]["action"] == "Click"
+    assert _reachable(pipeline, "BaseClickNoticeDisable", "BaseClickNoticeClose")
+    assert _reachable(pipeline, "BaseClickNoticeClose", "BaseClickActivityClose")
+    for name in (
+        "BaseClickNoticeDisable", "BaseClickNoticeClose", "BaseClickActivityClose"
+    ):
+        assert pipeline[name]["action"] == "Click"
 
 
 @pytest.fixture(scope="module")
 def startup():
-    return load_jsonc(ROOT / "assets/resource/pipeline/startup.json")
+    # 公告与活动关闭节点位于 base.json；启动链契约需要同时加载公共依赖。
+    pipeline_dir = ROOT / "assets/resource/pipeline"
+    return {
+        **load_jsonc(pipeline_dir / "base.json"),
+        **load_jsonc(pipeline_dir / "startup.json"),
+    }
 
 
 def test_startup_entry_and_in_game_stop(startup):
@@ -91,7 +104,9 @@ def test_icon_and_package_actions(startup):
     assert startup["StartUpEnterIcon"]["action"] == "Click"
     assert startup["StartUpEnterIcon"]["recognition"] == "TemplateMatch"
     assert startup["StartUpEnterPackageBlibili"]["action"] == "StartApp"
-    assert startup["StartUpEnterPackageBlibili"]["package"] == "com.asharmdolls.bilibili"
+    assert (
+        startup["StartUpEnterPackageBlibili"]["package"] == "com.asharmdolls.bilibili"
+    )
 
 
 @pytest.mark.parametrize("name", LOGINS)
@@ -120,8 +135,8 @@ def test_contracts_allow_auxiliary_nodes_and_indirection(startup):
     pipeline["StartUpClickUpdate"]["all_of"].reverse()
     # 原配置默认从首项取框，调序例子必须同步保留原来的落框节点。
     pipeline["StartUpClickUpdate"]["box_index"] = 1
-    pipeline["NoticeBridge"] = {"next": ["StartUpClickNoticeClose"]}
-    pipeline["StartUpClickNoticeDisable"]["next"] = ["NoticeBridge"]
+    pipeline["NoticeBridge"] = {"next": ["BaseClickNoticeClose"]}
+    pipeline["BaseClickNoticeDisable"]["next"] = ["NoticeBridge"]
     _assert_entry_contract(pipeline)
     for name in LAUNCHES:
         _assert_launch_contract(pipeline, name)
@@ -151,7 +166,10 @@ def test_contract_rejects_home_after_retry(startup, name):
         _assert_login_contract(pipeline, name)
 
 
-@pytest.mark.parametrize("broken", ["loading", "failure-content", "failure-display", "update-confirm", "notice-close"])
+@pytest.mark.parametrize(
+    "broken",
+    ["loading", "failure-content", "failure-display", "update-confirm", "notice-close"],
+)
 def test_contract_rejects_lost_required_capability(startup, broken):
     pipeline = deepcopy(startup)
     if broken == "loading":
@@ -159,13 +177,15 @@ def test_contract_rejects_lost_required_capability(startup, broken):
         check = lambda: _assert_launch_contract(pipeline, LAUNCHES[0])
     elif broken.startswith("failure-"):
         failure = pipeline[LAUNCHES[0]]["focus"]["Node.PipelineNode.Failed"]
-        failure["content" if broken == "failure-content" else "display"] = "" if broken == "failure-content" else []
+        failure["content" if broken == "failure-content" else "display"] = (
+            "" if broken == "failure-content" else []
+        )
         check = lambda: _assert_launch_contract(pipeline, LAUNCHES[0])
     else:
         if broken == "update-confirm":
             pipeline["StartUpClickUpdate"]["all_of"].remove("BaseProbeConfirm")
         else:
-            pipeline["StartUpClickNoticeDisable"]["next"] = []
+            pipeline["BaseClickNoticeDisable"]["next"] = []
         check = lambda: _assert_update_notice_contract(pipeline)
     with pytest.raises(AssertionError):
         check()

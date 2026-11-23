@@ -224,7 +224,7 @@
                     "next": [
                         "ReplaysStopConnect",
                         "[JumpBack]BaseClickRewardTap",
-                        "[JumpBack]StartUpClickNoticeDisable",
+                        "[JumpBack]BaseClickNoticeDisable",
                         "StartUpEnterSignIn"
                     ]
                 }
