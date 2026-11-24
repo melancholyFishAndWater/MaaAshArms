@@ -214,7 +214,15 @@
             "BaseProbeConfirm"
         ],
         "action": "Click",
-        "post_wait_freezes": 500
+        "post_wait_freezes": {
+            "time": 500,
+            "target_offset": [
+                -30,
+                -30,
+                60,
+                60
+            ]
+        }
     },
     "BaseClickCancel": {
         "desc": "通用点击取消",
@@ -227,7 +235,15 @@
             383
         ],
         "action": "Click",
-        "post_wait_freezes": 500
+        "post_wait_freezes": {
+            "time": 500,
+            "target_offset": [
+                -30,
+                -30,
+                60,
+                60
+            ]
+        }
     },
     "BaseClick": {
         "desc": "点击屏幕中心",
@@ -236,16 +252,15 @@
             640,
             360
         ],
-        "post_wait_freezes": 200
-    },
-    "BaseClickUpperRight": {
-        "desc": "点击右上",
-        "target": [
-            -1,
-            0
-        ],
-        "action": "Click",
-        "post_wait_freezes": 500
+        "post_wait_freezes": {
+            "time": 500,
+            "target_offset": [
+                -30,
+                -30,
+                60,
+                60
+            ]
+        }
     },
     "BaseClickTapBox": {
         "desc": "点击tap区域",
@@ -254,7 +269,15 @@
             640,
             620
         ],
-        "post_wait_freezes": 500
+        "post_wait_freezes": {
+            "time": 500,
+            "target_offset": [
+                -30,
+                -30,
+                60,
+                60
+            ]
+        }
     },
     // INFO 点击获得一览Tap
     "BaseClickRewardTap": {
@@ -268,7 +291,15 @@
             620
         ],
         "action": "Click",
-        "post_wait_freezes": 1000,
+        "post_wait_freezes": {
+            "time": 500,
+            "target_offset": [
+                -30,
+                -30,
+                60,
+                60
+            ]
+        },
         "next": [
             "BaseErrorNext",
             "[JumpBack]BaseBranchError",
@@ -283,7 +314,15 @@
             "BaseProbeBackButton"
         ],
         "action": "Click",
-        "post_wait_freezes": 1000
+        "post_wait_freezes": {
+            "time": 500,
+            "target_offset": [
+                -30,
+                -30,
+                60,
+                60
+            ]
+        }
     },
     "BaseClickHomeButton": {
         "desc": "点击回主页按钮",
@@ -292,13 +331,15 @@
             "StartUp/HomeButton.png"
         ],
         "action": "Click",
-        "post_wait_freezes": 1000,
-        "roi": [
-            1140,
-            0,
-            140,
-            130
-        ]
+        "post_wait_freezes": {
+            "time": 500,
+            "target_offset": [
+                -30,
+                -30,
+                60,
+                60
+            ]
+        }
     },
     /* -------------------- 动作-今日不再提示 -------------------- */
     "BaseClickNoticeDisable": {
