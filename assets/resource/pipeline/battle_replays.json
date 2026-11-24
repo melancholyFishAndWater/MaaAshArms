@@ -60,6 +60,7 @@
             "BattleProbeFormation"
         ],
         "next": [
+            "ReplaysStopBuild",
             "[JumpBack]BattleBranchReplenish",
             "BattleStopActionDart",
             "BattleStopReplayLocked",
@@ -67,6 +68,21 @@
             "ReplaysClickAttack",
             "[JumpBack]BaseBranchError"
         ]
+    },
+    "ReplaysStopBuild": {
+        "desc": "需要建造 任务结束",
+        "recognition": "OCR",
+        "expected": "建造",
+        "roi": [
+            221,
+            163,
+            627,
+            391
+        ],
+        "action": "StopTask",
+        "focus": {
+            "Node.PipelineNode.Succeeded": "DOLLS不足 需要建造 任务结束"
+        }
     },
     "ReplaysStopReplayOff": {
         "desc": "未开启代理作战",

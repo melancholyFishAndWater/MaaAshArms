@@ -6,7 +6,7 @@
             "label": "自定义建造个数",
             "inputs": [
                 {
-                    "name": "build_amrs_number",
+                    "name": "number",
                     "label": "单次建造几个",
                     "default": "1",
                     "pipeline_type": "int",
@@ -17,7 +17,7 @@
             "pipeline_override": {
                 "FactoryBranchHome": {
                     "custom_action_param": {
-                        "build_times": "{build_amrs_number}"
+                        "once_build_number": "{number}"
                     }
                 }
             }
@@ -27,7 +27,7 @@
             "type": "input",
             "inputs": [
                 {
-                    "name": "build_amrs_times",
+                    "name": "times",
                     "label": "建造次数",
                     "default": "3",
                     "pipeline_type": "int",
@@ -37,7 +37,9 @@
             ],
             "pipeline_override": {
                 "FactoryCheckTaskEnd": {
-                    "custom_recognition_param": "{build_amrs_times}"
+                    "custom_recognition_param": {
+                        "build_times": "{times}"
+                    }
                 }
             }
         },
@@ -69,7 +71,9 @@
                     "pipeline_override": {
                         "FactoryCheckTaskEnd": {
                             // INFO 每日任务要求造三个
-                            "custom_recognition_param": 3
+                            "custom_recognition_param": {
+                                "build_times": 3
+                            }
                         }
                     }
                 },

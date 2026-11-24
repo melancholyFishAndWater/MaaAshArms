@@ -276,7 +276,7 @@ class Daily(Generic[JSON_VAR]):
         """
         若今日执行过，则返回 box
 
-        通过 custom_recognition_param.enable = false 强制不返回
+        设置 custom_recognition_param.enable = false 以强制不返回
 
         Args:
             context (Context): 上下文
@@ -348,7 +348,7 @@ class GiftDailyUpdateAct(CustomAction):
 
 # ----- 订单工厂 -----
 
-_factory = Daily[list[int]]("daily_factory.json", default=[])
+_factory = Daily[int]("daily_factory.json", default=0)
 
 
 @AgentServer.custom_recognition("FactoryStopDailyReco")
@@ -356,7 +356,9 @@ class FactoryStopDailyReco(CustomRecognition):
     def analyze(
         self, context: Context, argv: CustomRecognition.AnalyzeArg
     ) -> list[int] | None:
-        return _factory.reco(context, argv, func=lambda x: len(x) >= 3)
+        r = _factory.reco(context, argv, func=lambda x: x >= 3)
+        factory.built_times = _factory.value
+        return r
 
 
 @AgentServer.custom_action("FactoryDailyUpdateAct")
@@ -364,9 +366,7 @@ class FactoryDailyUpdateAct(CustomAction):
     def run(
         self, context: Context, argv: CustomAction.RunArg
     ) -> CustomAction.RunResult | bool:
-        set_ = set(_factory.value)
-        set_.add(factory.build_times_now)
-        return _factory.act(argv, list(set_))
+        return _factory.act(argv, factory.built_times)
 
 
 # ----- 训练所 -----

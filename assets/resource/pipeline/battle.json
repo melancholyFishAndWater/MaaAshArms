@@ -234,10 +234,22 @@
             34
         ],
         "action": "Click",
-        "post_wait_freezes": 1000,
-        "focus": {
-            "Node.Action.Succeeded": "补充小队成员"
-        }
+        "post_wait_freezes": 1000
+    },
+    /* -------------------- 分支-需要建造 -------------------- */
+    "BattleBranchBuild": {
+        "desc": "需要建造",
+        "recognition": "OCR",
+        "expected": "建造",
+        "roi": [
+            221,
+            163,
+            627,
+            391
+        ],
+        "next": [
+            "TaskFastFactory"
+        ]
     },
     /* -------------------- 分支-战斗编队页面 -------------------- */
     // TODO 自动作战
@@ -314,6 +326,7 @@
         ],
         "post_wait_freezes": 2000,
         "next": [
+            "BattleBranchBuild",
             "[JumpBack]BattleBranchReplenish",
             "BattleClickReplayAttack",
             "[JumpBack]BaseBranchError"

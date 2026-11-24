@@ -1,41 +1,126 @@
 {
-    // 快速建造任务入口 此节点给其他任务使用而非直接写入任务面板
+    /*
+    INFO 快速工厂任务
+    给其他任务使用
+
+    使用任务链结构 v3.11 校验年月日 26/11/24
+    使用节点命名与分类 v3.3 校验年月日 26/11/24
+    */
     "TaskFastFactory": {
-        "desc": " FastFactoryStopOnMaxCount 建造第x次第一个角色; FactoryChooseNumber 一次建造多少个",
-        "next": [
-            "FastFactoryInit",
-            "[JumpBack]BaseBranchError"
-            // "[JumpBack]ReturnFactory" // TODO
-        ]
-    },
-    // 快速建造流程
-    "FastFactoryInit": {
-        "desc": "处理干扰项以准备快速建造缺失的角色",
-        "recognition": "And",
-        "all_of": [
-            "FactoryProbeHome"
-        ],
+        "desc": "快速建造",
         "action": "Custom",
-        "custom_action": "FastFactoryInitAct",
+        "custom_action": "TaskFastFactoryAct",
         "next": [
-            "[JumpBack]FactoryClickSkip",
-            "FastFactoryNext"
+            "FastBranchHome", // 调试则启用
+            "FastEnterHome",
+            "[JumpBack]BaseBranchError",
+            "[JumpBack]BaseReturnHome"
         ]
     },
-    "FastFactoryNext": {
-        "desc": "快速建造前x个缺失的角色",
+    /* -------------------- 动作-进入主页 -------------------- */
+    "FastEnterHome": {
+        "desc": "从主页进入订单工厂",
+        "recognition": "TemplateMatch",
+        "template": "Factory/HomeButtonGreen.png",
+        "green_mask": true,
+        "method": 10001,
+        "threshold": 0.95,
+        "roi": [
+            649,
+            632,
+            80,
+            76
+        ],
+        "action": "Click",
+        "post_wait_freezes": 6000,
+        "next": [
+            "BaseErrorNext",
+            "FastBranchHome",
+            "[JumpBack]BaseBranchError",
+            "FastEnterHome"
+        ]
+    },
+    /* -------------------- 分支-主页 -------------------- 
+    INFO 先领取完角色
+    */
+    "FastBranchHome": {
+        "desc": "主页-只领取角色",
+        "recognition": "OCR",
+        "expected": "订单工厂",
+        "roi": [
+            112,
+            8,
+            198,
+            51
+        ],
+        "timeout": 45000,
         "next": [
             "[JumpBack]FactoryClickSkip",
             "[JumpBack]FactoryGetReward",
-            "FastFactoryStopOnMaxCount",
-            "[JumpBack]FactoryClickCreateOrder"
+            "FastBranchCreateOrder",
+            "[JumpBack]FastClickBackHome",
+            "[JumpBack]BaseBranchError",
+            "[JumpBack]BaseMoveUp"
         ]
     },
-    "FastFactoryStopOnMaxCount": {
-        "desc": "达到大于建造次数则停止",
+    /* -------------------- 动作-返回主页 -------------------- */
+    "FastClickBackHome": {
+        "desc": "从选择角色页面返回主页",
+        "recognition": "OCR",
+        "expected": "选择需要建造的",
+        "roi": [
+            204,
+            78,
+            286,
+            37
+        ],
+        "action": "Click",
+        "target": [
+            100,
+            360
+        ],
+        "post_wait_freezes": 1000,
+        "next": [
+            "BaseErrorNext",
+            "FastProbeBackSuccess",
+            "FastClickBackHome",
+            "[JumpBack]BaseBranchError"
+        ]
+    },
+    "FastProbeBackSuccess": {
+        "desc": "[end] 返回成功",
+        "recognition": "OCR",
+        "expected": "消耗",
+        "roi": [
+            287,
+            322,
+            50,
+            29
+        ]
+    },
+    /* -------------------- 分支-创建订单 -------------------- 
+    INFO 正式创建订单
+    */
+    "FastBranchCreateOrder": {
+        "desc": "正式创建订单",
         "recognition": "Custom",
-        "custom_recognition": "FastFactoryStopOnMaxCountReco",
-        "custom_recognition_param": 3, // 建造x次第一个角色
-        "action": "StopTask"
+        "custom_recognition": "FastProbeCreateOrderReco",
+        "next": [
+            "FastStartOrgTask",
+            "[JumpBack]FactoryClickSkip",
+            "[JumpBack]FactoryGetReward",
+            "[JumpBack]FactoryClickCreateOrder",
+            "[JumpBack]FactoryChooseNumber",
+            // TODO 子节点卡住
+            "[JumpBack]BaseBranchError"
+        ]
+    },
+    /* -------------------- 探测-进入主页 -------------------- */
+    "FastStartOrgTask": {
+        "desc": "[end] 领取次数达标 弹回主任务",
+        "recognition": "Custom",
+        "custom_recognition": "FastStartOrgTaskReco",
+        "action": "Custom",
+        "custom_action": "FastStartOrgTaskAct"
     }
 }

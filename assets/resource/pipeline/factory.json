@@ -59,7 +59,7 @@
             "FactoryEnterHome"
         ]
     },
-    /* -------------------- 主页 -------------------- */
+    /* -------------------- 分支-主页 -------------------- */
     "FactoryBranchHome": {
         "desc": "订单厂任务",
         "recognition": "OCR",
@@ -71,10 +71,11 @@
             51
         ],
         "action": "Custom",
-        "custom_action": "TaskFactoryNextAct", // 初始化
+        "custom_action": "FactoryBranchHomeAct", // 初始化
         "custom_action_param": {
-            "build_times": 1 // 建造数
+            "once_build_number": 1 // 建造数
         },
+        "timeout": 45000,
         "next": [
             "FactoryCheckTaskEnd",
             "[JumpBack]FactoryClickSkip",
@@ -91,7 +92,9 @@
         "desc": "检测任务是否满足结束条件",
         "recognition": "Custom",
         "custom_recognition": "FactoryCheckTaskEndReco",
-        "custom_recognition_param": 3, // 建造次数,
+        "custom_recognition_param": {
+            "build_times": 3 // 建造次数
+        },
         "next": [
             "FactoryDailyUpdate"
         ]
@@ -120,23 +123,23 @@
         "action": "Click",
         "post_wait_freezes": 500,
         "next": [
-            "FactoryClickSkipConfirm",
+            "BaseClickConfirm",
             "[JumpBack]BaseBranchError"
         ]
     },
     // TODO 验证是否有多余生产许可
-    "FactoryClickSkipConfirm": {
-        "desc": "点击确认跳过按钮",
-        "recognition": "TemplateMatch",
-        "template": "Base/Confirm.png",
-        "method": 10001,
-        "roi": [
-            683,
-            422,
-            196,
-            66
-        ]
-    },
+    // "FactoryClickSkipConfirm": {
+    //     "desc": "点击确认跳过按钮",
+    //     "recognition": "TemplateMatch",
+    //     "template": "Base/Confirm.png",
+    //     "method": 10001,
+    //     "roi": [
+    //         683,
+    //         422,
+    //         196,
+    //         66
+    //     ]
+    // },
     /* -------------------- 分支-领取奖励 -------------------- */
     "FactoryGetReward": {
         "desc": "领取奖励",
@@ -155,7 +158,7 @@
             "FactoryGetRewardSuccess",
             "FactoryGetRewardFailed",
             "[JumpBack]BaseBranchError",
-            "FactoryGetRewardBox"
+            "[JumpBack]FactoryGetRewardBox"
         ]
     },
     // 点击领取区域
@@ -243,6 +246,8 @@
             255,
             419
         ],
+        "order_by": "Vertical",
+        "index": 0,
         "action": "Click",
         "post_wait_freezes": 1000,
         "timeout": 60000,
@@ -306,7 +311,6 @@
         "next": [
             "BaseErrorNext",
             "FactoryStopNoMetal",
-            "FactoryClickSkip",
             "FactoryChooseStartSuccess",
             "FactoryClickStart"
         ]

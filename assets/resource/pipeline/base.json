@@ -63,7 +63,6 @@
         "desc": "[end] 若画面连续k次冻结则识别成功 注意覆写roi",
         "recognition": "Custom",
         "custom_recognition": "BaseProbeFreezesReco",
-        "rate_limit": 1000,
         "roi": [
             0,
             0,

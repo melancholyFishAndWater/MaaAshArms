@@ -17,10 +17,10 @@ from maa.pipeline import JTemplateMatch, JOCR
 
 from agentlog import log
 from params import parse_params
-from rect import DEFAULT_HIT_BOX, toTuple
+from rect import DEFAULT_HIT_BOX
 
-# 建造次数
-build_times_now: int = 0
+# 今日 建造过的次数
+built_times: int = 0
 # 角色名: 结束时间戳
 _timestamp_by_build_end_names: dict[str, float] = {}
 # 尝试领取的角色名
@@ -184,9 +184,15 @@ class FactoryCheckTaskEndReco(CustomRecognition):
         # 提取变量
         n_name = argv.node_name
 
+        try:
+            d = parse_params(argv.custom_recognition_param, "build_times")
+            max_ = d["build_times"]
+        except Exception as e:
+            log.warn(f"{n_name} 解析参数失败: {e!r}")
+            return
+
         # 满足建造次数则结束
-        max_ = int(argv.custom_recognition_param)
-        if build_times_now >= max_:
+        if built_times >= max_:
             log.info("达到建造次数，任务结束")
             return DEFAULT_HIT_BOX
 
@@ -240,25 +246,24 @@ class FactoryCheckTaskEndReco(CustomRecognition):
 # ---------- action ----------
 
 
-# 初始化 _timestamp_by_build_end_names build_times
-@AgentServer.custom_action("TaskFactoryNextAct")
-class TaskFactoryNextAct(CustomAction):
+# 初始化 FactoryChooseNumber 的 index
+@AgentServer.custom_action("FactoryBranchHomeAct")
+class FactoryBranchHomeAct(CustomAction):
     def run(
         self, context: Context, argv: CustomAction.RunArg
     ) -> CustomAction.RunResult | bool:
-        global build_times_now
+        global built_times
         log.debug(f"{argv.node_name} 执行初始化")
         try:
-            d = parse_params(argv.custom_action_param, "build_times")
+            d = parse_params(argv.custom_action_param, "once_build_number")
             r = context.override_pipeline(
-                {"FactoryChooseNumber": {"index": d["build_times"] - 1}}
+                {"FactoryChooseNumber": {"index": d["once_build_number"] - 1}}
             )
             if not r:
                 log.warn(f"{argv.node_name} 覆写失败 可能影响建造数")
         except Exception as e:
             log.warn(f"{argv.node_name} 初始化失败: {e!r}")
-        build_times_now = 0
-        _timestamp_by_build_end_names.clear()
+
         return True
 
 
@@ -268,13 +273,13 @@ class FactoryChooseStartSuccessAct(CustomAction):
     def run(
         self, context: Context, argv: CustomAction.RunArg
     ) -> CustomAction.RunResult | bool:
-        global build_times_now
-        build_times_now += 1
-        log.debug(f"{argv.node_name} 建造成功，建造数加一，当前数量: {build_times_now}")
+        global built_times
+        built_times += 1
+        log.debug(f"{argv.node_name} 建造成功，建造数加一，当前数量: {built_times}")
         return True
 
 
-# 领取成功或失败都执行
+# 领取成功或失败(角色已满)都执行
 @AgentServer.custom_action("FactoryGetRewardNextAct")
 class FactoryGetRewardNextAct(CustomAction):
     def run(
