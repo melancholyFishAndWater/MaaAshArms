@@ -201,7 +201,7 @@
             "EscortClickCancel"
         ]
     },
-    // 一键推荐
+    /* -------------------- 动作-一键推荐 -------------------- */
     "EscortChooseRecommend": {
         "desc": "点击一键推荐",
         "recognition": "OCR",
@@ -216,7 +216,7 @@
         "pre_wait_freezes": 2500,
         "next": [
             "BaseErrorNext",
-            "EscortClickConfirm",
+            "EscortBranchConfirm",
             "[JumpBack]BaseBranchError",
             "EscortProbeHomeName", // INFO 防止点到其他区域 窗口消失导致卡死
             "EscortChooseRecommend"
@@ -225,7 +225,22 @@
             "EscortClickCancel"
         ]
     },
-    // 确认
+    /* -------------------- 动作-确认 -------------------- */
+    "EscortBranchConfirm": {
+        "desc": "确认分支 没有加号(需要补充)", // PERF 人数不足
+        "recognition": "TemplateMatch",
+        "template": "Escort/Plus.png",
+        "inverse": true,
+        "roi": [
+            635,
+            160,
+            513,
+            168
+        ],
+        "next": [
+            "EscortClickConfirm"
+        ]
+    },
     "EscortClickConfirm": {
         "desc": "点击确认按钮执行任务",
         "recognition": "TemplateMatch",
