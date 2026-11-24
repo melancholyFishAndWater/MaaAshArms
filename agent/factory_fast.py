@@ -30,8 +30,8 @@ class FastStartOrgTaskReco(CustomRecognition):
 
 
 # 重新执行原始任务
-@AgentServer.custom_action("TaskFastStartOrgTaskAct")
-class TaskFastStartOrgTaskAct(CustomAction):
+@AgentServer.custom_action("FastStartOrgTaskAct")
+class FastStartOrgTaskAct(CustomAction):
     def run(
         self, context: Context, argv: CustomAction.RunArg
     ) -> CustomAction.RunResult | bool:
