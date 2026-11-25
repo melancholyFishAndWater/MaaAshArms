@@ -11,7 +11,7 @@
 
 **字段怎么配不在本文**：`recognition` / `next` / `pre_wait_freezes` / `rate_limit` / `max_hit` /
 `desc` 标记这些"写法"以编辑器里在用的那套模板为准——`tools/vscode/pipeline.snippets.schema.json`
-（它的 `$comment` 上写着对应的规范版本；自环新写法尚待模板同步，过渡期以任务链结构文档为准）。**页面类节点（`Probe` / `Branch`）放在哪个位置、
+（它的 `$comment` 上写着对应的规范版本；自环重试模板已同步，计数语义以任务链结构文档为准）。**页面类节点（`Probe` / `Branch`）放在哪个位置、
 `[JumpBack]` 和 `max_hit` 怎么算** 见 [任务链结构](./pipeline-structure.md)；节点该配哪些字段见
 [MaaFramework 文档](https://maafw.com/docs/1.1-QuickStarted)。
 

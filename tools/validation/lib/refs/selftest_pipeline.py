@@ -28,7 +28,6 @@ from .rules_misc import annotations_of
 from .rules_pipeline_a import (
     check_a13_naming,
     check_a13_references,
-    check_a14_loop_fallback,
     check_a15_error_branch,
     check_a7_jumpback,
 )
@@ -163,7 +162,7 @@ def _checks_core() -> list[tuple]:
     checks += [
         ("A13-probe-next" in naming_ids, "探测节点带 next 会被拦"),
         ("A13-click-synonym" in naming_ids, "ClickYes 这类同义写法会被拦"),
-        ("A13-loop-next" in naming_ids, "工作循环没有 next 会被拦"),
+        ("A13-loop-next" not in naming_ids, "v4.0 不再检查旧工作循环 next"),
         ("A13-key-case" in naming_ids, "参数键非 snake_case 会被拦"),
         ("A13-file-case" in naming_ids, "pipeline 片段文件名不符会被拦"),
     ]
@@ -204,35 +203,30 @@ def _checks_core() -> list[tuple]:
     # 就违反 §3 的"以 Loop 结尾"；判据按 `endswith("Loop")` 识别目标类别）。
     jb_ok = synth_ctx(
         {
-            "XEnterHome": {"action": "Click", "next": ["XLoopMainLoop"]},
-            "XLoopMainLoop": {
+            "XEnterHome": {"action": "Click", "next": ["XBranchMain"]},
+            "XBranchMain": {
                 "recognition": "And",
                 "all_of": ["XProbeHome"],
-                "next": ["[JumpBack]XLoopSubLoop"],
+                "next": ["[JumpBack]XBranchSub"],
             },
-            "XLoopSubLoop": {"recognition": "And", "all_of": ["XProbeHome"]},
+            "XBranchSub": {"recognition": "And", "all_of": ["XProbeHome"]},
             "XProbeHome": {"recognition": "TemplateMatch"},
         }
     )
     check_a7_jumpback(jb_ok)
     checks.append(
         (
-            any(
-                f.id == "A7-jumpback-target"
-                and f.severity == "info"
-                and "XLoopSubLoop" in f.message
-                for f in jb_ok.findings
-            ),
-            "指向子 Loop 的 [JumpBack] 只报 info",
+            not jb_ok.findings,
+            "子流程 jp 不再按 Loop 名称额外报告",
         )
     )
 
     jb_ancestor = synth_ctx(
         {
-            "XLoopMainLoop": {"recognition": "And", "next": ["XLoopChildLoop"]},
-            "XLoopChildLoop": {
+            "XBranchMain": {"recognition": "And", "next": ["XBranchChild"]},
+            "XBranchChild": {
                 "recognition": "And",
-                "next": ["[JumpBack]XLoopMainLoop"],
+                "next": ["[JumpBack]XBranchMain"],
             },
         }
     )
@@ -246,63 +240,6 @@ def _checks_core() -> list[tuple]:
             "指向祖先 Loop 的 [JumpBack] 仍报 error",
         )
     )
-
-    # A14：循环末项兜底取反守卫与循环守卫同探针 → warn；不同探针 → 不报
-    fallback_ctx = synth_ctx(
-        {
-            "XProbeWork": {"recognition": "OCR"},
-            "XProbeElse": {"recognition": "OCR"},
-            "XEnsureWork": {
-                "recognition": "And",
-                "all_of": ["XProbeWork"],
-                "inverse": True,
-            },
-            "XEnsureElse": {
-                "recognition": "And",
-                "all_of": ["XProbeElse"],
-                "inverse": True,
-            },
-            "XLoopWork": {
-                "recognition": "And",
-                "all_of": ["XProbeWork"],
-                "next": ["[JumpBack]XEnsureWork"],
-            },
-            "XLoopElse": {
-                "recognition": "And",
-                "all_of": ["XProbeWork"],
-                "next": ["[JumpBack]XEnsureElse"],
-            },
-            "XPlainWork": {
-                "recognition": "And",
-                "all_of": ["XProbeWork"],
-            },
-            "XLoopPlain": {
-                "recognition": "And",
-                "all_of": ["XProbeWork"],
-                "next": ["[JumpBack]XPlainWork"],
-            },
-        }
-    )
-    check_a14_loop_fallback(fallback_ctx)
-    checks += [
-        (
-            any(
-                f.id == "A14-fallback-same-probe"
-                and f.severity == "warn"
-                and "XLoopWork" in f.message
-                for f in fallback_ctx.findings
-            ),
-            "兜底取反守卫与循环守卫同探针 → 报 A14（warn，结构文档 §3 是硬规则）",
-        ),
-        (
-            not any("XLoopElse" in f.message for f in fallback_ctx.findings),
-            "兜底取反守卫换一个探针 → 不报 A14",
-        ),
-        (
-            not any("XLoopPlain" in f.message for f in fallback_ctx.findings),
-            "末项不是取反守卫（没有 inverse）→ 不报 A14",
-        ),
-    ]
 
     # 动词表新增 Enable：pipeline 内的开关型动作不再报 A13-verb
     enable_ctx = synth_ctx({"XEnableReward": {"action": "Custom"}})

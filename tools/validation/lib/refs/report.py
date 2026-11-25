@@ -25,15 +25,12 @@ from .rules_misc import (
     check_tasks,
 )
 from .rules_pipeline_a import (
-    check_a10_maxhit_in_loop,
     check_a11_expected,
     check_a12_focus,
     check_a13_naming,
     check_a13_references,
-    check_a14_loop_fallback,
     check_a15_error_branch,
     check_a17_guard_in_next,
-    check_a18_next_length,
     check_a1_dangling,
     check_a2_custom,
     check_a3_custom_mapping,
@@ -41,12 +38,11 @@ from .rules_pipeline_a import (
     check_a5_spin_trap,
     check_a6_complement,
     check_a7_jumpback,
-    check_a8_loop_guard,
 )
 from .rules_pipeline_b import (
     check_a19_desc_markers,
     check_a20_jp_self_loop,
-    check_a21_self_loop_error_next,
+    check_a21_self_loop_max_hit,
     check_a22_error_next_first,
     check_a23_section_comment,
     check_a25_ensure_banned,
@@ -345,19 +341,15 @@ def main(argv: list[str] | None = None) -> int:
         check_a5_spin_trap(ctx)
         check_a6_complement(ctx)
         check_a7_jumpback(ctx)
-        check_a8_loop_guard(ctx)
-        check_a10_maxhit_in_loop(ctx)
         check_a11_expected(ctx)
         check_a12_focus(ctx)
         check_a13_naming(ctx)
         check_a13_references(ctx)
-        check_a14_loop_fallback(ctx)
         check_a15_error_branch(ctx)
         check_a17_guard_in_next(ctx)
-        check_a18_next_length(ctx)
         check_a19_desc_markers(ctx)
         check_a20_jp_self_loop(ctx)
-        check_a21_self_loop_error_next(ctx)
+        check_a21_self_loop_max_hit(ctx)
         check_a22_error_next_first(ctx)
         check_a23_section_comment(ctx)
         check_a25_ensure_banned(ctx)

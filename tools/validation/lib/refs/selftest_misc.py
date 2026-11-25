@@ -11,14 +11,13 @@ from .rules_misc import check_agent, check_custom_params, check_option_shape, te
 from .rules_pipeline_a import (
     _is_inverse_guard,
     check_a17_guard_in_next,
-    check_a18_next_length,
     check_a2_custom,
     check_a4_shadowed,
 )
 from .rules_pipeline_b import (
     check_a19_desc_markers,
     check_a20_jp_self_loop,
-    check_a21_self_loop_error_next,
+    check_a21_self_loop_max_hit,
     check_a22_error_next_first,
     check_a23_section_comment,
     check_a25_ensure_banned,
@@ -146,74 +145,6 @@ def _checks_rest(checks: list[tuple]) -> None:
         (
             "XBranchMax" not in shadow_hits,
             "必然命中但带 max_hit → 不报 A4（v3.7：用尽即让位）",
-        ),
-    ]
-
-    # A18：next 列表长度上限（pipeline-structure.md §10）
-    length_ctx = synth_ctx(
-        {
-            "XProbeA": {"recognition": "OCR"},
-            "XProbeB": {"recognition": "OCR"},
-            "XProbeC": {"recognition": "OCR"},
-            "XProbeD": {"recognition": "OCR"},
-            "XProbeE": {"recognition": "OCR"},
-            "XProbeF": {"recognition": "OCR"},
-            "TaskShort": {"next": ["XProbeA", "XProbeB", "XProbeC", "XProbeD"]},
-            "TaskLong": {
-                "next": ["XProbeA", "XProbeB", "XProbeC", "XProbeD", "XProbeE"]
-            },
-            "XFiveLoop": {
-                "recognition": "And",
-                "all_of": ["XProbeA"],
-                "next": [
-                    "XProbeA",
-                    "XProbeB",
-                    "XProbeC",
-                    "XProbeD",
-                    "XProbeE",
-                ],
-            },
-            "XSixLoop": {
-                "recognition": "And",
-                "all_of": ["XProbeA"],
-                "next": [
-                    "XProbeA",
-                    "XProbeB",
-                    "XProbeC",
-                    "XProbeD",
-                    "XProbeE",
-                    "XProbeF",
-                ],
-            },
-            "XEnsureLong": {
-                "next": ["XProbeA", "XProbeB", "XProbeC", "XProbeD", "XProbeE"]
-            },
-        }
-    )
-    check_a18_next_length(length_ctx)
-    checks += [
-        (
-            not any("TaskLong" in f.message for f in length_ctx.findings),
-            "`Task*` 入口 5 项 → 不报 A18（v3.8：入口完全不判）",
-        ),
-        (
-            not any("TaskShort" in f.message for f in length_ctx.findings),
-            "Task 4 项 → 不报 A18",
-        ),
-        (
-            not any("XFiveLoop" in f.message for f in length_ctx.findings),
-            "Loop 5 项 → 不报 A18（Loop 上限 5）",
-        ),
-        (
-            any(
-                f.id == "A18-next-length" and "XSixLoop" in f.message
-                for f in length_ctx.findings
-            ),
-            "Loop 6 项 → 报 A18",
-        ),
-        (
-            not any("XEnsureLong" in f.message for f in length_ctx.findings),
-            "Ensure 不再按 A18 判（v3.1 停用，存量由 A25 管）",
         ),
     ]
 
@@ -357,7 +288,7 @@ def _checks_rest(checks: list[tuple]) -> None:
         ),
         (
             any(
-                f.id == "A19-desc-marker-mismatch" and "XTagWork" in f.message
+                f.id == "A19-desc-marker-unknown" and "XTagWork" in f.message
                 for f in marker_ctx.findings
             ),
             "[Loop] 标在名字不含 Loop 的节点上会被拦",
@@ -376,7 +307,6 @@ def _checks_rest(checks: list[tuple]) -> None:
                 for tag in (
                     "XTagMaxOk",
                     "XTagOnceOk",
-                    "XTagWorkLoop",
                     "XTagEndOk",
                     "XTagPlain",
                     "XTagProse",
@@ -386,64 +316,32 @@ def _checks_rest(checks: list[tuple]) -> None:
         ),
     ]
 
-    # A20 / A21 / A22：自环动作与 BaseErrorNext 的三条（结构文档 §0）
-    loop_ctx = synth_ctx(
-        {
-            "XJpLoop": {"desc": "[jp] 补一刀", "action": "Click", "next": ["XJpLoop"]},
-            "XSelfNoErr": {"desc": "自环", "action": "Click", "next": ["XSelfNoErr"]},
-            "XSelfOk": {
-                "desc": "自环带兜底",
-                "action": "Click",
-                "next": ["BaseErrorNext", "XSelfOk"],
-            },
-            "XErrNotFirst": {
-                "desc": "兜底排后面",
-                "action": "Click",
-                "next": ["XOther", "BaseErrorNext"],
-            },
-            "XSelfLimited": {"action": "Click", "max_hit": 2, "next": ["XSelfLimited", "XOther"]},
-            "XSelfAgentBudget": {"recognition": "Custom", "next": ["XSelfAgentBudget"]},
-            "XSelfContinuous": {"desc": "显式持续运行，由用户停止", "next": ["XSelfContinuous"]},
-            "XOther": {"desc": "[end] 别的", "action": "Click"},
-            "XJpNoLoop": {"desc": "[jp] 只补一次", "action": "Click"},
-            "BaseErrorNext": {
-                "desc": "[end] 连续未命中兜底",
-                "recognition": "Custom",
-                "next": ["BaseTaskStopError"],
-            },
-        }
-    )
+    # v4.0：自环有限 max_hit，与是否保留 BaseErrorNext 无关。
+    loop_ctx = synth_ctx({
+        "XJpLoop": {"desc": "[jp] 单步", "next": ["XJpLoop"]},
+        "XMissing": {"next": ["XMissing"]},
+        "XOld": {"next": ["BaseErrorNext", "XOld"]},
+        "XGood": {"max_hit": 10, "next": ["XGood"]},
+        "XOldGood": {"max_hit": 2, "next": ["BaseErrorNext", "XOldGood"]},
+        "XErrNotFirst": {"next": ["XGood", "BaseErrorNext"]},
+        "XJpLeaf": {"desc": "[jp] 单步"},
+        **{f"XBad{i}": {"max_hit": value, "next": [f"XBad{i}"]}
+           for i, value in enumerate((True, 0, -1, 1.5, "10", 0xFFFFFFFF))},
+        "XMaxFinite": {"max_hit": 0xFFFFFFFE, "next": ["XMaxFinite"]},
+    })
     check_a20_jp_self_loop(loop_ctx)
-    check_a21_self_loop_error_next(loop_ctx)
+    check_a21_self_loop_max_hit(loop_ctx)
     check_a22_error_next_first(loop_ctx)
-    loop_ids = {(f.id, f.message.split(".")[0]) for f in loop_ctx.findings}
+    ids = {(f.id, f.message.split(".")[0]) for f in loop_ctx.findings}
     checks += [
-        (
-            all(
-                any(
-                    f.id == "A21-self-loop-without-error-next" and f.severity == "warn"
-                    and f.message.startswith(name + ".")
-                    and "持续命中时" in f.message and "人工确认" in f.message
-                    and "不能仅据此判定无限循环" in f.message
-                    for f in loop_ctx.findings
-                )
-                for name in ("XSelfNoErr", "XSelfLimited", "XSelfAgentBudget", "XSelfContinuous")
-            ),
-            "A21 不自动豁免替代机制，保留人工复核且不断言无限循环",
-        ),
-        (("A20-jp-self-loop", "XJpLoop") in loop_ids, "[jp] 自环会被拦（A20，error）"),
-        (
-            ("A21-self-loop-without-error-next", "XSelfNoErr") in loop_ids,
-            "自环缺 BaseErrorNext 会被拦（A21）",
-        ),
-        (
-            ("A22-error-next-not-first", "XErrNotFirst") in loop_ids,
-            "BaseErrorNext 不在 next[0] 会被拦（A22）",
-        ),
-        (
-            not any(n in ("XSelfOk", "XJpNoLoop", "XOther") for _i, n in loop_ids),
-            "带 BaseErrorNext 的自环、[jp] 不自环、没用 BaseErrorNext 的都不报 A20–A22",
-        ),
+        (("A20-jp-self-loop", "XJpLoop") in ids, "jp 自环仍报 error"),
+        (all(("A21-self-loop-without-max-hit", n) in ids
+             for n in ("XMissing", "XOld", *(f"XBad{i}" for i in range(6)))),
+         "缺失或无效有限预算报 A21，旧 BEN 不豁免"),
+        (not any(i == "A21-self-loop-without-max-hit" and n in
+                 ("XGood", "XOldGood", "XMaxFinite", "XJpLeaf") for i, n in ids),
+         "有限自环预算通过，不要求 jp 叶子预算"),
+        (("A22-error-next-not-first", "XErrNotFirst") in ids, "保留 BEN 位置检查"),
     ]
 
     # A25：Ensure 存量节点只报 warn（v3.1 类别停用，节点待删）

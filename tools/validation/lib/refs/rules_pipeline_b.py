@@ -163,8 +163,8 @@ def check_a30_and_inline_sub(ctx: Ctx) -> None:
         )
 
 
-# node-naming.md §6：`desc` 的方括号标记一共五个，含义固定。
-DESC_MARKERS = ("end", "jp", "once", "max", "Loop")
+# node-naming.md §6：`desc` 的方括号标记一共四个，含义固定。
+DESC_MARKERS = ("end", "jp", "once", "max")
 # 「命中即终点」的终点节点：`[end]` 的 next 只收在这些节点上才算"不往下走"。
 DESC_END_TARGETS = frozenset({"BaseTaskStop", "BaseTaskStopError"})
 
@@ -173,7 +173,7 @@ def desc_tags(desc: str) -> list[str]:
     """`desc` 开头的方括号标记序列。
 
     只认**开头连续**的那几个（`[once][jp] …`）：标记是前缀，后面才是正文（node-naming.md §6
-    的五个标记、写法模板 `pipeline.snippets.schema.json` 的 `"desc": "[end] $1"` 都是前缀）。
+    的四个标记、写法模板 `pipeline.snippets.schema.json` 的 `"desc": "[end] $1"` 都是前缀）。
     正文里当括号用的字（如"点击[确认]按钮"）不算标记，所以不参与判据。
     """
     tags: list[str] = []
@@ -189,7 +189,7 @@ def check_a19_desc_markers(ctx: Ctx) -> None:
 
     三条判据，都只查"标了标记、但节点字段与标记含义对不上"：
 
-    - 五个固定标记之外的写法（含大小写不符）→ `A19-desc-marker-unknown`（warn）；
+    - 四个固定标记之外的写法（含大小写不符）→ `A19-desc-marker-unknown`（warn）；
     - `[max]` 没有 `max_hit`、`[once]` 的 `max_hit` 不是 1、`[Loop]` 标在名字不含 `Loop`
       的节点上 → `A19-desc-marker-mismatch`（warn）；
     - `[end]` 却有 `next`，且 next 里不是只收终点节点 → `A19-desc-marker-end`（info：
@@ -214,7 +214,7 @@ def check_a19_desc_markers(ctx: Ctx) -> None:
                 "warn",
                 node.file,
                 line,
-                f"{node.name}.desc 用了五个固定标记之外的 "
+                f"{node.name}.desc 用了四个固定标记之外的 "
                 f"{', '.join(f'[{tag}]' for tag in unknown)}：只认 "
                 f"{' / '.join(f'[{m}]' for m in DESC_MARKERS)}（node-naming.md §6）",
             )
@@ -234,15 +234,6 @@ def check_a19_desc_markers(ctx: Ctx) -> None:
                 line,
                 f"{node.name}.desc 标了 [once]（一个 task 内只做一次）但 max_hit="
                 f"{node.data.get('max_hit')!r}：这个形态写 max_hit: 1",
-            )
-        if "Loop" in tags and "Loop" not in node.name:
-            ctx.add(
-                "A19-desc-marker-mismatch",
-                "warn",
-                node.file,
-                line,
-                f"{node.name}.desc 标了 [Loop]（工作循环）但名字里没有 Loop："
-                f"工作层节点按 node-naming.md §3 命名",
             )
         if "end" in tags:
             names = [parse_ref(item)[0] for item in to_list(node.data.get("next"))]
@@ -268,7 +259,7 @@ def check_a20_jp_self_loop(ctx: Ctx) -> None:
     `desc` 带 `[jp]` 的语义是「兜底动作，只补一次」。`next` 里出现自己就把"补一次"写成了
     "补到成功"：两种语义在日志里分不开，而且会绕过调用方（调用方以为它已经补完了）。
 
-    要重复补就去掉 `[jp]`、按自环动作写（那会被 A21 要求配 `BaseErrorNext`）；
+    要重复补就去掉 `[jp]`、按自环动作写（按 A21 配有限 `max_hit`）；
     要只补一次就 `next` 里不放自己。
     """
     for node in ctx.nodes.values():
@@ -283,29 +274,27 @@ def check_a20_jp_self_loop(ctx: Ctx) -> None:
                 node.file,
                 find_line(node.file, node.name),
                 f"{node.name}.desc 带 [jp]（只补一次）但 next 里有自己："
-                f"要重复补就去掉 [jp] 按自环动作写（并配 {ERROR_NEXT}），要补一次就别放自己",
+                f"要重复补就去掉 [jp] 按自环动作写（并配有限 max_hit），要补一次就别放自己",
             )
 
 
-def check_a21_self_loop_error_next(ctx: Ctx) -> None:
-    """自环缺少约定的 BaseErrorNext 时提示复核（pipeline-structure.md §0）。
-
-    timeout 只限制候选全未命中的轮询，持续命中的自环不受它限次。
-    本规则仅检查自身引用与 BaseErrorNext 是否存在，不推导实际无限循环，
-    也不自动豁免 max_hit、Agent 预算或显式持续任务；替代保护及耗尽后的接管需人工确认。
-    """
+def check_a21_self_loop_max_hit(ctx: Ctx) -> None:
+    """v4.0：自环配置有限 max_hit；重置语义与耗尽后接管由人工核对。"""
     for node in ctx.nodes.values():
         names = [parse_ref(item)[0] for item in to_list(node.data.get("next"))]
-        if node.name not in names or ERROR_NEXT in names:
+        if node.name not in names:
+            continue
+        max_hit = node.data.get("max_hit")
+        if type(max_hit) is int and 0 < max_hit < 0xFFFFFFFF:
             continue
         ctx.add(
-            "A21-self-loop-without-error-next",
+            "A21-self-loop-without-max-hit",
             "warn",
             node.file,
             find_line(node.file, node.name),
-            f"{node.name}.next 含自己但没有约定的 {ERROR_NEXT}：持续命中时 timeout 不限制循环；"
-            f"请人工确认限次耗尽后的接管、Agent 预算或显式持续运行意图，"
-            f"不能仅据此判定无限循环，也不要机械补节点（结构文档 §0）",
+            f"{node.name}.next 含自己但未配置正整数且小于 UINT_MAX 的有限 max_hit："
+            f"BaseHitResetSink 按结构条件清零；请人工核对正常加载预算、耗尽后的候选接管与超时路径，"
+            f"不据此判定无限循环（结构文档 §0）",
         )
 
 
@@ -315,7 +304,7 @@ def check_a22_error_next_first(ctx: Ctx) -> None:
     它是"这张表连续 N 轮没有别的节点成功"的判据，只有排在第一位才会在每一轮先被问一次；
     排到后面时，前面那些"总会命中"的候选会把它挡在门外，计数永远走不到上限——等于没写。
 
-    排在第一位不影响正常路径：它只在别的候选都 miss 的那一轮才递增计数，正常命中的轮次
+    排在第一位不影响正常路径：它每次被评估都会递增计数，正常命中的轮次
     由 `_BaseErrorNextSink` 清零。
     """
     for node in ctx.nodes.values():

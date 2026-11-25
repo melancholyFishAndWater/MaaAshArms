@@ -19,13 +19,11 @@ from .model import (
     FOCUS_KEYS,
     GENERIC_ERROR_BRANCH,
     LEGACY_PREFIXES,
-    MAX_NEXT_LOOP,
     Node,
     VERBS,
     _TAG_RE,
     complement_of,
     find_line,
-    guard_probe,
     hits_always,
     iter_custom_refs,
     leading_word,
@@ -260,19 +258,19 @@ def jumpback_descendants(
     return seen
 
 
-def jumpback_parent_loops(
+def jumpback_parents(
     node: "Node", nodes: dict[str, "Node"], limit: int = 64
 ) -> set[str]:
-    """`node` 用 `[JumpBack]` 指向的那些"祖先 Loop"。
+    """`node` 用 `[JumpBack]` 指向的那些"祖先节点"。
 
     判定：某 `[JumpBack]` 目标 `L` 是祖先，当且仅当 `node` 能从 `L` 沿不带
-    `[JumpBack]` 的引用到达（拓扑上的"后代"）。只看 `L` 以 `Loop` 结尾的引用。
+    `[JumpBack]` 的引用到达（拓扑上的"后代"）。按引用拓扑判断，不依赖节点类别名。
     """
     parents: set[str] = set()
     for _key, items in ref_lists(node.data):
         for item in items:
             name, jump, _enabled = parse_ref(item)
-            if not jump or not name or "Loop" not in name:
+            if not jump or not name:
                 continue
             if node.name in jumpback_descendants(name, nodes, limit):
                 parents.add(name)
@@ -283,8 +281,7 @@ def check_a7_jumpback(ctx: Ctx) -> None:
     """`[JumpBack]` 的落点规则（结构文档 §4）。
 
     - 指向自己：那是自循环候选，不该带 `[JumpBack]` → error。
-    - 指向 `Loop`：同任务子 Loop 是允许的（"先干完这段再回来"）→ info；
-      指向自己的祖先 Loop（弹回层次会绕圈）→ error。
+    - 子流程允许，不额外报告；回跳祖先节点 → error。
     """
     for node in ctx.nodes.values():
         for key, items in ref_lists(node.data):
@@ -300,62 +297,12 @@ def check_a7_jumpback(ctx: Ctx) -> None:
                         find_line(node.file, node.name),
                         f"{node.name}.{key} 用 [JumpBack] 指向自己；自循环应写成普通候选（结构文档 §4）",
                     )
-                elif "Loop" in name:
-                    target_file = (
-                        ctx.nodes[name].file if name in ctx.nodes else node.file
+                elif name in jumpback_parents(node, ctx.nodes):
+                    ctx.add(
+                        "A7-jumpback-target", "error", node.file,
+                        find_line(node.file, node.name),
+                        f"{node.name}.{key} 用 [JumpBack] 指向祖先节点 {name}（结构文档 §4）",
                     )
-                    scope = "本文件" if target_file == node.file else "跨文件"
-                    if name in jumpback_parent_loops(node, ctx.nodes):
-                        ctx.add(
-                            "A7-jumpback-target",
-                            "error",
-                            node.file,
-                            find_line(node.file, node.name),
-                            f"{node.name}.{key} 用 [JumpBack] 指向自己的祖先工作循环 {name}"
-                            f"（弹回层次会绕圈，结构文档 §4）",
-                        )
-                    else:
-                        ctx.add(
-                            "A7-jumpback-target",
-                            "info",
-                            node.file,
-                            find_line(node.file, node.name),
-                            f"{node.name}.{key} 用 [JumpBack] 指向工作循环 {name}（{scope}）："
-                            f'结构文档 §4 允许"先干完这段再回来"的子 Loop 串联，确认它不是祖先即可',
-                        )
-
-
-def check_a8_loop_guard(ctx: Ctx) -> None:
-    """A8：工作循环（*Loop）没有 recognition 守卫（旧写法，仅存量）。"""
-    for node in ctx.nodes.values():
-        if node.name.endswith("Loop") and not node.data.get("recognition"):
-            ctx.add(
-                "A8-loop-guard",
-                "warn",
-                node.file,
-                find_line(node.file, node.name),
-                f"{node.name} 是工作循环但没有 recognition（页面守卫），结构文档 §3 不建议",
-            )
-
-
-def check_a10_maxhit_in_loop(ctx: Ctx) -> None:
-    """A10：循环自愈路径上的候选带 max_hit，额度耗尽只会被跳过、不报错。"""
-    for node in ctx.nodes.values():
-        if not node.name.endswith("Loop"):
-            continue
-        for key, items in ref_lists(node.data):
-            for item in items:
-                name, _jump, _enabled = parse_ref(item)
-                target = ctx.nodes.get(name) if name else None
-                if target is None or target.data.get("max_hit") is None:
-                    continue
-                ctx.add(
-                    "A10-maxhit-in-loop",
-                    "warn",
-                    node.file,
-                    find_line(node.file, node.name),
-                    f"{node.name}.{key} 的候选 {name} 带 max_hit: {target.data['max_hit']}；结构文档 §5 不建议在循环自愈路径上依赖它（有意的预算可 --ignore A10）",
-                )
 
 
 def check_a11_expected(ctx: Ctx) -> None:
@@ -507,16 +454,6 @@ def check_a13_naming(ctx: Ctx) -> None:
                     f"{name} 用了同义写法 {synonym}（node-naming.md §6：统一 ClickConfirm / BaseClickCancel / ClickFinish）",
                 )
                 break
-        if name.endswith("Loop") and not to_list(data.get("next")):
-            ctx.add(
-                "A13-loop-next",
-                "warn",
-                info.file,
-                line,
-                f"{name} 是工作循环却没有 next（node-naming.md §3：业务候选排在里面）",
-            )
-        if name.endswith("Loop"):
-            continue
         if name.startswith(CLASS_SUFFIXES) or name.endswith(CLASS_SUFFIXES):
             continue
         if has_action and not verb_after_prefix:
@@ -574,43 +511,6 @@ def check_a13_references(ctx: Ctx) -> None:
                 None,
                 f"pipeline 片段文件名 {path.name} 不是小写 snake_case（node-naming.md §8）",
             )
-
-
-def check_a14_loop_fallback(ctx: Ctx) -> None:
-    """工作循环末项兜底取反守卫与循环守卫取同一个探针（结构文档 §3 末段）。
-
-    结构文档把它写成硬规则（"兜底的探针不能与本 `Loop` 的守卫探针相同（方向相反也算）"），
-    所以报 warn 而不是 info。v3.1 起兜底改写 `[JumpBack]BaseBranchError`，存量 `Loop` 里仍可能
-    引用 `Ensure`——这里按**结构**判取反守卫（顶层 `inverse: true`），不再看名字前缀。
-    确实合法的页面级循环（候选全是子守卫，全 miss 只可能意味着漂走）
-    用 `--ignore A14-fallback-same-probe` 放行——判不了的事交给人点名豁免，比让规则常年只当提示强。
-    """
-    for node in ctx.nodes.values():
-        if "Loop" not in node.name:
-            continue
-        probe = guard_probe(node.data)
-        if not probe:
-            continue
-        items = to_list(node.data.get("next"))
-        if not items:
-            continue
-        last, jump, _enabled = parse_ref(items[-1])
-        if not jump or not last:
-            continue
-        target = ctx.nodes.get(last)
-        if target is None or not _is_inverse_guard(target.data):
-            continue
-        if guard_probe(target.data) != probe:
-            continue
-        ctx.add(
-            "A14-fallback-same-probe",
-            "warn",
-            node.file,
-            find_line(node.file, node.name),
-            f"{node.name}.next 末项 {last!r} 与该循环的守卫用同一个探针 {probe!r}："
-            f"兜底会把『守卫不成立』修成『守卫成立』，循环永远结束不了（结构文档 §3）。"
-            f"页面级循环确实要这么写时用 --ignore A14-fallback-same-probe 放行",
-        )
 
 
 def _resolve_candidate(item, nodes: dict[str, Node]) -> tuple[str, dict] | None:
@@ -788,31 +688,3 @@ def check_a17_guard_in_next(ctx: Ctx) -> None:
                 f"{node.name}.{key} 含守卫已用过的探针 {', '.join(hits)}："
                 f"同一轮会识别两遍；救回率 <25% 时删掉它（结构文档 §10）",
             )
-
-
-def check_a18_next_length(ctx: Ctx) -> None:
-    """`next` 列表长度上限（pipeline-structure.md §10）。
-
-    失败候选也要付识别，列表越长单轮成本越高。上限按类别分：`Loop`（废弃）5 项。
-
-    `Task*` 入口**完全不判**（v3.8）：入口的候选表由人工把关，规则只对非入口节点生效；
-    非入口的 5 项上限由 `A28` 管。`Ensure` 自 v3.1 停用，也不再按 `Ensure` 名判。
-    超限通常是"把好几件事塞进一个列表"，该拆 `Branch` 或子 `Loop`。
-    """
-    for node in ctx.nodes.values():
-        items = to_list(node.data.get("next"))
-        if not items:
-            continue
-        name = node.name
-        if name.startswith("Task") or not name.endswith("Loop"):
-            continue
-        if len(items) <= MAX_NEXT_LOOP:
-            continue
-        ctx.add(
-            "A18-next-length",
-            "warn",
-            node.file,
-            find_line(node.file, name),
-            f"{name}.next 有 {len(items)} 项（Loop 上限 {MAX_NEXT_LOOP}）："
-            f"每项失败也要付识别；结构文档 §10 建议拆 Branch 或子 Loop",
-        )

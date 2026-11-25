@@ -60,7 +60,7 @@ VERBS = (
     "Enable",
 )
 # node-naming.md §2 里已成类的后缀，不按动词表判
-CLASS_SUFFIXES = ("DailyUpdate", "Success", "Failed", "Init", "End", "Loop")
+CLASS_SUFFIXES = ("DailyUpdate", "Success", "Failed", "Init", "End")
 # node-naming.md §3：旧写法（并入 Probe + 状态词）
 LEGACY_PREFIXES = ("Is", "Has", "In", "At", "Can", "Able", "Unable")
 
@@ -78,11 +78,6 @@ GENERIC_ERROR_BRANCH = "BaseBranchError"
 CONFIRM_NODE_NAMES = frozenset({"BaseProbeConfirm", "BaseClickConfirm"})
 CONFIRM_WORDS = ("确认",)
 
-# pipeline-structure.md §10：识别预算上限。
-# 失败候选也要付识别，列表越长单轮成本越高；超限通常是"把好几件事塞进一个列表"。
-# v3.8 起 `Task*` 入口完全不判（作者裁定：入口的候选表由人工把关），A18 只剩 `Loop` 一档，
-# 保留到存量 `*Loop` 节点退役；非入口根节点的 5 项上限由 A28 管。
-MAX_NEXT_LOOP = 5
 # pipeline-structure.md §10（v3.10；v3.3 起为 7 项）：非任务入口的 `next` 一律 ≤ 5 项。
 # `Task*` 入口不判（v3.8）；框架兜底候选不计入长度——它们是每张表都该有的，不是"业务候选"。
 NEXT_LIST_CAP = 5
@@ -113,10 +108,11 @@ NEXT_CAP_EXCLUDED = frozenset({"BaseBranchError", "BaseErrorNext"})
 # v3.9：A26 口径收窄为「单探针包装」（`all_of` 恰好一项）；新增 A30（多条件 `And` 里写内联
 #   子识别对象 → warn，改独立 `Probe` 节点）。命名规范同步 v3.3。
 # v3.10：A28 的列表长度上限由 7 项下调到 5 项（结构文档 §10，作者裁定；不计入项不变）。
-# v3.11：A21/A15-shadowed/A28 明确为结构复核提示；触发条件、warn 级别与阈值不变。
-NAMING_SPEC_VERSION = "v3.3"
+# v3.11：A21/A15-shadowed/A28 明确为结构复核提示。
+# v4.0：A21 检查自环有限 max_hit；移除旧 Loop 类别专属判据；A22 保留存量位置检查。
+NAMING_SPEC_VERSION = "v3.4"
 NAMING_SPEC = Path("docs/zh_cn/develop/node-naming.md")
-STRUCT_SPEC_VERSION = "v3.11"
+STRUCT_SPEC_VERSION = "v4.0"
 STRUCT_SPEC = Path("docs/zh_cn/develop/pipeline-structure.md")
 
 

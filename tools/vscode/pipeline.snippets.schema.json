@@ -1,7 +1,7 @@
 {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "type": "object",
-    "$comment": "使用命名规范 v3.3; 使用任务链结构 v3.11",
+    "$comment": "使用命名规范 v3.4; 使用任务链结构 v4.0",
     "patternProperties": {
         "^(?!\\$).*": {
             "defaultSnippets": [
@@ -36,18 +36,33 @@
                 },
                 {
                     "label": "action 动作节点",
-                    "$comment": "next 含自己 = 自环动作。必须排 BaseErrorNext：timeout 只限制「候选一直不命中」，候选反复命中（含 [JumpBack] 弹回的 jp 节点）时永远不触发（结构文档 §0）。next 里还要有一条离开本动作的判据",
+                    "$comment": "普通动作执行后等待下一步；需要自环时使用自环模板，配置有限 max_hit，由 BaseHitResetSink 按结构条件清零。",
                     "body": {
                         "desc": "$1",
                         "recognition": "$2",
                         "action": "Click",
                         "post_wait_freezes": 1000,
                         "next": [
-                            "BaseErrorNext",
                             "$4",
                             "$0",
                             "[JumpBack]BaseBranchError"
                         ]
+                    }
+                },
+                {
+                    "label": "action 自环重试节点",
+                    "$comment": "有限 max_hit 限制自环重试，BaseHitResetSink 在非自身且非 jp 叶子命中时清零父节点；不覆盖 jp 持续命中或多节点往返。10 是示例预算，按任务调整。",
+                    "body": {
+                        "desc": "$1",
+                        "recognition": "$2",
+                        "action": "Click",
+                        "post_wait_freezes": 1000,
+                        "next": [
+                            "$4",
+                            "${5:自身节点名}",
+                            "[JumpBack]BaseBranchError"
+                        ],
+                        "max_hit": 10
                     }
                 },
                 {
