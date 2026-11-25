@@ -139,6 +139,32 @@ venv 和基础解释器路径；若解释器继承了 Low 标签，请先运行
 发布时打包脚本会完整覆盖开发命令：带运行时的包直接用包内 Python，
 不带运行时的资源包使用宿主提供的系统 Python；两者都不需要 uv 或项目锁文件。
 
+## APK 调试
+
+### 模拟器
+
+这里使用MuMu模拟器进行举例
+
+1. 安装 `shizuku` 和 x64 位的 `MaaAshArms.apk`
+
+2. 跳转到模拟器的 adb 文件夹下
+
+   ```cmd
+   CD /D D:\MuMuPlayer\nx_main\
+   ```
+
+3. 连接 adb
+
+   ```cmd
+   adb.exe connect 127.0.0.1:<你的端口>
+   adb.exe connect 127.0.0.1:5555
+   adb.exe connect 127.0.0.1:16384
+   ```
+
+4. 运行 `shizuku` 并点击 `通过连接电脑启动` 中的 `查看指令`，复制并在刚刚连接了 adb 的命令行中运行
+
+5. 运行 `MaaAshArms` 并开始任务
+
 ## 常见问题
 
 请参考 [FAQ](./faq.md)。
