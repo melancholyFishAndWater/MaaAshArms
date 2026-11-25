@@ -91,9 +91,9 @@ Android 构建改为 MaaFwApp APK，不再将 Android 原生库 ZIP 当作可安
 ### UI 支持
 
 - [MFAAvalonia](https://github.com/SweetSmellFox/MFAAvalonia)  
-  基于 Avalonia UI 构建的 MaaFramework 通用 GUI 解决方案
-- [MaaFwApp](https://github.com/Aliothmoon/MaaFwApp)
-  MaaFramework Android GUI；
+  基于 Avalonia 的 MAAFramework 通用 GUI 项目 | A universal GUI project for MAAFramework based on Avalonia  
+- [MaaFwApp](https://github.com/Aliothmoon/MaaFwApp)  
+  MaaFramework 的通用 Android GUI | A general-purpose Android GUI for MaaFramework  
 
 ### 项目借鉴
 
