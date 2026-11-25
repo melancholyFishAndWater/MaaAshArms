@@ -154,6 +154,67 @@ class BaseBranchErrorAct(CustomAction):
         return True
 
 
+# ----- BaseHitResetSink -----
+
+
+# A节点命中时 若父节点B是自环节点 且 (A不为jp节点、或(A是jp且next不为空)) 清空B命中次数
+# 自环: 命中节点和父节点相同
+# 自环节点: 候选列表中包含自身的节点
+@AgentServer.context_sink()
+class _BaseHitResetSink(ContextEventSink):
+    def on_node_recognition(self, context, noti_type, detail) -> None:
+        # 1) 节点条件
+        if noti_type != NotificationType.Succeeded:
+            return
+
+        # 2) 获取派发者节点名
+        father = father_name(detail.task_id, detail.name)
+        if father is None:
+            log.debug(f"{detail.name} 获取父节点失败")
+            return
+
+        # 3) 自环命中 不清空
+        if father == detail.name:
+            return
+
+        # 4) 获取派发者的 next 列表
+        next_ = candidates(detail.task_id)
+        if next_ is None:
+            log.debug(f"{detail.name} 获取父节点 {father} 的 next 列表失败")
+            return
+        elif len(next_) == 0:
+            log.debug(f"{detail.name} 父节点 {father} 的 next 列表为空")
+            return
+
+        # 5) 非自环节点 不清空
+        if not any(i.name == father for i in next_):
+            log.debug(
+                f"{detail.name} 父节点 {father} 的 next 列表不包含自身，不清空命中次数"
+            )
+            return
+
+        # 6) 提取命中节点信息
+        attr = next((i for i in next_ if i.name == detail.name), None)
+        if attr is None:
+            log.warn(f"{detail.name} 在父节点 {father} 的 next 列表中未找到")
+            return
+
+        # 7) 是jp 且 next为空 不清空
+        if attr.jump_back:
+            data = context.get_node_data(detail.name)
+            if data is None:
+                log.debug(f"{detail.name} 是jp 且获取自身的 next 列表失败")
+                return
+            elif not data.get("next"):
+                log.debug(
+                    f"{detail.name} 是jp 且 next为空 不清空父节点 {father} 的命中次数"
+                )
+                return
+
+        # 8) 不是jp 或 next不为空 清空父节点命中次数
+        context.clear_hit_count(father)
+
+
 # ----- BaseErrorNext -----
 
 # 当前任务id
