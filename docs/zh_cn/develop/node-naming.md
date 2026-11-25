@@ -1,26 +1,17 @@
 # 节点命名与分类
 
-版本号: v3.3
+版本号: v3.4
 
-本文约束 pipeline 节点叫什么名、属于哪一类（探测 / 分支 / 工作 / 动作），以及 agent 侧注册名、
+本文约束 pipeline 节点叫什么名、属于哪一类（探测 / 分支 / 动作），以及 agent 侧注册名、
 参数键、文件名与目录的写法。改节点名、加新节点、拆分子任务时按本文件执行。
 
-**v3.3 变更**：收窄「单探针内联」——只有**单探针包装**（`And all_of` 恰好 1 项）与纯路由才内联；
-**多条件 `And` 的子识别保持独立 `Probe` 节点**，不要写成内联对象。见 §3「单探针内联」。
-**v3.2 变更**：确认按钮统一以 `Confirm` 结尾，不允许 `ClickOk`（含 `…Ok` 后缀）；见 §6。
-**v3.1 变更**：停用就位 `Ensure` 类别（改由调用方 `Branch` 平铺 + 入口动作 +
-`[JumpBack]BaseBranchError` 表达「保证当前处于某页」）；单探针内联；行内注释 4~6 字。
-判据见 §3「分支」「单探针内联」与 [任务链结构](./pipeline-structure.md) 第十节。
-
-**v3.0 变更**：动作节点不再分「主动作 / 兜底动作」，改为按**有没有自环**看：`next` 含自己的是**自环动作**，
-必须配 `BaseErrorNext`；`desc` 带 `[jp]` 的节点**不许**自环。判据见 §3 动作节与
-[任务链结构](./pipeline-structure.md)「〇」节。
-
-**v1.9 新增**：`Branch` 成为页面导航的默认写法。
+**v3.4 变更**：移除工作循环类别及其旧写法，页面内工作统一由 `Branch` 与动作承担。
+自环重试采用有限 `max_hit` 与结构条件清零；存量 `BaseErrorNext` 的移除和 `max_hit` 的补充留待未来逐步进行。
+计数机制与过渡期工具口径见 [任务链结构](./pipeline-structure.md)「〇」节。
 
 **字段怎么配不在本文**：`recognition` / `next` / `pre_wait_freezes` / `rate_limit` / `max_hit` /
 `desc` 标记这些"写法"以编辑器里在用的那套模板为准——`tools/vscode/pipeline.snippets.schema.json`
-（它的 `$comment` 上写着对应的规范版本）。**页面类节点（`Probe` / `Branch` / `Loop`（废弃））放在哪个位置、
+（它的 `$comment` 上写着对应的规范版本；自环新写法尚待模板同步，过渡期以任务链结构文档为准）。**页面类节点（`Probe` / `Branch`）放在哪个位置、
 `[JumpBack]` 和 `max_hit` 怎么算** 见 [任务链结构](./pipeline-structure.md)；节点该配哪些字段见
 [MaaFramework 文档](https://maafw.com/docs/1.1-QuickStarted)。
 
@@ -46,23 +37,21 @@
 | 动作节点 | `<任务前缀><动词><宾语>` | `EscortClickConfirm`、`FactoryChooseNumber` |
 | 探测节点 | `<任务前缀>Probe<页面/状态/元素>` | `EscortProbeHome`、`TrainProbeAcceptable`、`TrainingProbeHomeName` |
 | 分支节点 | `<任务前缀>Branch<状态/对象>` | `GiftBranchSortPage` |
-| 工作循环（废弃） | `<任务前缀>Loop` | `TrainingLoop`、`MaintenanceLoop`；新代码用 `Branch` 平铺 |
 | 子过程入口 | `<任务前缀>Init` | `TrainingInit`、`EntrustInit` |
 | 出口节点 | `<任务前缀><动词>…Success/Failed` | `TrainGetRewardSuccess`、`FactoryGetRewardFailed` |
 | 日常门控 | `<任务前缀>ProbeDaily` / `<任务前缀>DailyUpdate` | `EntrustProbeDaily`、`GiftDailyUpdate` |
 
-## 三、节点分类（探测 / 分支 / 工作 / 动作）
+## 三、节点分类（探测 / 分支 / 动作）
 
-按"这个节点做什么"分四类，每类一个词，别的词不要引入：
+按"这个节点做什么"分三类，每类一个词，别的词不要引入：
 
 | 类别 | 命名 | 这一层有没有行为 | 做什么 |
 | --- | --- | --- | --- |
 | 探测 | `<前缀>Probe<页面/状态/元素>` | 无 | 只回答"现在是不是这样"，命中即终点 |
 | 分支 | `<前缀>Branch<状态/对象>` | 无 | 状态成立就把 `next` 交出去，一次就走 |
-| 工作（废弃） | `<前缀>Loop<宾语/动词?>` | 可有 | 在该页面里干活；新代码用 `Branch` 代替 |
 | 动作 | `<前缀><动词><宾语>` | 有 | 点一下、滑一下、领一次 |
 
-以 `Probe` / `Branch` / `Loop`（废弃）开头的节点分别固定属于探测、分支、工作层，其余前缀按第四节选词。
+以 `Probe` / `Branch` 开头的节点分别固定属于探测、分支，其余前缀按第四节选词。
 
 **分支的分工**（v3.1）：`Branch` 命中即转、不保证页面，成本 1 次守卫。页面导航默认用 `Branch` 平铺到调用方 `next`，由调用方决定下一步；「保证当前处于某页」不再有专门类别，改由调用方 `next` 里的 `Branch`（自带 `recognition`）+ 入口动作 + `[JumpBack]BaseBranchError` 兜底表达。
 
@@ -104,7 +93,7 @@
 | 读状态，命中即终点 | `Probe` |
 | 读到状态后转到别处（可能多个候选） | `Branch` |
 | 按页面分流（在 A 页做 A、在 B 页做 B） | `Branch` 平铺到调用方 |
-| 在这一页反复干到有出口 | `Branch`（`Loop` 已废弃） |
+| 在这一页反复干到有出口 | `Branch` |
 
 必须写 `recognition`：没有识别的分支等于无条件跳转，把 `next` 写在上一个节点里就行。`next` 至少一项。
 
@@ -124,12 +113,6 @@
 
 多消费者（两处以上引用）保留 `Probe`：它承担的是复用，不是一次性判据。**"合并"这个话题只对通用 Probe 成立**——它被多处引用，本来就不合并。
 
-### 工作 `Loop`（v1.10 废弃）
-
-`Loop` 已废弃，职责由 `Branch` 承担（见 §3 分支）：宽守卫圈住页面、收窄候选、守卫失效交还上层。既有 `*Loop*` 节点逐步退役，校验器仍按旧规则报（`A8`/`A10`/`A13-loop-next`/`A14`），退役时间线见 `tools/validation/ISSUES.md`。
-
-新代码不要新建 `Loop`。页面内多段独立工作拆成多个 `Branch`，由 `Task.next` 或父 `Branch.next` 用 `[JumpBack]` 串联。
-
 ### 动作
 
 其余节点是动作节点，名字按第四节选动词 + 宾语。想让一个节点既判又做时不要合并：拆成探测节点加
@@ -140,17 +123,17 @@
 
 | 类别 | `next` 含自己 | `desc` 标记 | 出口 | 干什么 |
 | --- | --- | --- | --- | --- |
-| 自环动作 | 是 | 无 | 自己不再命中 + `BaseErrorNext` | 反复做同一步直到它不再命中 |
+| 自环动作 | 是 | 无 | 正常出口 + 有限 `max_hit` | 在预算内重试同一步 |
 | 一次性动作 | 否 | 无，或 `[jp]` | 交给 `next` 里的下一项 | 做一次就往下走 |
 
-**自环动作必须配 `BaseErrorNext`**：`timeout` 只限制「`next` 里一直找不到命中」的轮询，候选一直在命中
-（含 `[JumpBack]` 弹回的 jp 节点反复命中）时它永远不触发，任务既不失败也不结束。`BaseErrorNext` 数的是
-「这张表连续几轮没有别的节点成功」，满 10 轮就 `BaseTaskStopError`。判据与写法见
+**自环重试节点配置有限 `max_hit`**，由 Agent 按结构条件重置父节点命中次数：
+自身命中不清零；命中其他候选时，仅当父列表含自身，且命中候选非 jp 或其有效 `next` 非空时清零。
+不维护显式节点名单，不按父节点切换重置；它不负责限制多节点往返与 jp 持续命中。
+存量引用未来按任务逐步迁移，本轮不要求批量移除 `BaseErrorNext`。判据与写法见
 [任务链结构](./pipeline-structure.md)「〇」节。
 
-**`desc` 带 `[jp]` 的节点，`next` 里不许出现自己**：`[jp]` 的语义是「只补一次」，与「反复重试」冲突，
-两种语义在日志里分不开，而且会绕过调用方。要重复补就去掉 `[jp]`、按自环动作写；要只补一次就
-`next` 里不放自己。
+**`desc` 带 `[jp]` 的节点，`next` 里不许出现自己**：`[jp]` 表示单次执行后交还调用方，不代表整个 task 只能命中一次。
+需要自环重试时去掉 `[jp]` 标记；单步 jp 动作不在自己的 `next` 里放自身。
 
 `[jp]` 只是**提示标记**，不是角色的判据：本仓库多数一次性动作没带 `[jp]`（`BaseClickTapBox`、`BaseClickBackButton`、
 `BaseTaskStop` 这些通用节点一个都没带），而 v3.1 起停用的 9 个 `Ensure*` 节点（2026-10-31 已全部删除，`A25` 归零）全带 `[jp]`、却不是动作节点。
@@ -240,16 +223,15 @@
 - 宾语与界面文字对齐（`确认` → `ClickConfirm`、`取消` → `BaseClickCancel`、`完成` → `ClickFinish`）。
 - 同一个按钮在不同任务里叫法保持一致：`ClickConfirm`、`EscortClickConfirm`、`FactoryClickSkipConfirm`；不要出现 `ClickOk`、`ClickYes` 这类同义写法。
 - 出口/收尾节点在名字里标出性质：`*End`（链结束）、`*Success`（动作生效）、`*Failed`（失败分支）。成功探针节点用 `And all_of [<被探针节点>] + inverse` 时，名字取 `<被探针节点>Success`，例如 `EntrustClickFinishSuccess`。
-- `desc` 由模板生成（`[end]`、`[Loop]` 这些前缀见 `tools/vscode/pipeline.snippets.schema.json`），名字里不重复这些标记。
-- `desc` 的方括号标记一共五个，含义固定：
+- `desc` 由模板生成（`[end]`、`[jp]` 这些标记见 `tools/vscode/pipeline.snippets.schema.json`），名字里不重复这些标记。
+- `desc` 的方括号标记一共四个，含义固定：
 
   | 标记 | 含义 | 用在 |
   | --- | --- | --- |
   | `[end]` | 命中即终点，不往下走 | 探测节点、出口节点 |
-  | `[jp]` | 兜底动作，只补一次（**该节点不许自环**） | 一次性动作节点（见 §3 动作节） |
+  | `[jp]` | 单次执行后交还调用方（**该节点不许自环**） | 一次性动作节点（见 §3 动作节） |
   | `[once]` | 一个 task 内只做一次 | 每日门控、`Init` 类节点 |
   | `[max]` | 命中次数有上限 | 限次动作节点 |
-  | `[Loop]` | 工作循环 | 工作层节点（已废弃，新代码用 `Branch`） |
 
 ## 七、agent 侧命名
 
