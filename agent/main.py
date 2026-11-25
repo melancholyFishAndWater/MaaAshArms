@@ -36,6 +36,7 @@ import battle_training
 import entrust
 import factory_fast
 import factory
+import feidu_gift
 import generic
 import maintenance
 import parent_tracker

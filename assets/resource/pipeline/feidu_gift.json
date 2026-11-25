@@ -312,17 +312,61 @@
         ]
     },
     /* -------------------- 动作-选礼物 -------------------- */
-    // TODO 找到最喜欢的礼物
     "GiftChooseFirstGift": {
         "desc": "点击当前页面可送的礼物",
         "recognition": "OCR",
-        "expected": "[1-9]",
+        "expected": "^[xX]?[1-9]\\d*",
+        "replace": [
+            // 数字 1
+            [
+                "i",
+                "1"
+            ],
+            [
+                "I",
+                "1"
+            ],
+            [
+                "l",
+                "1"
+            ],
+            [
+                "L",
+                "1"
+            ],
+            // 数字 0
+            [
+                "O",
+                "0"
+            ],
+            [
+                "o",
+                "0"
+            ],
+            [
+                "D",
+                "0"
+            ],
+            [
+                "d",
+                "0"
+            ],
+            [
+                "c",
+                "0"
+            ],
+            [
+                "C",
+                "0"
+            ]
+        ],
         "roi": [
             99,
             645,
             1022,
             26
         ],
+        "order_by": "Length",
         "target_offset": [
             6,
             -31,
@@ -333,15 +377,14 @@
         "post_wait_freezes": 1000,
         "next": [
             "BaseErrorNext",
-            "GiftClickGiveThriceButton",
+            "GiftClickGiveButton",
             "[JumpBack]BaseBranchError",
             "GiftChooseFirstGift"
         ]
     },
-    /* -------------------- 动作-赠送三次 -------------------- */
-    // TODO 没有验证是否赠送成功/够
-    "GiftClickGiveThriceButton": {
-        "desc": "赠送三次礼物",
+    /* -------------------- 动作-点击赠送 -------------------- */
+    "GiftClickGiveButton": {
+        "desc": "点击赠送",
         "recognition": "OCR",
         "expected": "赠送",
         "roi": [
@@ -351,14 +394,70 @@
             143
         ],
         "action": "Click",
-        "repeat": 3,
-        "repeat_delay": 2000,
         "post_wait_freezes": 1000,
+        "next": [
+            "BaseErrorNext",
+            "GiftBranchFinish",
+            "GiftBranchNoGifts",
+            "[JumpBack]BaseClickConfirm",
+            "GiftClickGiveButton"
+        ]
+    },
+    /* -------------------- 分支-无礼物了 -------------------- */
+    "GiftBranchNoGifts": {
+        "desc": "分支-没有更多礼物可以送 重新选择礼物",
+        "recognition": "OCR",
+        "expected": "^0$",
+        "roi": "GiftChooseFirstGift",
+        "roi_offset": [
+            -40,
+            -40,
+            80,
+            80
+        ],
+        "replace": [
+            [
+                "O",
+                "0"
+            ],
+            [
+                "o",
+                "0"
+            ],
+            [
+                "D",
+                "0"
+            ],
+            [
+                "d",
+                "0"
+            ],
+            [
+                "c",
+                "0"
+            ],
+            [
+                "C",
+                "0"
+            ]
+        ],
+        "next": [
+            "GiftChooseFirstGift"
+        ],
+        "focus": {
+            "Node.PipelineNode.Succeeded": "赠礼成功"
+        }
+    },
+    /* -------------------- 分支-送完 -------------------- */
+    "GiftBranchFinish": {
+        "desc": "分支-至少送了三次",
+        "recognition": "Custom",
+        "custom_recognition": "GiftBranchFinishReco",
         "next": [
             "GiftDailyUpdate"
         ]
     },
-    // INFO 记录每日
+    /* -------------------- 动作-更新每日 -------------------- */
     "GiftDailyUpdate": {
         "desc": "更新每日一次数据",
         "action": "Custom",
