@@ -2,7 +2,7 @@
     "option": {
         "train_option": {
             "type": "input",
-            "label": "",
+            "label": "路线设置",
             "inputs": [
                 {
                     "name": "level_one",
@@ -12,6 +12,7 @@
                 {
                     "name": "level_one_number",
                     "label": "路线名一STATION数字",
+                    "default": "1",
                     "verify": "^[1-7]?$",
                     "pipeline_type": "int"
                 },
@@ -23,6 +24,7 @@
                 {
                     "name": "level_two_number",
                     "label": "路线名二STATION数字",
+                    "default": "1",
                     "verify": "^[1-7]?$",
                     "pipeline_type": "int"
                 }
