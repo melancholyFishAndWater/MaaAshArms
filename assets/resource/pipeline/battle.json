@@ -139,6 +139,18 @@
             70
         ]
     },
+    // 自律按钮暗
+    "BattleProbeAutoDart": {
+        "desc": "[end] 自律按钮暗",
+        "recognition": "TemplateMatch",
+        "template": "Battle/AutoButtonDart.png",
+        "roi": [
+            1085,
+            572,
+            195,
+            143
+        ]
+    },
     /* -------------------- 通用动作 -------------------- */
     // 跳过剧情
     "BattleClickSkip": {
@@ -296,20 +308,31 @@
             "BattleClickAuto",
             "BattleClickAutoAttack",
             "[JumpBack]BaseProbeBlackPage",
-            "[JumpBack]BaseBranchError"
+            "[JumpBack]BaseBranchError",
+            "BattleStopNoAuto"
         ]
+    },
+    /* -------------------- 1-动作-没有自律 -------------------- */
+    "BattleStopNoAuto": {
+        "desc": "没有自律",
+        "recognition": "And",
+        "all_of": [
+            "BattleProbeAutoLight",
+            "BattleProbeAutoDart"
+        ],
+        "inverse": true,
+        "action": "StopTask",
+        "focus": {
+            "Node.Recognition.Succeeded": "没有自律按钮 任务结束"
+        }
     },
     /* -------------------- 1-动作-启用自律 -------------------- */
     "BattleClickAuto": {
         "desc": "[max] 点击自律作战按钮",
         "max_hit": 10,
-        "recognition": "TemplateMatch",
-        "template": "Battle/AutoButtonDart.png",
-        "roi": [
-            1085,
-            572,
-            195,
-            143
+        "recognition": "And",
+        "all_of": [
+            "BattleProbeAutoDart"
         ],
         "next": [
             "BattleBranchBuild",
