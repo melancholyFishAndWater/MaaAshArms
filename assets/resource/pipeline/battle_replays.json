@@ -148,7 +148,7 @@
             "ReplaysStopMetalFinish",
             "[JumpBack]BaseClickConfirm",
             "[JumpBack]BaseClickRewardTap",
-            "[JumpBack]ReplaysClickReattack",
+            "[JumpBack]BattleClickReattack",
             "[JumpBack]BaseBranchError"
         ]
     },
@@ -180,22 +180,9 @@
             "ReplaysBranchNextFormation",
             "[JumpBack]BaseClickConfirm",
             "[JumpBack]BaseClickRewardTap",
-            "[JumpBack]ReplaysClickReattack",
+            "[JumpBack]BattleClickReattack",
             "[JumpBack]BaseBranchError"
         ]
-    },
-    "ReplaysClickReattack": {
-        "desc": "[jp] 点击再次出击 进入编队页面",
-        "recognition": "OCR",
-        "expected": "再次出击",
-        "roi": [
-            583,
-            633,
-            123,
-            50
-        ],
-        "action": "Click",
-        "post_wait_freezes": 1000
     },
     /* -------------------- 分支-结束还是继续 -------------------- */
     "ReplaysBranchNextFormation": {
