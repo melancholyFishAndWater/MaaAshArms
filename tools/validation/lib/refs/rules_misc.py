@@ -448,7 +448,260 @@ def template_calls_in_source(text: str) -> list[tuple[int, int, str, list[str | 
         values = _template_values(node)
         if values:
             calls.append((start, end, owner, values))
+    # ast.walk 是广度优先：同一个函数里"循环内的调用"会排在"循环之后的调用"之后，
+    # 与源码顺序不一致。自检与报告都按出现顺序读，这里按起始行排一次。
+    calls.sort(key=lambda call: (call[0], call[1]))
     return calls
+
+
+def _receiver_key(expr: ast.expr) -> str:
+    """接收对象的结构指纹：`context` 与 `context` 相同，`other` / `self.context` 不同。
+
+    不用 `ast.dump`：它把 `ctx=Load()` 与 `ctx=Store()` 编进串里，赋值目标
+    （`context = other`）与读用法（`context.override_image(...)`）就对不上，
+    "接收对象重绑定后失效"判不出来。这里只按名字 / 属性链拼，与读写位置无关。
+    """
+    if isinstance(expr, ast.Name):
+        return f"name:{expr.id}"
+    if isinstance(expr, ast.Attribute):
+        return f"attr:{_receiver_key(expr.value)}.{expr.attr}"
+    return "expr:" + ast.dump(expr)
+
+
+def _override_image_call(call: ast.Call) -> tuple[str | None, str | None]:
+    """`<recv>.override_image(<字面量名>, ...)` → (接收对象键, 名)；不是则 (None, None)。"""
+    func = call.func
+    if not (isinstance(func, ast.Attribute) and func.attr == "override_image"):
+        return None, None
+    arg = next((kw.value for kw in call.keywords if kw.arg == "name"), None)
+    if arg is None and call.args:
+        arg = call.args[0]
+    name = (
+        arg.value
+        if isinstance(arg, ast.Constant) and isinstance(arg.value, str)
+        else None
+    )
+    return _receiver_key(func.value), name
+
+
+def _override_image_declarations(text: str) -> dict[int, set[str]]:
+    """每个 `override_image(<字面量名>, ...)` 所在行的名字（C1 扫描要排掉这些声明）。"""
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return {}
+    out: dict[int, set[str]] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            _recv, name = _override_image_call(node)
+            if name is not None:
+                out.setdefault(node.lineno, set()).add(name)
+    return out
+
+
+def _copy_avail(avail: dict[str, set[str]]) -> dict[str, set[str]]:
+    return {key: set(names) for key, names in avail.items()}
+
+
+def _intersect_avail(left, right) -> dict[str, set[str]]:
+    """两条路径都注册过的名字才算"必须可用"。"""
+    out: dict[str, set[str]] = {}
+    for key in left.keys() & right.keys():
+        common = left[key] & right[key]
+        if common:
+            out[key] = common
+    return out
+
+
+def _iter_run_direct(node: ast.AST):
+    """遍历这个语句里的 `X.run_recognition_direct(...)`，不进嵌套函数/类/lambda。"""
+    stack = [node]
+    while stack:
+        cur = stack.pop()
+        if isinstance(
+            cur, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)
+        ):
+            continue
+        if (
+            isinstance(cur, ast.Call)
+            and isinstance(cur.func, ast.Attribute)
+            and cur.func.attr == "run_recognition_direct"
+        ):
+            yield cur
+        stack.extend(ast.iter_child_nodes(cur))
+
+
+def _record_template_calls(node: ast.AST, avail, state) -> None:
+    """记录本语句里 run_recognition_direct 的**直接**实参 JTemplateMatch 可用的运行期名。
+
+    只认直接 args / keywords 里的 JTemplateMatch：嵌在别的调用里的不算（避免把外层接收
+    对象的名借给 `other.run_recognition_direct(...)`）。同一行出现多个 JTemplateMatch 时只
+    记计数，最后由 `runtime_templates_in_source` 保守丢弃。
+    """
+    found, counts = state["found"], state["counts"]
+    for direct in _iter_run_direct(node):
+        func = direct.func
+        if not isinstance(func, ast.Attribute):
+            continue
+        names = avail.get(_receiver_key(func.value))
+        for arg in (*direct.args, *(kw.value for kw in direct.keywords)):
+            if isinstance(arg, ast.Call) and _is_template_call(arg.func):
+                counts[arg.lineno] = counts.get(arg.lineno, 0) + 1
+                if names:
+                    found.setdefault(arg.lineno, set()).update(names)
+
+
+def _invalidate_rebound(avail, stmt):
+    """赋值把接收对象改名/改指向后，之前登记的可用名失效（保守：波及即以结构串前缀清掉）。"""
+    if isinstance(stmt, ast.Assign):
+        targets = stmt.targets
+    elif isinstance(stmt, (ast.AnnAssign, ast.AugAssign)):
+        targets = [stmt.target]
+    else:
+        return avail
+    dumps = [_receiver_key(t) for t in targets if isinstance(t, (ast.Name, ast.Attribute))]
+    if not dumps:
+        return avail
+    kept = {k: v for k, v in avail.items() if k not in dumps}
+    return kept if len(kept) != len(avail) else avail
+
+
+def _analyze_block(stmts, start, state) -> tuple[bool, dict[str, set[str]]]:
+    cur = _copy_avail(start)
+    for stmt in stmts:
+        terminates, cur = _analyze_stmt(stmt, cur, state)
+        if terminates:
+            return True, cur
+    return False, cur
+
+
+def _analyze_if(stmt: ast.If, avail, state) -> tuple[bool, dict[str, set[str]]]:
+    test = stmt.test
+    parsed = None
+    if (
+        isinstance(test, ast.UnaryOp)
+        and isinstance(test.op, ast.Not)
+        and isinstance(test.operand, ast.Call)
+    ):
+        recv, name = _override_image_call(test.operand)
+        if recv is not None:
+            parsed = (recv, name, True)
+    elif isinstance(test, ast.Call):
+        recv, name = _override_image_call(test)
+        if recv is not None:
+            parsed = (recv, name, False)
+    if parsed is None:
+        _record_template_calls(test, avail, state)
+        true_start = false_start = _copy_avail(avail)
+    else:
+        recv, name, negated = parsed
+        true_start, false_start = _copy_avail(avail), _copy_avail(avail)
+        if name is not None:
+            target = false_start if negated else true_start
+            target.setdefault(recv, set()).add(name)
+    body_exit, body_out = _analyze_block(stmt.body, true_start, state)
+    else_exit, else_out = _analyze_block(stmt.orelse, false_start, state)
+    if body_exit and else_exit:
+        return True, avail
+    if body_exit:
+        return False, else_out
+    if else_exit:
+        return False, body_out
+    return False, _intersect_avail(body_out, else_out)
+
+
+def _analyze_stmt(stmt, avail, state) -> tuple[bool, dict[str, set[str]]]:
+    """按执行顺序处理一条语句 → (是否所有路径都提前离开, 处理后的可用集)。
+
+    可用集按接收对象分组。保守原则：条件分支只有一条注册不外溢；循环体注册不外溢到循环后；
+    with / try / match 体内注册不外溢（`__exit__`、异常都能改变控制流）；嵌套函数自成作用域；
+    接收对象被重新赋值后旧注册失效。
+    """
+    if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+        return False, avail
+    if isinstance(stmt, ast.Return):
+        if stmt.value is not None:
+            _record_template_calls(stmt.value, avail, state)
+        return True, avail
+    if isinstance(stmt, ast.Raise):
+        for part in (stmt.exc, stmt.cause):
+            if part is not None:
+                _record_template_calls(part, avail, state)
+        return True, avail
+    if isinstance(stmt, (ast.Break, ast.Continue)):
+        return True, avail
+    if isinstance(stmt, ast.If):
+        return _analyze_if(stmt, avail, state)
+    if isinstance(stmt, (ast.For, ast.AsyncFor)):
+        _record_template_calls(stmt.iter, avail, state)
+        _analyze_block(stmt.body, avail, state)
+        _analyze_block(stmt.orelse, avail, state)
+        return False, avail  # 循环体可能 0 次执行，注册不外溢
+    if isinstance(stmt, ast.While):
+        _record_template_calls(stmt.test, avail, state)
+        _analyze_block(stmt.body, avail, state)
+        _analyze_block(stmt.orelse, avail, state)
+        return False, avail
+    if isinstance(stmt, (ast.With, ast.AsyncWith)):
+        for item in stmt.items:
+            _record_template_calls(item.context_expr, avail, state)
+        _analyze_block(stmt.body, avail, state)
+        return False, avail  # __exit__ 可抑制异常，体内注册不外溢
+    try_types = (ast.Try,) + ((ast.TryStar,) if hasattr(ast, "TryStar") else ())
+    if isinstance(stmt, try_types):
+        _analyze_block(stmt.body, avail, state)
+        for handler in stmt.handlers:
+            _analyze_block(handler.body, avail, state)
+        _analyze_block(stmt.orelse, avail, state)
+        _analyze_block(stmt.finalbody, avail, state)
+        return False, avail
+    match_cls = getattr(ast, "Match", None)
+    if match_cls is not None and isinstance(stmt, match_cls):
+        _record_template_calls(stmt.subject, avail, state)
+        for case in stmt.cases:
+            _analyze_block(case.body, avail, state)
+        return False, avail
+    _record_template_calls(stmt, avail, state)
+    if isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call):
+        recv, name = _override_image_call(stmt.value)
+        if recv is not None and name is not None:
+            avail = _copy_avail(avail)
+            avail.setdefault(recv, set()).add(name)
+        return False, avail
+    return False, _invalidate_rebound(avail, stmt)
+
+
+def runtime_templates_in_source(text: str) -> dict[int, set[str]]:
+    """每个 `JTemplateMatch(...)` 所在行可用的运行期图片名（行号 → 名字集合）。
+
+    运行期图片是先 `context.override_image(name, image)` 注册、随后用
+    `context.run_recognition_direct(..., JTemplateMatch([name]), ...)` 匹配的临时图，
+    不是磁盘模板。判定必须同时满足：同一函数（嵌套函数是独立作用域）、同一接收对象、
+    注册先于使用；分支只在单侧注册、循环体内注册、with / try / match 体内注册都不外溢；
+    接收对象被重新赋值即失效。支持两种注册写法：
+
+    * 直接调用 `context.override_image(name, image)` 的静态声明；
+    * `if not context.override_image(name, image): <return/continue/break/raise>` 成功路径
+      （失败分支一定离开，落空即注册成功）。
+
+    `JTemplateMatch` 不是 `run_recognition_direct` 的直接实参时无接收对象，不给可用名。
+    同一行出现多个 JTemplateMatch 时保守不豁免。解析失败返回空字典（不豁免）。
+    """
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return {}
+    state: dict[str, dict] = {"found": {}, "counts": {}}
+    _analyze_block(tree.body, {}, state)  # 模块级语句（正常没有模板调用）
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            _analyze_block(node.body, {}, state)
+    found, counts = state["found"], state["counts"]
+    return {
+        line: set(names)
+        for line, names in found.items()
+        if names and counts.get(line, 0) == 1
+    }
 
 
 def template_call_spans(files: list[Path]) -> dict[Path, list[tuple[int, int]]]:
@@ -489,12 +742,28 @@ def collect_template_refs(
         r"[\"']([A-Za-z0-9_][A-Za-z0-9_\-. ]*(?:/[A-Za-z0-9_\-. ]+)*/?)[\"']"
     )
     spans = template_call_spans(ctx.agent_files)
+    # 运行期图片名（override_image 注册的临时图）不是磁盘模板：
+    # 声明处那串引号内容、以及 JTemplateMatch 里用到它的地方，都从 agent 字面量扫描里排掉，
+    # 否则带 .png 的运行期名会被当成"磁盘缺图"，或反过来把磁盘上同名图片误记成被引用。
+    runtime_by_file: dict[Path, dict[int, set[str]]] = {}
+    declared_by_file: dict[Path, dict[int, set[str]]] = {}
+    for path in ctx.agent_files:
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        runtime_by_file[path] = runtime_templates_in_source(text)
+        declared_by_file[path] = _override_image_declarations(text)
     for path in ctx.agent_files:
         lines = lines_of(path)
+        runtime_map = runtime_by_file.get(path, {})
+        declared_map = declared_by_file.get(path, {})
         for i, line in enumerate(lines, 1):
             covered = any(a <= i <= b for a, b in spans.get(path, []))
             for m in lit_re.finditer(line):
                 s = m.group(1)
+                if s in declared_map.get(i, ()) or s in runtime_map.get(i, ()):
+                    continue
                 if IMAGE_EXT_RE.search(s) or s.endswith("/"):
                     refs.append((path, "agent 字面量", s, i, covered))
     return refs
@@ -623,6 +892,10 @@ def check_agent_templates(ctx: Ctx) -> None:
 
     只解析 `JTemplateMatch(...)` 自己的实参：字面量要求图片存在；变量 / f-string 记一条
     info，说明静态查不了。C1 的 agent 字面量扫描会跳过这些调用，同一处不会报两遍。
+
+    运行期图片（`override_image` 先注册、同函数同接收对象随后用 `JTemplateMatch([name])`
+    匹配的临时图）不是磁盘模板：这一行给出的名字在 `runtime_templates_in_source` 里出现过，
+    就不当磁盘缺图报 C6——同一行里的其他字面量照常查。
     """
     if not ctx.image_roots:
         return
@@ -633,7 +906,9 @@ def check_agent_templates(ctx: Ctx) -> None:
             text = path.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
+        runtime = runtime_templates_in_source(text)
         for line, _end, owner, values in template_calls_in_source(text):
+            available = runtime.get(line, set())
             if any(value is None for value in values):
                 ctx.add(
                     "C7-agent-template-dynamic",
@@ -644,7 +919,7 @@ def check_agent_templates(ctx: Ctx) -> None:
                     f"静态查不了图片是否存在",
                 )
             for value in values:
-                if value is None:
+                if value is None or value in available:
                     continue
                 if find_image(ctx.image_roots, value) is None:
                     ctx.add(

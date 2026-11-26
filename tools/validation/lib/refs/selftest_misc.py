@@ -7,7 +7,11 @@ from __future__ import annotations
 from pathlib import Path
 
 from .model import Ctx, Node, Option, Reg
-from .rules_misc import check_agent, check_custom_params, check_option_shape, template_calls_in_source
+from .rules_misc import (
+    check_agent, check_agent_templates, check_custom_params, check_option_shape,
+    collect_template_refs,
+    runtime_templates_in_source, template_calls_in_source,
+)
 from .rules_pipeline_a import (
     _is_inverse_guard,
     check_a17_guard_in_next,
@@ -629,6 +633,68 @@ def _checks_rest(checks: list[tuple]) -> None:
             "agent 模板归属到方法",
         ),
     ]
+
+    # C6：运行期图片只在同一函数、同一接收对象且注册之后可用。
+    runtime_cases = [
+        ('context.override_image("temp", image)\ncontext.run_recognition_direct(kind, JTemplateMatch(["temp"]), image)', True, "顺序注册"),
+        ('if not context.override_image("temp", image):\n    return True\nfor image in images:\n    context.run_recognition_direct(kind, JTemplateMatch(["temp"]), image)', True, "失败提前返回后循环使用"),
+        ('context.run_recognition_direct(kind, JTemplateMatch(["temp"]), image)\ncontext.override_image("temp", image)', False, "注册在后不豁免"),
+        ('other.override_image("temp", image)\ncontext.run_recognition_direct(kind, JTemplateMatch(["temp"]), image)', False, "不同对象不豁免"),
+        ('if flag:\n    context.override_image("temp", image)\ncontext.run_recognition_direct(kind, JTemplateMatch(["temp"]), image)', False, "单分支注册不泄漏"),
+        ('if not context.override_image("temp", image):\n    log.warning("failed")\ncontext.run_recognition_direct(kind, JTemplateMatch(["temp"]), image)', False, "失败分支未退出不豁免"),
+        ('def nested():\n    context.override_image("temp", image)\ncontext.run_recognition_direct(kind, JTemplateMatch(["temp"]), image)', False, "嵌套函数不泄漏"),
+        ('context.override_image("temp", image)\ncontext.run_recognition_direct(kind, other.run_recognition_direct(kind, JTemplateMatch(["temp"]), image), image)', False, "嵌套其他对象调用不豁免"),
+        ('context.override_image("temp", image)\ncontext.run_recognition_direct(kind, JTemplateMatch(["temp"]), image); other.run_recognition_direct(kind, JTemplateMatch(["temp"]), image)', False, "同行多个调用保守不豁免"),
+        ('context.override_image("temp", image)\ncontext = other\ncontext.run_recognition_direct(kind, JTemplateMatch(["temp"]), image)', False, "接收对象重绑定后失效"),
+        ('context.override_image("other", image)\ncontext.run_recognition_direct(kind, JTemplateMatch(["temp"]), image)', False, "其他名称不豁免"),
+    ]
+    for body, expected, label in runtime_cases:
+        source = "def run(context, image):\n" + "\n".join("    " + line for line in body.splitlines())
+        calls = template_calls_in_source(source)
+        available = runtime_templates_in_source(source)
+        checks.append((any("temp" in available.get(line, set()) for line, _e, _o, _v in calls) == expected,
+                       f"运行期模板：{label}"))
+    loop_source = ('def run(context, images):\n'
+                   '    for image in images:\n'
+                   '        if not context.override_image("temp", image):\n'
+                   '            continue\n'
+                   '        context.run_recognition_direct(kind, JTemplateMatch(["temp"]), image)\n'
+                   '    context.run_recognition_direct(kind, JTemplateMatch(["temp"]), image)\n')
+    loop_calls = template_calls_in_source(loop_source)
+    loop_available = runtime_templates_in_source(loop_source)
+    checks += [
+        ("temp" in loop_available.get(loop_calls[0][0], set()), "运行期模板：循环内 continue 保护"),
+        ("temp" not in loop_available.get(loop_calls[1][0], set()), "运行期模板：循环注册不泄漏到循环外"),
+    ]
+    separate = ('def register(context):\n    context.override_image("temp", image)\n'
+                'def run(context):\n    context.run_recognition_direct(kind, JTemplateMatch(["temp"]), image)\n')
+    checks.append((not any(runtime_templates_in_source(separate).values()), "运行期模板：跨函数不豁免"))
+
+    template_dir = Path(__file__).resolve().parents[4] / "temp" / "selftest-runtime-template"
+    template_dir.mkdir(parents=True, exist_ok=True)
+    template_file = template_dir / "runtime_agent.py"
+    try:
+        template_file.write_text(
+            'def run(context, image, dynamic):\n'
+            '    if not context.override_image("runtime.png", image):\n'
+            '        return True\n'
+            '    context.run_recognition_direct(kind, JTemplateMatch(["runtime.png", "missing.png", dynamic]), image)\n',
+            encoding="utf-8",
+        )
+        template_ctx = Ctx(repo_root=template_dir)
+        template_ctx.agent_files = [template_file]
+        template_ctx.image_roots = [template_dir]
+        check_agent_templates(template_ctx)
+        errors = [f for f in template_ctx.findings if f.id == "C6-agent-template-missing"]
+        checks += [
+            (len(errors) == 1 and "missing.png" in errors[0].message, "运行期模板：C6仍报告普通磁盘缺图"),
+            (any(f.id == "C7-agent-template-dynamic" for f in template_ctx.findings), "运行期模板：混合变量保留C7"),
+            (not any(value == "runtime.png" for _p, _o, value, _l, _c in collect_template_refs(template_ctx)),
+             "运行期模板：注册名和消费名均不计磁盘引用"),
+        ]
+    finally:
+        template_file.unlink(missing_ok=True)
+        template_dir.rmdir()
 
     # D1：只有带 `@AgentServer.custom_*` 的模块才要求被 main 导入
     # （实测 `agent/shared/direct.py` 只是还没用上的工具模块，没有装饰器，报 D1 是假红）

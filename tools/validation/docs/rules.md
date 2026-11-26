@@ -225,8 +225,9 @@ Pipeline 节点直接声明同类参数时由 `A32-custom-param-type` 检查。�
 | `C6-agent-template-missing`（error） | agent 里 `JTemplateMatch(...)` 的字面量模板在 `image/` 下不存在（消息带 `类.方法` 与行号） |
 | `C7-agent-template-dynamic`（info） | 模板实参是变量 / f-string，静态查不出指向 |
 
-`C6` / `C7` 的细节（为什么 C1 不重复报、为什么仍算"引用过"）见
-[`../README.md`](../README.md) 的「怎么跑」第 2 步注释。
+`C6` 对同一函数内、同一接收对象在匹配前通过 `override_image` 注册的字面量图片名，不要求磁盘模板存在。支持顺序注册，以及 `if not context.override_image(...): return ...` 或循环内失败后 `continue` 这类失败即离开当前路径的写法；仅条件分支内注册、跨函数、不同接收对象、注册晚于使用等情况不自动豁免。不根据 `temp` 等名称全局放行，也不追踪接收对象别名或任意跨过程控制流。
+
+运行期图片名不计作磁盘图片引用。普通磁盘模板仍由 C6 检查，变量 / f-string 仍由 C7 提示；C1 不重复报告已由 C6 接管的调用。
 
 ## D 系：agent 注册（`rules_misc.py`）
 
