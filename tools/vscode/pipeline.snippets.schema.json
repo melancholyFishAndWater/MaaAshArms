@@ -35,34 +35,35 @@
                     }
                 },
                 {
-                    "label": "action 动作节点",
-                    "$comment": "普通动作执行后等待下一步；需要自环时使用自环模板，配置有限 max_hit，由 BaseHitResetSink 按结构条件清零。",
+                    "label": "action 简单动作",
+                    "$comment": "普通动作执行后等待下一步",
                     "body": {
                         "desc": "$1",
                         "recognition": "$2",
+                        "roi": [],
                         "action": "Click",
                         "post_wait_freezes": 1000,
                         "next": [
-                            "$4",
                             "$0",
                             "[JumpBack]BaseBranchError"
                         ]
                     }
                 },
                 {
-                    "label": "action 自环重试节点",
-                    "$comment": "有限 max_hit 限制自环重试，BaseHitResetSink 在非自身且非 jp 叶子命中时清零父节点；不覆盖 jp 持续命中或多节点往返。10 是示例预算，按任务调整。",
+                    "label": "action 标准自环",
+                    "$comment": "有限 max_hit 限制自环重试，BaseHitResetSink 在非自身且非 jp 叶子命中时清零父节点。",
                     "body": {
-                        "desc": "$1",
+                        "desc": "[max] $1",
+                        "max_hit": 10,
                         "recognition": "$2",
+                        "roi": [],
                         "action": "Click",
                         "post_wait_freezes": 1000,
                         "next": [
                             "$4",
                             "${5:自身节点名}",
                             "[JumpBack]BaseBranchError"
-                        ],
-                        "max_hit": 10
+                        ]
                     }
                 },
                 {
