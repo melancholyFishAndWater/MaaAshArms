@@ -189,7 +189,10 @@
             100
         ],
         "action": "Custom",
-        "custom_action": "FactoryGetRewardNextAct"
+        "custom_action": "FactoryGetRewardNextAct",
+        "focus": {
+            "Node.Recognition.Succeeded": "领取角色成功"
+        }
     },
     /* -------------------- 分支-领取失败 -------------------- */
     "FactoryGetRewardFailed": {

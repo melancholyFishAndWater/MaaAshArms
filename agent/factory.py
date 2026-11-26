@@ -1,7 +1,7 @@
 import time
 from re import search
-from typing import Any
-from numpy import ndarray, dtype
+from typing import Any, LiteralString
+from numpy import frombuffer, ndarray, dtype
 
 from maa.agent.agent_server import AgentServer
 from maa.custom_recognition import CustomRecognition
@@ -21,10 +21,10 @@ from rect import DEFAULT_HIT_BOX
 
 # 今日 建造过的次数
 built_times: int = 0
-# 角色名: 结束时间戳
-_timestamp_by_build_end_names: dict[str, float] = {}
-# 尝试领取的角色名
-_reward_name: str = ""
+# 角色临时图片: 结束时间戳
+_timestamp_by_dolls_image: dict[tuple[Any, LiteralString, bytes], float] = {}
+# 尝试领取的角色图片
+_reward_image: ndarray
 
 
 # 获取红叉位置
@@ -46,17 +46,24 @@ def _get_cancel_buttons(
         return final
 
 
-# 基于红叉位置获取角色名字
-def _get_name(context: Context, image: ndarray, cancel_box: tuple[int, int, int, int]):
-    return context.run_recognition_direct(
-        JRecognitionType.OCR,
-        JOCR(
-            [".+"],
-            roi=cancel_box,
-            roi_offset=(-1047, 186, 82, -33),
-        ),
-        image,
-    )
+# 获取临时 DOLLS 图片
+def _get_dolls_image(
+    image: ndarray,
+    cancel_box: tuple[int, int, int, int],
+) -> ndarray:
+    """
+    获取临时 DOLLS 图片
+
+    Returns:
+        ndarray: 临时 DOLLS 图片
+    """
+    offset = (-1047, 186, 82, -33)
+    x = cancel_box[0] + offset[0]
+    y = cancel_box[1] + offset[1]
+    w = cancel_box[2] + offset[2]
+    h = cancel_box[3] + offset[3]
+    new_image = image[y : y + h, x : x + w]
+    return new_image
 
 
 # 基于红叉位置获取剩余时间
@@ -101,26 +108,9 @@ class FactoryGetRewardReco(CustomRecognition):
             if time_result is None or not time_result.hit:
                 continue
 
-            # 名字
-            name_result = _get_name(context, argv.image, i)
-            if name_result is None or not name_result.hit:
-                continue
-            b_name = name_result.best_result
-            assert type(b_name) == OCRResult
-
-            # 赋值给 FactoryGetRewardNextAct 用
-            global _reward_name
-            _reward_name = b_name.text
-            log.debug(f"{n_name} 设置领取角色为 {_reward_name}")
-            context.override_pipeline(
-                {
-                    "FactoryGetRewardSuccess": {
-                        "focus": {
-                            "Node.Recognition.Succeeded": f"领取角色 {_reward_name} 成功"
-                        }
-                    }
-                }
-            )
+            # 保存给 FactoryGetRewardNextAct 用
+            global _reward_image
+            _reward_image = _get_dolls_image(argv.image, i)
 
             return i
 
@@ -204,41 +194,52 @@ class FactoryCheckTaskEndReco(CustomRecognition):
 
         # 遍历以获得所有状态
         for i in boxes:
-            # 名字OCR
-            name_result = _get_name(context, argv.image, i)
-            if not name_result or not name_result.hit:
-                log.debug(f"{n_name} 获取名字失败")
-                continue
-            b_name = name_result.best_result
-            assert type(b_name) == OCRResult
+            # 获取 dolls 图片
+            dools_image = _get_dolls_image(argv.image, i)
 
-            # 在字典中则跳过
-            if b_name.text in _timestamp_by_build_end_names.keys():
-                log.debug(f"{n_name} 状态存在，跳过识别时间")
+            if not context.override_image("temp", dools_image):
+                log.warn(f"{n_name} 保存临时图片失败")
                 continue
 
-            # 时间OCR
-            time_result = _get_time(context, argv.image, i)
-            if not time_result or not time_result.hit:
-                log.debug(f"{n_name} 识别时间失败: {b_name.text}")
-                continue
-            b_time = time_result.best_result
-            assert type(b_time) == OCRResult
+            # 遍历图片分析相识度
+            for k in sorted(_timestamp_by_dolls_image.keys()):
+                image = frombuffer(k[2], dtype=dtype(k[1])).reshape(k[0])
+                same_d = context.run_recognition_direct(
+                    JRecognitionType.TemplateMatch,
+                    JTemplateMatch(["temp"], threshold=[0.8]),
+                    image,
+                )
+                if same_d is not None and same_d.hit:
+                    log.debug(f"{n_name} 状态存在，跳过识别时间: {dools_image[:5]}...")
+                    break
+            else:
+                log.debug(f"{n_name} 状态不存在，新增识别时间: {dools_image[:5]}...")
 
-            # 提取时间
-            m = search(r"(\d\d):(\d\d)", b_time.text)
-            if not m:
-                log.debug(f"{n_name} 正则提取时间失败: {b_time.text}")
-                continue
+                # 时间OCR
+                time_result = _get_time(context, argv.image, i)
+                if not time_result or not time_result.hit:
+                    log.debug(f"{n_name} 识别时间失败: {dools_image[:5]}...")
+                    continue
+                best_time = time_result.best_result
+                assert type(best_time) == OCRResult
 
-            offset_sec = int(m.group(1)) * 60 + int(m.group(2))
-            sec = time.time() + offset_sec
-            _timestamp_by_build_end_names[b_name.text] = sec
-            log.debug(f"{n_name} 新增识别状态: {b_name.text} 结束时间戳: {sec}")
+                # 提取时间
+                m = search(r"(\d\d):(\d\d)", best_time.text)
+                if not m:
+                    log.debug(f"{n_name} 正则提取时间失败: {best_time.text}")
+                    continue
+
+                offset_sec = int(m.group(1)) * 60 + int(m.group(2))
+                sec = time.time() + offset_sec
+                key = (dools_image.shape, dools_image.dtype.str, dools_image.tobytes())
+                _timestamp_by_dolls_image[key] = sec
+                log.debug(
+                    f"{n_name} 新增识别状态: {dools_image[:5]}... 结束时间戳: {sec}"
+                )
 
         # 全忙碌则结束
-        if len(_timestamp_by_build_end_names) == 3:
-            if all(v > time.time() for v in _timestamp_by_build_end_names.values()):
+        if len(_timestamp_by_dolls_image) == 3:
+            if all(v > time.time() for v in _timestamp_by_dolls_image.values()):
                 log.info(f"全部建造槽位处于忙碌，任务结束")
                 return DEFAULT_HIT_BOX
 
@@ -279,14 +280,27 @@ class FactoryChooseStartSuccessAct(CustomAction):
         return True
 
 
-# 领取成功或失败(角色已满)都执行
+# 领取成功或失败(角色已满)都执行 从字典中删除
 @AgentServer.custom_action("FactoryGetRewardNextAct")
 class FactoryGetRewardNextAct(CustomAction):
     def run(
         self, context: Context, argv: CustomAction.RunArg
     ) -> CustomAction.RunResult | bool:
-        # 从字典中删除
-        if _reward_name in _timestamp_by_build_end_names.keys():
-            del _timestamp_by_build_end_names[_reward_name]
-            log.debug(f"从状态字典中删除: {_reward_name}")
+        if not context.override_image("temp", _reward_image):
+            log.warn(f"{argv.node_name} 保存临时图片失败")
+            return True
+
+        # 遍历图片分析相识度
+        for k in _timestamp_by_dolls_image.keys():
+            image = frombuffer(k[2], dtype=dtype(k[1])).reshape(k[0])
+            same_d = context.run_recognition_direct(
+                JRecognitionType.TemplateMatch,
+                JTemplateMatch(["temp"], threshold=[0.8]),
+                image,
+            )
+            if same_d is not None and same_d.hit:
+                del _timestamp_by_dolls_image[k]
+                log.debug(f"{argv.node_name} 状态存在，删除 key: {k[:5]}...")
+                return True
+
         return True
