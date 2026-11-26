@@ -139,6 +139,54 @@
             70
         ]
     },
+    /* -------------------- 通用动作 -------------------- */
+    // 跳过剧情
+    "BattleClickSkip": {
+        "desc": "[jp] 点击跳过剧情",
+        "recognition": "OCR",
+        "expected": "跳过",
+        "roi": [
+            1100,
+            20,
+            160,
+            60
+        ],
+        "action": "Click",
+        "post_wait_freezes": 1000
+    },
+    /* -------------------- 分支-补充成员 -------------------- */
+    "BattleBranchReplenish": {
+        "desc": "[jp] 条件补充成员数",
+        "recognition": "TemplateMatch",
+        "template": "Battle/NeedReplenish.png",
+        "roi": [
+            772,
+            402,
+            490,
+            162
+        ],
+        "next": [
+            "BattleClickReplenish",
+            "[JumpBack]BaseBranchError"
+        ]
+    },
+    /* -------------------- 动作-补充成员 -------------------- */
+    "BattleClickReplenish": {
+        "desc": "[end] 点击补充按钮",
+        "recognition": "OCR",
+        "expected": [
+            "一键",
+            "补充"
+        ],
+        "roi": [
+            233,
+            659,
+            104,
+            34
+        ],
+        "action": "Click",
+        "post_wait_freezes": 1000
+    },
     /* -------------------- 动作-进入出击页 -------------------- */
     // INFO 进入出击
     // PERF
@@ -202,39 +250,6 @@
         "focus": {
             "Node.Recognition.Succeeded": "代理作战锁定 任务结束"
         }
-    },
-    /* -------------------- 动作-补充成员 -------------------- */
-    // TODO 补充数量不够
-    "BattleBranchReplenish": {
-        "desc": "[jp] 条件补充成员数",
-        "recognition": "TemplateMatch",
-        "template": "Battle/NeedReplenish.png",
-        "roi": [
-            772,
-            402,
-            490,
-            162
-        ],
-        "next": [
-            "BattleClickReplenish",
-            "[JumpBack]BaseBranchError"
-        ]
-    },
-    "BattleClickReplenish": {
-        "desc": "[end] 点击补充按钮",
-        "recognition": "OCR",
-        "expected": [
-            "一键",
-            "补充"
-        ],
-        "roi": [
-            233,
-            659,
-            104,
-            34
-        ],
-        "action": "Click",
-        "post_wait_freezes": 1000
     },
     /* -------------------- 分支-需要建造 -------------------- */
     "BattleBranchBuild": {
@@ -356,6 +371,7 @@
         "next": [
             "BaseErrorNext",
             "BattleBranchBattle",
+            "[JumpBack]BattleClickSkip",
             "[JumpBack]BaseBranchError",
             "BattleClickReplayAttack"
         ],
@@ -377,6 +393,7 @@
         "next": [
             "[JumpBack]BattleProbeNow",
             "[JumpBack]BattleProbeLoading",
+            "[JumpBack]BattleClickSkip",
             "BattleClickWinTap",
             "[JumpBack]BaseBranchError"
         ],
