@@ -1,0 +1,239 @@
+{
+    /*
+    INFO 自动活动任务
+
+    使用任务链结构 v4.0 校验年月日 26/11/26
+    使用节点命名与分类 v3.4 校验年月日 26/11/26
+    */
+    "TaskActivity": {
+        "desc": "自动活动",
+        "next": [
+            "[JumpBack]BaseBranchError",
+            "ActivityBranchLevelLock",
+            "ActivityClickDifficulty",
+            "ActivityStopNoActivity"
+        ]
+    },
+    "ActivityStopNoActivity": {
+        "desc": "不在活动页面",
+        "recognition": "OCR",
+        "inverse": true,
+        "expected": [
+            "普通",
+            "困难",
+            "高难"
+        ],
+        "roi": [
+            437,
+            9,
+            241,
+            77
+        ],
+        "action": "StopTask",
+        "focus": {
+            "Node.Recognition.Succeeded": "请进入活动页面后再启动任务"
+        }
+    },
+    /* -------------------- 通用探测 -------------------- */
+    // 有关卡箭头
+    "ActivityProbeArrow": {
+        "desc": "[end] 有关卡箭头",
+        "recognition": "FeatureMatch",
+        "template": "Battle/Activity/LevelArrowGreen.png",
+        "green_mask": true,
+        "roi": [
+            79,
+            278,
+            1130,
+            132
+        ],
+        "order_by": "Horizontal",
+        "index": -1
+    },
+    /* -------------------- 动作-A评价结束 -------------------- */
+    "ActivityStopA": {
+        "desc": "战斗胜利但A评价",
+        "recognition": "TemplateMatch",
+        "template": "Battle/Activity/A.png",
+        "roi": [
+            1007,
+            197,
+            273,
+            305
+        ],
+        "action": "StopTask",
+        "focus": {
+            "Node.Recognition.Succeeded": "A评价 任务结束"
+        }
+    },
+    /* -------------------- 2-分支-有关卡锁 -------------------- */
+    "ActivityBranchLevelLock": {
+        "desc": "分支-有关卡锁",
+        "recognition": "TemplateMatch",
+        "template": "Battle/Activity/LevelLockGreen.png",
+        "green_mask": true,
+        "roi": [
+            80,
+            274,
+            1102,
+            115
+        ],
+        "next": [
+            // INFO 和 ActivityBranchGotoSuccess 相同
+            "[JumpBack]BaseClickConfirm", // INFO 打完后自动跳回主页 若此EP已经打完 就会弹出跳转下一个EP的确认框
+            "[JumpBack]ActivityBranchArrow",
+            "[JumpBack]BaseBranchError"
+        ]
+    },
+    /* -------------------- 1-动作-活动难度 -------------------- */
+    "ActivityClickDifficulty": {
+        "desc": "[max] 点击最新活动难度",
+        "max_hit": 10,
+        "recognition": "OCR",
+        "expected": [
+            "高难",
+            "困难",
+            "普通"
+        ],
+        "roi": [
+            425,
+            5,
+            256,
+            84
+        ],
+        "order_by": "Expected",
+        "action": "Click",
+        "post_wait_freezes": 1000,
+        "next": [
+            "ActivityBranchDifficulty",
+            "[JumpBack]BaseBranchError",
+            "ActivityClickDifficulty"
+        ]
+    },
+    /* -------------------- 1-分支-活动难度 -------------------- */
+    "ActivityBranchDifficulty": {
+        "desc": "活动难度分支",
+        "recognition": "ColorMatch",
+        "lower": [
+            0,
+            131,
+            131
+        ],
+        "upper": [
+            92,
+            222,
+            222
+        ],
+        "count": 300,
+        "target": "ActivityClickDifficulty",
+        "target_offset": [
+            -15,
+            -15,
+            30,
+            30
+        ],
+        "next": [
+            "ActivityClickGoto",
+            "[JumpBack]BaseBranchError"
+        ]
+    },
+    /* -------------------- 1-动作-前往EP -------------------- */
+    "ActivityClickGoto": {
+        "desc": "[max] 分支-前往EP",
+        "max_hit": 10,
+        "recognition": "OCR",
+        "expected": "前往攻略",
+        "roi": [
+            744,
+            594,
+            452,
+            98
+        ],
+        "order_by": "Horizontal",
+        "index": -1, // XXX 假定锁定的关卡无法被识别到
+        "action": "Click",
+        "post_wait_freezes": 1000,
+        "next": [
+            "ActivityBranchGotoSuccess",
+            "[JumpBack]BaseBranchError",
+            "ActivityClickGoto"
+        ]
+    },
+    /* -------------------- 1-分支-前往EP成功 -------------------- */
+    "ActivityBranchGotoSuccess": {
+        "desc": "[end] 分支-前往EP成功",
+        "recognition": "ColorMatch",
+        "lower": [
+            82,
+            62,
+            0
+        ],
+        "upper": [
+            190,
+            144,
+            7
+        ],
+        "count": 380,
+        "roi": "ActivityClickGoto",
+        "roi_offset": [
+            -99,
+            20,
+            111,
+            -6
+        ],
+        "next": [
+            "[JumpBack]BaseClickConfirm", // INFO 打完后自动跳回主页 若此EP已经打完 就会弹出跳转下一个EP的确认框
+            "[JumpBack]ActivityBranchArrow",
+            "[JumpBack]BaseBranchError"
+        ]
+    },
+    /* -------------------- 1-分支-关卡箭头 -------------------- */
+    "ActivityBranchArrow": {
+        "desc": "[jp] 分支-关卡箭头",
+        "recognition": "And",
+        "all_of": [
+            "ActivityProbeArrow"
+        ],
+        "next": [
+            "ActivityStopEnd",
+            "ActivityClickArrow",
+            "[JumpBack]BaseBranchError"
+        ]
+    },
+    /* -------------------- 1-动作-全部完成 -------------------- */
+    "ActivityStopEnd": {
+        "desc": "[end] 全部关卡完成 任务结束",
+        "recognition": "OCR",
+        "expected": [
+            "任务",
+            "达成"
+        ],
+        "roi": "ActivityBranchArrow",
+        "roi_offset": [
+            -79,
+            -182,
+            152,
+            16
+        ],
+        "action": "StopTask",
+        "focus": {
+            "Node.PipelineNode.Succeeded": "无可战斗关卡 任务结束"
+        }
+    },
+    /* -------------------- 1-动作-关卡箭头 -------------------- */
+    "ActivityClickArrow": {
+        "desc": "[max] 点击关卡箭头",
+        "max_hit": 10,
+        "recognition": "And",
+        "all_of": [
+            "ActivityProbeArrow"
+        ],
+        "action": "Click",
+        "post_wait_freezes": 1000,
+        "next": [
+            "BattleBranchAutoFormation",
+            "ActivityClickArrow",
+            "[JumpBack]BaseBranchError"
+        ]
+    }
+}

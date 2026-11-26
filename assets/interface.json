@@ -229,6 +229,25 @@
                     ]
                 }
             }
+        },
+        {
+            "name": "Activity",
+            "label": "自动活动（只能单独启动）",
+            "entry": "TaskActivity",
+            "default_check": false,
+            "description": "使用自律作战，依次进行活动战斗。<br/>当战斗失败或需要建造DOLLS时, 任务停止。",
+            "option": [
+                "acticity_A"
+            ],
+            "group": [
+                "metal"
+            ],
+            "pipeline_override": {
+                "BattleBranchBuild": {
+                    "action": "StopTask",
+                    "next": []
+                }
+            }
         }
     ],
     "group": [
@@ -259,6 +278,7 @@
         "resource/tasks/option/battle_replays.json",
         "resource/tasks/option/reward.json",
         "resource/tasks/option/train.json",
-        "resource/tasks/option/explore.json"
+        "resource/tasks/option/explore.json",
+        "resource/tasks/option/battle_activity.json"
     ]
 }

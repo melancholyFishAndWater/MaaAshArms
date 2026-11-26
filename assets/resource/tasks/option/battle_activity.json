@@ -1,0 +1,30 @@
+{
+    "option": {
+        "acticity_A": {
+            "label": "A也暂停",
+            "description": "启用后, 即使战斗胜利, 但取得A评价也结束任务",
+            "type": "switch",
+            "default_case": "No",
+            "cases": [
+                {
+                    "name": "No"
+                },
+                {
+                    "name": "Yes",
+                    "pipeline_override": {
+                        "BattleClickWinTap": {
+                            "next": [
+                                "ActivityStopA",
+                                "[JumpBack]BattleClickFinish", // INFO 训练所无完成按钮 因此使用jp使其通用
+                                "[JumpBack]BattleClickTap",
+                                "BattleProbeWinEnd",
+                                // INFO 单次战斗不需要点击确认
+                                "[JumpBack]BaseBranchError"
+                            ]
+                        }
+                    }
+                }
+            ]
+        }
+    }
+}
