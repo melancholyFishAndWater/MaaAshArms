@@ -58,7 +58,8 @@
     },
     /* -------------------- 动作-进入出击主页 -------------------- */
     "TrainingEnterBattleHome": {
-        "desc": "进入出击页面",
+        "desc": "[max] 进入出击页面",
+        "max_hit": 10,
         "recognition": "OCR",
         "expected": "出击作战",
         "roi": [
@@ -73,7 +74,8 @@
         "rate_limit": 3000,
         "next": [
             "TrainingEnterHome",
-            "[JumpBack]BaseBranchError"
+            "[JumpBack]BaseBranchError",
+            "TrainingEnterBattleHome"
         ]
     },
     /* -------------------- 动作-进入训练所 -------------------- */
