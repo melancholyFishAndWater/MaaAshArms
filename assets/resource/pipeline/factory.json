@@ -238,9 +238,10 @@
         "action": "Custom",
         "custom_action": "FactoryGetRewardNextAct"
     },
-    /* -------------------- 分支-创建订单 -------------------- */
+    /* -------------------- 动作-创建订单 -------------------- */
     "FactoryClickCreateOrder": {
-        "desc": "点击创建新订单",
+        "desc": "[max] 点击创建新订单",
+        "max_hit": 10,
         "recognition": "OCR",
         "expected": "创建新的订单",
         "roi": [
@@ -252,12 +253,13 @@
         "order_by": "Vertical",
         "index": 0,
         "action": "Click",
-        "post_wait_freezes": 1000,
+        "post_wait_freezes": 3000,
         "timeout": 60000,
-        "rate_limit": 3000,
+        "rate_limit": 5000,
         "next": [
             "FactoryClickCharacter",
-            "[JumpBack]BaseBranchError"
+            "[JumpBack]BaseBranchError",
+            "FactoryClickCreateOrder"
         ]
     },
     /* -------------------- 动作-点击角色 -------------------- */
