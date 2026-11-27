@@ -255,12 +255,12 @@ def _checks_core() -> list[tuple]:
     )
 
     action_names = ["X" + verb + "Target" for verb in (
-        "Click", "Enter", "Choose", "Start", "Get", "TouchDown", "TouchUp",
+        "Click", "Enter", "Choose", "Start", "TouchDown", "TouchUp",
         "Move", "Close", "Stop", "Init", "Enable",
     )] + ["StartUpEnterIcon", "ClickConfirm", "XInit"]
     exempt_names = ["XProbeClickButton", "XBranchGetReward", "TaskStartUp", "StartUpProbeHome",
                     "XClickConfirmSuccess", "XEnterHomeFailed", "XStopEnd", "XGetter", "XCloseup",
-                    "XProbeInit", "XBranchStop", "XDailyUpdate"]
+                    "XProbeInit", "XBranchStop", "XDailyUpdate", "XGetStatus", "XGetReward"]
     action_ctx = synth_ctx({name: {} for name in action_names + exempt_names})
     check_a13_naming(action_ctx)
     missing = {n for n in action_names + exempt_names if any(

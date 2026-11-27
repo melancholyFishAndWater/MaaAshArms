@@ -5,6 +5,8 @@
 本文约束 pipeline 节点叫什么名、属于哪一类（探测 / 分支 / 动作），以及 agent 侧注册名、
 参数键、文件名与目录的写法。改节点名、加新节点、拆分子任务时按本文件执行。
 
+`Get` 不在标准动作动词表中，不再仅凭 `Get` 命名要求 `action`；已有节点不自动改名。
+
 **v3.5 变更**：按第四节动词表命名的动作节点必须显式包含 `action` 字段，缺失时报 `A13-action-missing`（error），通用节点同样适用。按 CamelCase 角色位置识别，`Probe` / `Branch` 后的宾语不按动作动词判；`Task*` 入口与 `Success` / `Failed` / `End` 状态后缀不在此规则范围。`Init` 动作仍必须有 `action`。字段值是否合法由 schema 检查，本规则只检查字段存在。
 
 **v3.4 变更**：移除工作循环类别及其旧写法，页面内工作统一由 `Branch` 与动作承担。
@@ -190,7 +192,6 @@
 | 动词 | 用途 | 示例 |
 | --- | --- | --- |
 | `Start` | 启动一条正式流程 | `EntrustStart`（点出击开始委派） |
-| `Get` | 领取类动作 | `FactoryGetReward`、`TrainGetReward`、`FeiduGetMetal` |
 | `TouchDown` / `TouchUp` | 按住、松手 | `EntrustTouchDown`、`EntrustTouchUp`、`EntrustTouchUp2` |
 | `Move` | 滑动、移动列表 | `BaseMoveUp`、`BaseMoveRight`、`TrainInfoMover` |
 | `Close` | 关掉弹窗/页面 | `NoticeClose`、`TrainCloseStatusArrow` |

@@ -56,7 +56,6 @@ VERBS = (
     "Move",
     "Stop",
     "Init",
-    "Get",
     "Enable",
 )
 # node-naming.md §2 里已成类的后缀，不按动词表判
