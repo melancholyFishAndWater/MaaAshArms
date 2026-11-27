@@ -68,6 +68,8 @@
 
 ### 分组细则（判据原文与实测）
 
+`A13-action-missing`（error）：按文档动词表命名为动作的节点必须显式包含 `action`，包含通用节点和 `Init`。按 CamelCase 角色位置匹配完整动词，不匹配 `Probe` / `Branch` 的宾语；排除 `Task*` 入口及 `Success` / `Failed` / `End` 状态后缀。字段值交给 schema 验证，不以 `desc` 或分节注释判断动作角色。
+
 `A13-*` 里属于**护栏**（今天一条都不报，为的是以后别写错）的几条：探测节点不该有 `next`、
 参数键 snake_case、pipeline 片段文件名 snake_case、不用 `ClickYes` 这类同义写法。
 （v3.1 起 `Ensure` 停用，原来两条按 `Ensure` 名判的护栏随 `A13-ensure-*` 一起删掉。）

@@ -110,7 +110,7 @@ NEXT_CAP_EXCLUDED = frozenset({"BaseBranchError", "BaseErrorNext"})
 # v3.10：A28 的列表长度上限由 7 项下调到 5 项（结构文档 §10，作者裁定；不计入项不变）。
 # v3.11：A21/A15-shadowed/A28 明确为结构复核提示。
 # v4.0：A21 检查自环有限 max_hit；移除旧 Loop 类别专属判据；A22 保留存量位置检查。
-NAMING_SPEC_VERSION = "v3.4"
+NAMING_SPEC_VERSION = "v3.5"
 NAMING_SPEC = Path("docs/zh_cn/develop/node-naming.md")
 STRUCT_SPEC_VERSION = "v4.0"
 STRUCT_SPEC = Path("docs/zh_cn/develop/pipeline-structure.md")

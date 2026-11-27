@@ -254,6 +254,29 @@ def _checks_core() -> list[tuple]:
         )
     )
 
+    action_names = ["X" + verb + "Target" for verb in (
+        "Click", "Enter", "Choose", "Start", "Get", "TouchDown", "TouchUp",
+        "Move", "Close", "Stop", "Init", "Enable",
+    )] + ["StartUpEnterIcon", "ClickConfirm", "XInit"]
+    exempt_names = ["XProbeClickButton", "XBranchGetReward", "TaskStartUp", "StartUpProbeHome",
+                    "XClickConfirmSuccess", "XEnterHomeFailed", "XStopEnd", "XGetter", "XCloseup",
+                    "XProbeInit", "XBranchStop", "XDailyUpdate"]
+    action_ctx = synth_ctx({name: {} for name in action_names + exempt_names})
+    check_a13_naming(action_ctx)
+    missing = {n for n in action_names + exempt_names if any(
+        f.id == "A13-action-missing" and f.severity == "error" and f.message.startswith(n + " ")
+        for f in action_ctx.findings
+    )}
+    checks.append((missing == set(action_names), "动作动词缺action逐项报Error；角色、状态及相似宾语不误报"))
+    explicit = synth_ctx({name: {"action": "DoNothing"} for name in action_names})
+    check_a13_naming(explicit)
+    checks.append((not any(f.id == "A13-action-missing" for f in explicit.findings), "显式action字段满足动作契约"))
+    common = synth_ctx({"BaseClickConfirm": {}, "BaseProbeClick": {}})
+    for node in common.nodes.values():
+        node.file = Path("base.json")
+    check_a13_naming(common)
+    checks.append((sum(f.id == "A13-action-missing" for f in common.findings) == 1, "公共base节点同样检查缺action"))
+
     # 规范版本：文档/模板与脚本不一致就要报，一致时不报（自检不写文件，只试纯函数）
     def vf_id(found: str | None) -> str:
         verdict = version_finding(found)

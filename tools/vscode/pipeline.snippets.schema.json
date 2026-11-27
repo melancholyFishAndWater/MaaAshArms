@@ -1,7 +1,7 @@
 {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "type": "object",
-    "$comment": "使用命名规范 v3.4; 使用任务链结构 v4.0",
+    "$comment": "使用命名规范 v3.5; 使用任务链结构 v4.0",
     "patternProperties": {
         "^(?!\\$).*": {
             "defaultSnippets": [

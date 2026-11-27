@@ -350,6 +350,20 @@ def check_a12_focus(ctx: Ctx) -> None:
                     )
 
 
+def _action_name_requires_action(name: str) -> bool:
+    """只认角色位置的完整 CamelCase 动词，不把 Probe/Branch 的宾语当动作。"""
+    if name.startswith("Task") or name.endswith(("Success", "Failed", "End")):
+        return False
+    # StartUp 是任务前缀，不把 StartUpProbeHome 的 Start 当作动作。
+    body = name[len("StartUp"):] if name.startswith("StartUp") else name
+    roles = ("Probe", "Branch", *VERBS)
+    for suffix in [body, *word_suffixes(body)]:
+        for role in roles:
+            if suffix == role or (suffix.startswith(role) and suffix[len(role):len(role) + 1].isupper()):
+                return role in VERBS
+    return False
+
+
 def check_a13_naming(ctx: Ctx) -> None:
     """A13：命名规范（动词、层级、参数键、文件命名）与旧前缀/同义词检查。"""
     generic = ctx.generic_nodes
@@ -380,6 +394,11 @@ def check_a13_naming(ctx: Ctx) -> None:
                     f"{name} 用了旧前缀 {legacy}（node-naming.md §3：并入 Probe + 状态词）",
                 )
                 break
+        if "action" not in data and _action_name_requires_action(name):
+            ctx.add(
+                "A13-action-missing", "error", info.file, line,
+                f"{name} 按 node-naming.md §4 动词表命名为动作节点，必须显式包含 action 字段",
+            )
         if info.file.name == "base.json" or name in generic:
             continue
         pset = prefixes.get(info.file, set())
