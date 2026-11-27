@@ -23,6 +23,10 @@
 另外没有搬运 M9A 的 `.agents/skills/maafw-sentry-analysis/SKILL.md`——本仓库 `.agents/` 被
 gitignore，技能文件无法入库；等价内容就是这批文档。
 
+## 单版本报告的目标范围
+
+`task-failure --release`（包括 `--input` 离线工件与 `context`）接受裸资源版本 `v1.0.0-beta.37` / `1.0.0-beta.37` 或完整项目 release。可解析资源版本时合并同版本的不同客户端/渠道 release；其他字符串按 release 原文精确匹配。任务、失败标记、运行、环境与覆盖列表都使用同一目标范围；缺失 release 的行不计入，无匹配数据时输出空结果，不回退成全版本统计。裸版本解析只用于报告目标，不改变遥测行必须含项目前缀的解析规则。
+
 ## 真实数据校正：框架伪任务与版本选择
 
 用 30 天真实数据跑过一遍后修了三处（2026-10-14，工件见 `temp/telemetry/python-30d-*.json`）：

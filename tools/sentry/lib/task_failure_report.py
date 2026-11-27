@@ -21,6 +21,7 @@ import argparse
 import io
 import json
 import math
+import re
 import sys
 from collections import defaultdict
 from collections.abc import Iterable, Sequence
@@ -149,6 +150,26 @@ def _in_version(row: dict[str, Any], version_key: tuple[int, int, int, int, int]
     if not isinstance(release, str):
         return False
     return release_version_key(release) == version_key
+
+
+def _target_version_key(release: str) -> tuple[int, int, int, int, int] | None:
+    """CLI 目标可为裸资源版本；不放宽遥测行的项目 release 解析规则。"""
+    if re.fullmatch(r"v?\d+\.\d+\.\d+(?:-(?:alpha|beta|rc)\.\d+)?", release):
+        return release_version_key(f"{CONFIG.project_prefix}@{release}")
+    return release_version_key(release)
+
+
+def _scope_measurements(
+    measurements: dict[str, list[dict[str, Any]]], release: str,
+) -> dict[str, list[dict[str, Any]]]:
+    """所有分表先收窄至同一目标；未知版本按完整 release 精确匹配，绝不退成全量。"""
+    key = _target_version_key(release)
+    return {
+        name: [row for row in rows if (
+            _in_version(row, key) if key is not None else row.get("release") == release
+        )]
+        for name, rows in measurements.items()
+    }
 
 
 def _is_umbrella_or_ignored(description: str) -> bool:
@@ -337,8 +358,9 @@ def build_report(
     ``min_samples`` 非空时覆盖 `config.json` 的默认值（`--min-samples`）。
     """
     samples_threshold = CONFIG.min_samples if min_samples is None else min_samples
-    version_key = release_version_key(release)
-    version = version_label(release)
+    version_key = _target_version_key(release)
+    version = version_label(release) or (release if version_key is not None else None)
+    measurements = _scope_measurements(measurements, release)
 
     totals = measurements.get("task_total", [])
     statuses = measurements.get("task_status", [])
@@ -608,8 +630,8 @@ def collect_report(
             timeout_seconds=timeout_seconds,
         )
 
-    version_key = release_version_key(release)
-    version = version_label(release)
+    version_key = _target_version_key(release)
+    version = version_label(release) or (release if version_key is not None else None)
     if version is not None:
         show_progress(
             f"分析版本 {version}（来自 release: {release}；任务数据覆盖所有内嵌该版本的渠道）",
@@ -687,7 +709,7 @@ def collect_report(
 
 def create_argument_parser(prog: str | None = None) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog=prog, description=module_summary(__doc__))
-    parser.add_argument("--release", help="指定 Sentry release（取其内嵌的项目版本）；未指定时自动选最新版本")
+    parser.add_argument("--release", help="指定资源版本（如 v1.0.0-beta.37）或 Sentry release；可解析版本跨渠道合并，其他字符串精确匹配；未指定时自动选版本")
     parser.add_argument("--input", help="读下载好的遥测工件而不是实时查询（见 fetch --preset task-failure）")
     parser.add_argument("--target", default=DEFAULT_TARGET, help="<org>/<project>")
     parser.add_argument(

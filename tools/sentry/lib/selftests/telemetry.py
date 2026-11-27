@@ -235,6 +235,26 @@ def check_release_rows() -> list[str]:
     )
     _eq(len(runs37), 2, "beta.37 的两条渠道都要出现")
     lines.append(f"  beta.37 拆出 {len(runs37)} 条渠道 release（合计 20 次运行）")
+    full = task_failure_report.build_report(MEASUREMENTS, release=RELEASE_D37_NEW_MFA, period="7d", provenance="test")
+    for target in ("v1.0.0-beta.37", "1.0.0-beta.37"):
+        report = task_failure_report.build_report(MEASUREMENTS, release=target, period="7d", provenance="test")
+        _eq(report.tasks, full.tasks, "裸版本任务统计与完整release一致")
+        _eq(report.markers, full.markers, "裸版本失败标记同范围")
+        _eq(report.runs, full.runs, "裸版本运行统计同范围")
+        _eq(report.context, full.context, "裸版本环境统计同范围")
+        _eq(report.covered_releases, full.covered_releases, "裸版本覆盖列表不混版本")
+    custom = {name: [{"release": "custom-release", "description": "Task", "status": "ok", "_count": 3,
+                      "os_name": "Windows", "environment": "prod"},
+                     {"release": "other-release", "description": "Task", "status": "ok", "_count": 99},
+                     {"description": "Task", "status": "ok", "_count": 100}]
+              for name in ("task_total", "task_status", "run_total", "runtime_os", "runtime_env")}
+    report = task_failure_report.build_report(custom, release="custom-release", period="7d", provenance="test")
+    _eq(report.tasks[0].total, 3, "不可解析release精确过滤任务，不退成全量")
+    _eq(report.covered_releases, ["custom-release"], "不可解析release覆盖范围精确")
+    _eq([row.total for row in report.context if row.value], [3, 3], "不可解析release环境不混入其他或缺失行")
+    empty = task_failure_report.build_report(MEASUREMENTS, release="v9.9.9", period="7d", provenance="test")
+    _eq((empty.tasks, empty.markers, empty.runs, empty.context, empty.covered_releases), ([], [], [], [], []), "目标版本无数据不能回退全量")
+    lines.append("  裸版本 / 完整release / 不可解析release / 无匹配目标均按统一范围过滤")
     return lines
 
 
@@ -627,7 +647,7 @@ def check_task_aliases() -> list[str]:
 
     # 实时查询回来的行是 `span.*` 原始键，分析函数只认中性名；不转换任务表会整片空
     rows = to_neutral_rows(
-        [{"span.description": "Train", "span.status": "ok", "count_unique(trace)": 3}],
+        [{"span.description": "Train", "span.status": "ok", "_count": 3}],
         ("span.description", "span.status", "count_unique(trace)"),
     )
     _eq(sorted(rows[0]), ["_count", "description", "status"], "实时行换成中性字段名")
