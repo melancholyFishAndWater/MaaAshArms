@@ -315,7 +315,7 @@
         "post_wait_freezes": 1000,
         "next": [
             "BaseErrorNext",
-            "FactoryStopNoMetal",
+            "FactoryBranchNoMetal",
             "FactoryChooseStartSuccess",
             "FactoryClickStart"
         ]
@@ -331,7 +331,7 @@
         "custom_action": "FactoryChooseStartSuccessAct"
     },
     /* -------------------- 分支-资源不足 -------------------- */
-    "FactoryStopNoMetal": {
+    "FactoryBranchNoMetal": {
         "desc": "建造失败 资源不足",
         "recognition": "OCR",
         "expected": "资源不足",
