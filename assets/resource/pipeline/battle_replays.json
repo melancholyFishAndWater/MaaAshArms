@@ -13,7 +13,8 @@
             "ReplaysBranchBattle",
             "ReplaysBranchDefaultEnd",
             "ReplaysBranchMetalFinish",
-            "[JumpBack]BaseBranchError"
+            "[JumpBack]BaseBranchError",
+            "ReplaysStopNotFormation"
         ],
         "focus": {
             "Node.PipelineNode.Failed": {
@@ -30,6 +31,19 @@
         "custom_action": "ReplaysInitAct",
         "custom_action_param": {
             "times": 2 // 执行次数
+        }
+    },
+    /* -------------------- 动作-非编队页面 -------------------- */
+    "ReplaysStopNotFormation": {
+        "desc": "[end] 非编队页面 任务结束",
+        "recognition": "And",
+        "all_of": [
+            "BattleProbeFormation"
+        ],
+        "inverse": true,
+        "action": "StopTask",
+        "focus": {
+            "Node.Action.Succeeded": "任务结束 请在编队页面运行此任务"
         }
     },
     /* -------------------- 动作-掉线重连 -------------------- */
