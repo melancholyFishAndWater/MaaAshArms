@@ -80,7 +80,8 @@
             "BattleStopReplayLocked",
             "ReplaysStopReplayOff",
             "ReplaysClickAttack",
-            "[JumpBack]BaseBranchError"
+            "[JumpBack]BaseBranchError",
+            "BattleStopNoReplayAuto"
         ]
     },
     "ReplaysStopBuild": {

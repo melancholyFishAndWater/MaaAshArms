@@ -115,6 +115,7 @@
             121
         ]
     },
+    // 可以出击
     "BattleProbeActionLight": {
         "desc": "[end] 出击按钮亮",
         "recognition": "TemplateMatch",
@@ -126,6 +127,7 @@
             157
         ]
     },
+    // 代理开启
     "BattleProbeReplayLight": {
         "desc": "[end] 代理作战已开启",
         "recognition": "TemplateMatch",
@@ -139,7 +141,31 @@
             70
         ]
     },
-    // 自律按钮暗
+    // 代理关闭
+    "BattleProbeReplayDart": {
+        "desc": "[end] 代理暗淡",
+        "recognition": "TemplateMatch",
+        "template": "Battle/ReplayBattleDart.png",
+        "roi": [
+            887,
+            488,
+            306,
+            141
+        ]
+    },
+    // 自律开启
+    "BattleProbeAutoLight": {
+        "desc": "[end] 自律亮",
+        "recognition": "TemplateMatch",
+        "template": "Battle/AutoButtonLight.png",
+        "roi": [
+            1126,
+            612,
+            129,
+            58
+        ]
+    },
+    // 自律关闭
     "BattleProbeAutoDart": {
         "desc": "[end] 自律按钮暗",
         "recognition": "TemplateMatch",
@@ -295,6 +321,22 @@
             "Node.Recognition.Succeeded": "DOLLS不足 需要建造"
         }
     },
+    /* -------------------- 动作-没有自律和代理 -------------------- */
+    "BattleStopNoReplayAuto": {
+        "desc": "没有自律和代理",
+        "recognition": "And",
+        "all_of": [
+            "BattleProbeAutoLight",
+            "BattleProbeAutoDart",
+            "BattleProbeReplayLight",
+            "BattleProbeReplayDart"
+        ],
+        "inverse": true,
+        "action": "StopTask",
+        "focus": {
+            "Node.Recognition.Succeeded": "没有代理和自律开关 任务结束"
+        }
+    },
     /* -------------------- 1-分支-自动作战编队 -------------------- */
     "BattleBranchAutoFormation": {
         "desc": "自律作战",
@@ -309,22 +351,8 @@
             "BattleClickAutoAttack",
             "[JumpBack]BaseProbeBlackPage",
             "[JumpBack]BaseBranchError",
-            "BattleStopNoAuto"
+            "BattleStopNoReplayAuto"
         ]
-    },
-    /* -------------------- 1-动作-没有自律 -------------------- */
-    "BattleStopNoAuto": {
-        "desc": "没有自律",
-        "recognition": "And",
-        "all_of": [
-            "BattleProbeAutoLight",
-            "BattleProbeAutoDart"
-        ],
-        "inverse": true,
-        "action": "StopTask",
-        "focus": {
-            "Node.Recognition.Succeeded": "没有自律按钮 任务结束"
-        }
     },
     /* -------------------- 1-动作-启用自律 -------------------- */
     "BattleClickAuto": {
@@ -374,17 +402,6 @@
             "Node.PipelineNode.Failed": "作战出发失败"
         }
     },
-    "BattleProbeAutoLight": {
-        "desc": "[end] 自律亮",
-        "recognition": "TemplateMatch",
-        "template": "Battle/AutoButtonLight.png",
-        "roi": [
-            1126,
-            612,
-            129,
-            58
-        ]
-    },
     // TODO 部分活动作战无代理和自律
     /* -------------------- 2-分支-代理作战编队 -------------------- */
     "BattleBranchReplayFormation": {
@@ -398,8 +415,9 @@
             "BattleStopReplayLocked",
             "BattleClickReplay",
             "[JumpBack]BaseProbeBlackPage",
-            "[JumpBack]BaseBranchError"
+            "[JumpBack]BaseBranchError",
             // "[JumpBack]BattleClickReplay", // TODO
+            "BattleStopNoReplayAuto"
         ],
         "focus": {
             "Node.PipelineNode.Failed": "代理作战编队失败"
@@ -409,15 +427,11 @@
     "BattleClickReplay": {
         "desc": "[max] 点击代理作战",
         "max_hit": 10,
-        "recognition": "TemplateMatch",
-        "template": "Battle/ReplayBattleDart.png",
-        "action": "Click",
-        "roi": [
-            887,
-            488,
-            306,
-            141
+        "recognition": "And",
+        "all_of": [
+            "BattleProbeReplayDart"
         ],
+        "action": "Click",
         "post_wait_freezes": 1000,
         "next": [
             "BattleBranchBuild",
