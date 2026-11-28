@@ -503,8 +503,8 @@
         "timeout": 45000,
         "next": [
             "[JumpBack]BattleProbeNow",
+            "[JumpBack]BattleClickSkip", // 部分剧情以黑屏开头 因此要排在前面
             "[JumpBack]BattleProbeLoading",
-            "[JumpBack]BattleClickSkip",
             "BattleClickWinTap",
             "BattleBranchLose",
             "[JumpBack]BaseBranchError"
