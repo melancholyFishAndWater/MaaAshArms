@@ -33,6 +33,7 @@ from maa.tasker import Tasker
 from pienv import pi_check_maafw_version, pi_log_snapshot
 import battle_replays
 import battle_training
+import battle
 import entrust
 import factory_fast
 import factory

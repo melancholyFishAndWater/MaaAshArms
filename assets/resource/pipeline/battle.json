@@ -215,21 +215,15 @@
         "action": "Click",
         "post_wait_freezes": 1000
     },
-    /* -------------------- 分支-补充成员 -------------------- */
-    "BattleBranchReplenish": {
-        "desc": "[jp] 条件补充成员数",
-        "recognition": "TemplateMatch",
-        "template": "Battle/NeedReplenish.png",
-        "roi": [
-            772,
-            402,
-            490,
-            162
-        ],
-        "next": [
-            "BattleClickReplenish",
-            "[JumpBack]BaseBranchError"
-        ]
+    // 合金不足
+    "BattleStopNoMetal": {
+        "desc": "[end] 合金不足",
+        "recognition": "Custom",
+        "custom_recognition": "BattleStopNoMetalReco",
+        "action": "StopTask",
+        "focus": {
+            "Node.Recognition.Succeeded": "合金不足 任务结束"
+        }
     },
     /* -------------------- 动作-补充成员 -------------------- */
     "BattleClickReplenish": {
@@ -265,7 +259,7 @@
         "post_wait_freezes": 1000
     },
     /* -------------------- 收尾 -------------------- */
-    // INFO 无法出击
+    // 无法出击
     "BattleStopNoProps": {
         "desc": "[end] 战役道具不足",
         "recognition": "OCR",
@@ -281,21 +275,7 @@
             "Node.Recognition.Succeeded": "道具不足 任务结束"
         }
     },
-    "BattleStopActionDart": {
-        "desc": "[end] 出击按钮暗淡",
-        "recognition": "TemplateMatch",
-        "template": "Battle/BattleButtonDart.png",
-        "roi": [
-            854,
-            563,
-            296,
-            157
-        ],
-        "action": "StopTask",
-        "focus": {
-            "Node.Recognition.Succeeded": "无法出击 任务结束"
-        }
-    },
+    // 代理锁定
     "BattleStopReplayLocked": {
         "desc": "[end] 代理作战锁定",
         "recognition": "TemplateMatch",
@@ -354,8 +334,8 @@
             "BattleProbeFormation"
         ],
         "next": [
+            "BattleStopNoMetal",
             "BattleBranchBuild", // INFO 与代理的方式不太一样 代理是启用代理后才是真正的队伍 所以不需要提前判
-            "BattleStopActionDart",
             "BattleClickAuto",
             "BattleClickAutoAttack",
             "[JumpBack]BaseProbeBlackPage",
@@ -375,7 +355,6 @@
         "post_wait_freezes": 1000,
         "next": [
             "BattleBranchBuild",
-            "[JumpBack]BattleBranchReplenish",
             "BattleClickAutoAttack",
             "[JumpBack]BaseBranchError",
             "BattleClickAuto"
@@ -420,7 +399,7 @@
             "BattleProbeFormation"
         ],
         "next": [
-            "BattleStopActionDart",
+            "BattleStopNoMetal",
             "BattleStopReplayLocked",
             "BattleClickReplay",
             "[JumpBack]BaseProbeBlackPage",
@@ -444,10 +423,26 @@
         "post_wait_freezes": 1000,
         "next": [
             "BattleBranchBuild",
-            "[JumpBack]BattleBranchReplenish",
+            "[JumpBack]BattleBranchReplayReplenish",
             "BattleClickReplayAttack",
             "[JumpBack]BaseBranchError",
             "BattleClickReplay"
+        ]
+    },
+    /* -------------------- 2-分支-补充成员 -------------------- */
+    "BattleBranchReplayReplenish": {
+        "desc": "[jp] 代理-补充成员数",
+        "recognition": "TemplateMatch",
+        "template": "Battle/NeedReplenish.png",
+        "roi": [
+            772,
+            402,
+            490,
+            162
+        ],
+        "next": [
+            "BattleClickReplenish",
+            "[JumpBack]BaseBranchError"
         ]
     },
     /* -------------------- 2-动作-代理出击 -------------------- */

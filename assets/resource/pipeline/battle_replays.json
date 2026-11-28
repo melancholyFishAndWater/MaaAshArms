@@ -74,9 +74,9 @@
             "BattleProbeFormation"
         ],
         "next": [
+            "BattleStopNoMetal",
             "ReplaysStopBuild",
-            "[JumpBack]BattleBranchReplenish",
-            "BattleStopActionDart",
+            "[JumpBack]BattleBranchReplayReplenish",
             "BattleStopReplayLocked",
             "ReplaysStopReplayOff",
             "ReplaysClickAttack",
