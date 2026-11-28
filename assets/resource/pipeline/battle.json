@@ -48,7 +48,8 @@
         "any_of": [
             "BattleProbeFormation",
             "TrainingProbeHomeName",
-            "EntrustProbeMapText"
+            "EntrustProbeMapText",
+            "ActivityProbeDifficultyText"
         ]
     },
     // 可以出击
