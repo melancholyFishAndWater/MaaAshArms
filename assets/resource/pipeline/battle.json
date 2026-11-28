@@ -298,10 +298,10 @@
         "recognition": "OCR",
         "expected": "建造",
         "roi": [
-            221,
-            163,
-            627,
-            391
+            265,
+            170,
+            406,
+            365
         ],
         "next": [
             "TaskFastFactory"
@@ -326,7 +326,7 @@
             "Node.Recognition.Succeeded": "没有代理和自律开关 任务结束"
         }
     },
-    /* -------------------- 1-分支-自动作战编队 -------------------- */
+    /* -------------------- 1-分支-自律作战编队 -------------------- */
     "BattleBranchAutoFormation": {
         "desc": "自律作战",
         "recognition": "And",
@@ -336,6 +336,7 @@
         "next": [
             "BattleStopNoMetal",
             "BattleBranchBuild", // INFO 与代理的方式不太一样 代理是启用代理后才是真正的队伍 所以不需要提前判
+            "[JumpBack]BattleBranchAutoReplenish",
             "BattleClickAuto",
             "BattleClickAutoAttack",
             "[JumpBack]BaseProbeBlackPage",
@@ -358,6 +359,22 @@
             "BattleClickAutoAttack",
             "[JumpBack]BaseBranchError",
             "BattleClickAuto"
+        ]
+    },
+    /* -------------------- 1-分支-补充成员 -------------------- */
+    "BattleBranchAutoReplenish": {
+        "desc": "[jp] 自律-补充成员数",
+        "recognition": "OCR",
+        "expected": "补充",
+        "roi": [
+            265,
+            170,
+            406,
+            365
+        ],
+        "next": [
+            "BattleClickReplenish",
+            "[JumpBack]BaseBranchError"
         ]
     },
     /* -------------------- 1-动作-自律出击 -------------------- */
@@ -390,7 +407,6 @@
             "Node.PipelineNode.Failed": "作战出发失败"
         }
     },
-    // TODO 部分活动作战无代理和自律
     /* -------------------- 2-分支-代理作战编队 -------------------- */
     "BattleBranchReplayFormation": {
         "desc": "代理作战",
@@ -404,7 +420,6 @@
             "BattleClickReplay",
             "[JumpBack]BaseProbeBlackPage",
             "[JumpBack]BaseBranchError",
-            // "[JumpBack]BattleClickReplay", // TODO
             "BattleStopNoReplayAuto"
         ],
         "focus": {
