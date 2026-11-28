@@ -6,6 +6,7 @@
     使用节点命名与分类 v3.3 校验年月日 26/11/06
     */
     /* -------------------- 通用探测 -------------------- */
+    // 战斗加载中
     "BattleProbeLoading": {
         "desc": "[end] 在加载战斗界面",
         "recognition": "Or",
@@ -15,41 +16,7 @@
         ],
         "post_delay": 3000
     },
-    "BattleProbeFormation": {
-        "desc": "[end] 在战斗编队页面",
-        "recognition": "And",
-        "all_of": [
-            "BattleProbeFormationText",
-            "BattleProbeAction"
-        ]
-    },
-    // INFO 有编队文字
-    "BattleProbeFormationText": {
-        "desc": "[end] 有编队文字",
-        "recognition": "OCR",
-        "expected": "编队",
-        "roi": [
-            102,
-            10,
-            254,
-            48
-        ]
-    },
-    // INFO 有出击按钮
-    "BattleProbeAction": {
-        "desc": "[end] 有出击按钮",
-        "recognition": "TemplateMatch",
-        "template": [
-            "Battle/BattleButton.png",
-            "Battle/BattleButtonDart.png"
-        ],
-        "roi": [
-            854,
-            563,
-            296,
-            157
-        ]
-    },
+    // 在Tips页面(战斗加载时会出现Tips页面)
     "BattleProbeTips": {
         "desc": "[end] 在Tips页面",
         "recognition": "OCR",
@@ -62,15 +29,7 @@
         ],
         "post_delay": 3000
     },
-    "BattleProbeNow": {
-        "desc": "[end] 正在战斗",
-        "recognition": "Or",
-        "any_of": [
-            "BattleProbeReplayNow",
-            "BattleProbeAutoNow"
-        ],
-        "post_delay": 3000
-    },
+    // 战斗胜利
     "BattleProbeWin": {
         "desc": "[end] 战斗胜利",
         "recognition": "OCR",
@@ -82,6 +41,7 @@
             78
         ]
     },
+    // 战斗胜利结束
     "BattleProbeWinEnd": {
         "desc": "[end] 检测是否离开战斗胜利页面",
         "recognition": "Or",
@@ -89,30 +49,6 @@
             "BattleProbeFormation",
             "TrainingProbeHomeName",
             "EntrustProbeMapText"
-        ]
-    },
-    "BattleProbeReplayNow": {
-        "desc": "[end] 正在代理作战",
-        "recognition": "OCR",
-        "expected": "接管作战",
-        "roi": [
-            664,
-            638,
-            217,
-            65
-        ]
-    },
-    "BattleProbeAutoNow": {
-        "desc": "[end] 正在自律作战",
-        "recognition": "TemplateMatch",
-        "template": "Battle/AutoLight.png",
-        "threshold": 0.8,
-        "method": 5,
-        "roi": [
-            119,
-            0,
-            201,
-            121
         ]
     },
     // 可以出击
@@ -175,6 +111,78 @@
             572,
             195,
             143
+        ]
+    },
+    /* -------------------- 通用探测-编队页面 -------------------- */
+    "BattleProbeFormation": {
+        "desc": "[end] 在战斗编队页面",
+        "recognition": "And",
+        "all_of": [
+            "BattleProbeFormationText",
+            "BattleProbeAction"
+        ]
+    },
+    // 有编队文字
+    "BattleProbeFormationText": {
+        "desc": "[end] 有编队文字",
+        "recognition": "OCR",
+        "expected": "编队",
+        "roi": [
+            102,
+            10,
+            254,
+            48
+        ]
+    },
+    // 有出击按钮
+    "BattleProbeAction": {
+        "desc": "[end] 有出击按钮",
+        "recognition": "TemplateMatch",
+        "template": [
+            "Battle/BattleButton.png",
+            "Battle/BattleButtonDart.png"
+        ],
+        "roi": [
+            854,
+            563,
+            296,
+            157
+        ]
+    },
+    /* -------------------- 通用探测-正在战斗 -------------------- */
+    "BattleProbeNow": {
+        "desc": "[end] 正在战斗",
+        "recognition": "Or",
+        "any_of": [
+            "BattleProbeReplayNow",
+            "BattleProbeAutoNow"
+        ],
+        "post_delay": 3000
+    },
+    // 正在代理
+    "BattleProbeReplayNow": {
+        "desc": "[end] 正在代理作战",
+        "recognition": "OCR",
+        "expected": "接管作战",
+        "roi": [
+            664,
+            638,
+            217,
+            65
+        ]
+    },
+    // 正在自律
+    "BattleProbeAutoNow": {
+        "desc": "[end] 正在自律作战",
+        "recognition": "TemplateMatch",
+        "template": "Battle/AutoLight.png",
+        "threshold": 0.8,
+        "method": 5,
+        "roi": [
+            119,
+            0,
+            201,
+            121
         ]
     },
     /* -------------------- 通用动作 -------------------- */
