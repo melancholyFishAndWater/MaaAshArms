@@ -235,7 +235,7 @@
             "label": "自动活动（只能单独启动）",
             "entry": "TaskActivity",
             "default_check": false,
-            "description": "使用自律作战，依次进行活动战斗。<br/>当战斗失败或需要建造DOLLS时, 任务停止。",
+            "description": "使用自律作战，依次进行活动战斗。<br/>当战斗失败或需要建造DOLLS时, 任务停止。<br/>[color:red]必须在[/color]获得关卡选择页面启动。",
             "option": [
                 "acticity_A"
             ],
