@@ -6,7 +6,7 @@
     "interface_version": 2,
     "name": "MaaAshArms",
     "icon": "logo.ico",
-    "description": "这是一个使用 MaaFramework 创建的新项目。",
+    "description": "灰烬战线小助手，图像技术 + 模拟控制，解放双手",
     "contact": "QQ群: 1128946439",
     "license": "MIT",
     "welcome": "resource/announcement/0-welcome.md",
