@@ -50,7 +50,10 @@
             "TrainingProbeHomeName",
             "EntrustProbeMapText",
             "ActivityProbeDifficultyText"
-        ]
+        ],
+        "focus": {
+            "Node.Recognition.Starting": "战斗胜利"
+        }
     },
     // 可以出击
     "BattleProbeActionLight": {
@@ -538,13 +541,13 @@
         "next": [
             "[JumpBack]BattleClickFinish", // INFO 训练所无完成按钮 因此使用jp使其通用
             "[JumpBack]BattleClickTap",
+            "[JumpBack]BattleClickSkip",
             "BattleProbeWinEnd",
             // INFO 单次战斗不需要点击确认
             "[JumpBack]BaseBranchError"
         ],
         "focus": {
             // INFO 失败难以回退 交由用户处理
-            "Node.Recognition.Starting": "战斗胜利",
             "Node.PipelineNode.Failed": {
                 "content": "领取战斗奖励失败",
                 "display": [
