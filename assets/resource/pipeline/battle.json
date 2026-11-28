@@ -52,7 +52,7 @@
             "ActivityProbeDifficultyText"
         ],
         "focus": {
-            "Node.Recognition.Starting": "战斗胜利"
+            "Node.Recognition.Succeeded": "战斗胜利"
         }
     },
     // 可以出击
