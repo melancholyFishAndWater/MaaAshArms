@@ -84,3 +84,38 @@ def test_launch_failure_returns_nonzero(monkeypatch):
         raise FileNotFoundError("test missing command")
     monkeypatch.setattr(preflight.subprocess, "run", fail)
     assert preflight.main([]) == 1
+
+
+def test_cleanup_failure_preserves_summary(monkeypatch, capsys):
+    class DeniedCleanup:
+        name = "synthetic-preflight-temp"
+
+        def cleanup(self):
+            raise PermissionError("synthetic cleanup denied")
+
+    monkeypatch.setattr(preflight.tempfile, "TemporaryDirectory", lambda **kwargs: DeniedCleanup())
+    monkeypatch.setattr(preflight.subprocess, "run", lambda command, **kwargs: SimpleNamespace(
+        returncode=1 if command[0] == "bad" else 0
+    ))
+    steps = [preflight.Step("ok", ("ok",)), preflight.Step("bad", ("bad",)),
+             preflight.Step("dependent", ("unused",), ("bad",))]
+    assert preflight.run_steps(steps) == 1
+    output = capsys.readouterr().out
+    assert "=== preflight 汇总 ===" in output
+    assert "PASS ok" in output and "FAIL bad" in output and "SKIP dependent" in output
+    assert "FAIL cleanup" in output
+    assert "synthetic-preflight-temp" in output and "synthetic cleanup denied" in output
+    assert "PASS 1 / FAIL 2 / SKIP 1" in output
+
+
+def test_cleanup_failure_turns_success_into_failure(monkeypatch, capsys):
+    class DeniedCleanup:
+        name = "synthetic-preflight-temp"
+
+        def cleanup(self):
+            raise PermissionError("synthetic cleanup denied")
+
+    monkeypatch.setattr(preflight.tempfile, "TemporaryDirectory", lambda **kwargs: DeniedCleanup())
+    monkeypatch.setattr(preflight.subprocess, "run", lambda *args, **kwargs: SimpleNamespace(returncode=0))
+    assert preflight.run_steps([preflight.Step("ok", ("fake",))]) == 1
+    assert "PASS 1 / FAIL 1 / SKIP 0" in capsys.readouterr().out

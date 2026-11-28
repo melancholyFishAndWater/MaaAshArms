@@ -31,6 +31,10 @@
 
 - `node tools/validation/check_pyright.mjs`：接入根目录 `.venv` 后为 0 errors、74 warnings；警告为 `tools.*`、`lib.*`、`configure` 等仓库模块导入未解析。未修改工具脚本或扩大路径修复范围。
 
+## preflight 受限环境运行与收尾异常
+
+- 2026-11-28：调用 `python tools/validation/cli.py preflight`，`uv sync --locked` 因默认 uv 缓存拒绝访问而失败，`markdownlint` 因默认 npm 缓存 EPERM 失败。另 `git diff --check` 打印 fsmonitor IPC 错误仍返回 0。缓存与 Git 环境问题尚未处理。
+
 ---
 
 有新问题时一行一条追加，写清**什么命令、什么报错、怎么绕过的**；处理完就删掉那一条——已修的不留历史

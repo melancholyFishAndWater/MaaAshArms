@@ -100,8 +100,9 @@ def run_steps(steps: Sequence[Step], repo: Path = REPO_ROOT) -> int:
     results: dict[str, str] = {}
     details: list[tuple[str, str, float, str]] = []
     started = time.perf_counter()
-    with tempfile.TemporaryDirectory(prefix="maa-preflight-") as directory:
-        exported = Path(directory) / "requirements.txt"
+    temporary = tempfile.TemporaryDirectory(prefix="maa-preflight-")
+    try:
+        exported = Path(temporary.name) / "requirements.txt"
         for index, step in enumerate(steps, 1):
             command = tuple(str(exported) if arg == _EXPORT_PATH else arg for arg in step.command)
             print(f"\n[{index}/{len(steps)}] {step.name}: {_command_text(command)}", flush=True)
@@ -131,6 +132,15 @@ def run_steps(steps: Sequence[Step], repo: Path = REPO_ROOT) -> int:
             results[step.name] = status
             details.append((step.name, status, duration, reason))
             print(f"{status} {step.name} ({duration:.2f}s) {reason}", flush=True)
+    finally:
+        cleanup_started = time.perf_counter()
+        try:
+            temporary.cleanup()
+        except OSError as error:
+            # 收尾权限错误不能盖掉已完成步骤的结果；单独失败，整体仍返回非零。
+            reason = f"临时目录清理失败：{temporary.name}；{error}"
+            details.append(("cleanup", "FAIL", time.perf_counter() - cleanup_started, reason))
+            print(f"FAIL cleanup: {reason}", flush=True)
     print("\n=== preflight 汇总 ===", flush=True)
     for name, status, duration, reason in details:
         print(f"{status:4} {name} ({duration:.2f}s) {reason}", flush=True)

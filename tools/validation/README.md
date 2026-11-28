@@ -31,6 +31,8 @@ python tools/validation/cli.py preflight --list
 
 步骤顺序执行，失败后继续执行能够独立运行的检查，末尾汇总 PASS / FAIL / SKIP 与耗时。Python 静态检查和引用检查仅依赖标准库，使用启动工作流的解释器；pytest、Schema、ruff 与工具自检使用 `uv run --locked`。若希望所有 Python 检查都使用项目解释器，可用 `uv run --locked python tools/validation/cli.py preflight` 启动。依赖准备失败时，依赖它的步骤标 SKIP，**整体仍失败**；只有所有步骤通过才返回 0。不会执行 commit、push、Sentry 远端操作或设备任务。Markdown 检查仍按现有命令只覆盖根 `docs/**/*.md`。
 
+临时导出目录清理失败时，另记 `FAIL cleanup`（含目录与异常），仍输出全部步骤汇总，整体返回非零；不会掩盖原步骤结果，也不会把清理错误算作通过。
+
 这是本地提交前工作流，不替代 Linux CI、发布包构建或真机验收；操作系统、原生库、包内运行时问题仍需对应环境验证。maa-tools 使用本地锁定安装中的 Node 实现入口，避免 Windows 上 npx 的全局命令劫持。
 
 ## 怎么跑
