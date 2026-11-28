@@ -38,12 +38,12 @@ class GiftBranchFinishReco(CustomRecognition):
         # 2) 基于当时 box 获取礼物数量
         r = ocr(
             context,
-            argv,
-            JOCR(
+            jocr=JOCR(
                 [r"[xX]?\d+"],
                 roi=toTuple(d.recognition.box),
                 roi_offset=(-40, -40, 80, 80),
             ),
+            argv=argv,
         )
         if r is None:
             log.debug(f"{argv.node_name} 节点 OCR 识别失败")

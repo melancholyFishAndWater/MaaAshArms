@@ -14,7 +14,7 @@ from agentlog import log
 
 
 def ocr(
-    context: Context, argv: CustomRecognition.AnalyzeArg, jocr: JOCR
+    context: Context, jocr: JOCR, argv: CustomRecognition.AnalyzeArg
 ) -> Optional[OCRResult]:
     # ocr识别
     detail = context.run_recognition_direct(JRecognitionType.OCR, jocr, argv.image)
